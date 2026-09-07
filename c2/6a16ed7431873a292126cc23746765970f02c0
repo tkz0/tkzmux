@@ -1,0 +1,172 @@
+Resources/Info.plist
+  s_36289bebec70b4::t_0a445ca9ab0091 5-6,31-32
+Tests/TkzTerminalCoreTests/MouseEncoderTests.swift
+  s_36289bebec70b4::t_8f8f0e8953e5d0 153
+  s_36289bebec70b4::t_9b47c9619c7756 174-177,179-184,187
+  s_36289bebec70b4::t_1da3af2bb99837 135-152,154-168
+  s_36289bebec70b4::t_5e32ee612fbd2b 1-134,169-173,178,185-186,188-264
+Sources/TkzPtyShim/include/TkzPtyShim.h
+  s_36289bebec70b4::t_85fe0a4c7ad560 2-16,20,27,30-78
+  s_36289bebec70b4::t_98b4218f246012 79
+Sources/TkzShaderTypes/include/TkzShaderTypes.h
+  s_36289bebec70b4::t_e228fc043fbc90 2,4,9-16,28-34,37-51,55-60,62-73,77-280,282-295,297-299,301-310,312-319
+  s_36289bebec70b4::t_abd8d9ff27eec6 17-27
+  s_36289bebec70b4::t_a9fec4b5c3b341 35-36
+  s_36289bebec70b4::t_419ed5db0ed8f9 74-76,281,296,300,311
+  s_36289bebec70b4::t_6a5977a26f6a63 5-8
+Sources/TkzTerminalCore/TerminalEvent.swift
+  s_36289bebec70b4::t_4fb46ba0e43935 1-74
+Sources/TkzTerminalRender/GlyphAtlas.swift
+  s_36289bebec70b4::t_f10aab48784494 1-56,60-103,105-108,123-205,207-208,210-327,338-347,350-378
+  s_36289bebec70b4::t_7f537196c59f9e 57-59,104,109-122,206,209,328-337,348-349
+Tests/TkzTerminalCoreTests/TerminalSessionTests.swift
+  s_36289bebec70b4::t_b7c8db98c4d80f 1-111,116-118,121-260
+  s_36289bebec70b4::t_d0b378d4553fe1 112-115,119-120
+Tests/TkzTerminalRenderTests/ShaderCompileTests.swift
+  s_36289bebec70b4::t_e8b2af225e254a 1-343
+Sources/TkzTerminalCore/MouseEncoder.swift
+  s_36289bebec70b4::t_4a38c1d7c730ed 245-254
+  s_36289bebec70b4::t_9ce40127cdd4eb 128
+  s_36289bebec70b4::t_abe32dd3b18cd2 1-71,75-127,129-193,197-229,231-244,255-264,267-268,270-332,334,336,338-351
+  s_36289bebec70b4::t_4b9d0f7aa06a69 72-74
+  s_36289bebec70b4::t_9b47c9619c7756 194-196,230,265-266,269,333,335,337
+scripts/make-app.sh
+  s_36289bebec70b4::t_0a445ca9ab0091 30-33,35-36
+  s_36289bebec70b4::t_c91dd1176dee4a 34,40
+Tests/TkzTerminalRenderTests/FontSetTests.swift
+  s_36289bebec70b4::t_94c03ce434a77c 2-3,5-34,36-85
+  s_36289bebec70b4::t_3c74bf06403b97 1,4,35,86
+Sources/TkzTerminalCore/Pty.swift
+  s_36289bebec70b4::t_5e1e02000a98f9 487-488,510-515,524-525
+  s_36289bebec70b4::t_e3fdcbc1b3dcbd 133,383-386,392-395,500-503
+  s_36289bebec70b4::t_1215e4bd8936ea 188,196,198-200,202,280-282,285,287-289,292-293
+  s_36289bebec70b4::t_182a6e4a415cdb 333-339,341-347
+  s_36289bebec70b4::t_12389051c84f4a 1-132,134-187,189-195,197,201,203-279,283-284,286,290-291,294-332,340,348-382,387-391,396-486,489-499,504-509,516-523,526-536
+Tests/TkzTerminalRenderTests/GraphemeShaperTests.swift
+  s_36289bebec70b4::t_49baedfb4ad423 1-122
+Sources/TkzTerminalCore/TerminalSession.swift
+  s_36289bebec70b4::t_7873dfa05310c3 767-770
+  s_36289bebec70b4::t_47bad13de91a01 424-431,442,689-692,697,704-724,726-727,746-747
+  s_36289bebec70b4::t_decedd58246c49 525,560
+  s_36289bebec70b4::t_84b09d7a1b0d32 766
+  s_36289bebec70b4::t_e18894e5fdc5e5 1-423,432-441,443-524,526-559,561-688,693-696,698-703,725,728-745,748-765,771-782
+docs/keys.md
+  s_36289bebec70b4::t_a729786e45b6c9 1-93,95-97,99-133
+  s_36289bebec70b4::t_c2a57c201dd253 94,98
+Tests/TkzTerminalCoreTests/KeyEncoderTests.swift
+  s_36289bebec70b4::t_5a7e3a8af9ec0b 39,42,44-49,87-110,113-131,136-154,156-162,182-187,387-391,402-416
+  s_36289bebec70b4::t_047acd60b330fa 278
+  s_36289bebec70b4::t_452848f7c840d2 1-38,40-41,43,50-51,65,85-86,111-112,132-135,155,163-181,188-195,197-277,279-370,374-381,384-386,392-401,417-457,468-530
+  s_36289bebec70b4::t_91a2bda682e7ac 52-64,66-84,196,371-373,382-383
+  s_36289bebec70b4::t_a47c3889560297 458-467
+docs/design.md
+  s_36289bebec70b4::t_a1412fcdfbec3c 69-71,78,101,126
+  s_36289bebec70b4::t_8272a85035f878 102-119,121-123
+  s_36289bebec70b4::t_ccbb31c1217388 75
+  s_36289bebec70b4::t_7478ec51011b35 43,55,62-65,79
+  s_36289bebec70b4::t_69fdc2ae3d8977 83-84,134
+  s_36289bebec70b4::t_9ce40127cdd4eb 120
+Sources/TkzTerminalRender/CellMetrics.swift
+  s_36289bebec70b4::t_3d7815cc4dbff0 1-114
+Sources/TkzTerminalRender/GlyphRasterizer.swift
+  s_36289bebec70b4::t_52441aa240b4f9 47-48,125
+  s_36289bebec70b4::t_2034debbb154ca 85-92,94-105
+  s_36289bebec70b4::t_d09a7e6a62675d 1-46,49-84,93,106-124,126-145,151-200
+  s_36289bebec70b4::t_dea8e219d3e7f7 146-150
+Sources/tkzmux-vtdump/main.swift
+  s_36289bebec70b4::t_1485662abafd2e 1-10,12,16-33,51-239
+Tests/TkzTerminalCoreTests/RecordingTests.swift
+  s_36289bebec70b4::t_3b1ef37bcc1326 1-135
+  s_36289bebec70b4::t_4c84facc1fbac0 136-158
+Sources/TkzTerminalCore/MacKeyCodes.swift
+  s_36289bebec70b4::t_546e277da7675a 1-169
+Sources/TkzTerminalCore/Recording.swift
+  s_36289bebec70b4::t_0258ff392d310b 1-246,248-252,254-260
+  s_36289bebec70b4::t_decedd58246c49 247,253
+Sources/TkzPtyShim/TkzPtyShim.c
+  s_36289bebec70b4::t_517c596d97ee99 3-198
+Sources/TkzTerminalCore/PasteSupport.swift
+  s_36289bebec70b4::t_09be73e76f80aa 1-93,95,102,112-168
+  s_36289bebec70b4::t_cb7483feadbc27 94,96-98,100-101,103-111
+  s_36289bebec70b4::t_9ce40127cdd4eb 99
+Sources/TkzTerminalCore/GhosttyVt+Swift.swift
+  s_36289bebec70b4::t_7a2d7daabb4418 29-33,52-58,60,63
+Sources/TkzTerminalRender/GraphemeShaper.swift
+  s_36289bebec70b4::t_cd585272b37245 1-203
+Package.swift
+  s_36289bebec70b4::t_d0edf3c73a0c15 48,52-55,61-63,67,114-116
+Sources/TkzShaderTypes/TkzShaderTypes.c
+  s_36289bebec70b4::t_fc3c1d600c2445 1-7
+Sources/TkzTerminalRender/FontSet.swift
+  s_36289bebec70b4::t_3ab60b1f3d8a11 1-74,76-95,107-108,114-128,136-146,151,156-175,192-193,201-220,222-252,256-268,270-275
+  s_36289bebec70b4::t_7f537196c59f9e 129-135
+  s_36289bebec70b4::t_ec953c3ae05544 96-102,106
+  s_36289bebec70b4::t_17d9884b06b436 103-105,109-113,178-191,194-200,253-255
+  s_36289bebec70b4::t_4dc842d7e75c92 176-177
+  s_36289bebec70b4::t_6d2269b81099d6 75,269
+  s_36289bebec70b4::t_8b04476566adfb 147-150,152-155,221
+Tests/TkzTerminalCoreTests/SelectionControllerTests.swift
+  s_36289bebec70b4::t_0f95a3be91e643 17-23,48,61,73,136,148,206,229
+  s_36289bebec70b4::t_b3b498486d2939 1-16,24-47,49-60,62-72,74-135,137-147,149-205,207-228,230-282
+Sources/TkzTerminalRender/Resources/Shaders/TkzShaderTypes.h
+  s_36289bebec70b4::t_abd8d9ff27eec6 17-27
+  s_36289bebec70b4::t_6a5977a26f6a63 5-8
+  s_36289bebec70b4::t_855a297d596bb4 1-4,9-16,28-319
+Sources/TkzTerminalRender/Resources/Fonts/OFL.txt
+  s_36289bebec70b4::t_38206f38c16f47 1-93
+Sources/TkzTerminalCore/SelectionController.swift
+  s_36289bebec70b4::t_9ce40127cdd4eb 219,379,393,424,450
+  s_36289bebec70b4::t_9a0402c4a18f3c 268-272
+  s_36289bebec70b4::t_362306cb2a15a1 1-31,33,36-37,39-213,215-218,220-267,273-378,380-392,394-423,425-449,451-490
+  s_36289bebec70b4::t_f4582636e85d73 32,34-35,38,214
+Tests/TkzTerminalRenderTests/CellMetricsTests.swift
+  s_36289bebec70b4::t_ac23250847e71f 66-70
+  s_36289bebec70b4::t_6256d3172c6b97 1-65,71-91
+Tests/TkzTerminalCoreTests/PtyTests.swift
+  s_36289bebec70b4::t_0d8b9e742a7bd7 1-58,64-133,142-186,188-213,219-220,223-238,247,250,252-256
+  s_36289bebec70b4::t_1215e4bd8936ea 59-63,134-141,187,214-218
+  s_36289bebec70b4::t_e3fdcbc1b3dcbd 221-222,239-246,248-249,251
+Sources/TkzTerminalCore/KeyEncoder.swift
+  s_36289bebec70b4::t_91a2bda682e7ac 121-123
+  s_36289bebec70b4::t_559f7f30fd3874 107-109,208
+  s_36289bebec70b4::t_ec91905a835eb4 1-62,77-106,110-120,124-130,139-149,155-207,209-256,258,260-269,271-283,285-292,315-327
+  s_36289bebec70b4::t_0270199e1f2c2f 63-76,257,259,270,284
+  s_36289bebec70b4::t_a3a27c30f030cf 131-138,150-154,293-314
+Sources/TkzTerminalCore/TerminalEnvironment.swift
+  s_36289bebec70b4::t_28303acbdaee62 1-22,28,34,39,41-124
+  s_36289bebec70b4::t_74f09d592ebeaa 23-27,29-33,35-38,40
+Tests/TkzTerminalRenderTests/GlyphAtlasTests.swift
+  s_36289bebec70b4::t_37f066b279575d 1-83,85,88-90,93-164,173-195,198-210,212,215,217-276
+  s_36289bebec70b4::t_9b47c9619c7756 211,216
+  s_36289bebec70b4::t_2034debbb154ca 84,86-87,91-92,165-172,196-197,213-214
+Tests/TkzTerminalCoreTests/PasteSupportTests.swift
+  s_36289bebec70b4::t_d29de30ab9b9ca 1-111
+Resources/Fonts
+  s_36289bebec70b4::t_15ba5e84738e3c 1
+Resources/Shaders
+  s_36289bebec70b4::t_198f0bca3155ee 1
+Resources/terminfo
+  s_36289bebec70b4::t_3c9a1d6dfc62b5 1
+Sources/TkzTerminalRender/Resources/Shaders/Terminal.metal
+  s_36289bebec70b4::t_a5008f4887fa44 1-323
+Tests/TkzTerminalCoreTests/TerminalEnvironmentTests.swift
+  s_36289bebec70b4::t_a612a5add737a9 1-215
+Tests/TkzTerminalCoreTests/TkzTerminalCoreTests.swift
+  s_36289bebec70b4::t_eefc651bb78e04 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "c26a16ed7431873a292126cc23746765970f02c0",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
