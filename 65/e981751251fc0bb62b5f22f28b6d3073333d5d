@@ -1,0 +1,121 @@
+Sources/TkzTerminalCore/GhosttyVt+Swift.swift
+  s_8d1d4478766420::t_538c0cfa4073ca 1-145
+Sources/tkzmux-vtdump/main.swift
+  s_8d1d4478766420::t_538c0cfa4073ca 1-2,6-54
+Tests/TkzTerminalCoreTests/GhosttyVtTests.swift
+  s_8d1d4478766420::t_538c0cfa4073ca 1-8,15-19,21-23,26-58,63-69
+  s_8d1d4478766420::t_3b860f5b08bdcb 9-14,59-62
+  s_8d1d4478766420::t_eeab94721f6003 20,24-25
+scripts/build-ghostty-vt.sh
+  s_8d1d4478766420::t_5c69f4ddbe8bcf 2-14,16-122
+Sources/TkzTerminalCore/TkzTerminalCore.swift
+  s_8d1d4478766420::t_5c69f4ddbe8bcf 2
+  s_8d1d4478766420::t_7db21f205a5c90 5
+Package.swift
+  s_8d1d4478766420::t_5c69f4ddbe8bcf 24-30,49,52-53
+docs/design.md
+  s_8d1d4478766420::t_e30bd6dd858b2e 43,51-52,55,97,109
+  s_8d1d4478766420::t_7db21f205a5c90 53-54
+.gitattributes
+  s_8d1d4478766420::t_7db21f205a5c90 1-2
+CLAUDE.md
+  s_8d1d4478766420::t_0302719020ac01 16,28
+vendor/ghostty-vt/COMMIT
+  s_8d1d4478766420::t_7143988eb2e3fb 1
+vendor/ghostty-vt/LICENSE
+  s_8d1d4478766420::t_1ea768b8442764 1-21
+vendor/ghostty-vt/abi-types.json
+  s_8d1d4478766420::t_1a0f4521421a90 1-3448
+vendor/ghostty-vt/ghostty-vt.xcframework/Info.plist
+  s_8d1d4478766420::t_0ce1f728cc731e 1-29
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt.h
+  s_8d1d4478766420::t_9995927b6414a0 1-178
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/allocator.h
+  s_8d1d4478766420::t_048ede0bc709e0 1-260
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/build_info.h
+  s_8d1d4478766420::t_b3cea24fddf0ac 1-150
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/color.h
+  s_8d1d4478766420::t_65beffc58baf69 1-479
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/color_scheme.h
+  s_8d1d4478766420::t_5d339dc7b461d3 1-73
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/device.h
+  s_8d1d4478766420::t_12fcb6b62a579b 1-153
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/focus.h
+  s_8d1d4478766420::t_6078a36d4f87df 1-76
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/formatter.h
+  s_8d1d4478766420::t_8a249e20ffc169 1-232
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/grid_ref.h
+  s_8d1d4478766420::t_e9d4efa897f7b2 1-212
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/grid_ref_tracked.h
+  s_8d1d4478766420::t_a099dfb8d1015d 1-139
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/io.h
+  s_8d1d4478766420::t_b0c5988f8df299 1-151
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/key.h
+  s_8d1d4478766420::t_70b66d052793e0 1-72
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/key/encoder.h
+  s_8d1d4478766420::t_249637572ba961 1-255
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/key/event.h
+  s_8d1d4478766420::t_a75ba2dd174a7d 1-482
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/kitty_graphics.h
+  s_8d1d4478766420::t_50db0e90141a3b 1-871
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/modes.h
+  s_8d1d4478766420::t_29eb0f63f992da 1-200
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/mouse.h
+  s_8d1d4478766420::t_aeea80f9d3fc11 1-69
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/mouse/encoder.h
+  s_8d1d4478766420::t_2e4f869294c548 1-214
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/mouse/event.h
+  s_8d1d4478766420::t_709e3238f9bc2d 1-195
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/osc.h
+  s_8d1d4478766420::t_6bc1fe055e79e8 1-219
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/paste.h
+  s_8d1d4478766420::t_3aae2071a648ca 1-255
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/point.h
+  s_8d1d4478766420::t_27bbaab2837378 1-91
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/render.h
+  s_8d1d4478766420::t_9f57a71e087661 1-890
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/screen.h
+  s_8d1d4478766420::t_286e41f844f60c 1-420
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/search.h
+  s_8d1d4478766420::t_f6f74d7e6bce88 1-501
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/selection.h
+  s_8d1d4478766420::t_5642aae620c3d1 1-1084
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/sgr.h
+  s_8d1d4478766420::t_d6d3b0cccf4c20 1-328
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/size_report.h
+  s_8d1d4478766420::t_59c71ec5cef438 1-101
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/snapshot.h
+  s_8d1d4478766420::t_0b9e14def156a1 1-569
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/style.h
+  s_8d1d4478766420::t_0d4e707cab4f7e 1-139
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/sys.h
+  s_8d1d4478766420::t_92aebed8ebbea7 1-243
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/terminal.h
+  s_8d1d4478766420::t_4978acecf50bd8 1-2430
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/types.h
+  s_8d1d4478766420::t_61b478f2194474 1-410
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/unicode.h
+  s_8d1d4478766420::t_772f90031f43f0 1-154
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/ghostty/vt/wasm.h
+  s_8d1d4478766420::t_26bcd3af99dc27 1-160
+vendor/ghostty-vt/ghostty-vt.xcframework/macos-arm64/Headers/module.modulemap
+  s_8d1d4478766420::t_a9e3b41e4f8844 1-4
+vendor/ghostty-vt/ghostty.terminfo
+  s_8d1d4478766420::t_fda5dba8e1a6d0 1-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "65e981751251fc0bb62b5f22f28b6d3073333d5d",
+  "prompts": {},
+  "sessions": {
+    "s_8d1d4478766420": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "863823e3-b78d-48ec-8587-8d04f4a16afe",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
