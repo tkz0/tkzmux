@@ -292,7 +292,7 @@ public enum BenchCommands {
 
     /// `tkzmux-vtdump bench --sessions N [--busy K] [--seconds S] [--json out.json]`
     public static func sessions(
-        count: Int, busy: Int, seconds: Double, json: URL?, fill: Fill = .uniform, lines: Int = 20_000
+        count: Int, busy: Int, seconds: Double, json: URL?, fill: Fill = .uniform, lines: Int = 20_000, compress: Bool = true
     ) throws {
         guard count > 0 else { fail("--sessions must be > 0") }
         let busyCount = min(max(busy, 0), count)
@@ -370,14 +370,16 @@ public enum BenchCommands {
         let rowsBeforeCompress = sessions.map(\.scrollbackRows).reduce(0, +)
         var compressSteps = 0
         let compressStart = DispatchTime.now().uptimeNanoseconds
-        for session in sessions {
-            var more = true
-            var steps = 0
-            while more, steps < 1000 {
-                more = session.session.compress(full: false)
-                steps += 1
+        if compress {
+            for session in sessions {
+                var more = true
+                var steps = 0
+                while more, steps < 1000 {
+                    more = session.session.compress(full: false)
+                    steps += 1
+                }
+                compressSteps += steps
             }
-            compressSteps += steps
         }
         let compressSeconds = Double(DispatchTime.now().uptimeNanoseconds - compressStart) / 1e9
         idle(seconds: 0.5)
@@ -458,6 +460,9 @@ public enum BenchCommands {
                 ("baseline_bytes", .integer(Int(baseline.footprintBytes))),
                 ("after_spawn_bytes", .integer(Int(afterSpawn.footprintBytes))),
                 ("after_busy_bytes", .integer(Int(afterBusy.footprintBytes))),
+                ("after_snapshot_bytes", .integer(Int(afterSnapshot.footprintBytes))),
+                ("after_restore_bytes", .integer(Int(afterRestore.footprintBytes))),
+                ("reusable_after_restore_bytes", .integer(Int(afterRestore.reusableBytes))),
                 ("per_session_bytes", .number(perSessionFootprint)),
             ])),
             ("threads", .object([
@@ -473,6 +478,7 @@ public enum BenchCommands {
                 ("total_cpu_seconds", .number(afterRestore.cpuSeconds - baseline.cpuSeconds)),
             ])),
             ("compression", .object([
+                ("enabled", .bool(compress)),
                 ("incremental_steps", .integer(compressSteps)),
                 ("elapsed_seconds", .number(compressSeconds)),
                 ("scrollback_rows_before", .integer(rowsBeforeCompress)),
@@ -663,7 +669,7 @@ public enum BenchCommands {
     /// The dispatch `main.swift` needs (reported, not added — main.swift is owned elsewhere):
     ///
     /// ```swift
-    /// case "bench": try BenchCommands.run(Array(CommandLine.arguments.dropFirst(2)))
+    /// case "bench": try BenchCommands.run(Array(argv.dropFirst()))
     /// ```
     public static func run(_ argv: [String]) throws {
         var flags: [String: String] = [:]
@@ -710,7 +716,8 @@ public enum BenchCommands {
             seconds: flags["seconds"].flatMap(Double.init) ?? 60,
             json: json,
             fill: flags["fill"].flatMap(Fill.init(rawValue:)) ?? .uniform,
-            lines: flags["lines"].flatMap(Int.init) ?? 20_000
+            lines: flags["lines"].flatMap(Int.init) ?? 20_000,
+            compress: flags["no-compress"] == nil
         )
     }
 }

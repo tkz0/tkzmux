@@ -51,6 +51,15 @@ usage: tkzmux-vtdump <command> [options]
   atlas   --out <prefix> [--point-size n] [--scale n] [--sample <text>]
                             dump the glyph atlas textures as PNGs (M1.4)
 
+  bench   --sessions <n> [--busy <k>] [--seconds <s>] [--fill uniform|varied] [--lines <n>]
+          [--no-compress] [--json <file>]
+                            spawn <n> real zsh sessions, fill <k>, idle for <s>, then snapshot and
+                            restore all of them; prints RSS, phys_footprint, threads, CPU, timings
+  bench   <file.tkzrec> --compress [--full] [--repeats <n>] [--json <file>]
+                            replay a recording and measure ghostty_terminal_compress
+  bench   <file.tkzrec> [--points 1,10,50,200] [--json <file>]
+                            snapshot size / restore time vs replay count
+
   replay  [options] <file.tkzrec>
       --format plain|vt|html   dump the screen through ghostty_formatter_format_alloc (default plain)
       --modes                  print modes 1049/2004/1000/1006/2026/25/1004 + kitty keyboard flags
@@ -581,6 +590,11 @@ let argv = Array(CommandLine.arguments.dropFirst())
 
 do {
     switch argv.first {
+    case "bench":
+        // M1.10 / TKZ-16 — spawns real pty sessions and measures RSS, phys_footprint, threads,
+        // CPU, compression and snapshot cost. See docs/perf.md.
+        try BenchCommands.run(Array(argv.dropFirst()))
+
     case "abi":
         let raw = GhosttyVtInfo.abiManifestJSON
         guard let object = try? JSONSerialization.jsonObject(with: Data(raw.utf8)),

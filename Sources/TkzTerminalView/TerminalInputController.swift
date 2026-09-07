@@ -1,0 +1,452 @@
+// TerminalInputController — NSEvent → `KeyPress` → pty bytes (M1.7 / TKZ-13).
+// See docs/design.md → Terminal engine → *View & input* → **Keyboard**, and docs/keys.md.
+//
+// This is the single `TerminalViewInputDelegate`: it owns the keyboard and IME, and forwards every
+// mouse/scroll event to a `TerminalMouseHandling` (TKZ-14) without interpreting it.
+//
+// ## What lives here and what deliberately does not
+//
+// Nothing here encodes anything. The controller builds a `KeyPress` — plain data, no AppKit — and
+// hands it to the injected `encodeKey` closure, which is where the libghostty call happens (inside
+// `TerminalSession`'s lock; see the "required seam" note below). That keeps every C call inside the
+// files docs/design.md lists, and makes the whole `NSEvent` → `KeyPress` translation — the part that
+// is actually subtle — unit-testable with a synthesized `NSEvent` and no window, no pty and no
+// terminal.
+//
+// The one exception is `encodeFocus`, which calls `ghostty_focus_encode` (`focus.h`). That function
+// is pure: it takes an enum and a buffer, touches no terminal and needs no lock, so keeping it here
+// costs nothing and avoids a seam through Core for two bytes.
+//
+// ## The option-as-alt trap (verified M1.7, see docs/design.md)
+//
+// libghostty computes `effectiveMods = mods − consumedMods` whenever `text` is non-empty. Building
+// the press the obvious way — take `event.characters` (`∫`) and report Option as consumed — encodes
+// `∫` even with `MACOS_OPTION_AS_ALT` set. When Option acts as Alt the key must be translated
+// *without* Option, so `text` is `"b"` and Option stays **unconsumed**; the encoder then sees `alt`
+// in the effective mods and emits `ESC b`.
+//
+// That is what `translationEvent(for:optionAsAlt:)` is for, and it also has to be the event the
+// *input context* sees: AppKit would otherwise commit `∫` through `insertText` before we ever get to
+// build a press. Ghostty solves the same problem with `ghostty_surface_key_translation_mods`, an
+// apprt API libghostty-vt does not export — `KeyEncoder.translationModifiers(for:optionAsAlt:)`
+// reimplements it.
+
+import AppKit
+import Foundation
+import GhosttyVt
+import IOKit.hidsystem
+import TkzTerminalCore
+import os
+
+// MARK: - Mouse seam
+
+/// The seam TKZ-14's `MouseController` implements.
+///
+/// `TerminalInputController` is the only `TerminalViewInputDelegate`; every mouse and scroll event
+/// the view forwards is routed here unchanged, with the view it came from.
+@MainActor public protocol TerminalMouseHandling: AnyObject {
+    /// Returns true if the event was consumed.
+    func handle(_ event: NSEvent, in view: TerminalMetalView) -> Bool
+}
+
+// MARK: - TerminalInputController
+
+@MainActor
+public final class TerminalInputController: TerminalViewInputDelegate {
+    // MARK: Seams
+
+    /// Encode one key press against the visible session's terminal.
+    ///
+    /// **Required seam, not yet available**: `KeyEncoder.encode` needs a `GhosttyTerminalHandle`,
+    /// and `TerminalSession` exposes neither the handle nor an encode entry point outside
+    /// `TkzTerminalCore`. Until `TerminalSession` grows
+    /// `public func encode(_ press: KeyPress, optionAsAlt: OptionAsAlt) throws -> [UInt8]`, this
+    /// stays nil and no key produces bytes. Deliberately *not* faked with a text pass-through:
+    /// Enter, the cursor keys and every Ctrl combination would be silently wrong.
+    public var encodeKey: ((KeyPress) throws -> [UInt8])?
+
+    /// Where encoded bytes go. `DevWindowController.writeInput` does the `ioQueue` hop, so this is
+    /// safe to call from the main actor and `Pty.write` is never called from main.
+    public var writeInput: ((Data) -> Void)?
+
+    /// Text that arrived outside a `keyDown` — the emoji picker, dictation, a drag & drop.
+    /// Goes to `ghostty_terminal_paste(source: TEXT)` (see `PasteSupport`), which never becomes a
+    /// bracketed-paste event. Same missing seam as `encodeKey`.
+    public var insertPastedText: ((String) -> Void)?
+
+    /// Whether the visible terminal has DEC mode 1004 (focus reporting) set —
+    /// `session.mode(1004)`. Focus reports are only sent when it does; the recorded `claude-boot`
+    /// fixture shows Claude Code sets it.
+    public var isFocusReportingEnabled: (() -> Bool)?
+
+    /// The preedit string changed. The renderer has no preedit overlay yet (required delta, see the
+    /// final report), so this is the hook the overlay will hang off.
+    public var onPreeditChange: ((String) -> Void)?
+
+    /// TKZ-14's `MouseController`. Weak: the app owns it, exactly as it owns this controller.
+    public weak var mouseHandler: (any TerminalMouseHandling)?
+
+    /// How the Option key behaves. `.never` is the macOS-native default and the only setting under
+    /// which dead keys work (Option+u, u → `ü`); config will drive it later.
+    public var optionAsAlt: OptionAsAlt = .never
+
+    // MARK: State
+
+    /// The IME's marked (preedit) text, or `""`.
+    public private(set) var preedit: String = ""
+
+    /// The IME's selection inside `preedit`.
+    public private(set) var preeditSelectedRange = NSRange(location: NSNotFound, length: 0)
+
+    /// Non-nil only while a `keyDown` is being interpreted. `insertText` appends to it instead of
+    /// pasting, which is how a committed IME composition becomes a key press rather than a paste.
+    var keyTextAccumulator: [String]?
+
+    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "input")
+
+    public init() {}
+
+    /// True while an input method is composing.
+    public var hasMarkedText: Bool { !preedit.isEmpty }
+
+    // MARK: - TerminalViewInputDelegate
+
+    public func terminalView(_ view: TerminalMetalView, handle event: NSEvent) -> Bool {
+        switch event.type {
+        case .keyDown:
+            return handleKeyDown(event, in: view)
+        case .keyUp:
+            return handleKeyUp(event, in: view)
+        case .flagsChanged:
+            return handleFlagsChanged(event, in: view)
+        case .leftMouseDown, .leftMouseUp, .leftMouseDragged,
+             .rightMouseDown, .rightMouseUp, .rightMouseDragged,
+             .otherMouseDown, .otherMouseUp, .otherMouseDragged,
+             .mouseMoved, .mouseEntered, .mouseExited, .scrollWheel:
+            return mouseHandler?.handle(event, in: view) ?? false
+        default:
+            return false
+        }
+    }
+
+    public func terminalView(_ view: TerminalMetalView, didChangeFocus isFocused: Bool) {
+        guard isFocusReportingEnabled?() ?? false else { return }
+        let bytes = Self.encodeFocus(gained: isFocused)
+        guard !bytes.isEmpty else { return }
+        writeInput?(Data(bytes))
+    }
+
+    // MARK: - Key down
+
+    /// Whether this controller should consume a `.keyDown`.
+    ///
+    /// `performKeyEquivalent` and `keyDown` deliver the *same* `NSEvent`, so this rule has to be
+    /// path-independent — there is no way to tell which one we are on:
+    ///
+    /// * ⌘ held → decline, so menu items and app shortcuts (⌘P) work. The view then calls `super`,
+    ///   which lets AppKit continue up the responder chain.
+    /// * we are not the window's first responder → decline. `performKeyEquivalent` is offered to
+    ///   the *whole* view hierarchy, not just the focused view, so without this a background
+    ///   terminal would swallow keys meant for a text field.
+    /// * otherwise handle it and return true. On the `performKeyEquivalent` path that suppresses
+    ///   the subsequent `keyDown`, so a Ctrl combination is processed exactly once either way.
+    public func acceptsKeyDown(_ event: NSEvent, in view: TerminalMetalView) -> Bool {
+        guard event.type == .keyDown else { return false }
+        if event.modifierFlags.contains(.command) { return false }
+        if let window = view.window, window.firstResponder !== view { return false }
+        return true
+    }
+
+    private func handleKeyDown(_ event: NSEvent, in view: TerminalMetalView) -> Bool {
+        guard acceptsKeyDown(event, in: view) else { return false }
+
+        // Solid cursor while typing.
+        view.resetCursorBlink()
+
+        // The IME sees the event *first*, and it sees the option-as-alt translated one — see the
+        // file header. `handleEvent` may call back into `insertText` / `setMarkedText` / `doCommand`
+        // synchronously, which is why the accumulator is installed around it.
+        let translation = Self.translationEvent(for: event, optionAsAlt: optionAsAlt)
+        let action: KeyPress.Action = event.isARepeat ? .repeated : .press
+        let markedBefore = hasMarkedText
+
+        keyTextAccumulator = []
+        _ = view.inputContext?.handleEvent(translation)
+        let accumulated = keyTextAccumulator ?? []
+        keyTextAccumulator = nil
+
+        // Composing if there is preedit now (the obvious case) *or* if there was preedit before:
+        // that key probably only cancelled the composition (Japanese + backspace) and must not
+        // reach the pty.
+        let composing = hasMarkedText || markedBefore
+
+        if !accumulated.isEmpty {
+            // The IME committed text. Send it as key presses so programs see typed input, never a
+            // paste — one press per committed string, `composing` false because the composition is
+            // finished, whatever the preedit state is now.
+            for text in accumulated where !Self.isBareControl(text, composing: composing) {
+                send(Self.keyPress(
+                    event: event, translationEvent: translation, action: action,
+                    optionAsAlt: optionAsAlt, text: text, composing: false))
+            }
+            return true
+        }
+
+        // A bare control character arriving mid-composition belongs to the IME, not the terminal.
+        if Self.isBareControl(event.characters, composing: composing) { return true }
+
+        send(Self.keyPress(
+            event: event, translationEvent: translation, action: action,
+            optionAsAlt: optionAsAlt, text: Self.filteredText(of: translation), composing: composing))
+        return true
+    }
+
+    // MARK: - Key up / modifiers
+
+    /// A release. **Expected to produce zero bytes under Claude Code**: releases need the kitty
+    /// `REPORT_EVENTS` flag (2) and `CSI > 5 u` is `DISAMBIGUATE | REPORT_ALTERNATES`. Wired anyway
+    /// for TUIs that do ask for them.
+    private func handleKeyUp(_ event: NSEvent, in view: TerminalMetalView) -> Bool {
+        guard !hasMarkedText else { return true }
+        send(Self.keyPress(
+            event: event, translationEvent: event, action: .release,
+            optionAsAlt: optionAsAlt, text: "", composing: false))
+        return true
+    }
+
+    /// `flagsChanged` carries no action bit: the modifier's own keycode says *which* modifier, and
+    /// whether that modifier's bit is still set in the flags says press or release.
+    ///
+    /// The subtlety is sides. Holding both Shifts and letting one go still leaves `.shift` set, so
+    /// a naive reading reports a second press. The device masks disambiguate: for a right-hand
+    /// keycode, it is only a press if that side's raw bit is set.
+    private func handleFlagsChanged(_ event: NSEvent, in view: TerminalMetalView) -> Bool {
+        guard !hasMarkedText else { return true }
+
+        let bit: KeyModifiers
+        switch event.keyCode {
+        case 0x39: bit = .capsLock                 // kVK_CapsLock
+        case 0x38, 0x3C: bit = .shift              // kVK_Shift / kVK_RightShift
+        case 0x3B, 0x3E: bit = .control            // kVK_Control / kVK_RightControl
+        case 0x3A, 0x3D: bit = .alt                // kVK_Option / kVK_RightOption
+        case 0x37, 0x36: bit = .super_             // kVK_Command / kVK_RightCommand
+        default: return false                      // Fn and friends: nothing to encode.
+        }
+
+        let mods = Self.modifiers(from: event.modifierFlags)
+        var action: KeyPress.Action = .release
+        if !mods.isDisjoint(with: bit) {
+            let raw = event.modifierFlags.rawValue
+            let sidePressed: Bool
+            switch event.keyCode {
+            case 0x3C: sidePressed = raw & UInt(NX_DEVICERSHIFTKEYMASK) != 0
+            case 0x3E: sidePressed = raw & UInt(NX_DEVICERCTLKEYMASK) != 0
+            case 0x3D: sidePressed = raw & UInt(NX_DEVICERALTKEYMASK) != 0
+            case 0x36: sidePressed = raw & UInt(NX_DEVICERCMDKEYMASK) != 0
+            default: sidePressed = true
+            }
+            if sidePressed { action = .press }
+        }
+
+        send(KeyPress(
+            action: action,
+            key: MacKeyCodes.key(forVirtualKeyCode: event.keyCode),
+            mods: mods,
+            consumedMods: [],
+            text: "",
+            unshiftedCodepoint: 0,
+            composing: false))
+        return true
+    }
+
+    // MARK: - Text input callbacks (driven by TerminalMetalView+TextInput)
+
+    /// `insertText` from the input context.
+    ///
+    /// Inside a `keyDown` this only accumulates: the caller turns it into key presses so the pty
+    /// sees typed input. Outside one — emoji picker, dictation, drag & drop — there is no key to
+    /// attach it to, so it is pasted with `source: TEXT`.
+    func insertFromInputContext(_ text: String) {
+        setPreedit("", selectedRange: NSRange(location: NSNotFound, length: 0))
+        guard !text.isEmpty else { return }
+        if keyTextAccumulator != nil {
+            keyTextAccumulator?.append(text)
+            return
+        }
+        insertPastedText?(text)
+    }
+
+    func setPreedit(_ text: String, selectedRange: NSRange) {
+        guard preedit != text || preeditSelectedRange != selectedRange else { return }
+        preedit = text
+        preeditSelectedRange = selectedRange
+        onPreeditChange?(text)
+    }
+
+    // MARK: - NSEvent → KeyPress
+
+    /// Build the `KeyPress` for one event, exactly as `KeyEncoder`'s field documentation requires.
+    ///
+    /// Pure and static so the whole translation tests headlessly against a synthesized `NSEvent`.
+    ///
+    /// - Parameters:
+    ///   - event: the real event — the source of `mods`, `keyCode` and `unshiftedCodepoint`.
+    ///   - translationEvent: the event macOS translated the text with (see the file header). Pass
+    ///     nil to derive it.
+    ///   - text: the text to send, already filtered. Pass nil to take it from `translationEvent`.
+    public static func keyPress(
+        event: NSEvent,
+        translationEvent: NSEvent? = nil,
+        action: KeyPress.Action,
+        optionAsAlt: OptionAsAlt,
+        text: String? = nil,
+        composing: Bool = false
+    ) -> KeyPress {
+        let mods = modifiers(from: event.modifierFlags)
+        let translation = translationEvent ?? Self.translationEvent(for: event, optionAsAlt: optionAsAlt)
+
+        // macOS has no API for "which modifiers were spent producing this text", so this is
+        // Ghostty's long-standing heuristic: Control and Command never contribute, everything else
+        // did — applied to the *translation* mods, which is what makes Option survive as Alt.
+        let consumed = KeyEncoder
+            .translationModifiers(for: mods, optionAsAlt: optionAsAlt)
+            .subtracting([.control, .super_])
+
+        var unshifted: UInt32 = 0
+        if event.type == .keyDown || event.type == .keyUp,
+           let scalar = event.characters(byApplyingModifiers: [])?.unicodeScalars.first {
+            unshifted = scalar.value
+        }
+
+        return KeyPress(
+            action: action,
+            key: MacKeyCodes.key(forVirtualKeyCode: event.keyCode),
+            mods: mods,
+            consumedMods: consumed,
+            text: text ?? filteredText(of: translation),
+            unshiftedCodepoint: unshifted,
+            composing: composing)
+    }
+
+    /// The event macOS should translate the key with, given the option-as-alt setting.
+    ///
+    /// Returns `event` itself when nothing changes. That identity matters: AppKit's Korean input
+    /// method behaves differently when handed a reconstructed event, so a copy is only made when
+    /// the flags genuinely differ.
+    ///
+    /// Only the four device-independent bits are toggled, on top of the *original* raw flags — the
+    /// low bits carry device sides and dead-key state that AppKit needs to keep composing.
+    public static func translationEvent(for event: NSEvent, optionAsAlt: OptionAsAlt) -> NSEvent {
+        let mods = modifiers(from: event.modifierFlags)
+        let translation = KeyEncoder.translationModifiers(for: mods, optionAsAlt: optionAsAlt)
+
+        var flags = event.modifierFlags
+        set(&flags, .shift, translation.contains(.shift))
+        set(&flags, .control, translation.contains(.control))
+        set(&flags, .option, translation.contains(.alt))
+        set(&flags, .command, translation.contains(.super_))
+        guard flags != event.modifierFlags else { return event }
+
+        return NSEvent.keyEvent(
+            with: event.type,
+            location: event.locationInWindow,
+            modifierFlags: flags,
+            timestamp: event.timestamp,
+            windowNumber: event.windowNumber,
+            context: nil,
+            characters: event.characters(byApplyingModifiers: flags) ?? "",
+            charactersIgnoringModifiers: event.charactersIgnoringModifiers ?? "",
+            isARepeat: event.isARepeat,
+            keyCode: event.keyCode) ?? event
+    }
+
+    private static func set(_ flags: inout NSEvent.ModifierFlags, _ flag: NSEvent.ModifierFlags, _ on: Bool) {
+        if on { flags.insert(flag) } else { flags.remove(flag) }
+    }
+
+    /// `NSEvent.modifierFlags` → `KeyModifiers`, **including the side bits**.
+    ///
+    /// `NSEvent.ModifierFlags` only has device-independent bits (`deviceIndependentFlagsMask` is
+    /// `0xFFFF0000`); the side lives in the low half of the raw value, under the IOKit device masks
+    /// from `IOKit/hidsystem/IOLLEvent.h`. A side bit is only meaningful when its modifier is set,
+    /// and its absence means "left" — libghostty cannot represent "both sides".
+    public static func modifiers(from flags: NSEvent.ModifierFlags) -> KeyModifiers {
+        var mods: KeyModifiers = []
+        if flags.contains(.shift) { mods.insert(.shift) }
+        if flags.contains(.control) { mods.insert(.control) }
+        if flags.contains(.option) { mods.insert(.alt) }
+        if flags.contains(.command) { mods.insert(.super_) }
+        if flags.contains(.capsLock) { mods.insert(.capsLock) }
+
+        let raw = flags.rawValue
+        if mods.contains(.shift), raw & UInt(NX_DEVICERSHIFTKEYMASK) != 0 { mods.insert(.shiftRight) }
+        if mods.contains(.control), raw & UInt(NX_DEVICERCTLKEYMASK) != 0 { mods.insert(.controlRight) }
+        if mods.contains(.alt), raw & UInt(NX_DEVICERALTKEYMASK) != 0 { mods.insert(.altRight) }
+        if mods.contains(.super_), raw & UInt(NX_DEVICERCMDKEYMASK) != 0 { mods.insert(.superRight) }
+        return mods
+    }
+
+    /// The text for a key event, filtered to what `ghostty_key_event_set_utf8` accepts.
+    ///
+    /// A single control character is re-read *without* Control, because control-character encoding
+    /// (Ctrl-A → 0x01) is libghostty's job, derived from `key` + `mods`. Function keys arrive as
+    /// macOS PUA codepoints and must never reach the terminal. Shift+Tab is the live case: AppKit
+    /// reports U+0019, the re-read gives U+0009, and both are C0 — so the answer is `""` and the
+    /// encoder produces `ESC[Z` / `ESC[9;2u` from the key alone.
+    public static func filteredText(of event: NSEvent) -> String {
+        guard let characters = event.characters else { return "" }
+        guard characters.unicodeScalars.count == 1, let scalar = characters.unicodeScalars.first else {
+            return characters
+        }
+        if (0xF700...0xF8FF).contains(scalar.value) { return "" }
+        if scalar.value < 0x20 {
+            let relaxed = event.characters(byApplyingModifiers: event.modifierFlags.subtracting(.control))
+            return sanitize(relaxed ?? "")
+        }
+        return sanitize(characters)
+    }
+
+    static func sanitize(_ text: String) -> String {
+        guard text.unicodeScalars.count == 1, let scalar = text.unicodeScalars.first else { return text }
+        if scalar.value < 0x20 || scalar.value == 0x7F { return "" }
+        if (0xF700...0xF8FF).contains(scalar.value) { return "" }
+        return text
+    }
+
+    /// A lone control character produced while an IME is composing — Ctrl-H inside a Japanese
+    /// composition cancels the preedit and must not also delete the text before it.
+    static func isBareControl(_ text: String?, composing: Bool) -> Bool {
+        guard composing, let text, text.unicodeScalars.count == 1,
+              let scalar = text.unicodeScalars.first else { return false }
+        return scalar.value < 0x20 || scalar.value == 0x7F
+    }
+
+    // MARK: - Focus reporting
+
+    /// `ghostty_focus_encode` (`focus.h`): `CSI I` gained, `CSI O` lost. Only sent when DEC mode
+    /// 1004 is set — the caller checks, this only encodes.
+    public static func encodeFocus(gained: Bool) -> [UInt8] {
+        var buffer = [CChar](repeating: 0, count: 16)
+        var written = 0
+        let result = buffer.withUnsafeMutableBufferPointer { pointer in
+            ghostty_focus_encode(
+                gained ? GHOSTTY_FOCUS_GAINED : GHOSTTY_FOCUS_LOST,
+                pointer.baseAddress, pointer.count, &written)
+        }
+        guard result == GHOSTTY_SUCCESS, written > 0, written <= buffer.count else { return [] }
+        return buffer[0..<written].map { UInt8(bitPattern: $0) }
+    }
+
+    // MARK: - Output
+
+    private func send(_ press: KeyPress) {
+        guard let encodeKey else { return }
+        do {
+            let bytes = try encodeKey(press)
+            guard !bytes.isEmpty else { return }
+            writeInput?(Data(bytes))
+        } catch {
+            logger.error("key encode failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+}

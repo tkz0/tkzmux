@@ -28,9 +28,16 @@ public enum PersistenceModule {
 ///   * A *visible* session is never compressed: the render tick already holds the lock often
 ///     enough, and stalling it is exactly what this policy exists to avoid.
 ///
-/// **Whether to schedule this at all is a measurement, not a design choice** — see
-/// docs/perf.md → *Does compression pay?*. The type is here so the decision can be re-taken
-/// cheaply if a future libghostty makes compression profitable.
+/// **Measured, not assumed** (docs/perf.md → *Does compression pay?*): on 30 live sessions holding
+/// 19 963 rows each, looping INCREMENTAL to `COMPLETE` took 113 ms and cut `phys_footprint` from
+/// 577 MiB to 26 MiB, with a control run confirming the drop comes from `compress` and not from
+/// the workload. (The M1.3 spike's "reclaimed nothing" measured `resident_size`, which on Darwin
+/// keeps `MADV_FREE`'d pages until the kernel needs them.) So this timer is worth wiring — but
+/// snapshot *before* compressing: reading history back rehydrates it.
+///
+/// One step costs ~66 µs and a full 20 000-row session ~3.8 ms, so `stepInterval` at 1 s is far
+/// more conservative than the data requires; the ticket that wires the timer should re-tune it
+/// against real frame pacing.
 public struct IdleCompressionPolicy: Sendable, Equatable {
     /// How long a session must be quiet before its first compression step. design.md says 60 s.
     public var idleThreshold: Duration

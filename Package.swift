@@ -102,7 +102,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "tkzmux-vtdump",
-            dependencies: ["TkzTerminalCore", "TkzTerminalRender"],
+            dependencies: ["TkzTerminalCore", "TkzTerminalRender", "Persistence"],
             path: "Sources/tkzmux-vtdump"
         ),
         .executableTarget(
@@ -117,7 +117,7 @@ let package = Package(
         .testTarget(name: "TkzCoreTests", dependencies: ["TkzCore"], path: "Tests/TkzCoreTests"),
         .testTarget(name: "ClaudeBridgeTests", dependencies: ["ClaudeBridge"], path: "Tests/ClaudeBridgeTests"),
         .testTarget(name: "GitStatusTests", dependencies: ["GitStatus"], path: "Tests/GitStatusTests"),
-        .testTarget(name: "PersistenceTests", dependencies: ["Persistence"], path: "Tests/PersistenceTests"),
+        .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzTerminalCore", "GhosttyVt"], path: "Tests/PersistenceTests"),
         .testTarget(name: "TkzAppTests", dependencies: ["TkzApp"], path: "Tests/TkzAppTests"),
     ]
 )
