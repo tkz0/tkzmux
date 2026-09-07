@@ -358,18 +358,21 @@ public final class TerminalSurface {
         rect.thicknessPx = thickness
         rect.reserved0 = 0
 
+        // A cursor parked on the SPACER_TAIL of a wide grapheme covers both cells, and its origin
+        // shifts one column left onto the lead cell -- otherwise the block sits on the right half of
+        // a CJK character or emoji and hides nothing that is actually there (M1.6).
+        let boxOrigin = cursor.isWideTail ? SIMD2<Float>(origin.x - cellWidth, origin.y) : origin
+        let boxWidth = cursor.isWideTail ? cellWidth * 2 : cellWidth
+
         let effectiveStyle: SurfaceCursorStyle = isFocused ? cursor.style : .blockHollow
         switch effectiveStyle {
         case .block:
-            // A cursor parked on the tail cell of a wide grapheme still draws one cell wide; the
-            // two-cell block Ghostty draws there is an M1.6 refinement (`cursor.isWideTail` carries
-            // what is needed for it).
-            rect.originPx = origin
-            rect.sizePx = SIMD2<Float>(cellWidth, cellHeight)
+            rect.originPx = boxOrigin
+            rect.sizePx = SIMD2<Float>(boxWidth, cellHeight)
             rect.style = UInt32(TKZ_RECT_STYLE_SOLID)
         case .blockHollow:
-            rect.originPx = origin
-            rect.sizePx = SIMD2<Float>(cellWidth, cellHeight)
+            rect.originPx = boxOrigin
+            rect.sizePx = SIMD2<Float>(boxWidth, cellHeight)
             rect.style = UInt32(TKZ_RECT_STYLE_HOLLOW)
         case .bar:
             rect.originPx = origin
@@ -377,8 +380,8 @@ public final class TerminalSurface {
             rect.style = UInt32(TKZ_RECT_STYLE_SOLID)
         case .underline:
             let height = max(thickness, 1)
-            rect.originPx = SIMD2<Float>(origin.x, origin.y + cellHeight - height)
-            rect.sizePx = SIMD2<Float>(cellWidth, height)
+            rect.originPx = SIMD2<Float>(boxOrigin.x, origin.y + cellHeight - height)
+            rect.sizePx = SIMD2<Float>(boxWidth, height)
             rect.style = UInt32(TKZ_RECT_STYLE_SOLID)
         }
         return rect

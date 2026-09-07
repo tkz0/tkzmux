@@ -221,6 +221,7 @@ public final class TerminalRenderer {
             surface: surface,
             width: texture.width,
             height: texture.height,
+            presentViaCommandBuffer: true,
             acquire: { (texture, nil) })
     }
 
@@ -228,18 +229,35 @@ public final class TerminalRenderer {
     ///
     /// A skipped frame never calls `nextDrawable()`, so an idle terminal holds no drawable and the
     /// display link can stay parked.
+    ///
+    /// When `layer.presentsWithTransaction` is true — the live-resize path — a drawable must NOT be
+    /// presented by the command buffer. Core Animation requires the caller to wait for scheduling
+    /// and then present on the calling thread, inside the same CATransaction as the layer-bounds
+    /// change, or the resize tears. `renderFrame` therefore skips `commandBuffer.present` and this
+    /// method does the `waitUntilScheduled()` + `drawable.present()` itself, so the caller does not
+    /// have to reach around the renderer to acquire drawables (which would also lose the
+    /// `drawablesAcquired` accounting).
     @discardableResult
     public func render(surface: TerminalSurface, layer: CAMetalLayer) throws -> RenderOutcome {
         let size = layer.drawableSize
-        return try renderFrame(
+        let synchronous = layer.presentsWithTransaction
+        var acquired: (any CAMetalDrawable)?
+        let outcome = try renderFrame(
             surface: surface,
             width: Int(size.width),
             height: Int(size.height),
+            presentViaCommandBuffer: !synchronous,
             acquire: { [weak self] in
                 guard let drawable = layer.nextDrawable() else { return (nil, nil) }
                 self?.stats.drawablesAcquired += 1
+                acquired = drawable
                 return (drawable.texture, drawable)
             })
+        if synchronous, let drawable = acquired, let buffer = outcome.commandBuffer {
+            buffer.waitUntilScheduled()
+            drawable.present()
+        }
+        return outcome
     }
 
     /// A `.bgra8Unorm` `.shared` texture suitable for `render(surface:to:)` and `pngData(from:)`.
@@ -262,6 +280,7 @@ public final class TerminalRenderer {
         surface: TerminalSurface,
         width: Int,
         height: Int,
+        presentViaCommandBuffer: Bool,
         acquire: () -> (MTLTexture?, CAMetalDrawable?)
     ) throws -> RenderOutcome {
         // ---- The idle guarantee. Everything below this point is skipped when nothing changed. ---
@@ -355,7 +374,7 @@ public final class TerminalRenderer {
 
         let semaphore = inflight
         commandBuffer.addCompletedHandler { _ in semaphore.signal() }
-        if let drawable { commandBuffer.present(drawable) }
+        if presentViaCommandBuffer, let drawable { commandBuffer.present(drawable) }
         commandBuffer.commit()
 
         surface.clearNeedsDisplay()

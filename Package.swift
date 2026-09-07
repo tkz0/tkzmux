@@ -64,7 +64,7 @@ let package = Package(
         ),
         .target(
             name: "TkzTerminalView",
-            dependencies: ["TkzCore", "TkzTerminalRender"],
+            dependencies: ["TkzCore", "TkzTerminalCore", "TkzTerminalRender"],
             path: "Sources/TkzTerminalView"
         ),
 
@@ -90,7 +90,7 @@ let package = Package(
         ),
         .target(
             name: "TkzApp",
-            dependencies: ["TkzCore", "TkzTerminalView", "ClaudeBridge", "GitStatus", "Persistence"],
+            dependencies: ["TkzCore", "TkzTerminalCore", "TkzTerminalView", "ClaudeBridge", "GitStatus", "Persistence"],
             path: "Sources/TkzApp"
         ),
 
@@ -113,7 +113,7 @@ let package = Package(
         // MARK: Tests (one per Swift library module; Swift Testing)
         .testTarget(name: "TkzTerminalCoreTests", dependencies: ["TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalCoreTests", resources: [.copy("Fixtures")]),
         .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "GhosttyVt"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
-        .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
+        .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
         .testTarget(name: "TkzCoreTests", dependencies: ["TkzCore"], path: "Tests/TkzCoreTests"),
         .testTarget(name: "ClaudeBridgeTests", dependencies: ["ClaudeBridge"], path: "Tests/ClaudeBridgeTests"),
         .testTarget(name: "GitStatusTests", dependencies: ["GitStatus"], path: "Tests/GitStatusTests"),
