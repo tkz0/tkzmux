@@ -1,0 +1,36 @@
+Package.swift
+  s_36289bebec70b4::t_93d6be121f35e3 105
+Tests/TkzTerminalCoreTests/Fixtures/README.md
+  s_36289bebec70b4::t_caab765d7d61b6 1-32,37,42,47-74
+  s_36289bebec70b4::t_048da85923dacd 33-36,38-41,43-46
+Tests/TkzTerminalCoreTests/Fixtures/zsh-ls-color.txt
+  s_36289bebec70b4::t_8acc2f82fecd0b 1-3
+Tests/TkzTerminalCoreTests/RecordingTests.swift
+  s_36289bebec70b4::t_9443a8a188b4ed 10,163-206,211-249
+  s_36289bebec70b4::t_b3fb9edc03aee6 207-210
+  s_36289bebec70b4::t_caab765d7d61b6 3-7
+Tests/TkzTerminalCoreTests/TerminalSessionTests.swift
+  s_36289bebec70b4::t_b3fb9edc03aee6 43-46
+Tests/TkzTerminalCoreTests/Fixtures/claude-boot.txt
+  s_36289bebec70b4::t_8acc2f82fecd0b 1-30
+Tests/TkzTerminalCoreTests/Fixtures/claude-tool-run.txt
+  s_36289bebec70b4::t_8acc2f82fecd0b 1-30
+docs/design.md
+  s_36289bebec70b4::t_2a55db9e3e1d9f 36,114,126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "7118a18c938817d6f17e2c18f83b8f77d4616c17",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
