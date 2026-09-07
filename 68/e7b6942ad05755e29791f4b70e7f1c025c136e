@@ -1,0 +1,53 @@
+Tests/TkzTerminalRenderTests/CellMetricsTests.swift
+  s_36289bebec70b4::t_ac23250847e71f 66-70
+  s_36289bebec70b4::t_6256d3172c6b97 1-65,71-91
+Tests/TkzTerminalRenderTests/FontSetTests.swift
+  s_36289bebec70b4::t_94c03ce434a77c 2-3,5-34,36-85
+  s_36289bebec70b4::t_3c74bf06403b97 1,4,35,86
+Sources/TkzTerminalRender/CellMetrics.swift
+  s_36289bebec70b4::t_3d7815cc4dbff0 1-114
+Sources/TkzTerminalRender/Resources/Fonts/OFL.txt
+  s_36289bebec70b4::t_38206f38c16f47 1-93
+Sources/TkzTerminalRender/FontSet.swift
+  s_36289bebec70b4::t_3ab60b1f3d8a11 1-74,76-95,107-108,114-128,136-146,151,156-175,192-193,201-220,222-252,256-268,270-275
+  s_36289bebec70b4::t_6d2269b81099d6 75,269
+  s_36289bebec70b4::t_4dc842d7e75c92 176-177
+  s_36289bebec70b4::t_17d9884b06b436 103-105,109-113,178-191,194-200,253-255
+  s_36289bebec70b4::t_8b04476566adfb 147-150,152-155,221
+  s_36289bebec70b4::t_ec953c3ae05544 96-102,106
+  s_36289bebec70b4::t_7f537196c59f9e 129-135
+Tests/TkzTerminalRenderTests/GraphemeShaperTests.swift
+  s_36289bebec70b4::t_49baedfb4ad423 1-122
+Resources/Fonts
+  s_36289bebec70b4::t_15ba5e84738e3c 1
+Tests/TkzTerminalRenderTests/GlyphAtlasTests.swift
+  s_36289bebec70b4::t_2034debbb154ca 84,86-87,91-92,165-172,196-197,213-214
+  s_36289bebec70b4::t_9b47c9619c7756 211,216
+  s_36289bebec70b4::t_37f066b279575d 1-83,85,88-90,93-164,173-195,198-210,212,215,217-276
+Sources/TkzTerminalRender/GraphemeShaper.swift
+  s_36289bebec70b4::t_cd585272b37245 1-203
+Sources/TkzTerminalRender/GlyphRasterizer.swift
+  s_36289bebec70b4::t_2034debbb154ca 85-92,94-105
+  s_36289bebec70b4::t_d09a7e6a62675d 1-46,49-84,93,106-124,126-145,151-200
+  s_36289bebec70b4::t_dea8e219d3e7f7 146-150
+  s_36289bebec70b4::t_52441aa240b4f9 47-48,125
+Sources/TkzTerminalRender/GlyphAtlas.swift
+  s_36289bebec70b4::t_f10aab48784494 1-56,60-103,105-108,123-205,207-208,210-327,338-347,350-378
+  s_36289bebec70b4::t_7f537196c59f9e 57-59,104,109-122,206,209,328-337,348-349
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "68e7b6942ad05755e29791f4b70e7f1c025c136e",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
