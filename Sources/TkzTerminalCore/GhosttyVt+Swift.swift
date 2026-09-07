@@ -26,6 +26,11 @@ public final class GhosttyTerminalHandle {
         raw = terminal
     }
 
+    /// Takes ownership of a terminal created elsewhere (e.g. `ghostty_snapshot_decoder_ready`).
+    package init(adopting terminal: GhosttyTerminal) {
+        raw = terminal
+    }
+
     deinit { ghostty_terminal_free(raw) }
 
     /// Feed raw pty bytes to the VT parser.
@@ -44,11 +49,18 @@ public final class GhosttyTerminalHandle {
     }
 
     /// The active screen rendered through libghostty's formatter (plain text by default).
-    public func formatted(_ format: GhosttyFormatterFormat = GHOSTTY_FORMATTER_FORMAT_PLAIN, trim: Bool = true) throws -> String {
+    public func formatted(
+        _ format: GhosttyFormatterFormat = GHOSTTY_FORMATTER_FORMAT_PLAIN,
+        trim: Bool = true,
+        unwrap: Bool = false
+    ) throws -> String {
+        // Sized-struct ABI: C `sizeof` is Swift's `stride`, never `size` (which omits tail padding
+        // and would make libghostty treat this as an older, shorter struct).
         var options = GhosttyFormatterTerminalOptions()
-        options.size = MemoryLayout<GhosttyFormatterTerminalOptions>.size
+        options.size = MemoryLayout<GhosttyFormatterTerminalOptions>.stride
         options.emit = format
         options.trim = trim
+        options.unwrap = unwrap
 
         var formatter: GhosttyFormatter?
         try ghosttyCheck(ghostty_formatter_terminal_new(nil, &formatter, raw, options), "ghostty_formatter_terminal_new")
