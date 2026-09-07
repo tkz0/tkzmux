@@ -1,0 +1,37 @@
+Sources/TkzTerminalCore/TerminalEnvironment.swift
+  s_36289bebec70b4::t_28303acbdaee62 1-22,28,34,39,41-124
+  s_36289bebec70b4::t_74f09d592ebeaa 23-27,29-33,35-38,40
+Sources/TkzPtyShim/TkzPtyShim.c
+  s_36289bebec70b4::t_517c596d97ee99 3-198
+Tests/TkzTerminalCoreTests/PtyTests.swift
+  s_36289bebec70b4::t_0d8b9e742a7bd7 1-58,64-133,142-186,188-213,219-220,223-238,247,250,252-256
+  s_36289bebec70b4::t_1215e4bd8936ea 59-63,134-141,187,214-218
+  s_36289bebec70b4::t_e3fdcbc1b3dcbd 221-222,239-246,248-249,251
+Tests/TkzTerminalCoreTests/TerminalEnvironmentTests.swift
+  s_36289bebec70b4::t_a612a5add737a9 1-215
+Sources/TkzPtyShim/include/TkzPtyShim.h
+  s_36289bebec70b4::t_85fe0a4c7ad560 2-16,20,27,30-78
+  s_36289bebec70b4::t_2b5f9e7f1aeb4c 79
+Sources/TkzTerminalCore/Pty.swift
+  s_36289bebec70b4::t_e3fdcbc1b3dcbd 133,383-386,392-395,500-503
+  s_36289bebec70b4::t_1215e4bd8936ea 188,196,198-200,202,280-282,285,287-289,292-293
+  s_36289bebec70b4::t_5e1e02000a98f9 487-488,510-515,524-525
+  s_36289bebec70b4::t_182a6e4a415cdb 333-339,341-347
+  s_36289bebec70b4::t_12389051c84f4a 1-132,134-187,189-195,197,201,203-279,283-284,286,290-291,294-332,340,348-382,387-391,396-486,489-499,504-509,516-523,526-536
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "48eb7f5d49653a3a9d5bdb06a87ba2d469a90917",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
