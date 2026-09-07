@@ -1,0 +1,34 @@
+Tests/TkzTerminalCoreTests/KeyEncoderTests.swift
+  s_36289bebec70b4::t_a47c3889560297 458-467
+  s_36289bebec70b4::t_047acd60b330fa 278
+  s_36289bebec70b4::t_5a7e3a8af9ec0b 39,42,44-49,87-110,113-131,136-154,156-162,182-187,387-391,402-416
+  s_36289bebec70b4::t_452848f7c840d2 1-38,40-41,43,50-51,65,85-86,111-112,132-135,155,163-181,188-195,197-277,279-370,374-381,384-386,392-401,417-457,468-530
+  s_36289bebec70b4::t_91a2bda682e7ac 52-64,66-84,196,371-373,382-383
+Sources/TkzTerminalCore/KeyEncoder.swift
+  s_36289bebec70b4::t_91a2bda682e7ac 121-123
+  s_36289bebec70b4::t_ec91905a835eb4 1-62,77-106,110-120,124-130,139-149,155-207,209-256,258,260-269,271-283,285-292,315-327
+  s_36289bebec70b4::t_559f7f30fd3874 107-109,208
+  s_36289bebec70b4::t_0270199e1f2c2f 63-76,257,259,270,284
+  s_36289bebec70b4::t_a3a27c30f030cf 131-138,150-154,293-314
+Sources/TkzTerminalCore/MacKeyCodes.swift
+  s_36289bebec70b4::t_546e277da7675a 1-169
+docs/keys.md
+  s_36289bebec70b4::t_c2a57c201dd253 94,98
+  s_36289bebec70b4::t_a729786e45b6c9 1-93,95-97,99-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "bcfe4f562af3ffca9a68f5342706b4c8aed083c2",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
