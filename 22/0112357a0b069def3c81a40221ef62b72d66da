@@ -1,0 +1,19 @@
+docs/design.md
+  s_e2fa41002566c6::t_0f5591f78c8343 29,31,216-217,219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "220112357a0b069def3c81a40221ef62b72d66da",
+  "prompts": {},
+  "sessions": {
+    "s_e2fa41002566c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ae3510e-85af-4f01-a982-1351113ae031",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
