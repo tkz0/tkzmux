@@ -1,0 +1,42 @@
+Sources/TkzTerminalCore/MouseEncoder.swift
+  s_36289bebec70b4::t_4a38c1d7c730ed 245-254
+  s_36289bebec70b4::t_abe32dd3b18cd2 1-71,75-127,129-193,197-229,231-244,255-264,267-268,270-332,334,336,338-351
+  s_36289bebec70b4::t_9b47c9619c7756 194-196,230,265-266,269,333,335,337
+  s_36289bebec70b4::t_4b9d0f7aa06a69 72-74
+  s_36289bebec70b4::t_9ce40127cdd4eb 128
+Tests/TkzTerminalCoreTests/SelectionControllerTests.swift
+  s_36289bebec70b4::t_b3b498486d2939 1-16,24-47,49-60,62-72,74-135,137-147,149-205,207-228,230-282
+  s_36289bebec70b4::t_0f95a3be91e643 17-23,48,61,73,136,148,206,229
+Tests/TkzTerminalCoreTests/PasteSupportTests.swift
+  s_36289bebec70b4::t_d29de30ab9b9ca 1-111
+Tests/TkzTerminalCoreTests/MouseEncoderTests.swift
+  s_36289bebec70b4::t_8f8f0e8953e5d0 153
+  s_36289bebec70b4::t_1da3af2bb99837 135-152,154-168
+  s_36289bebec70b4::t_9b47c9619c7756 174-177,179-184,187
+  s_36289bebec70b4::t_5e32ee612fbd2b 1-134,169-173,178,185-186,188-264
+Sources/TkzTerminalCore/PasteSupport.swift
+  s_36289bebec70b4::t_09be73e76f80aa 1-93,95,102,112-168
+  s_36289bebec70b4::t_9ce40127cdd4eb 99
+  s_36289bebec70b4::t_cb7483feadbc27 94,96-98,100-101,103-111
+Sources/TkzTerminalCore/SelectionController.swift
+  s_36289bebec70b4::t_f4582636e85d73 32,34-35,38,214
+  s_36289bebec70b4::t_362306cb2a15a1 1-31,33,36-37,39-213,215-218,220-267,273-378,380-392,394-423,425-449,451-490
+  s_36289bebec70b4::t_9a0402c4a18f3c 268-272
+  s_36289bebec70b4::t_9ce40127cdd4eb 219,379,393,424,450
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4cc858ec316bf6b81fa87458e046df8afe8b0fd4",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
