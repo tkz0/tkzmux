@@ -1,0 +1,35 @@
+scripts/make-app.sh
+  s_36289bebec70b4::t_c91dd1176dee4a 34,40
+  s_36289bebec70b4::t_0a445ca9ab0091 30-33,35-36
+Resources/Info.plist
+  s_36289bebec70b4::t_0a445ca9ab0091 5-6,31-32
+Package.swift
+  s_36289bebec70b4::t_d0edf3c73a0c15 48,52-55,61-63,67,114-116
+Resources/terminfo
+  s_36289bebec70b4::t_3c9a1d6dfc62b5 1
+Tests/TkzTerminalCoreTests/TkzTerminalCoreTests.swift
+  s_36289bebec70b4::t_eefc651bb78e04 9
+docs/design.md
+  s_36289bebec70b4::t_7478ec51011b35 43,55,62-65,79
+  s_36289bebec70b4::t_a1412fcdfbec3c 69-71,78,101,126
+  s_36289bebec70b4::t_ccbb31c1217388 75
+  s_36289bebec70b4::t_9ce40127cdd4eb 120
+  s_36289bebec70b4::t_69fdc2ae3d8977 83-84,134
+  s_36289bebec70b4::t_8272a85035f878 102-119,121-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "0b6d440f75cb65f10e497c0ae40064de2b660a8b",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
