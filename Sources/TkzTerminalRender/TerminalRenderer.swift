@@ -175,8 +175,8 @@ public final class TerminalRenderer {
            bundled.makeFunction(name: TKZ_FN_BG_VERTEX) != nil {
             return bundled
         }
-        guard let headerURL = Bundle.module.url(forResource: "Shaders/TkzShaderTypes.h", withExtension: nil),
-              let shaderURL = Bundle.module.url(forResource: "Shaders/Terminal.metal", withExtension: nil)
+        guard let headerURL = ModuleResources.bundle.url(forResource: "Shaders/TkzShaderTypes.h", withExtension: nil),
+              let shaderURL = ModuleResources.bundle.url(forResource: "Shaders/Terminal.metal", withExtension: nil)
         else { throw RenderError(result: -1, operation: "Bundle.module Shaders/*") }
         let source = try String(contentsOf: headerURL, encoding: .utf8)
             + "\n#line 1 \"Terminal.metal\"\n"

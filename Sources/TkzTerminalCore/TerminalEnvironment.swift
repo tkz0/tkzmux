@@ -27,7 +27,7 @@ public enum TerminalEnvironment {
     /// see) and `Contents/Resources/terminfo` of the app bundle (what `make app` copies).
     public static var bundledTerminfoDirectory: URL? {
         let candidates = [
-            Bundle.module.url(forResource: "terminfo", withExtension: nil),
+            ModuleResources.bundle.url(forResource: "terminfo", withExtension: nil),
             Bundle.main.resourceURL?.appending(path: "terminfo", directoryHint: .isDirectory),
         ]
         for case let url? in candidates {

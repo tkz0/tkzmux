@@ -83,7 +83,7 @@ public final class FontSet {
 
     /// The `Fonts` directory copied into `Bundle.module`, if present.
     public static var bundledFontDirectoryURL: URL? {
-        Bundle.module.url(forResource: "Fonts", withExtension: nil)
+        ModuleResources.bundle.url(forResource: "Fonts", withExtension: nil)
     }
 
     /// `OFL.txt` shipped alongside the bundled fonts (SIL Open Font License 1.1).
