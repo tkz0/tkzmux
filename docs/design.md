@@ -26,9 +26,9 @@ Thomas runs 20 cmux workspaces / 31 panels with ~7 live Claude Code sessions acr
 | Shortcuts | **cmux bindings** (from `~/.config/cmux/cmux.json`), workspace→session, tab→terminal: ⌘N new session (picker), ⌘P go to session (= design's "Search sessions…"), ⇧⌘P command palette, ⌘B sidebar, ⇧⌘R rename session, ⌘W close terminal / ⇧⌘W close session, ⌘1-9 select session, ⇧⌘U jump to needs-you, ⌘I notifications, ⌘, settings, ⌘O open folder, ⇧⌘, reload config; ⌘T/⌘D reserved. User-editable. | Muscle memory. |
 | v1 scope | One surface/session, **two accounts**, **session restore**; groups are plain containers | Thomas' pick. Splits, browser pane, scheduled-session detection, telemetry: not v1. |
 | Linear | Project + milestone per phase, area labels, one issue = one Claude Code session | Team **Tkzmux** `6421dba9-a6a5-4b6d-9e27-1671bb81dcd6`; statuses Backlog/Todo/In Progress/Done. |
-| Repo | `git init ~/dev/tkzmux` + `gh repo create tkzmux --private` (gh = tkz0, repo scope) | Thomas' OK. |
+| Repo | `git init ~/dev/tkzmux` + `gh repo create tkzmux --private` (gh = tkz0, repo scope); flips to **public** at the first release (M6.5), because Homebrew fetches cask assets unauthenticated | Thomas' OK (2026-09-07). |
 | Identity to programs | `TERM=xterm-ghostty`, `TERM_PROGRAM=ghostty`, ship terminfo | Claude Code gates Shift+Enter (kitty) and sync output on a TERM_PROGRAM allow-list; we literally run Ghostty's VT. |
-| Sharing readiness (cheap now) | `make app` takes `SIGN_IDENTITY` (default ad-hoc `-`); `LICENSE` (MIT) from day one; the per-session sidecar (`~/.claude/dash-sessions/<id>.json`) is a **tkzmux-owned contract** that the Claude Dash shim happens to write today, later a `tkzmux-statusline` wrapper; no personal names in code (account labels from config); zsh-only shell integration is a known gap | Friends/coworkers later without redesign. Distribution later = Homebrew cask + notarization. |
+| Sharing readiness (cheap now) | `make app` takes `SIGN_IDENTITY` (default ad-hoc `-`); `LICENSE` (MIT) from day one; the per-session sidecar (`~/.claude/dash-sessions/<id>.json`) is a **tkzmux-owned contract** that the Claude Dash shim happens to write today, later a `tkzmux-statusline` wrapper; no personal names in code (account labels from config); zsh-only shell integration is a known gap | Friends/coworkers later without redesign. Distribution (M6) = tagged releases on a public `tkz0/tkzmux` + `tkz0/homebrew-tap` cask (`brew install --cask tkz0/tap/tkzmux`), notarized Developer ID build; no in-app updater. |
 
 ## Evidence (why the plan is not guesswork)
 
@@ -213,6 +213,7 @@ Milestones and tickets are tracked in Linear — project **tkzmux** (team Tkzmux
 - **M3 Claude integration** — `ClaudeSessionWatcher`, `tkzmux-hook` + `HookServer`, shim + ZDOTDIR wrappers + installer, status derivation, usage + per-session sidecar.
 - **M4 Git & status bar** — `GitStatusService`, status-bar content + PR badge, `PortScanner`.
 - **M5 Persistence & restore** — `StateFile` v1, restore flow / presets / close-remove semantics, Elsewhere group + housekeeping.
-- **Later (sharing readiness)** — `tkzmux-statusline` wrapper, bash/fish integration, Developer ID + notarization + Homebrew cask, light theme + settings UI, splits.
+- **M6 Distribution** (TKZ-37…42 + TKZ-34) — version identity from git tags, Developer ID + hardened runtime + notarization, `make dist` + GitHub releases, `tkz0/homebrew-tap` cask, public repo + README, clean-machine install test; CI release build optional.
+- **Later (sharing readiness)** — `tkzmux-statusline` wrapper, bash/fish integration, light theme + settings UI, splits; homebrew-cask core submission only if notability is ever met.
 
-Priority in Linear: **High** = daily-driver cut line (M0, M1, M2, M3.1–M3.4, M5.1–M5.2); **Medium** = after the cut; **Low** = Later.
+Priority in Linear: **High** = daily-driver cut line (M0, M1, M2, M3.1–M3.4, M5.1–M5.2); **Medium** = after the cut (M3.5, M4, M5.3, M6); **Low** = Later.
