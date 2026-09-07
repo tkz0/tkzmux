@@ -1,0 +1,32 @@
+docs/design.md
+  s_36289bebec70b4::t_30cfcc995d5fb7 70,124-125,132
+Package.swift
+  s_36289bebec70b4::t_30cfcc995d5fb7 105,120
+Sources/tkzmux-vtdump/main.swift
+  s_36289bebec70b4::t_226b6aa4124de9 54-62,593-597
+docs/perf.md
+  s_36289bebec70b4::t_8b5a8122d11320 1-73,79-98,101-229,231-239,242-270
+  s_36289bebec70b4::t_19cc7709866b0e 74-78,99-100,230,240-241
+Sources/TkzTerminalView/TerminalInputController.swift
+  s_36289bebec70b4::t_a22e44a9d928cf 1-452
+Sources/Persistence/Persistence.swift
+  s_36289bebec70b4::t_563f13a5f9e231 31-40
+Sources/tkzmux-vtdump/BenchCommands.swift
+  s_36289bebec70b4::t_f28987dcf42692 295,373-381,463-465,481,672,719-720
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "c0519fcfe46277c2b7c87e24c2add4697a7ba2a8",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
