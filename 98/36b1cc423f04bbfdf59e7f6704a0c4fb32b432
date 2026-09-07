@@ -1,0 +1,71 @@
+Sources/Persistence/Persistence.swift
+  s_36289bebec70b4::t_938ba5b2d2588a 1-4,10-150
+  s_36289bebec70b4::t_8592b1fe172b55 151
+Sources/TkzTerminalView/TerminalMetalView.swift
+  s_36289bebec70b4::t_5c5bfaae338840 264-270
+  s_36289bebec70b4::t_f77172119f30ed 468-473,481-485
+  s_36289bebec70b4::t_8782b1366ff32a 1-263,271-378,381-397,400-406,408-413,423,425-427,429,434-467,474-480,486-612
+  s_36289bebec70b4::t_c21afa2a9a186e 398-399,407,414-422,428,430-433
+  s_36289bebec70b4::t_abda7443d3c1a8 379-380,424
+Tests/TkzTerminalViewTests/DisplayLinkPolicyTests.swift
+  s_36289bebec70b4::t_8afefc97e6afed 1-130
+Tests/PersistenceTests/SnapshotsTests.swift
+  s_36289bebec70b4::t_f288de0de4305f 204-205,208-213,220-221
+  s_36289bebec70b4::t_156e2ec655313d 30,107-108
+  s_36289bebec70b4::t_b9553c2a630c03 295-296,298
+  s_36289bebec70b4::t_f87d20b278fb46 1-29,31-106,109-203,206-207,214-219,222-294,297,299-365
+Sources/Persistence/Snapshots.swift
+  s_36289bebec70b4::t_adff6bd26f9a43 1-82,85-281,287,292-299
+  s_36289bebec70b4::t_224e2d870884b4 83-84,282-286,288-291
+Tests/TkzTerminalViewTests/TerminalMetalViewTests.swift
+  s_36289bebec70b4::t_bda496eae89f5e 92-95,104-105,111
+  s_36289bebec70b4::t_5c5bfaae338840 141-160
+  s_36289bebec70b4::t_1acce95ecab8f2 1-91,96-103,106-110,112-140,161-240
+Sources/TkzTerminalRender/TerminalRenderer.swift
+  s_36289bebec70b4::t_745eac6234d4b0 283
+  s_36289bebec70b4::t_33d170aaeda2e4 224,232-239,243-245,249,253,256-260,377
+Sources/TkzApp/DevWindowController.swift
+  s_36289bebec70b4::t_cc01fc196f8913 211-221
+  s_36289bebec70b4::t_0e9055a1028e33 103-108
+  s_36289bebec70b4::t_34d38e93a9224a 1-102,109-210,222-287,289-290,292-295
+  s_36289bebec70b4::t_2ad82b6034f5a0 288,291
+Sources/TkzTerminalRender/TerminalSurface.swift
+  s_36289bebec70b4::t_745eac6234d4b0 361-366,370-371,374-375,383-384
+Sources/TkzTerminalView/TkzTerminalView.swift
+  s_36289bebec70b4::t_777ea163dc482f 1-6,8-14,18-148
+  s_36289bebec70b4::t_26f1a34219928a 149
+Sources/TkzTerminalView/DisplayLinkDriver.swift
+  s_36289bebec70b4::t_4bdcc8eb0bafc6 110
+  s_36289bebec70b4::t_0023cc3868555c 176-179
+  s_36289bebec70b4::t_e537b30b226510 1-109,111-175,180-181
+Sources/TkzApp/AppDelegate.swift
+  s_36289bebec70b4::t_236065ba233bb8 1-3,5-8,10,13-21,24-40,45-46,48,51-56,59,62-71
+  s_36289bebec70b4::t_0e9055a1028e33 41-44
+Sources/tkzmux-vtdump/BenchCommands.swift
+  s_36289bebec70b4::t_e82e001f2e4f1b 1-17,19-28,39-47,50,55-79,81-87,90-161,164-185,194,199-202,204-252,274-293,297-336,338-365,388-406,408-410,412-413,415-422,424-439,443-473,490-497,500-539,545-571,576-671,673-710,714-716
+  s_36289bebec70b4::t_2c9bc680c427ce 18,29-38,48-49,51-54,80,88-89,540-544
+  s_36289bebec70b4::t_099baed8812f8d 186-193,195-198,203
+  s_36289bebec70b4::t_27a7293dbcff06 162-163,264,267,270,295,337,440,442,672,712-713
+  s_36289bebec70b4::t_933f3e1b06a02e 253-263,265-266,268-269,271-273,294,296,411,414,423,441,498
+  s_36289bebec70b4::t_224e2d870884b4 366-387,407,474-489,499,572-575,711
+Package.swift
+  s_36289bebec70b4::t_f77172119f30ed 67,93,116
+docs/design.md
+  s_36289bebec70b4::t_db53ca48214c95 83-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "9836b1cc423f04bbfdf59e7f6704a0c4fb32b432",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
