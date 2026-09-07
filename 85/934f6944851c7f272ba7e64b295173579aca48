@@ -1,0 +1,38 @@
+Sources/tkzmux-vtdump/main.swift
+  s_36289bebec70b4::t_1485662abafd2e 1-10,12,16-33,51-239
+Sources/TkzTerminalCore/GhosttyVt+Swift.swift
+  s_36289bebec70b4::t_7a2d7daabb4418 29-33,52-58,60,63
+Tests/TkzTerminalCoreTests/TerminalSessionTests.swift
+  s_36289bebec70b4::t_d0b378d4553fe1 112-115,119-120
+  s_36289bebec70b4::t_b7c8db98c4d80f 1-111,116-118,121-260
+Sources/TkzTerminalCore/Recording.swift
+  s_36289bebec70b4::t_0258ff392d310b 1-246,248-252,254-260
+  s_36289bebec70b4::t_decedd58246c49 247,253
+Sources/TkzTerminalCore/TerminalEvent.swift
+  s_36289bebec70b4::t_4fb46ba0e43935 1-74
+Sources/TkzTerminalCore/TerminalSession.swift
+  s_36289bebec70b4::t_84b09d7a1b0d32 766
+  s_36289bebec70b4::t_decedd58246c49 525,560
+  s_36289bebec70b4::t_7873dfa05310c3 767-770
+  s_36289bebec70b4::t_47bad13de91a01 424-431,442,689-692,697,704-724,726-727,746-747
+  s_36289bebec70b4::t_e18894e5fdc5e5 1-423,432-441,443-524,526-559,561-688,693-696,698-703,725,728-745,748-765,771-782
+Tests/TkzTerminalCoreTests/RecordingTests.swift
+  s_36289bebec70b4::t_3b1ef37bcc1326 1-135
+  s_36289bebec70b4::t_4c84facc1fbac0 136-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "85934f6944851c7f272ba7e64b295173579aca48",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
