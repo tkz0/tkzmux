@@ -1,0 +1,35 @@
+Resources/Shaders
+  s_36289bebec70b4::t_198f0bca3155ee 1
+Sources/TkzShaderTypes/TkzShaderTypes.c
+  s_36289bebec70b4::t_fc3c1d600c2445 1-7
+Sources/TkzTerminalRender/Resources/Shaders/Terminal.metal
+  s_36289bebec70b4::t_a5008f4887fa44 1-323
+Tests/TkzTerminalRenderTests/ShaderCompileTests.swift
+  s_36289bebec70b4::t_e8b2af225e254a 1-343
+Sources/TkzTerminalRender/Resources/Shaders/TkzShaderTypes.h
+  s_36289bebec70b4::t_abd8d9ff27eec6 17-27
+  s_36289bebec70b4::t_855a297d596bb4 1-4,9-16,28-319
+  s_36289bebec70b4::t_6a5977a26f6a63 5-8
+Sources/TkzShaderTypes/include/TkzShaderTypes.h
+  s_36289bebec70b4::t_a9fec4b5c3b341 35-36
+  s_36289bebec70b4::t_abd8d9ff27eec6 17-27
+  s_36289bebec70b4::t_419ed5db0ed8f9 74-76,281,296,300,311
+  s_36289bebec70b4::t_6a5977a26f6a63 5-8
+  s_36289bebec70b4::t_e228fc043fbc90 2,4,9-16,28-34,37-51,55-60,62-73,77-280,282-295,297-299,301-310,312-319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "1a17455373ed255d4e660aaf199b239a623206da",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
