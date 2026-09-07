@@ -1,0 +1,413 @@
+// TerminalSurface — the per-visible-session render state (M1.5 / TKZ-11).
+// See docs/design.md → Terminal engine → Metal renderer, and the Spike results (M1.1–M1.3) table.
+//
+// Exactly one session is visible at a time, and only the visible session has a `TerminalSurface`.
+// The surface owns everything that is expensive and per-session:
+//
+//   * a `GhosttyRenderState` (the incremental dirty-row view of the terminal),
+//   * a `GhosttyRenderStateRowIterator` and a `GhosttyRenderStateRowCells`, both reused every tick,
+//   * per-row caches of `TkzGlyphInstance` / `TkzRectInstance` and the flat `TkzBgCell` grid.
+//
+// `attach(_:)` builds all three; `detach()` frees them. M1.6 calls those on every session switch,
+// so detaching must leave nothing behind: a detached surface renders as "skipped", not as a crash.
+//
+// Not `Sendable`: it holds raw libghostty handles and is touched only from the render thread.
+// The only place it reaches into the session is `FrameBuilder`'s one-line `withTerminal` closure
+// around `ghostty_render_state_begin_update`.
+
+import Foundation
+import GhosttyVt
+import TkzCore
+import TkzShaderTypes
+import TkzTerminalCore
+
+// MARK: - Errors
+
+/// A libghostty-vt call made by the renderer returned something other than `GHOSTTY_SUCCESS`.
+///
+/// `TkzTerminalCore.GhosttyError` cannot be constructed from this module (its memberwise
+/// initializer is internal), so the render half carries its own.
+public struct RenderError: Error, Equatable, Sendable, CustomStringConvertible {
+    public let result: Int32
+    public let operation: String
+
+    public init(result: Int32, operation: String) {
+        self.result = result
+        self.operation = operation
+    }
+
+    public var description: String { "\(operation) failed (GhosttyResult \(result))" }
+}
+
+@inline(__always)
+func renderCheck(_ result: GhosttyResult, _ operation: String) throws {
+    guard result == GHOSTTY_SUCCESS else {
+        throw RenderError(result: Int32(result.rawValue), operation: operation)
+    }
+}
+
+// MARK: - Value types mirrored out of the render state
+
+/// `GhosttyRenderStateDirty`, in Swift.
+public enum SurfaceDirty: UInt8, Sendable, Hashable {
+    /// Nothing changed; the frame can be skipped entirely.
+    case none
+    /// Some rows changed; only those rows are rebuilt.
+    case partial
+    /// Global state changed (size, colours, selection); every row is rebuilt.
+    case full
+}
+
+/// `GhosttyRenderStateCursorVisualStyle`, in Swift.
+public enum SurfaceCursorStyle: UInt8, Sendable, Hashable {
+    case bar, block, underline, blockHollow
+}
+
+/// Everything the renderer needs to draw the cursor. Read fresh on every non-clean tick — a cursor
+/// move only produces `DIRTY_PARTIAL` (spike result 5), so it never rides on `DIRTY_FULL`.
+public struct SurfaceCursorState: Sendable, Hashable {
+    /// True when the cursor is inside the viewport *and* enabled by terminal modes.
+    public var isVisible: Bool = false
+    public var column: Int = 0
+    public var row: Int = 0
+    /// The cursor sits on the tail cell of a wide grapheme.
+    public var isWideTail: Bool = false
+    /// Terminal modes ask for a blinking cursor (the *phase* is the view's business).
+    public var isBlinking: Bool = false
+    public var style: SurfaceCursorStyle = .block
+
+    public init() {}
+}
+
+/// The render state's own colours: theme colours as the session applied them, plus anything the
+/// program changed at runtime with OSC 4 / 10 / 11. These win over `Theme` for everything the
+/// terminal can repaint; `Theme` only supplies the selection tint.
+public struct SurfaceColors: Sendable, Hashable {
+    /// Packed RGBA (`r | g << 8 | b << 16 | a << 24`), always opaque.
+    public var background: UInt32 = 0xFF00_0000
+    public var foreground: UInt32 = 0xFFFF_FFFF
+    /// The explicit cursor colour, when the terminal set one.
+    public var cursor: UInt32?
+    /// The active 256-colour palette, packed.
+    public var palette: [UInt32] = Array(repeating: 0xFF00_0000, count: 256)
+
+    public init() {}
+
+    /// The colour to paint the cursor with: explicit if set, else the default foreground.
+    public var effectiveCursor: UInt32 { cursor ?? foreground }
+}
+
+// MARK: - TerminalSurface
+
+public final class TerminalSurface {
+    // MARK: Attachment
+
+    /// The attached session, or `nil` when detached.
+    public private(set) var session: TerminalSession?
+    /// The render state; `nil` exactly when `session` is nil.
+    private(set) var renderState: GhosttyRenderStateHandle?
+    /// Reused across ticks. Repopulated from `DATA_ROW_ITERATOR` on every update (positions reset).
+    private(set) var rowIterator: GhosttyRenderStateRowIterator?
+    /// Reused across rows *and* ticks — that is the whole point of `row_cells_new`.
+    private(set) var rowCells: GhosttyRenderStateRowCells?
+
+    public var isAttached: Bool { session != nil }
+
+    // MARK: Grid state
+
+    public private(set) var columns: Int = 0
+    public private(set) var rowCount: Int = 0
+
+    /// Row-major `columns * rowCount` background grid, bound directly as the bg pass's instance
+    /// buffer. Alpha 0 means "no explicit background" (see `TkzShaderTypes.h`).
+    public private(set) var backgroundCells: [TkzBgCell] = []
+    /// Per-row glyph instances. Rebuilt only for rows libghostty reported dirty.
+    private(set) var rowGlyphs: [[TkzGlyphInstance]] = []
+    /// Per-row decoration rects drawn *after* the glyphs (underline, strikethrough).
+    private(set) var rowRects: [[TkzRectInstance]] = []
+
+    public private(set) var colors = SurfaceColors()
+    public private(set) var cursor = SurfaceCursorState()
+
+    /// Cell geometry the caches were built at. The builder stamps it; the renderer reads it.
+    public private(set) var metrics: CellMetrics?
+
+    /// The `(grayscale, colour)` atlas rebuild generations the row caches were built against.
+    /// A change means every cached `atlasPos` is stale and every row must be rebuilt — see
+    /// `FrameBuilder.update`. `.max` until the first update, so the first tick always rebuilds.
+    private(set) var atlasRebuildStamp = SIMD2<UInt64>(repeating: .max)
+
+    // MARK: Overlay state (owned by the view, not by libghostty)
+
+    /// Cursor blink phase. `false` hides the cursor without touching a single row cache.
+    public var cursorBlinkOn: Bool = true {
+        didSet { if cursorBlinkOn != oldValue { markNeedsDisplay() } }
+    }
+    /// Window focus. An unfocused terminal draws a hollow cursor.
+    public var isFocused: Bool = true {
+        didSet { if isFocused != oldValue { markNeedsDisplay() } }
+    }
+
+    // MARK: Frame bookkeeping
+
+    /// True when something changed since the last successfully encoded frame. The renderer's
+    /// idle guarantee is exactly `needsDisplay == false → return before touching the GPU`.
+    public private(set) var needsDisplay: Bool = false
+    /// Increments on every rebuild that changed instance data. Diagnostics and tests.
+    public private(set) var revision: UInt64 = 0
+    /// Dirty state reported by the last `FrameBuilder.update`.
+    public private(set) var lastDirty: SurfaceDirty = .none
+    /// Rows rebuilt by the last `FrameBuilder.update`.
+    public private(set) var lastRowsRebuilt: Int = 0
+
+    public init() {}
+
+    deinit { releaseHandles() }
+
+    // MARK: - Attach / detach
+
+    /// Attaches to `session` and allocates the render state, row iterator and cell iterator.
+    ///
+    /// A freshly created render state reports `DIRTY_FULL` on its first update, so the first frame
+    /// after an attach is a complete rebuild — no explicit invalidation is needed. Attaching while
+    /// already attached detaches first, so `attach` is idempotent from the caller's point of view.
+    public func attach(_ session: TerminalSession) throws {
+        detach()
+
+        let state = try makeRenderState()
+        var iterator: GhosttyRenderStateRowIterator?
+        try renderCheck(
+            ghostty_render_state_row_iterator_new(nil, &iterator),
+            "ghostty_render_state_row_iterator_new")
+        var cells: GhosttyRenderStateRowCells?
+        do {
+            try renderCheck(
+                ghostty_render_state_row_cells_new(nil, &cells),
+                "ghostty_render_state_row_cells_new")
+        } catch {
+            ghostty_render_state_row_iterator_free(iterator)
+            throw error
+        }
+
+        self.renderState = state
+        self.rowIterator = iterator
+        self.rowCells = cells
+        self.session = session
+        self.needsDisplay = true
+    }
+
+    /// Frees the render state and both iterators and forgets the session.
+    ///
+    /// Safe to call when already detached. After this the surface holds no libghostty memory at
+    /// all, which is what makes "only the visible session has a surface" true rather than aspirational.
+    public func detach() {
+        releaseHandles()
+        session = nil
+        columns = 0
+        rowCount = 0
+        backgroundCells.removeAll(keepingCapacity: false)
+        rowGlyphs.removeAll(keepingCapacity: false)
+        rowRects.removeAll(keepingCapacity: false)
+        colors = SurfaceColors()
+        cursor = SurfaceCursorState()
+        metrics = nil
+        atlasRebuildStamp = SIMD2<UInt64>(repeating: .max)
+        needsDisplay = false
+        lastDirty = .none
+        lastRowsRebuilt = 0
+    }
+
+    private func releaseHandles() {
+        if let rowCells { ghostty_render_state_row_cells_free(rowCells) }
+        if let rowIterator { ghostty_render_state_row_iterator_free(rowIterator) }
+        rowCells = nil
+        rowIterator = nil
+        renderState = nil  // the handle class frees the render state in its own deinit
+    }
+
+    private func makeRenderState() throws -> GhosttyRenderStateHandle {
+        do {
+            return try GhosttyRenderStateHandle()
+        } catch {
+            throw RenderError(result: -1, operation: "ghostty_render_state_new")
+        }
+    }
+
+    // MARK: - Mutation (FrameBuilder only)
+
+    /// Marks the surface as needing a frame. Called by the overlay setters and by the builder.
+    public func markNeedsDisplay() { needsDisplay = true }
+
+    /// Called by the renderer after a frame has been successfully encoded.
+    public func clearNeedsDisplay() { needsDisplay = false }
+
+    func resize(columns newColumns: Int, rows newRows: Int) {
+        guard newColumns != columns || newRows != rowCount else { return }
+        columns = max(0, newColumns)
+        rowCount = max(0, newRows)
+        backgroundCells = Array(repeating: TkzBgCell(color: 0), count: columns * rowCount)
+        rowGlyphs = Array(repeating: [], count: rowCount)
+        rowRects = Array(repeating: [], count: rowCount)
+    }
+
+    func setColors(_ value: SurfaceColors) { colors = value }
+    func setCursor(_ value: SurfaceCursorState) { cursor = value }
+    func setMetrics(_ value: CellMetrics) { metrics = value }
+    func setAtlasRebuildStamp(_ value: SIMD2<UInt64>) { atlasRebuildStamp = value }
+
+    func store(row: Int, glyphs: [TkzGlyphInstance], rects: [TkzRectInstance]) {
+        guard row >= 0, row < rowCount else { return }
+        rowGlyphs[row] = glyphs
+        rowRects[row] = rects
+    }
+
+    func setBackground(column: Int, row: Int, color: UInt32) {
+        guard column >= 0, column < columns, row >= 0, row < rowCount else { return }
+        backgroundCells[row * columns + column] = TkzBgCell(color: color)
+    }
+
+    func finishUpdate(dirty: SurfaceDirty, rowsRebuilt: Int) {
+        lastDirty = dirty
+        lastRowsRebuilt = rowsRebuilt
+        if dirty != .none {
+            revision &+= 1
+            needsDisplay = true
+        }
+    }
+
+    // MARK: - Flattened instance views
+
+    /// Total glyph instances across every row.
+    public var glyphCount: Int { rowGlyphs.reduce(0) { $0 + $1.count } }
+    /// Total decoration rects across every row (cursor excluded — it is an overlay).
+    public var rectCount: Int { rowRects.reduce(0) { $0 + $1.count } }
+
+    /// Every glyph in viewport order, with `TKZ_GLYPH_FLAG_UNDER_CURSOR` stamped on the glyph the
+    /// cursor currently covers.
+    ///
+    /// The flag is applied *here* and not baked into the row cache, so a blink or focus change
+    /// costs one flatten instead of a full row rebuild.
+    public func glyphInstances() -> [TkzGlyphInstance] {
+        var out: [TkzGlyphInstance] = []
+        out.reserveCapacity(glyphCount)
+        let highlight = filledCursorCell
+        for (y, glyphs) in rowGlyphs.enumerated() {
+            if let highlight, highlight.row == y {
+                for var glyph in glyphs {
+                    if Int(glyph.gridPos.x) == highlight.column {
+                        glyph.flags |= UInt32(TKZ_GLYPH_FLAG_UNDER_CURSOR)
+                        glyph.flags &= ~UInt32(TKZ_GLYPH_FLAG_MIN_CONTRAST)
+                    }
+                    out.append(glyph)
+                }
+            } else {
+                out.append(contentsOf: glyphs)
+            }
+        }
+        return out
+    }
+
+    /// Decoration rects drawn after the glyphs (underline, strikethrough) plus the hollow cursor.
+    public func rectInstancesAbove(geometry: GridGeometry) -> [TkzRectInstance] {
+        var out: [TkzRectInstance] = []
+        out.reserveCapacity(rectCount + 1)
+        for rects in rowRects { out.append(contentsOf: rects) }
+        if let rect = cursorRect(geometry: geometry), rect.style != UInt32(TKZ_RECT_STYLE_SOLID) {
+            out.append(rect)
+        }
+        return out
+    }
+
+    /// Rects drawn *before* the glyphs: the filled cursor shapes. The selection is not here — it is
+    /// composited into `backgroundCells`, because a selection change forces a full row rebuild
+    /// anyway (spike result 5) and the bg grid gives it for free.
+    public func rectInstancesBelow(geometry: GridGeometry) -> [TkzRectInstance] {
+        guard let rect = cursorRect(geometry: geometry),
+              rect.style == UInt32(TKZ_RECT_STYLE_SOLID) else { return [] }
+        return [rect]
+    }
+
+    /// The cell whose glyph must be drawn in `cursorTextColor`: only a *filled block* cursor covers
+    /// its glyph completely.
+    var filledCursorCell: (column: Int, row: Int)? {
+        guard isCursorDrawn, isFocused, cursor.style == .block else { return nil }
+        return (cursor.column, cursor.row)
+    }
+
+    /// True when the cursor should appear this frame (visible, inside the grid, blink phase on).
+    public var isCursorDrawn: Bool {
+        cursor.isVisible && cursorBlinkOn
+            && cursor.column >= 0 && cursor.column < columns
+            && cursor.row >= 0 && cursor.row < rowCount
+    }
+
+    /// The cursor as a single rect, or `nil` when it is not drawn this frame.
+    ///
+    /// An unfocused window always draws the hollow outline, whatever the terminal asked for — that
+    /// is the macOS convention and the one thing about the cursor libghostty does not decide.
+    public func cursorRect(geometry: GridGeometry) -> TkzRectInstance? {
+        guard isCursorDrawn, let metrics else { return nil }
+        let origin = geometry.origin(ofColumn: cursor.column, row: cursor.row)
+        let cellWidth = geometry.cellSizePx.x
+        let cellHeight = geometry.cellSizePx.y
+        let thickness = Float(max(1, metrics.underlineThickness))
+        let color = colors.effectiveCursor
+
+        var rect = TkzRectInstance()
+        rect.color = color
+        rect.thicknessPx = thickness
+        rect.reserved0 = 0
+
+        let effectiveStyle: SurfaceCursorStyle = isFocused ? cursor.style : .blockHollow
+        switch effectiveStyle {
+        case .block:
+            // A cursor parked on the tail cell of a wide grapheme still draws one cell wide; the
+            // two-cell block Ghostty draws there is an M1.6 refinement (`cursor.isWideTail` carries
+            // what is needed for it).
+            rect.originPx = origin
+            rect.sizePx = SIMD2<Float>(cellWidth, cellHeight)
+            rect.style = UInt32(TKZ_RECT_STYLE_SOLID)
+        case .blockHollow:
+            rect.originPx = origin
+            rect.sizePx = SIMD2<Float>(cellWidth, cellHeight)
+            rect.style = UInt32(TKZ_RECT_STYLE_HOLLOW)
+        case .bar:
+            rect.originPx = origin
+            rect.sizePx = SIMD2<Float>(max(thickness, 1), cellHeight)
+            rect.style = UInt32(TKZ_RECT_STYLE_SOLID)
+        case .underline:
+            let height = max(thickness, 1)
+            rect.originPx = SIMD2<Float>(origin.x, origin.y + cellHeight - height)
+            rect.sizePx = SIMD2<Float>(cellWidth, height)
+            rect.style = UInt32(TKZ_RECT_STYLE_SOLID)
+        }
+        return rect
+    }
+}
+
+// MARK: - GridGeometry
+
+/// Where the grid sits inside the drawable, in device pixels (origin top-left, +y down).
+public struct GridGeometry: Sendable, Hashable {
+    public var cellSizePx: SIMD2<Float>
+    public var originPx: SIMD2<Float>
+    public var viewportSizePx: SIMD2<Float>
+
+    public init(cellSizePx: SIMD2<Float>, originPx: SIMD2<Float> = .zero, viewportSizePx: SIMD2<Float>) {
+        self.cellSizePx = cellSizePx
+        self.originPx = originPx
+        self.viewportSizePx = viewportSizePx
+    }
+
+    /// Convenience: a grid pinned to the top-left of a `width × height` drawable.
+    public init(metrics: CellMetrics, viewportWidth: Int, viewportHeight: Int) {
+        self.init(
+            cellSizePx: SIMD2<Float>(Float(metrics.width), Float(metrics.height)),
+            originPx: .zero,
+            viewportSizePx: SIMD2<Float>(Float(viewportWidth), Float(viewportHeight)))
+    }
+
+    public func origin(ofColumn column: Int, row: Int) -> SIMD2<Float> {
+        originPx + SIMD2<Float>(Float(column) * cellSizePx.x, Float(row) * cellSizePx.y)
+    }
+}
