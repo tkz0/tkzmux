@@ -1,0 +1,27 @@
+Tests/TkzCoreTests/ThemeTests.swift
+  s_8526047d527e4b::t_d62adbe5fce9c9 167-171
+  s_8526047d527e4b::t_6655bd58c1e469 1-166,172-190
+Sources/TkzCore/RGB.swift
+  s_8526047d527e4b::t_48ebe31608893d 1-3,6-109
+  s_8526047d527e4b::t_f47423383e23d5 4-5
+docs/design.md
+  s_8526047d527e4b::t_3f441c965a1958 43,127-171
+Sources/TkzCore/Theme.swift
+  s_8526047d527e4b::t_547fe1557299c7 1-348
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "8e9ba9b4ac75b518d56320c7f5aeceef878ce927",
+  "prompts": {},
+  "sessions": {
+    "s_8526047d527e4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf06de33-b486-4d3b-996c-fb053b679073",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
