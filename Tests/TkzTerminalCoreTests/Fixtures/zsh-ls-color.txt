@@ -1,0 +1,3 @@
+tkz% ls --color=always -F demo
+alpha.txt  beta.md    link.txt@  script.sh* subdir/
+tkz% exit

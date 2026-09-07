@@ -40,7 +40,10 @@ private func makeSession(cols: UInt16 = 80, rows: UInt16 = 24) throws -> (Termin
 
 @Test func claudeCodeStartupSequenceLeavesExpectedState() throws {
     let (session, _) = try makeSession()
-    // Exactly what Claude Code 2.1.263 emits on entering fullscreen mode (docs/design.md → Evidence).
+    // The mechanism, sequence by sequence. NOTE: this is *not* byte-for-byte what Claude Code
+    // 2.1.263 emits — the recorded fixture shows it pushes `CSI > 5 u`, not `CSI > 1 u`, and also
+    // sets 1004 and 2031. `claudeBootFixtureLeavesTheExpectedTerminalState` in RecordingTests is
+    // the test that pins reality; this one pins that each individual sequence is honoured.
     session.write(ptyText: "\u{1b}[?1049h")   // alt screen + save cursor
     session.write(ptyText: "\u{1b}[?2004h")   // bracketed paste
     session.write(ptyText: "\u{1b}[>1u")      // kitty keyboard: disambiguate

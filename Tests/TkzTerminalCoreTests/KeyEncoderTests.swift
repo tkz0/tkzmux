@@ -10,24 +10,34 @@ import Testing
 
 // MARK: - Helpers
 
-/// A terminal in a known mode. `kitty` feeds `CSI > 1 u` (the disambiguate flag), which is exactly
-/// what Claude Code requests; `applicationCursorKeys` sets DECCKM (mode 1).
-private func makeTerminal(kitty: Bool = false, applicationCursorKeys: Bool = false) throws
+/// Kitty keyboard protocol flag sets, pushed with `CSI > <flags> u`.
+private enum KittyFlags {
+    /// `DISAMBIGUATE` only — the minimal protocol, useful for isolating what each flag does.
+    static let disambiguate: UInt8 = 1
+    /// `DISAMBIGUATE | REPORT_ALL` — **what real Claude Code pushes**. Confirmed by grepping
+    /// `Tests/TkzTerminalCoreTests/Fixtures/claude-boot.tkzrec`: it contains `CSI > 5 u` four
+    /// times and `CSI > 1 u` never.
+    static let claudeCode: UInt8 = 5
+}
+
+/// A terminal in a known mode. `kittyFlags` is pushed with `CSI > <flags> u`;
+/// `applicationCursorKeys` sets DECCKM (mode 1).
+private func makeTerminal(kittyFlags: UInt8? = nil, applicationCursorKeys: Bool = false) throws
     -> GhosttyTerminalHandle
 {
     let terminal = try GhosttyTerminalHandle(cols: 80, rows: 24)
-    if kitty { terminal.write("\u{1b}[>1u") }
+    if let kittyFlags { terminal.write("\u{1b}[>\(kittyFlags)u") }
     if applicationCursorKeys { terminal.write("\u{1b}[?1h") }
     return terminal
 }
 
 private func encode(
     _ press: KeyPress,
-    kitty: Bool = false,
+    kittyFlags: UInt8? = nil,
     applicationCursorKeys: Bool = false,
     optionAsAlt: OptionAsAlt = .never
 ) throws -> [UInt8] {
-    let terminal = try makeTerminal(kitty: kitty, applicationCursorKeys: applicationCursorKeys)
+    let terminal = try makeTerminal(kittyFlags: kittyFlags, applicationCursorKeys: applicationCursorKeys)
     let encoder = try KeyEncoder()
     return try encoder.encode(press, terminal: terminal, optionAsAlt: optionAsAlt)
 }
@@ -40,13 +50,13 @@ private func bytes(_ string: String) -> [UInt8] { Array(string.utf8) }
 func shiftEnter() throws {
     let press = KeyPress(key: GHOSTTY_KEY_ENTER, mods: [.shift], consumedMods: [.shift])
     // The behaviour Claude Code depends on: kitty disambiguate on → CSI 13;2u.
-    #expect(try encode(press, kitty: true) == bytes("\u{1b}[13;2u"))
+    #expect(try encode(press, kittyFlags: KittyFlags.disambiguate) == bytes("\u{1b}[13;2u"))
     // In legacy mode libghostty does NOT collapse Shift+Enter to CR: its PC-style function-key
     // table (src/input/function_keys.zig) maps shift+enter to the fixterm CSI 27;2;13~ form, so
     // shift+enter stays distinguishable even without the kitty protocol. Plain Enter is CR.
     #expect(try encode(press) == bytes("\u{1b}[27;2;13~"))
     #expect(try encode(KeyPress(key: GHOSTTY_KEY_ENTER)) == [0x0D])
-    #expect(try encode(KeyPress(key: GHOSTTY_KEY_ENTER), kitty: true) == [0x0D])
+    #expect(try encode(KeyPress(key: GHOSTTY_KEY_ENTER), kittyFlags: KittyFlags.disambiguate) == [0x0D])
 }
 
 /// Ctrl+<letter> as the view layer will actually deliver it: `event.characters` would be the C0
@@ -81,7 +91,7 @@ func shiftTab() throws {
     let press = KeyPress(
         key: GHOSTTY_KEY_TAB, mods: [.shift], consumedMods: [.shift], text: "\u{19}")
     #expect(try encode(press) == bytes("\u{1b}[Z"))
-    #expect(try encode(press, kitty: true) == bytes("\u{1b}[9;2u"))
+    #expect(try encode(press, kittyFlags: KittyFlags.disambiguate) == bytes("\u{1b}[9;2u"))
 }
 
 /// Build Option+<letter> exactly the way the AppKit layer must: the text (and therefore the
@@ -107,6 +117,91 @@ private func optionLetter(
         unshiftedCodepoint: plain.unicodeScalars.first?.value ?? 0
     )
 }
+
+// MARK: - The flag set Claude Code actually pushes
+
+@Test("Claude Code's CSI > 5 u keeps every legacy encoding, Shift+Enter included")
+func claudeCodeFlagSet() throws {
+    let f = KittyFlags.claudeCode
+    // The behaviour the whole ticket hinges on, pinned at the flags that really ship:
+    #expect(
+        try encode(KeyPress(key: GHOSTTY_KEY_ENTER, mods: [.shift], consumedMods: [.shift]), kittyFlags: f)
+            == bytes("\u{1b}[13;2u"))
+
+    // Everything else is unchanged from legacy — flags 5 does not contain REPORT_ALL, so the
+    // "generate the same bytes as in legacy mode" carve-out for Enter/Tab/Backspace still applies
+    // and printable keys still send their text.
+    #expect(try encode(KeyPress(key: GHOSTTY_KEY_ENTER), kittyFlags: f) == [0x0D])
+    #expect(try encode(KeyPress(key: GHOSTTY_KEY_TAB), kittyFlags: f) == [0x09])
+    #expect(try encode(KeyPress(key: GHOSTTY_KEY_BACKSPACE), kittyFlags: f) == [0x7F])
+    #expect(
+        try encode(KeyPress(key: GHOSTTY_KEY_A, text: "a", unshiftedCodepoint: 0x61), kittyFlags: f)
+            == bytes("a"))
+    #expect(
+        try encode(
+            KeyPress(key: GHOSTTY_KEY_A, mods: [.shift], consumedMods: [.shift], text: "A",
+                unshiftedCodepoint: 0x61), kittyFlags: f) == bytes("A"))
+    #expect(try encode(KeyPress(key: GHOSTTY_KEY_ARROW_UP), kittyFlags: f) == bytes("\u{1b}[A"))
+
+    // DISAMBIGUATE is in the set, so these do change relative to no protocol at all:
+    #expect(try encode(controlLetter(GHOSTTY_KEY_C, "c"), kittyFlags: f) == bytes("\u{1b}[99;5u"))
+    #expect(try encode(KeyPress(key: GHOSTTY_KEY_ESCAPE), kittyFlags: f) == bytes("\u{1b}[27u"))
+    #expect(
+        try encode(
+            KeyPress(key: GHOSTTY_KEY_TAB, mods: [.shift], consumedMods: [.shift], text: "\u{19}"),
+            kittyFlags: f) == bytes("\u{1b}[9;2u"))
+}
+
+@Test("Bit 4 of CSI > 5 u is REPORT_ALTERNATES, not REPORT_ALL")
+func reportAlternatesIsTheOnlyDifferenceFromFlags1() throws {
+    // key/encoder.h: DISAMBIGUATE = 1<<0, REPORT_EVENTS = 1<<1, REPORT_ALTERNATES = 1<<2,
+    // REPORT_ALL = 1<<3, REPORT_ASSOCIATED = 1<<4. So 5 = DISAMBIGUATE | REPORT_ALTERNATES.
+    // Its one visible effect is the shifted alternate after a colon in CSI u sequences.
+    let ctrlShiftA = KeyPress(
+        key: GHOSTTY_KEY_A, mods: [.control, .shift], consumedMods: [.shift], text: "A",
+        unshiftedCodepoint: 0x61)
+    #expect(try encode(ctrlShiftA, kittyFlags: KittyFlags.disambiguate) == bytes("\u{1b}[97;6u"))
+    #expect(try encode(ctrlShiftA, kittyFlags: KittyFlags.claudeCode) == bytes("\u{1b}[97:65;6u"))
+
+    let ctrlShift1 = KeyPress(
+        key: GHOSTTY_KEY_DIGIT_1, mods: [.control, .shift], consumedMods: [.shift], text: "!",
+        unshiftedCodepoint: 0x31)
+    #expect(try encode(ctrlShift1, kittyFlags: KittyFlags.disambiguate) == bytes("\u{1b}[49;6u"))
+    #expect(try encode(ctrlShift1, kittyFlags: KittyFlags.claudeCode) == bytes("\u{1b}[49:33;6u"))
+
+    // With no shifted alternate to report, the two flag sets agree exactly.
+    #expect(
+        try encode(controlLetter(GHOSTTY_KEY_A, "a"), kittyFlags: KittyFlags.disambiguate)
+            == encode(controlLetter(GHOSTTY_KEY_A, "a"), kittyFlags: KittyFlags.claudeCode))
+}
+
+@Test("Releases need REPORT_EVENTS (bit 2), which Claude Code does not request")
+func releaseReporting() throws {
+    let releaseA = KeyPress(action: .release, key: GHOSTTY_KEY_A, text: "a", unshiftedCodepoint: 0x61)
+    let releaseEnter = KeyPress(action: .release, key: GHOSTTY_KEY_ENTER)
+
+    // Claude Code's flag set reports no releases at all.
+    #expect(try encode(releaseA, kittyFlags: KittyFlags.claudeCode).isEmpty)
+    #expect(try encode(releaseEnter, kittyFlags: KittyFlags.claudeCode).isEmpty)
+
+    // REPORT_EVENTS (2) is what turns them on — not REPORT_ALL, as one might assume.
+    #expect(try encode(releaseA, kittyFlags: 1 | 2) == bytes("\u{1b}[97;1:3u"))
+    // …but Enter/Tab/Backspace releases additionally need REPORT_ALL (8): the kitty spec keeps
+    // them legacy-compatible, and a release has no legacy form, so nothing is sent.
+    #expect(try encode(releaseEnter, kittyFlags: 1 | 2).isEmpty)
+    #expect(try encode(releaseEnter, kittyFlags: 1 | 2 | 4 | 8) == bytes("\u{1b}[13;1:3u"))
+}
+
+@Test("REPORT_ALL (bit 8) is what would turn printable keys into escape codes")
+func reportAllChangesPrintableKeys() throws {
+    let letterA = KeyPress(key: GHOSTTY_KEY_A, text: "a", unshiftedCodepoint: 0x61)
+    #expect(try encode(letterA, kittyFlags: KittyFlags.claudeCode) == bytes("a"))
+    #expect(try encode(letterA, kittyFlags: 1 | 4 | 8) == bytes("\u{1b}[97u"))
+    #expect(try encode(KeyPress(key: GHOSTTY_KEY_ENTER), kittyFlags: 1 | 4 | 8) == bytes("\u{1b}[13u"))
+    #expect(try encode(KeyPress(key: GHOSTTY_KEY_TAB), kittyFlags: 1 | 4 | 8) == bytes("\u{1b}[9u"))
+}
+
+// MARK: - Option as Alt
 
 @Test("Option+B is ESC b when option-as-alt is on, and the composed character when off")
 func optionAsAltBehaviour() throws {
@@ -416,18 +511,41 @@ private func docRows() -> [(section: String, rows: [DocRow])] {
         }
     }
 
+    // Where the two kitty columns actually diverge: REPORT_ALTERNATES adds the shifted key after
+    // a colon. Text is what AppKit reports once Control is subtracted out.
+    let alternates: [DocRow] = [
+        .init(
+            "Ctrl+Shift+A",
+            KeyPress(
+                key: GHOSTTY_KEY_A, mods: [.control, .shift], consumedMods: [.shift], text: "A",
+                unshiftedCodepoint: 0x61)),
+        .init(
+            "Ctrl+Shift+1",
+            KeyPress(
+                key: GHOSTTY_KEY_DIGIT_1, mods: [.control, .shift], consumedMods: [.shift], text: "!",
+                unshiftedCodepoint: 0x31)),
+        .init(
+            "Shift+A",
+            KeyPress(
+                key: GHOSTTY_KEY_A, mods: [.shift], consumedMods: [.shift], text: "A",
+                unshiftedCodepoint: 0x61)),
+        .init("A", KeyPress(key: GHOSTTY_KEY_A, text: "a", unshiftedCodepoint: 0x61)),
+    ]
+
     return [
         ("Cursor and navigation keys", navigation),
         ("Function keys", functionKeys),
         ("Editing keys", editing),
         ("Control + letter", control),
         ("Option + letter (US layout sample)", option),
+        ("Shifted alternates (where kitty(1) and kitty(5) differ)", alternates),
     ]
 }
 
 private func generateKeysDoc() throws -> String {
     let legacyTerminal = try makeTerminal()
-    let kittyTerminal = try makeTerminal(kitty: true)
+    let kitty1Terminal = try makeTerminal(kittyFlags: KittyFlags.disambiguate)
+    let kitty5Terminal = try makeTerminal(kittyFlags: KittyFlags.claudeCode)
     let applicationTerminal = try makeTerminal(applicationCursorKeys: true)
     let encoder = try KeyEncoder()
 
@@ -448,8 +566,17 @@ private func generateKeysDoc() throws -> String {
         | Column | Terminal state |
         |---|---|
         | **legacy** | a fresh terminal: no kitty protocol, DECCKM off |
-        | **kitty** | after `CSI > 1 u` (kitty `disambiguate` flag) — what Claude Code requests |
+        | **kitty(1)** | after `CSI > 1 u` — `DISAMBIGUATE` alone, the minimal protocol |
+        | **kitty(5)** | after `CSI > 5 u` — `DISAMBIGUATE \\| REPORT_ALTERNATES`, **what real Claude Code pushes** |
         | **DECCKM** | after `CSI ? 1 h` (application cursor keys), legacy protocol; cursor keys only |
+
+        The flag bits (`ghostty/vt/key/encoder.h`) are `DISAMBIGUATE` 1, `REPORT_EVENTS` 2,
+        `REPORT_ALTERNATES` 4, `REPORT_ALL` 8, `REPORT_ASSOCIATED` 16 — so `CSI > 5 u` is
+        `DISAMBIGUATE | REPORT_ALTERNATES`, **not** `REPORT_ALL`. `CSI > 5 u` appears four times in
+        `Tests/TkzTerminalCoreTests/Fixtures/claude-boot.tkzrec`; `CSI > 1 u` never does. The two
+        kitty columns differ only where a key has a shifted alternate to report (see Ctrl+Shift
+        rows): with `REPORT_ALL` unset, printable keys still send their text and Enter/Tab/
+        Backspace keep their legacy bytes, and with `REPORT_EVENTS` unset no release is reported.
 
         Escaping is `cat -v`-ish: `\\e` = ESC (0x1b), `\\r` = 0x0d, `\\t` = 0x09, `\\xNN` for any
         other control byte and for the space character, everything else verbatim UTF-8.
@@ -473,12 +600,13 @@ private func generateKeysDoc() throws -> String {
         let includeCursorColumn = section == "Cursor and navigation keys"
         out += "## \(section)\n\n"
         out += includeCursorColumn
-            ? "| Key | legacy | kitty | DECCKM |\n|---|---|---|---|\n"
-            : "| Key | legacy | kitty |\n|---|---|---|\n"
+            ? "| Key | legacy | kitty(1) | kitty(5) | DECCKM |\n|---|---|---|---|---|\n"
+            : "| Key | legacy | kitty(1) | kitty(5) |\n|---|---|---|---|\n"
         for row in rows {
             let legacy = try encoder.encode(row.press, terminal: legacyTerminal, optionAsAlt: row.optionAsAlt)
-            let kitty = try encoder.encode(row.press, terminal: kittyTerminal, optionAsAlt: row.optionAsAlt)
-            out += "| \(row.label) | `\(escaped(legacy))` | `\(escaped(kitty))` |"
+            let kitty1 = try encoder.encode(row.press, terminal: kitty1Terminal, optionAsAlt: row.optionAsAlt)
+            let kitty5 = try encoder.encode(row.press, terminal: kitty5Terminal, optionAsAlt: row.optionAsAlt)
+            out += "| \(row.label) | `\(escaped(legacy))` | `\(escaped(kitty1))` | `\(escaped(kitty5))` |"
             if includeCursorColumn {
                 let application = try encoder.encode(
                     row.press, terminal: applicationTerminal, optionAsAlt: row.optionAsAlt)
@@ -528,3 +656,4 @@ func keysDocIsCurrent() throws {
     }
     #expect(committed == generated)
 }
+

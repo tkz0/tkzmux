@@ -1,9 +1,13 @@
 // RecordingTests — the `.tkzrec` container and replay (M1.3 / TKZ-9).
 //
-// The fixtures here are *synthetic*: they are built in code so replay is testable before the pty
-// layer exists. `tkzmux-vtdump record` produces the same format from a real session.
+// Two kinds of fixture live here:
+//   * synthetic ones built in code (and `Fixtures/synthetic-basic.tkzrec`), used to test the
+//     container itself — they are named and described as synthetic;
+//   * real recordings made with `tkzmux-vtdump record` (`zsh-ls-color`, `claude-boot`,
+//     `claude-tool-run`), sanitized before committing — see `Fixtures/README.md`.
 import Foundation
 import Testing
+import GhosttyVt
 @testable import TkzTerminalCore
 
 private func syntheticRecording(cols: UInt16 = 20, rows: UInt16 = 4) throws -> (Data, [RecordingFrame]) {
@@ -155,4 +159,91 @@ private func syntheticRecording(cols: UInt16 = 20, rows: UInt16 = 4) throws -> (
     #expect(session.mode(2004) == true)
     #expect(session.kittyKeyboardFlags == 1)
     #expect(session.mouseTrackingEnabled == true)
+}
+
+// MARK: - Real recorded fixtures
+//
+// Captured with `tkzmux-vtdump record` under the full `TerminalEnvironment` (TERM=xterm-ghostty,
+// TERM_PROGRAM=ghostty, bundled TERMINFO) in a throwaway directory, then sanitized — see
+// Fixtures/README.md for exactly what was scrubbed. `claude-boot` and `claude-tool-run` end with a
+// SIGKILL while Claude Code is still running, so the fixture preserves the modes a live program
+// leaves set instead of its teardown sequence.
+
+private func fixture(_ name: String) throws -> RecordingReader {
+    let url = try #require(Bundle.module.url(forResource: name, withExtension: "tkzrec", subdirectory: "Fixtures"))
+    return try RecordingReader(contentsOf: url)
+}
+
+private func golden(_ name: String) throws -> String {
+    let url = try #require(Bundle.module.url(forResource: name, withExtension: "txt", subdirectory: "Fixtures"))
+    let text = try String(contentsOf: url, encoding: .utf8)
+    // The goldens are written with a trailing newline so they are ordinary text files.
+    return text.hasSuffix("\n") ? String(text.dropLast()) : text
+}
+
+private func replayed(_ name: String) throws -> TerminalSession {
+    let reader = try fixture(name)
+    let session = try TerminalSession(
+        options: TerminalSessionOptions(cols: reader.header.cols, rows: reader.header.rows)
+    )
+    try reader.replay(into: session)
+    return session
+}
+
+@Test func claudeBootFixtureReplaysToItsGoldenScreen() throws {
+    let session = try replayed("claude-boot")
+    #expect(try session.formatted() == (try golden("claude-boot")))
+}
+
+/// The acceptance for the whole VT bridge: what a *real* Claude Code leaves the terminal in.
+@Test func claudeBootFixtureLeavesTheExpectedTerminalState() throws {
+    let session = try replayed("claude-boot")
+    #expect(session.mode(1049) == true)   // alt screen
+    #expect(session.mode(2004) == true)   // bracketed paste
+    #expect(session.mode(1000) == true)   // mouse tracking
+    #expect(session.mode(1006) == true)   // SGR mouse
+    #expect(session.mode(1004) == true)   // focus events
+    #expect(session.mouseTrackingEnabled == true)
+    // Measured, not assumed: the recording contains `ESC [ > 5 u`, so Claude Code 2.1.263 pushes
+    // DISAMBIGUATE | REPORT_ALL, not the `CSI > 1 u` / flags 1 the planning notes recorded. Key
+    // encoding (TKZ-13) must be exercised against 5, because REPORT_ALL changes how every key —
+    // Shift+Enter included — is encoded.
+    #expect(session.kittyKeyboardFlags == 5)
+    #expect(session.title == "✳ Claude Code")
+}
+
+@Test func claudeToolRunFixtureReplaysToItsGoldenScreen() throws {
+    let session = try replayed("claude-tool-run")
+    #expect(try session.formatted() == (try golden("claude-tool-run")))
+    #expect(session.mode(1049) == true)
+    #expect(session.kittyKeyboardFlags == 5)
+    #expect(session.mouseTrackingEnabled == true)
+    #expect(session.title == "✳ Echo hi")   // OSC 0/2 title tracking a running tool
+}
+
+@Test func zshLsColorFixtureReplaysToItsGoldenScreen() throws {
+    let session = try replayed("zsh-ls-color")
+    #expect(try session.formatted() == (try golden("zsh-ls-color")))
+    // A plain shell touches none of the Claude Code machinery.
+    #expect(session.mode(1049) == false)
+    #expect(session.kittyKeyboardFlags == 0)
+    #expect(session.mouseTrackingEnabled == false)
+    // The colours really are in there: `ls --color` styles the symlink, the executable and the dir.
+    let vt = try session.formatted(GHOSTTY_FORMATTER_FORMAT_VT)
+    #expect(vt.contains("\u{1b}[38;5;5m"))   // magenta symlink
+    #expect(vt.contains("\u{1b}[38;5;1m"))   // red executable
+    #expect(vt.contains("\u{1b}[38;5;6m"))   // cyan directory
+}
+
+@Test func recordedFixturesCarryOnlyTheVtRelevantEnvironment() throws {
+    for name in ["zsh-ls-color", "claude-boot", "claude-tool-run"] {
+        let header = try fixture(name).header
+        #expect(header.env["TERM"] == "xterm-ghostty")
+        #expect(header.env["TERM_PROGRAM"] == "ghostty")
+        // A recording must never carry the recording user's environment.
+        #expect(Set(header.env.keys).isSubset(of: [
+            "TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM", "LANG",
+        ]))
+        #expect(header.argv.isEmpty == false)
+    }
 }

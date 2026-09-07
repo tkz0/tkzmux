@@ -1,0 +1,30 @@
+
+ ▐▛███▛█   Claude Code v2.1.263
+▝▜██████▀  Opus 5 (1M context) with medium effort · Claude Max
+  ▝▝ ▝▝    /private/tmp/tkzrec.XXXXXX/proj
+
+
+❯ Run the shell command: echo hi. Do nothing else.
+
+  Ran 1 shell command
+
+⏺ hi
+
+✻ Baked for 4s · done 12:59 AM
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  [Opus 5 (1M context)] │ proj +dev                                                            /rc
+  Context ░░░░░░ 4% │ Usage █░░░░░ 10% (resets in 3h 51m)
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 3 agents

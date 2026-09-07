@@ -102,7 +102,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "tkzmux-vtdump",
-            dependencies: ["TkzTerminalCore"],
+            dependencies: ["TkzTerminalCore", "TkzTerminalRender"],
             path: "Sources/tkzmux-vtdump"
         ),
         .executableTarget(
