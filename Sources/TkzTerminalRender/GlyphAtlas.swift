@@ -1,0 +1,378 @@
+// GlyphAtlas + GlyphCache — one app-wide pair of Metal glyph atlases (M1.4 / TKZ-10).
+// See docs/design.md → Terminal engine → Metal renderer.
+//
+// `.grayscale` is `r8Unorm` 2048², `.color` is `bgra8Unorm` 1024² growing to 2048². Packing is a
+// shelf packer over a CPU staging buffer; the staging copy is what makes regrow cheap (re-upload,
+// no re-rasterization), gives "one `replace(region:)` per frame" (a single dirty bounding box), and
+// provides the `--png` dump for free.
+//
+// Every slot carries the atlas `generation`. It increments whenever coordinates or texture identity
+// change — on regrow (UVs change because the atlas got bigger) and on rebuild after overflow (the
+// contents are gone). Holders of slots must check `isValid(_:)` and re-insert when it fails.
+//
+// `GlyphCache` is the explicit single owner of the pair: there is one per app, shared by all
+// sessions, and nothing else should construct a `GlyphAtlas`.
+
+import CoreGraphics
+import Foundation
+import Metal
+
+public enum AtlasKind: Sendable, Hashable {
+    case grayscale
+    case color
+
+    public var bytesPerPixel: Int { self == .grayscale ? 1 : 4 }
+    public var pixelFormat: MTLPixelFormat { self == .grayscale ? .r8Unorm : .bgra8Unorm }
+    public var defaultInitialSize: Int { self == .grayscale ? 2048 : 1024 }
+    public var maxSize: Int { 2048 }
+}
+
+/// Where a glyph lives in an atlas, stamped with the generation it was packed in.
+public struct AtlasSlot: Sendable, Equatable, Hashable {
+    public let kind: AtlasKind
+    public let generation: UInt64
+    public let x: Int
+    public let y: Int
+    public let width: Int
+    public let height: Int
+    /// Atlas edge length when the slot was packed, so UVs can be recomputed without asking the atlas.
+    public let atlasSize: Int
+
+    /// Normalized texture coordinates of the slot's top-left / bottom-right corners.
+    public var uvOrigin: (Float, Float) {
+        (Float(x) / Float(atlasSize), Float(y) / Float(atlasSize))
+    }
+    public var uvSize: (Float, Float) {
+        (Float(width) / Float(atlasSize), Float(height) / Float(atlasSize))
+    }
+}
+
+/// A shelf-packed glyph atlas backed by a CPU staging buffer and (optionally) an `MTLTexture`.
+///
+/// Not `Sendable` (`MTLTexture` is not); owned by `GlyphCache` on the render thread.
+public final class GlyphAtlas {
+    public let kind: AtlasKind
+    public private(set) var size: Int
+    public private(set) var generation: UInt64 = 1
+    /// The generation the pixels were last thrown away at. A slot from at or after this generation
+    /// still points at its own pixels, even if the atlas has since grown.
+    public private(set) var rebuildGeneration: UInt64 = 1
+    /// Increments every time the atlas is cleared because it ran out of room at max size.
+    public private(set) var rebuildCount: Int = 0
+    /// Increments every time the atlas doubled.
+    public private(set) var growCount: Int = 0
+
+    /// The GPU texture. `nil` on a machine with no Metal device — everything else still works, which
+    /// is what makes the packer and the PNG dump testable headlessly.
+    public private(set) var texture: MTLTexture?
+    private let device: MTLDevice?
+
+    private var staging: [UInt8]
+    private var shelves: [Shelf] = []
+    private var dirty: CGRect = .null
+
+    private struct Shelf {
+        var y: Int
+        var height: Int
+        var nextX: Int
+    }
+
+    /// - Parameters:
+    ///   - device: Metal device, or `nil` for a CPU-only atlas (tests, headless dumps).
+    ///   - initialSize: edge length to start at; defaults to the kind's design value. Tests use a
+    ///     small value to exercise regrow without allocating megabytes.
+    public init(kind: AtlasKind, device: MTLDevice?, initialSize: Int? = nil) {
+        self.kind = kind
+        self.device = device
+        let start = min(max(initialSize ?? kind.defaultInitialSize, 16), kind.maxSize)
+        self.size = start
+        self.staging = [UInt8](repeating: 0, count: start * start * kind.bytesPerPixel)
+        self.texture = GlyphAtlas.makeTexture(device: device, kind: kind, size: start)
+    }
+
+    private static func makeTexture(device: MTLDevice?, kind: AtlasKind, size: Int) -> MTLTexture? {
+        guard let device else { return nil }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: kind.pixelFormat, width: size, height: size, mipmapped: false)
+        descriptor.usage = [.shaderRead]
+        descriptor.storageMode = .shared
+        return device.makeTexture(descriptor: descriptor)
+    }
+
+    // MARK: - Validity
+
+    /// True when `slot` is usable as-is: same atlas, current generation.
+    public func isValid(_ slot: AtlasSlot) -> Bool {
+        slot.kind == kind && slot.generation == generation
+    }
+
+    /// Re-stamps a stale slot when its pixels survived.
+    ///
+    /// A *regrow* copies every packed pixel into the larger texture, so the x/y/w/h stay correct and
+    /// only the normalization changes — such a slot is refreshed here without re-rasterizing.
+    /// A *rebuild* throws the pixels away, and slots from before it return `nil`.
+    public func revalidate(_ slot: AtlasSlot) -> AtlasSlot? {
+        guard slot.kind == kind else { return nil }
+        if slot.generation == generation { return slot }
+        guard slot.generation >= rebuildGeneration else { return nil }
+        guard slot.x + slot.width <= size, slot.y + slot.height <= size else { return nil }
+        return AtlasSlot(kind: kind, generation: generation, x: slot.x, y: slot.y,
+                         width: slot.width, height: slot.height, atlasSize: size)
+    }
+
+    // MARK: - Insertion
+
+    /// Packs `width * height` pixels, growing or rebuilding as needed.
+    /// Returns `nil` only when the glyph cannot fit an empty max-size atlas.
+    @discardableResult
+    public func insert(pixels: [UInt8], width: Int, height: Int, bytesPerRow: Int) -> AtlasSlot? {
+        guard width > 0, height > 0 else { return nil }
+
+        while true {
+            if let slot = pack(width: width, height: height) {
+                blit(pixels: pixels, bytesPerRow: bytesPerRow, slot: slot)
+                return slot
+            }
+            if size < kind.maxSize {
+                grow()
+            } else if !shelves.isEmpty {
+                rebuild()
+            } else {
+                return nil  // does not fit an empty max-size atlas
+            }
+        }
+    }
+
+    private func pack(width: Int, height: Int) -> AtlasSlot? {
+        guard width <= size, height <= size else { return nil }
+        // Best fit: the shortest shelf that is still tall enough.
+        var bestIndex: Int?
+        for (i, shelf) in shelves.enumerated()
+        where shelf.height >= height && shelf.nextX + width <= size {
+            if bestIndex == nil || shelf.height < shelves[bestIndex!].height { bestIndex = i }
+        }
+        if let i = bestIndex {
+            let slot = AtlasSlot(kind: kind, generation: generation, x: shelves[i].nextX,
+                                 y: shelves[i].y, width: width, height: height, atlasSize: size)
+            shelves[i].nextX += width
+            return slot
+        }
+        // New shelf on top of the tallest used row.
+        let top = shelves.reduce(0) { max($0, $1.y + $1.height) }
+        guard top + height <= size else { return nil }
+        shelves.append(Shelf(y: top, height: height, nextX: width))
+        return AtlasSlot(kind: kind, generation: generation, x: 0, y: top,
+                         width: width, height: height, atlasSize: size)
+    }
+
+    private func blit(pixels: [UInt8], bytesPerRow: Int, slot: AtlasSlot) {
+        let bpp = kind.bytesPerPixel
+        let stride = size * bpp
+        let rowBytes = slot.width * bpp
+        for row in 0..<slot.height {
+            let src = row * bytesPerRow
+            let dst = (slot.y + row) * stride + slot.x * bpp
+            guard src + rowBytes <= pixels.count, dst + rowBytes <= staging.count else { break }
+            staging.replaceSubrange(dst..<(dst + rowBytes), with: pixels[src..<(src + rowBytes)])
+        }
+        dirty = dirty.union(CGRect(x: slot.x, y: slot.y, width: slot.width, height: slot.height))
+    }
+
+    // MARK: - Grow / rebuild
+
+    private func grow() {
+        let newSize = min(size * 2, kind.maxSize)
+        guard newSize > size else { return }
+        let bpp = kind.bytesPerPixel
+        var newStaging = [UInt8](repeating: 0, count: newSize * newSize * bpp)
+        let oldStride = size * bpp
+        let newStride = newSize * bpp
+        for row in 0..<size {
+            let src = row * oldStride
+            let dst = row * newStride
+            newStaging.replaceSubrange(dst..<(dst + oldStride), with: staging[src..<(src + oldStride)])
+        }
+        staging = newStaging
+        size = newSize
+        texture = GlyphAtlas.makeTexture(device: device, kind: kind, size: newSize)
+        // Pixel coordinates survive, but UVs and the texture identity do not: bump the generation
+        // so every holder re-reads its slot.
+        generation &+= 1
+        growCount += 1
+        dirty = CGRect(x: 0, y: 0, width: size, height: size)
+    }
+
+    private func rebuild() {
+        staging = [UInt8](repeating: 0, count: staging.count)
+        shelves.removeAll(keepingCapacity: true)
+        generation &+= 1
+        rebuildGeneration = generation
+        rebuildCount += 1
+        dirty = CGRect(x: 0, y: 0, width: size, height: size)
+    }
+
+    // MARK: - Upload
+
+    /// True when there are staged pixels the GPU has not seen.
+    public var hasPendingUpload: Bool { !dirty.isNull }
+
+    /// Uploads everything staged since the last flush as a single `replace(region:)`.
+    /// Call once per frame, before encoding.
+    public func flush() {
+        guard let texture, !dirty.isNull else { dirty = .null; return }
+        let x = Int(dirty.minX), y = Int(dirty.minY)
+        let w = Int(dirty.width), h = Int(dirty.height)
+        guard w > 0, h > 0 else { dirty = .null; return }
+        let bpp = kind.bytesPerPixel
+        let stride = size * bpp
+        staging.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            texture.replace(
+                region: MTLRegionMake2D(x, y, w, h),
+                mipmapLevel: 0,
+                withBytes: base.advanced(by: y * stride + x * bpp),
+                bytesPerRow: stride)
+        }
+        dirty = .null
+    }
+
+    // MARK: - Dump
+
+    /// The whole atlas as a `CGImage`, for `tkzmux-vtdump atlas --png`.
+    public func makeCGImage() -> CGImage? {
+        guard let provider = CGDataProvider(data: Data(staging) as CFData) else { return nil }
+        let bpp = kind.bytesPerPixel
+        if kind == .color {
+            return CGImage(
+                width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 32,
+                bytesPerRow: size * bpp, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
+                    | CGBitmapInfo.byteOrder32Little.rawValue),
+                provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+        }
+        return CGImage(
+            width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 8,
+            bytesPerRow: size * bpp, space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    }
+
+    /// PNG bytes of the whole atlas.
+    public func pngData() -> Data? {
+        guard let image = makeCGImage() else { return nil }
+        return GlyphRasterizer.pngData(from: image)
+    }
+
+    /// Reads one staged pixel's bytes (diagnostics and tests).
+    public func stagedPixel(x: Int, y: Int) -> [UInt8] {
+        let bpp = kind.bytesPerPixel
+        guard x >= 0, y >= 0, x < size, y < size else { return [] }
+        let offset = y * size * bpp + x * bpp
+        return Array(staging[offset..<(offset + bpp)])
+    }
+}
+
+// MARK: - GlyphCache
+
+/// A glyph placed in an atlas: everything `FrameBuilder` needs for one instance.
+public struct CachedGlyph: Sendable, Equatable {
+    public let slot: AtlasSlot
+    public let bearingX: Int
+    public let bearingTop: Int
+    public let cellSpan: Int
+    public var isColor: Bool { slot.kind == .color }
+}
+
+/// The single app-wide owner of the grayscale + colour atlases, the font set, the shaper and the
+/// rasterizer. Construct one; pass it around; never build a `GlyphAtlas` yourself.
+///
+/// Not `Sendable`; lives on the render thread.
+public final class GlyphCache {
+    public let fontSet: FontSet
+    public let metrics: CellMetrics
+    public let shaper: GraphemeShaper
+    public let rasterizer: GlyphRasterizer
+    public let grayscale: GlyphAtlas
+    public let color: GlyphAtlas
+
+    private struct Key: Hashable {
+        let scalars: [UInt32]
+        let style: FontStyle
+        let span: Int
+    }
+    private var entries: [Key: CachedGlyph] = [:]
+
+    public init(fontSet: FontSet,
+                device: MTLDevice?,
+                grayscaleInitialSize: Int? = nil,
+                colorInitialSize: Int? = nil) {
+        self.fontSet = fontSet
+        self.metrics = CellMetrics(fontSet: fontSet)
+        self.shaper = GraphemeShaper(fontSet: fontSet)
+        self.rasterizer = GlyphRasterizer(fontSet: fontSet, metrics: metrics)
+        self.grayscale = GlyphAtlas(kind: .grayscale, device: device, initialSize: grayscaleInitialSize)
+        self.color = GlyphAtlas(kind: .color, device: device, initialSize: colorInitialSize)
+    }
+
+    public func atlas(for kind: AtlasKind) -> GlyphAtlas {
+        kind == .grayscale ? grayscale : color
+    }
+
+    /// Shapes, rasterizes and packs a grapheme, or returns the cached placement.
+    /// Returns `nil` for clusters with nothing to draw (space, control characters).
+    public func glyph(for scalars: [Unicode.Scalar],
+                      style: FontStyle = .regular,
+                      cellSpan: Int? = nil) -> CachedGlyph? {
+        let shaped = shaper.shape(scalars, style: style, cellSpan: cellSpan)
+        let key = Key(scalars: scalars.map(\.value), style: style, span: shaped.cellSpan)
+        if let cached = entries[key] {
+            let target = atlas(for: cached.slot.kind)
+            if target.isValid(cached.slot) { return cached }
+            // A regrow moved the goalposts but kept the pixels: just re-stamp the slot.
+            if let refreshed = target.revalidate(cached.slot) {
+                let entry = CachedGlyph(slot: refreshed, bearingX: cached.bearingX,
+                                        bearingTop: cached.bearingTop, cellSpan: cached.cellSpan)
+                entries[key] = entry
+                return entry
+            }
+        }
+        guard let raster = rasterizer.rasterize(shaped, style: style) else {
+            entries[key] = nil
+            return nil
+        }
+        let target = atlas(for: raster.isColor ? .color : .grayscale)
+        let generationBefore = target.generation
+        guard let slot = target.insert(pixels: raster.pixels, width: raster.width,
+                                       height: raster.height, bytesPerRow: raster.bytesPerRow)
+        else { return nil }
+        if target.rebuildGeneration > generationBefore {
+            // The atlas was cleared while packing: every other entry in it lost its pixels.
+            dropEntries(in: target.kind, keeping: key)
+        }
+        let entry = CachedGlyph(slot: slot, bearingX: raster.bearingX,
+                                bearingTop: raster.bearingTop, cellSpan: shaped.cellSpan)
+        entries[key] = entry
+        return entry
+    }
+
+    public func glyph(for character: Character,
+                      style: FontStyle = .regular,
+                      cellSpan: Int? = nil) -> CachedGlyph? {
+        glyph(for: Array(character.unicodeScalars), style: style, cellSpan: cellSpan)
+    }
+
+    private func dropEntries(in kind: AtlasKind, keeping key: Key) {
+        for (k, v) in entries where v.slot.kind == kind && k != key {
+            entries.removeValue(forKey: k)
+        }
+    }
+
+    /// One `replace(region:)` per atlas per frame. Call before encoding.
+    public func flushUploads() {
+        grayscale.flush()
+        color.flush()
+    }
+
+    /// Number of cached placements (diagnostics and tests).
+    public var cachedCount: Int { entries.count }
+}
