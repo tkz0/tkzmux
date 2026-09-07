@@ -27,10 +27,17 @@ if ((${#bundles[@]})); then
   cp -R "${bundles[@]}" "$CONTENTS/Resources/"
 fi
 
+# Bundled JetBrains Mono (M1.4). ATSApplicationFontsPath = Fonts in Info.plist makes AppKit
+# register these process-scoped at launch, without installing into the user's font library.
+if [[ -d Resources/Fonts ]]; then
+  echo "==> copying fonts"
+  cp -RL Resources/Fonts "$CONTENTS/Resources/Fonts"
+fi
+
 # terminfo (xterm-ghostty) is produced by `make vendor` (M1.1).
 if [[ -d Resources/terminfo ]]; then
   echo "==> copying terminfo"
-  cp -R Resources/terminfo "$CONTENTS/Resources/terminfo"
+  cp -RL Resources/terminfo "$CONTENTS/Resources/terminfo"
 fi
 
 # Metal shaders → default.metallib (M1.5 adds Resources/Shaders/Terminal.metal).

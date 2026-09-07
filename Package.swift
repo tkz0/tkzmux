@@ -45,21 +45,26 @@ let package = Package(
         .target(
             name: "TkzTerminalCore",
             dependencies: [
+                "TkzCore",
                 "TkzPtyShim",
                 "GhosttyVt",
             ],
-            path: "Sources/TkzTerminalCore"
+            path: "Sources/TkzTerminalCore",
+            // Repo-root Resources/ is symlinked under the target so `Bundle.module` works for
+            // `swift test` / `swift run`; make-app.sh copies the .bundle into the .app.
+            resources: [.copy("Resources/terminfo")]
             // libghostty-vt's vendored simdutf/highway are built without libc++ (verified M1.1):
             // no linkerSettings: [.linkedLibrary("c++")] needed.
         ),
         .target(
             name: "TkzTerminalRender",
-            dependencies: ["TkzTerminalCore", "TkzShaderTypes"],
-            path: "Sources/TkzTerminalRender"
+            dependencies: ["TkzCore", "TkzTerminalCore", "TkzShaderTypes"],
+            path: "Sources/TkzTerminalRender",
+            resources: [.copy("Resources/Fonts"), .copy("Resources/Shaders")]
         ),
         .target(
             name: "TkzTerminalView",
-            dependencies: ["TkzTerminalRender"],
+            dependencies: ["TkzCore", "TkzTerminalRender"],
             path: "Sources/TkzTerminalView"
         ),
 
@@ -106,9 +111,9 @@ let package = Package(
         ),
 
         // MARK: Tests (one per Swift library module; Swift Testing)
-        .testTarget(name: "TkzTerminalCoreTests", dependencies: ["TkzTerminalCore"], path: "Tests/TkzTerminalCoreTests"),
-        .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender"], path: "Tests/TkzTerminalRenderTests"),
-        .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView"], path: "Tests/TkzTerminalViewTests"),
+        .testTarget(name: "TkzTerminalCoreTests", dependencies: ["TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalCoreTests", resources: [.copy("Fixtures")]),
+        .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "GhosttyVt"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
+        .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
         .testTarget(name: "TkzCoreTests", dependencies: ["TkzCore"], path: "Tests/TkzCoreTests"),
         .testTarget(name: "ClaudeBridgeTests", dependencies: ["ClaudeBridge"], path: "Tests/ClaudeBridgeTests"),
         .testTarget(name: "GitStatusTests", dependencies: ["GitStatus"], path: "Tests/GitStatusTests"),
