@@ -1,0 +1,59 @@
+Tests/TkzAppTests/SessionEventHandlerTests.swift
+  s_36289bebec70b4::t_90eb19c217285e 52-53,58,66,76,117,119,125-126,147,149,192-193
+  s_36289bebec70b4::t_4eac1d1ff01c19 1-51,54-57,59-65,67-75,77-116,118,120-124,127-146,148,150-191,194-211
+docs/conformance.md
+  s_36289bebec70b4::t_3a8dc2936c6176 1-146
+Tests/TkzTerminalViewTests/MouseControllerTests.swift
+  s_36289bebec70b4::t_af592c840f2478 1-411,414-415,420,432,434-457,459-464,467-477,483-637,644-683
+  s_36289bebec70b4::t_40ed92a30d622e 638-643
+  s_36289bebec70b4::t_49d734ebb56b4c 412-413,416-419,421-431,433,458,465-466,478-482
+Sources/TkzTerminalRender/FontSet.swift
+  s_36289bebec70b4::t_3af18c556ef1d0 86
+Sources/TkzTerminalRender/TerminalRenderer.swift
+  s_36289bebec70b4::t_3af18c556ef1d0 178-179
+Sources/TkzApp/SessionEventHandler.swift
+  s_36289bebec70b4::t_260b58df8ce5e8 332
+  s_36289bebec70b4::t_c22c849b9926f6 109-111,113-115,119
+  s_36289bebec70b4::t_9a4730a9052551 165,194,326-331,333-339,345
+  s_36289bebec70b4::t_4716de1fdfd188 1-108,112,116-118,120-127,149-164,166-193,195-218,220-226,228-232,234-325,341-344,346-349
+  s_36289bebec70b4::t_495292c93a8389 128-148
+  s_36289bebec70b4::t_24aac3c3732274 340
+  s_36289bebec70b4::t_04031d3f21b087 219,227,233
+Sources/TkzTerminalRender/ModuleResources.swift
+  s_36289bebec70b4::t_2839c9426f9bdd 1-24
+Sources/TkzTerminalView/TerminalMetalView+TextInput.swift
+  s_36289bebec70b4::t_8a6b535828d109 1-16,22-134
+  s_36289bebec70b4::t_8cf1419a2329ca 17-21
+Tests/TkzTerminalViewTests/TerminalInputControllerTests.swift
+  s_36289bebec70b4::t_7296664dfcc64c 63,69-72,606-620
+  s_36289bebec70b4::t_59fe910b65db78 555-605,621
+  s_36289bebec70b4::t_eb2a7132c022d3 16,215-218,333-334,342,347,362,492-493,501-525
+  s_36289bebec70b4::t_f3add4f2d762a8 1-15,17-62,64-68,73-214,219-332,335-341,343-346,348-361,363-449,454-491,494-500,526-554
+  s_36289bebec70b4::t_260b58df8ce5e8 450-453
+Sources/TkzTerminalCore/ModuleResources.swift
+  s_36289bebec70b4::t_2839c9426f9bdd 1-24
+scripts/make-app.sh
+  s_36289bebec70b4::t_f55d91f23121b8 34-43,48
+  s_36289bebec70b4::t_38f02b80270dcd 71-73,77,84-101
+  s_36289bebec70b4::t_21ee145aedace9 4-15
+Sources/TkzTerminalCore/TerminalEnvironment.swift
+  s_36289bebec70b4::t_3af18c556ef1d0 30
+docs/design.md
+  s_36289bebec70b4::t_44c0d4d891d4c8 56,130-131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "2735182c82f1107dc56efebeda7b00e8737f337b",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
