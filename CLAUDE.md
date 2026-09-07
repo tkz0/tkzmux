@@ -13,7 +13,7 @@ swift run tkzmux            # run the app outside a bundle (window still appears
 make app                    # release build → build/tkzmux.app (ad-hoc signed)
 open build/tkzmux.app
 SIGN_IDENTITY="Developer ID Application: …" make app   # real signing = one variable
-make vendor                 # rebuild vendor/ghostty-vt (needs zig 0.16.x; lands in M1.1)
+make vendor                 # rebuild vendor/ghostty-vt at vendor/ghostty-vt/COMMIT (zig 0.16.x, xcodebuild, tic; network)
 make clean                  # rm -rf .build build
 ```
 
@@ -25,7 +25,7 @@ make clean                  # rm -rf .build build
 |---|---|---|
 | `TkzPtyShim` | C | fork/exec in the child, no Swift after `fork()` |
 | `TkzShaderTypes` | C header | structs shared by Swift and Metal shaders |
-| `GhosttyVt` | binary (M1.1) | `vendor/ghostty-vt/ghostty-vt.xcframework`, pinned commit |
+| `GhosttyVt` | binary | `vendor/ghostty-vt/ghostty-vt.xcframework` (arm64 static, committed), commit pinned in `vendor/ghostty-vt/COMMIT`, ABI snapshot in `abi-types.json` |
 | `TkzTerminalCore` | Swift | `Pty`, `TerminalEnvironment`, `TerminalSession` (VT bridge, IO loop, snapshots) |
 | `TkzTerminalRender` | Swift | fonts, glyph atlas, `FrameBuilder`, Metal renderer |
 | `TkzTerminalView` | Swift | `TerminalMetalView`, keyboard/IME, mouse/selection |

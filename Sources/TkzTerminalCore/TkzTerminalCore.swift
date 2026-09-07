@@ -1,8 +1,8 @@
 // TkzTerminalCore — pty, VT bridge (libghostty-vt), TerminalSession. See docs/design.md → Terminal engine.
-// Stub from M0.1 (TKZ-5); real code arrives in M1.1–M1.3.
+// M0.1 stub (TKZ-5); libghostty-vt wrappers in GhosttyVt+Swift.swift (M1.1); Pty/TerminalSession arrive in M1.2–M1.3.
 import TkzPtyShim
 
-/// Module marker used by the smoke tests until the module has real API.
+/// Module marker used by the smoke tests (pty shim version); the libghostty-vt API lives in GhosttyVt+Swift.swift.
 public enum TkzTerminalCoreModule {
     public static let name = "TkzTerminalCore"
 

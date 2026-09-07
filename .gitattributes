@@ -1,0 +1,2 @@
+# Prebuilt libghostty-vt archive: never show it in diffs (headers stay diffable on upgrades).
+vendor/ghostty-vt/ghostty-vt.xcframework/**/*.a -diff

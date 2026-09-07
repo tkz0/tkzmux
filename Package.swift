@@ -21,12 +21,13 @@ let package = Package(
         .library(name: "TkzApp", targets: ["TkzApp"]),
     ],
     targets: [
-        // MARK: Vendored libghostty-vt (added in M1.1 / TKZ-7).
-        // Produced by `make vendor` (scripts/build-ghostty-vt.sh) at a pinned commit.
-        // .binaryTarget(
-        //     name: "GhosttyVt",
-        //     path: "vendor/ghostty-vt/ghostty-vt.xcframework"
-        // ),
+        // MARK: Vendored libghostty-vt (M1.1 / TKZ-7).
+        // Built by `make vendor` (scripts/build-ghostty-vt.sh) at the commit in vendor/ghostty-vt/COMMIT;
+        // arm64-only static archive, module `GhosttyVt` (umbrella ghostty/vt.h).
+        .binaryTarget(
+            name: "GhosttyVt",
+            path: "vendor/ghostty-vt/ghostty-vt.xcframework"
+        ),
 
         // MARK: C targets
         .target(
@@ -45,11 +46,11 @@ let package = Package(
             name: "TkzTerminalCore",
             dependencies: [
                 "TkzPtyShim",
-                // "GhosttyVt",   // M1.1
+                "GhosttyVt",
             ],
             path: "Sources/TkzTerminalCore"
-            // If the SIMD build of libghostty-vt fails to link on std::__1 symbols (M1.1):
-            // linkerSettings: [.linkedLibrary("c++")]
+            // libghostty-vt's vendored simdutf/highway are built without libc++ (verified M1.1):
+            // no linkerSettings: [.linkedLibrary("c++")] needed.
         ),
         .target(
             name: "TkzTerminalRender",
