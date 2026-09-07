@@ -1,0 +1,83 @@
+Sources/TkzPtyShim/TkzPtyShim.c
+  s_a7d499143ddd3e::t_df57791d511c8d 1-3
+Package.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-117
+Tests/ClaudeBridgeTests/ClaudeBridgeTests.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+Sources/tkzmux-hook/main.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-12
+scripts/make-app.sh
+  s_a7d499143ddd3e::t_df57791d511c8d 1-52
+Tests/TkzCoreTests/TkzCoreTests.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+Sources/ClaudeBridge/ClaudeBridge.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+docs/design.md
+  s_a7d499143ddd3e::t_2d900727104dd8 1-172
+Tests/TkzTerminalRenderTests/TkzTerminalRenderTests.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+LICENSE
+  s_a7d499143ddd3e::t_df57791d511c8d 1-21
+CLAUDE.md
+  s_a7d499143ddd3e::t_d485b6de86fe9c 1-52
+Tests/TkzTerminalCoreTests/TkzTerminalCoreTests.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-10
+Tests/TkzTerminalViewTests/TkzTerminalViewTests.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+Sources/TkzTerminalView/TkzTerminalView.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+Sources/tkzmux/main.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-3
+Sources/TkzShaderTypes/TkzShaderTypes.c
+  s_a7d499143ddd3e::t_df57791d511c8d 1-2
+Sources/TkzApp/TkzAppMain.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-19
+Tests/GitStatusTests/GitStatusTests.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+Makefile
+  s_a7d499143ddd3e::t_df57791d511c8d 1-24
+Sources/TkzTerminalCore/TkzTerminalCore.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-11
+Sources/Persistence/Persistence.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+scripts/build-ghostty-vt.sh
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+Sources/TkzApp/AppDelegate.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-24
+Sources/TkzShaderTypes/include/TkzShaderTypes.h
+  s_a7d499143ddd3e::t_df57791d511c8d 1-11
+Sources/TkzTerminalRender/TkzTerminalRender.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+Tests/TkzAppTests/TkzAppTests.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-7
+Sources/GitStatus/GitStatus.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+Sources/tkzmux-vtdump/main.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-7
+.gitignore
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+Sources/TkzPtyShim/include/TkzPtyShim.h
+  s_a7d499143ddd3e::t_df57791d511c8d 1-17
+Tests/PersistenceTests/PersistenceTests.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+Resources/Info.plist
+  s_a7d499143ddd3e::t_df57791d511c8d 1-32
+Sources/TkzCore/TkzCore.swift
+  s_a7d499143ddd3e::t_df57791d511c8d 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "b67255fd0bbd7c40504cd1b398e46fadad676ffd",
+  "prompts": {},
+  "sessions": {
+    "s_a7d499143ddd3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "571e2d71-e39f-49ce-9932-74c71db18cce",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
