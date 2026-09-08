@@ -1,0 +1,51 @@
+Sources/ClaudeBridge/Resources/zsh/zprofile
+  s_093857b3ed8828::t_77ce0027512adc 1-12
+Sources/ClaudeBridge/Resources/shim/claude.sh
+  s_093857b3ed8828::t_fea4536dc50594 1-29,35-147
+  s_093857b3ed8828::t_09b10d7291fe02 33
+  s_093857b3ed8828::t_d5882daad5e702 148-150
+  s_093857b3ed8828::t_7f0c31721b5902 34
+  s_093857b3ed8828::t_4303fa7e0be082 30-32
+Sources/ClaudeBridge/ModuleResources.swift
+  s_093857b3ed8828::t_808db03d798d91 1-25
+scripts/make-app.sh
+  s_093857b3ed8828::t_dba6492b90b0a5 97
+  s_093857b3ed8828::t_db2b39098e3da5 25,32-35
+Sources/ClaudeBridge/Resources/zsh/zshrc
+  s_093857b3ed8828::t_e7f0f05e6ba6e7 1-27
+Package.swift
+  s_093857b3ed8828::t_4e020268fced4e 79-80
+Sources/ClaudeBridge/Resources/zsh/zlogin
+  s_093857b3ed8828::t_8c8b1567c23e14 1-19
+Sources/ClaudeBridge/ShimInstaller.swift
+  s_093857b3ed8828::t_892faf62ae0b8f 1-104,106-224
+  s_093857b3ed8828::t_d0a5d63f1db934 105
+Tests/ClaudeBridgeTests/ShimTests.swift
+  s_093857b3ed8828::t_cf36dbc31b0912 1-8,107-340
+  s_093857b3ed8828::t_3f2047797a6d14 9-106
+Tests/ClaudeBridgeTests/ZshWrapperTests.swift
+  s_093857b3ed8828::t_7768d916b73adf 1-11,22-177
+  s_093857b3ed8828::t_d026062e60de25 12-21
+Sources/ClaudeBridge/Resources/zsh/zshenv
+  s_093857b3ed8828::t_b9bd178cf7e01c 1-21
+Tests/ClaudeBridgeTests/ShimInstallerTests.swift
+  s_093857b3ed8828::t_e1b0e005703708 1-7,12-76,83-84,86-145
+  s_093857b3ed8828::t_b3bd6668f005a3 8-11
+  s_093857b3ed8828::t_5cc7ac2e26d8e3 77-82,85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "645de836f987abe9dbaea9677c311b2809d57767",
+  "prompts": {},
+  "sessions": {
+    "s_093857b3ed8828": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5e7fafd-1256-4bd3-bd40-2906accdec3f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
