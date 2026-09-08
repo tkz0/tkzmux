@@ -78,6 +78,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 // After the window because `TerminalViewHost` owns the directory the socket and
                 // the shim live in; nothing here blocks the launch.
                 if let host = controller.host as? TerminalViewHost {
+                    // M5.2: snapshots whose row is gone (`Remove` while the app was not running,
+                    // a hand-edited state.json) are deleted now. TKZ-29 left this to this ticket.
+                    Self.housekeepSnapshots(host.snapshots, keeping: Set(store.state.sessions.keys.map(\.rawValue)))
                     let integration = ClaudeIntegration(
                         store: store, directory: host.tkzmuxDirectory,
                         installer: Self.makeShimInstaller(directory: host.tkzmuxDirectory))
@@ -85,6 +88,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                     integration.start()
                     claude = integration
                 }
+                // After the integration: every `claude --resume` must run through the shim the
+                // installer just wrote, so the launch frame binds its pid.
+                if restored.loaded != nil { controller.autoResumeIfEnabled() }
             }
         } catch {
             MainMenu.installDefault()
@@ -122,6 +128,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     static var stateFile: StateFile { .standard() }
+
+    /// Deletes `.ghsnap` files no row in `state.json` claims, and stale temp files. Logged, never
+    /// fatal: housekeeping that stops the launch would be worse than a stray file.
+    static func housekeepSnapshots(_ snapshots: SnapshotStore, keeping ids: Set<String>) {
+        do {
+            let report = try snapshots.housekeep(liveSessionIDs: ids)
+            if !report.removed.isEmpty || report.temporaries > 0 {
+                Logger(subsystem: "se.tkz.tkzmux", category: "app")
+                    .info("snapshot housekeeping: removed \(report.removed.count) orphaned, \(report.temporaries) temp files, \(report.reclaimedBytes) bytes")
+            }
+        } catch {
+            Logger(subsystem: "se.tkz.tkzmux", category: "app")
+                .error("snapshot housekeeping failed: \(String(describing: error), privacy: .public)")
+        }
+    }
 
     /// The shim installer for the real app, or nil when its resources cannot be found (a build
     /// with no `tkzmux-hook` next to the executable): the app still runs, hooks are just absent.

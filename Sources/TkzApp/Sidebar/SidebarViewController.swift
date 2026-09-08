@@ -73,6 +73,17 @@ final class SidebarItem: NSObject {
 final class SidebarOutlineView: NSOutlineView {
     /// ↑ = `-1`, ↓ = `+1`. Set by the controller.
     var onArrowKey: (@MainActor (Int) -> Void)?
+    /// The context menu for the row under a right-click (M5.2). `nil` = no menu for that row.
+    var onContextMenu: (@MainActor (SidebarItem.Kind) -> NSMenu?)?
+
+    /// Right-click: the row under the pointer gets its own menu, without moving the selection —
+    /// "Remove" on a row the user is not looking at must not first switch the terminal to it.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let point = convert(event.locationInWindow, from: nil)
+        let row = self.row(at: point)
+        guard row >= 0, let item = item(atRow: row) as? SidebarItem else { return nil }
+        return onContextMenu?(item.kind)
+    }
 
     // MARK: Call counters (tests only; free in release)
 
@@ -182,6 +193,36 @@ public final class SidebarViewController: NSViewController {
     /// Invoked by the "＋ New group" footer. The assembler opens the folder picker.
     public var onNewGroup: (@MainActor () -> Void)? {
         didSet { footer.onNewGroup = onNewGroup }
+    }
+
+    /// Builds the context menu for a right-clicked session row (M5.2). The assembler owns the
+    /// verbs (Resume, Rename, Close, Remove); the sidebar only knows which row was hit.
+    public var onSessionContextMenu: (@MainActor (SessionID) -> NSMenu?)? {
+        didSet { wireContextMenu() }
+    }
+    /// The same for a group header (New session…, Resume all in group).
+    public var onGroupContextMenu: (@MainActor (GroupID) -> NSMenu?)? {
+        didSet { wireContextMenu() }
+    }
+
+    private func wireContextMenu() {
+        outline.onContextMenu = { [weak self] kind in
+            guard let self else { return nil }
+            switch kind {
+            case .session(let id): return self.onSessionContextMenu?(id)
+            case .group(let id): return self.onGroupContextMenu?(id)
+            }
+        }
+    }
+
+    /// The menu the outline would show for a right-click on `id`'s row — for tests, which have no
+    /// pointer to right-click with.
+    public func contextMenu(forSession id: SessionID) -> NSMenu? {
+        outline.onContextMenu?(.session(id))
+    }
+
+    public func contextMenu(forGroup id: GroupID) -> NSMenu? {
+        outline.onContextMenu?(.group(id))
     }
 
     /// What `showLastMessage(for:)` shows. Defaults to the session's `lastStopMessage`; overridable

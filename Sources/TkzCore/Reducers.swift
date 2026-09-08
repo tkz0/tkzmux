@@ -131,6 +131,21 @@ extension AppState {
         moveSession(id, toGroup: session.groupID, at: index)
     }
 
+    /// Records where a session's worktree is (or that it has none). `isWorktree` drives the `WT`
+    /// badge; the path is kept even when the badge is cleared, for the error message.
+    public mutating func setWorktree(_ id: SessionID, path: String?, isWorktree: Bool) {
+        guard var session = sessions[id] else { return }
+        session.worktreePath = path ?? session.worktreePath
+        session.isWorktree = isWorktree
+        sessions[id] = session
+    }
+
+    /// The worktree is gone from disk (Claude removed it on exit, or the user deleted it by hand):
+    /// the `WT` badge comes off and a resume lands in the repo root. The path stays for the record.
+    public mutating func clearWorktreeBadge(_ id: SessionID) {
+        setWorktree(id, path: nil, isWorktree: false)
+    }
+
     /// **Close**: the process is gone, the row stays and is resumable. Clearing `live` is what
     /// makes `Session.status` report `.exited` (see `Session`).
     public mutating func closeSession(_ id: SessionID, now: Date = Date()) {
@@ -302,6 +317,10 @@ extension AppState {
         sidebarVisible = visible
     }
 
+    public mutating func setAutoResumeOnLaunch(_ enabled: Bool) {
+        autoResumeOnLaunch = enabled
+    }
+
     // MARK: Accounts, usage, presets
 
     public mutating func setAccount(_ account: Account) {
@@ -408,6 +427,12 @@ extension AppState {
         session.live = live
         session.claudeSessionId = descriptor.sessionId
         session.lastActiveAt = now
+        // `claude -w` starts Claude *inside* the worktree it just created, so the descriptor's cwd
+        // is the first thing that says where it went (design.md → *Session flows → New worktree*).
+        if let cwd = descriptor.cwd, let worktree = Session.worktreeRoot(ofPath: cwd) {
+            session.worktreePath = worktree
+            session.isWorktree = true
+        }
         sessions[id] = session
         rederiveStatus(for: id, now: now)
     }

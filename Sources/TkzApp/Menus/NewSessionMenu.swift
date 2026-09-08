@@ -48,6 +48,9 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         public let groupID: GroupID
         /// The preset behind this launch, when there is one.
         public let presetID: UUID?
+        /// Extra environment for the child (`Preset.env`), applied over the account's
+        /// `CLAUDE_CONFIG_DIR` and under `TerminalEnvironment`'s own keys.
+        public let env: [String: String]
 
         public init(
             kind: Kind,
@@ -55,7 +58,8 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             cwd: String,
             accountKey: String?,
             groupID: GroupID,
-            presetID: UUID? = nil
+            presetID: UUID? = nil,
+            env: [String: String] = [:]
         ) {
             self.kind = kind
             self.command = command
@@ -63,6 +67,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             self.accountKey = accountKey
             self.groupID = groupID
             self.presetID = presetID
+            self.env = env
         }
 
         /// The one-line description the stub logs — and what the tests assert on.
@@ -71,6 +76,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             if command.isEmpty { return "cd \(cwd)" }
             var line = "cd \(cwd) && "
             if let accountKey { line += "CLAUDE_CONFIG_DIR=\(accountKey) " }
+            for key in env.keys.sorted() { line += "\(key)=\(env[key] ?? "") " }
             return line + command
         }
     }
@@ -88,6 +94,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         public static let presets = NSUserInterfaceItemIdentifier("tkzmux.newSession.presets")
         public static let account = NSUserInterfaceItemIdentifier("tkzmux.newSession.account")
         public static let presetRow = NSUserInterfaceItemIdentifier("tkzmux.newSession.preset")
+        public static let managePresets = NSUserInterfaceItemIdentifier("tkzmux.newSession.managePresets")
         public static let accountRow = NSUserInterfaceItemIdentifier("tkzmux.newSession.accountRow")
     }
 
@@ -127,6 +134,8 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     public var onChooseAnotherRepo: (() -> Void)?
     /// The Account submenu changed. The store update is the assembler's call.
     public var onSelectAccount: ((String) -> Void)?
+    /// "Manage presets…" — the assembler opens the presets sheet (M5.2).
+    public var onManagePresets: (() -> Void)?
 
     /// The last launch the menu resolved — the stub's record, and what tests read.
     public private(set) var lastLaunch: Launch?
@@ -241,8 +250,9 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
                 : "From preset\u{2026} (\(count) saved)",
             action: nil, keyEquivalent: "")
         item.identifier = ItemID.presets
-        item.isEnabled = count > 0
-        guard count > 0 else { return item }
+        // Always enabled since M5.2: with nothing saved the submenu still offers "Manage presets…",
+        // which is how the first preset gets made.
+        item.isEnabled = true
 
         let submenu = NSMenu()
         submenu.autoenablesItems = false
@@ -259,6 +269,16 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             row.identifier = ItemID.presetRow
             submenu.addItem(row)
         }
+        if count > 0 { submenu.addItem(.separator()) }
+        let manage = entry(
+            title: "Manage presets\u{2026}",
+            hint: nil,
+            detail: count == 0 ? "none saved yet" : nil,
+            enabled: true,
+            action: #selector(managePresetsItem)
+        )
+        manage.identifier = ItemID.managePresets
+        submenu.addItem(manage)
         item.submenu = submenu
         return item
     }
@@ -388,7 +408,8 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             cwd: preset.cwdMode.directory(repoRoot: root, fallback: root ?? "~"),
             accountKey: preset.accountKey ?? effectiveAccountKey,
             groupID: group.id,
-            presetID: preset.id
+            presetID: preset.id,
+            env: preset.env
         )
     }
 
@@ -430,6 +451,10 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             let resolved = launch(for: preset)
         else { return }
         perform(resolved)
+    }
+
+    @objc private func managePresetsItem() {
+        onManagePresets?()
     }
 
     @objc private func selectAccountItem(_ sender: NSMenuItem) {

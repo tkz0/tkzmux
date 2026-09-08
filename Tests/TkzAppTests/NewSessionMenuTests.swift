@@ -71,21 +71,31 @@ struct NewSessionMenuTests {
         let menu = Self.menu(for: Self.frontinvest)
         let presets = try #require(Self.item(menu, NewSessionMenu.ItemID.presets))
         #expect(presets.title == "From preset\u{2026} (3 saved)")
-        #expect(presets.submenu?.items.count == 3)
+        // Three presets, a separator, and "Manage presets…" (M5.2).
+        #expect(presets.submenu?.items.count == 5)
+        #expect(presets.submenu?.items.filter { $0.identifier == NewSessionMenu.ItemID.presetRow }.count == 3)
         let first = try #require(presets.submenu?.items.first)
         #expect(Self.text(first).hasPrefix("Worktree from ticket"))
         #expect(Self.text(first).contains("claude -w"))
         #expect(Self.text(first).contains("~/dev/frontinvest"))
+        let manage = try #require(presets.submenu?.items.last)
+        #expect(manage.identifier == NewSessionMenu.ItemID.managePresets)
+        var asked = 0
+        menu.onManagePresets = { asked += 1 }
+        #expect(menu.performItem(NewSessionMenu.ItemID.managePresets))
+        #expect(asked == 1)
 
-        // Nothing saved → the entry says so rather than opening an empty submenu.
+        // Nothing saved → the entry says so, and the submenu still offers "Manage presets…" so the
+        // first preset can be made from here.
         let empty = NewSessionMenu()
         var bare = Self.state
         bare.presets = []
         empty.configure(state: bare, groupID: Self.frontinvest)
         let none = try #require(Self.item(empty, NewSessionMenu.ItemID.presets))
         #expect(none.title == "From preset\u{2026} (none saved)")
-        #expect(none.isEnabled == false)
-        #expect(none.submenu == nil)
+        #expect(none.isEnabled)
+        #expect(none.submenu?.items.count == 1)
+        #expect(none.submenu?.items.first?.identifier == NewSessionMenu.ItemID.managePresets)
     }
 
     @Test func accountSubmenuDefaultsToTheGroupsAccount() throws {

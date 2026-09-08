@@ -36,6 +36,9 @@ import TkzCore
 @MainActor
 public final class MenuDispatcher: NSObject, NSMenuItemValidation {
     private var handlers: [ShortcutAction: () -> Void] = [:]
+    /// Checkmark providers for toggle-style actions ("Auto-resume Sessions on Launch"). Read on
+    /// every validation, so the mark follows the store without any observer of its own.
+    private var checkmarks: [ShortcutAction: () -> Bool] = [:]
 
     public override init() { super.init() }
 
@@ -44,6 +47,14 @@ public final class MenuDispatcher: NSObject, NSMenuItemValidation {
     }
 
     public func removeHandler(_ action: ShortcutAction) { handlers[action] = nil }
+
+    /// Makes `action`'s item show a checkmark whenever `isOn` returns true.
+    public func setCheckmark(_ action: ShortcutAction, _ isOn: @escaping () -> Bool) {
+        checkmarks[action] = isOn
+    }
+
+    /// The current checkmark state, or nil for an action that has none.
+    public func checkmark(for action: ShortcutAction) -> Bool? { checkmarks[action]?() }
 
     public func canPerform(_ action: ShortcutAction) -> Bool { handlers[action] != nil }
 
@@ -64,7 +75,9 @@ public final class MenuDispatcher: NSObject, NSMenuItemValidation {
     public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard menuItem.action == #selector(performShortcutAction(_:)) else { return true }
         guard let raw = menuItem.representedObject as? String else { return false }
-        return canPerform(ShortcutAction(raw))
+        let action = ShortcutAction(raw)
+        if let isOn = checkmarks[action] { menuItem.state = isOn() ? .on : .off }
+        return canPerform(action)
     }
 }
 
@@ -119,6 +132,8 @@ public enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(command(.settings, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.reloadConfig, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.managePresets, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.toggleAutoResume, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.removeShellIntegration, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(.separator())
 
@@ -173,6 +188,9 @@ public enum MainMenu {
         shortcuts: [ShortcutAction: Shortcut], dispatcher: MenuDispatcher
     ) -> NSMenu {
         let menu = NSMenu(title: "Session")
+        menu.addItem(command(.resumeSession, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.resumeAllInGroup, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(.separator())
         menu.addItem(command(.renameSession, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.jumpToNeedsYou, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.copyLastMessage, shortcuts: shortcuts, dispatcher: dispatcher))

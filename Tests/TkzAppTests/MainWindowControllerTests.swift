@@ -35,12 +35,28 @@ struct MainWindowControllerTests {
             var env: [String: String]
         }
 
+        struct Restored: Equatable {
+            var id: SessionID
+            var cwd: String
+            var env: [String: String]
+            var snapshot: Data
+        }
+
         private(set) var shown: [SessionID?] = []
         private(set) var closed: [(id: SessionID, signal: Int32)] = []
         private(set) var opened: [Opened] = []
+        private(set) var restored: [Restored] = []
+        private(set) var discarded: [SessionID] = []
         private(set) var ran: [(id: SessionID, command: String)] = []
         /// Set to make the next `open` throw, so the failure path can be asserted.
         var openError: (any Error)?
+        /// Set to make the next `restore` throw (a snapshot that no longer decodes).
+        var restoreError: (any Error)?
+        /// `.ghsnap` files "on disk", by id — what `savedSnapshot` answers from.
+        var savedSnapshots: [SessionID: Data] = [:]
+        /// The live grids: every id opened or restored on this host. `snapshot` answers for these;
+        /// `discard` and the eviction inside a reopen remove them.
+        private(set) var held: Set<SessionID> = []
         let events: AsyncStream<(SessionID, TerminalEvent)>
         private let continuation: AsyncStream<(SessionID, TerminalEvent)>.Continuation
 
@@ -53,7 +69,17 @@ struct MainWindowControllerTests {
         func open(_ id: SessionID, cwd: String, env: [String: String], size: TerminalSize) throws -> pid_t {
             if let openError { throw openError }
             opened.append(Opened(id: id, cwd: cwd, env: env))
+            evict(id)
+            held.insert(id)
             return 4242
+        }
+
+        /// The real host drops a session it already holds under `id` before adopting the new one,
+        /// and that detaches the surface if it was the visible one. Modelled here so a reopen of
+        /// the selected row that forgets to re-show it fails a test rather than a user.
+        private func evict(_ id: SessionID) {
+            held.remove(id)
+            if visibleSessionID == id { visibleSessionID = nil }
         }
         func run(_ id: SessionID, command: String) { ran.append((id, command)) }
         /// Records synchronously rather than inheriting the protocol's 2 s delayed default — the
@@ -67,14 +93,29 @@ struct MainWindowControllerTests {
             // The real host attaches nothing for an id it has never opened, which is what a row
             // restored from `state.json` looks like. The spy has to model that, or the window's
             // empty-state logic would be tested against a host that can show anything.
-            visibleSessionID = id.flatMap { candidate in
-                opened.contains { $0.id == candidate } ? candidate : nil
-            }
+            visibleSessionID = id.flatMap { held.contains($0) ? $0 : nil }
         }
         func resize(_ id: SessionID, _ size: TerminalSize) {}
         func close(_ id: SessionID, signal: Int32) { closed.append((id, signal)) }
-        func snapshot(_ id: SessionID) throws -> Data { Data() }
-        func restore(_ id: SessionID, from: Data, cwd: String, env: [String: String]) throws -> pid_t { 0 }
+        /// The live grid, for a held id; the real host throws `unknownSession` otherwise.
+        func snapshot(_ id: SessionID) throws -> Data {
+            guard held.contains(id) else { throw TerminalHostError.unknownSession(id.rawValue) }
+            return Data("live:\(id.rawValue)".utf8)
+        }
+        func restore(_ id: SessionID, from data: Data, cwd: String, env: [String: String]) throws -> pid_t {
+            if let restoreError { throw restoreError }
+            restored.append(Restored(id: id, cwd: cwd, env: env, snapshot: data))
+            evict(id)
+            held.insert(id)
+            return 4343
+        }
+        func savedSnapshot(_ id: SessionID) -> Data? { savedSnapshots[id] }
+        func discard(_ id: SessionID) {
+            discarded.append(id)
+            held.remove(id)
+            savedSnapshots[id] = nil
+            if visibleSessionID == id { visibleSessionID = nil }
+        }
 
         /// Pushes an event as if a child had produced it.
         func emit(_ event: TerminalEvent, for id: SessionID) { continuation.yield((id, event)) }

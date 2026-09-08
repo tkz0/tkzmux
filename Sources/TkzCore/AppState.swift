@@ -28,6 +28,9 @@ public struct AppState: Hashable, Sendable {
     /// Command id → key-equivalent string (e.g. `"newSession": "cmd+t"`). Persisted verbatim;
     /// M2.4 owns the vocabulary.
     public var shortcuts: [String: String]
+    /// The "auto-resume on launch" preference (M5.2): every restored row with a
+    /// `claudeSessionId` gets `claude --resume` typed into a fresh shell when the app starts.
+    public var autoResumeOnLaunch: Bool
 
     public init(
         groups: [GroupID: Group] = [:],
@@ -39,7 +42,8 @@ public struct AppState: Hashable, Sendable {
         sidebarWidth: CGFloat? = nil,
         windowFrame: CGRect? = nil,
         presets: [Preset] = [],
-        shortcuts: [String: String] = [:]
+        shortcuts: [String: String] = [:],
+        autoResumeOnLaunch: Bool = false
     ) {
         self.groups = groups
         self.sessions = sessions
@@ -51,6 +55,7 @@ public struct AppState: Hashable, Sendable {
         self.windowFrame = windowFrame
         self.presets = presets
         self.shortcuts = shortcuts
+        self.autoResumeOnLaunch = autoResumeOnLaunch
     }
 
     // MARK: Ordered access (what the sidebar renders)

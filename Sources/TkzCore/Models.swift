@@ -232,10 +232,42 @@ public struct Session: Hashable, Sendable, Identifiable {
         return (cwd as NSString).lastPathComponent
     }
 
-    /// The directory a resume should start in: the worktree if it still applies, else the repo root.
+    /// Where a resume should start, best first: the worktree while it still applies, then the
+    /// directory the session was started in, then the repo root. The launcher takes the first one
+    /// that exists on disk (M5.2) — a worktree Claude removed on exit falls through to the repo
+    /// root, which is the "missing worktree → repoRoot" rule in design.md → *Session flows*.
+    ///
+    /// `cwd` outranks `repoRoot` deliberately: for a repo-root or worktree launch the two are the
+    /// same directory, and for a fixed-path preset `cwd` is where Claude actually ran, which is
+    /// the project `--resume` looks the conversation up under.
+    public var resumeDirectoryCandidates: [String] {
+        var out: [String] = []
+        if isWorktree, let worktreePath, !worktreePath.isEmpty { out.append(worktreePath) }
+        for candidate in [cwd, repoRoot ?? ""] where !candidate.isEmpty && !out.contains(candidate) {
+            out.append(candidate)
+        }
+        return out
+    }
+
+    /// The first of `resumeDirectoryCandidates` — what a resume starts in when every directory
+    /// still exists.
     public var resumeDirectory: String {
-        if isWorktree, let worktreePath { return worktreePath }
-        return repoRoot ?? cwd
+        resumeDirectoryCandidates.first ?? cwd
+    }
+
+    /// The `claude -w` worktree a path lies in, or `nil`.
+    ///
+    /// Claude Code creates its worktrees under `<repo>/.claude/worktrees/<name>` and starts the
+    /// session with that directory as its cwd, which is what the descriptor then reports. Anything
+    /// at or below `<repo>/.claude/worktrees/<name>` maps to that directory; a path that merely
+    /// *contains* the `.claude/worktrees` marker with nothing after it is not a worktree.
+    public static func worktreeRoot(ofPath path: String) -> String? {
+        let marker = "/.claude/worktrees/"
+        guard let range = path.range(of: marker) else { return nil }
+        let rest = path[range.upperBound...]
+        let name = rest.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: true).first
+        guard let name, !name.isEmpty else { return nil }
+        return String(path[..<range.upperBound]) + name
     }
 }
 
@@ -603,6 +635,19 @@ extension Account {
     /// The account a session falls back to when neither the group nor the preset names one:
     /// the key of the default `~/.claude` config dir.
     public static let defaultKey = "claude"
+
+    /// The `CLAUDE_CONFIG_DIR` an account key stands for, or `nil` for the primary account, whose
+    /// config dir is Claude Code's own default and must not be set.
+    ///
+    /// The key is the config dir's basename minus its leading dot (design.md → *Claude integration
+    /// → Account key*), so the mapping inverts without a lookup: `claude-work` → `<home>/.claude-work`.
+    /// This is the fallback for a session whose account the store does not (yet) know — every
+    /// restored row after a relaunch, since accounts are rediscovered rather than persisted — and
+    /// it is what keeps a resume on the account the session was started with.
+    public static func configDirectory(forKey key: String, home: String) -> String? {
+        guard key != defaultKey, !key.isEmpty, !key.contains("/") else { return nil }
+        return home.hasSuffix("/") ? "\(home).\(key)" : "\(home)/.\(key)"
+    }
 }
 
 /// One quota window from `~/.claude/dash-usage-<key>.json` (`five_hour` / `seven_day`).

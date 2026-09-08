@@ -634,3 +634,44 @@ switch benchmark allocates between them; or compression is not reclaiming under 
 way it does headlessly. Worth one deliberate measurement — a `--busy 30` GUI run with and without
 `TKZMUX_DEV_COMPRESS=0` — before anything is concluded. **Do not quote a compression figure from this
 run.**
+
+---
+
+# Launch audit (M5.2, TKZ-30)
+
+Not a performance number — a correctness record the ticket asks for: "a full day of use with ≥ 20
+sessions: no lost rows, no wrong-account launches (log every launch's env)". Every `start` and
+`reopen` in `SessionLauncher` writes one line to the unified log, subsystem `se.tkz.tkzmux`,
+category `launch`, every field public:
+
+```
+launch kind=repoRoot session=<SessionID> cwd=/Users/x/dev/repo CLAUDE_CONFIG_DIR=default env=[] cmd=claude
+launch kind=reopen   session=<SessionID> cwd=/Users/x/dev/repo/.claude/worktrees/review CLAUDE_CONFIG_DIR=/Users/x/.claude-work env=[] cmd=
+resume <SessionID>: claude --resume <claudeSessionId>
+```
+
+`kind` is the menu entry (`worktree`, `repoRoot`, `preset`, `shell`) or `reopen` (a restored or
+hung-up row getting its shell back). `CLAUDE_CONFIG_DIR=default` means the variable was **not**
+set, i.e. the primary account. To pull a day's worth:
+
+```sh
+/usr/bin/log show --info --last 1d --style compact \
+  --predicate 'process == "tkzmux" AND subsystem == "se.tkz.tkzmux" AND category == "launch"' \
+  | grep -E 'launch kind=|resume ' > ~/Desktop/tkzmux-launches.txt
+```
+
+Two things bite here: the lines are `info` level, which `log show` drops without `--info`; and in
+zsh a bare `log` is the shell's own builtin (it prints "too many arguments"), so spell out
+`/usr/bin/log`. Measured 2026-09-08 — a headless `swift run tkzmux` with `TKZMUX_DEV_AUTOQUIT_MS`
+over the real state.json logged `launch kind=reopen … cwd=/Users/… CLAUDE_CONFIG_DIR=default` for
+the selected row and `snapshot housekeeping: removed 14 orphaned, 0 temp files, 2961259 bytes`.
+
+Cross-check each `CLAUDE_CONFIG_DIR` against the row's account chip and `/usage` inside that
+Claude. A mismatch is a bug in `SessionLauncher.configDirectory(forKey:)` or in what the sidebar
+recorded as `accountKey`.
+
+## Run notes
+
+| Date | Sessions | Launches logged | Wrong-account launches | Lost rows | Notes |
+|---|---:|---:|---:|---:|---|
+| 2026-09-08 | 10 (restored) | 1 (`reopen` of the selected row, headless autoquit) | 0 | 0 | Smoke run only; housekeeping removed 14 orphaned `.ghsnap` files from earlier harness runs. The day-of-use row is Thomas's to fill in. |

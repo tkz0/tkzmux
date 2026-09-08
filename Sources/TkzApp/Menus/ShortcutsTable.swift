@@ -45,6 +45,14 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     public static let copyLastMessage = ShortcutAction("copyLastMessage")
     /// No key: deletes `bin/` and `zsh/` under Application Support so new shells are plain (M3.3).
     public static let removeShellIntegration = ShortcutAction("removeShellIntegration")
+    /// ⌘R — `claude --resume` the selected row's conversation in its directory (M5.2).
+    public static let resumeSession = ShortcutAction("resumeSession")
+    /// No key: resume every resumable row in the selected session's group (M5.2).
+    public static let resumeAllInGroup = ShortcutAction("resumeAllInGroup")
+    /// No key: the presets sheet (M5.2).
+    public static let managePresets = ShortcutAction("managePresets")
+    /// No key: the "auto-resume on launch" preference, shown with a checkmark (M5.2).
+    public static let toggleAutoResume = ShortcutAction("toggleAutoResume")
 
     /// ⌘1…⌘9 — `selectSession1` … `selectSession9`.
     public static func selectSession(_ n: Int) -> ShortcutAction { ShortcutAction("selectSession\(n)") }
@@ -111,11 +119,13 @@ public enum ShortcutsTable {
             .newSession, .searchSessions, .commandPalette, .toggleSidebar, .renameSession,
             .closeTerminal, .closeSession, .jumpToNeedsYou, .notifications, .settings,
             .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
-            .removeShellIntegration,
+            .removeShellIntegration, .resumeSession, .resumeAllInGroup, .managePresets,
+            .toggleAutoResume,
         ] + (1...9).map { ShortcutAction.selectSession($0) }
 
-    /// design.md → Decisions → Shortcuts, verbatim. `nextSession`/`previousSession` are absent on
-    /// purpose: cmux binds no default for them and ⌘T/⌘D are reserved.
+    /// design.md → Decisions → Shortcuts, verbatim, plus ⇧⌘C (M3.4) and ⌘R (M5.2), which that
+    /// list records as tkzmux additions. `nextSession`/`previousSession` are absent on purpose:
+    /// cmux binds no default for them and ⌘T/⌘D are reserved.
     public static let defaults: [ShortcutAction: Shortcut] = {
         var table: [ShortcutAction: Shortcut] = [
             .newSession: Shortcut("n", .command),
@@ -131,6 +141,7 @@ public enum ShortcutsTable {
             .openFolder: Shortcut("o", .command),
             .reloadConfig: Shortcut(",", [.shift, .command]),
             .copyLastMessage: Shortcut("c", [.shift, .command]),
+            .resumeSession: Shortcut("r", .command),
         ]
         for n in 1...9 { table[.selectSession(n)] = Shortcut("\(n)", .command) }
         return table
@@ -155,6 +166,10 @@ public enum ShortcutsTable {
         case .previousSession: "Previous Session"
         case .copyLastMessage: "Copy Last Message"
         case .removeShellIntegration: "Remove Shell Integration"
+        case .resumeSession: "Resume Session"
+        case .resumeAllInGroup: "Resume All in Group"
+        case .managePresets: "Manage Presets\u{2026}"
+        case .toggleAutoResume: "Auto-resume Sessions on Launch"
         default:
             if let n = selectSessionIndex(action) { "Select Session \(n)" } else { action.rawValue }
         }

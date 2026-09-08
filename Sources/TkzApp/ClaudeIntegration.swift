@@ -56,6 +56,12 @@ public final class ClaudeIntegration {
     /// need no window; `MainWindowController` installs the real check.
     public var isSessionAttended: (SessionID) -> Bool = { _ in false }
 
+    /// Claude left a row — its descriptor vanished, or a `SessionEnd` that is an exit arrived —
+    /// while the shell may well still be there. `MainWindowController` re-reads the repo's
+    /// worktree list on it (M5.2): `claude -w` removes its worktree at this moment, not at the
+    /// shell's exit.
+    public var onClaudeExited: ((SessionID) -> Void)?
+
     /// How often the 60 s NEEDS-YOU rule is re-evaluated. Five seconds keeps the amber badge within
     /// a few seconds of the rule without waking the process for nothing.
     public static let tickInterval: TimeInterval = 5
@@ -168,6 +174,9 @@ public final class ClaudeIntegration {
                 state.applyHook(event, to: id, now: now)
                 if attended { state.markAttended(id, now: now) }
             }
+            if event.kind == .sessionEnd, store.state.sessions[id]?.live?.ended == true {
+                onClaudeExited?(id)
+            }
         }
     }
 
@@ -240,6 +249,7 @@ public final class ClaudeIntegration {
             let bound = store.state.sessions.values.first { $0.live?.pid == key.pid }
             if let bound {
                 store.update { $0.descriptorLost(for: bound.id, now: Date()) }
+                onClaudeExited?(bound.id)
             }
         }
     }

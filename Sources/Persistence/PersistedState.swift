@@ -56,6 +56,25 @@ public struct PersistedSidebar: Hashable, Sendable, Codable {
     }
 }
 
+/// `preferences` in the schema (M5.2). Every field has a default and the whole block is optional
+/// on read, so a v1 file written before the block existed still loads — no schema bump for a
+/// new switch.
+public struct PersistedPreferences: Hashable, Sendable, Codable {
+    /// `claude --resume` every restored row at launch.
+    public var autoResumeOnLaunch: Bool
+
+    public init(autoResumeOnLaunch: Bool = false) {
+        self.autoResumeOnLaunch = autoResumeOnLaunch
+    }
+
+    private enum CodingKeys: String, CodingKey { case autoResumeOnLaunch }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        autoResumeOnLaunch = try c.decodeIfPresent(Bool.self, forKey: .autoResumeOnLaunch) ?? false
+    }
+}
+
 /// `state.json` v1.
 public struct PersistedState: Hashable, Sendable, Codable {
     /// The version this build writes. Bumping it needs a `Migrations` case.
@@ -70,12 +89,13 @@ public struct PersistedState: Hashable, Sendable, Codable {
     public var sidebar: PersistedSidebar
     public var windowFrame: PersistedFrame?
     public var shortcuts: [String: String]
+    public var preferences: PersistedPreferences
 
     /// The keys this build writes. Anything else in the file is a newer build's and is carried in
     /// `StateDocument.extras`.
     static let knownKeys: Set<String> = [
         "schemaVersion", "groups", "sessions", "presets", "selection", "sidebar", "windowFrame",
-        "shortcuts",
+        "shortcuts", "preferences",
     ]
 
     public init(
@@ -86,7 +106,8 @@ public struct PersistedState: Hashable, Sendable, Codable {
         selection: SessionID? = nil,
         sidebar: PersistedSidebar = PersistedSidebar(visible: true, width: nil),
         windowFrame: PersistedFrame? = nil,
-        shortcuts: [String: String] = [:]
+        shortcuts: [String: String] = [:],
+        preferences: PersistedPreferences = PersistedPreferences()
     ) {
         self.schemaVersion = schemaVersion
         self.groups = groups
@@ -96,6 +117,27 @@ public struct PersistedState: Hashable, Sendable, Codable {
         self.sidebar = sidebar
         self.windowFrame = windowFrame
         self.shortcuts = shortcuts
+        self.preferences = preferences
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, groups, sessions, presets, selection, sidebar, windowFrame, shortcuts
+        case preferences
+    }
+
+    /// `preferences` is optional on the way in: files written before M5.2 have no such key.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
+        groups = try c.decode([Group].self, forKey: .groups)
+        sessions = try c.decode([Session].self, forKey: .sessions)
+        presets = try c.decode([Preset].self, forKey: .presets)
+        selection = try c.decodeIfPresent(SessionID.self, forKey: .selection)
+        sidebar = try c.decode(PersistedSidebar.self, forKey: .sidebar)
+        windowFrame = try c.decodeIfPresent(PersistedFrame.self, forKey: .windowFrame)
+        shortcuts = try c.decode([String: String].self, forKey: .shortcuts)
+        preferences = try c.decodeIfPresent(PersistedPreferences.self, forKey: .preferences)
+            ?? PersistedPreferences()
     }
 
     // MARK: Projection
@@ -119,7 +161,8 @@ public struct PersistedState: Hashable, Sendable, Codable {
             sidebar: PersistedSidebar(
                 visible: state.sidebarVisible, width: state.sidebarWidth.map { Double($0) }),
             windowFrame: state.windowFrame.map(PersistedFrame.init),
-            shortcuts: state.shortcuts)
+            shortcuts: state.shortcuts,
+            preferences: PersistedPreferences(autoResumeOnLaunch: state.autoResumeOnLaunch))
     }
 
     // MARK: Restore
@@ -162,6 +205,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
         state.sidebarWidth = sidebar.width.map { CGFloat($0) }
         if let windowFrame { state.windowFrame = windowFrame.rect }
         state.shortcuts = shortcuts
+        state.autoResumeOnLaunch = preferences.autoResumeOnLaunch
 
         return warnings
     }

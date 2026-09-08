@@ -42,6 +42,7 @@ private func makeState() -> AppState {
     state.windowFrame = CGRect(x: 12, y: 34, width: 1100, height: 760)
     state.sidebarWidth = 372
     state.setSidebarVisible(false)
+    state.setAutoResumeOnLaunch(true)
     _ = two
     return state
 }
@@ -78,7 +79,25 @@ private func makeState() -> AppState {
         #expect(restored.sidebarWidth == original.sidebarWidth)
         #expect(restored.windowFrame == original.windowFrame)
         #expect(restored.shortcuts == original.shortcuts)
+        #expect(restored.autoResumeOnLaunch == original.autoResumeOnLaunch)
     }
+}
+
+@Test func aFileWithoutPreferencesLoadsWithTheDefaults() throws {
+    // Every state.json written before M5.2 has no `preferences` key; it must still load, and a
+    // missing switch means off.
+    var state = makeState()
+    state.setAutoResumeOnLaunch(false)
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(state))))
+    object["preferences"] = nil
+    let data = try JSONEncoder().encode(object)
+    let decoded = try StateFile.decode(data)
+    #expect(decoded.state.preferences == PersistedPreferences())
+    var restored = AppState()
+    decoded.state.apply(to: &restored)
+    #expect(restored.autoResumeOnLaunch == false)
+    #expect(restored.sessions.count == state.sessions.count)
 }
 
 @Test func groupsAndSessionsAreArraysInSidebarOrder() throws {
@@ -183,6 +202,7 @@ func cwdModeRoundTrips(_ mode: CwdMode) throws {
             state.shortcuts["k\(step % 7)"] = "cmd+\(step % 9)"
             state.setSidebarVisible(step % 2 == 0)
             state.sidebarWidth = CGFloat(240 + step % 200)
+            state.setAutoResumeOnLaunch(step % 3 == 0)
         default:
             state.windowFrame = CGRect(
                 x: Double(step % 40), y: Double(step % 30),

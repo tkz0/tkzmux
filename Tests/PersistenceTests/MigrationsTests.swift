@@ -88,6 +88,7 @@ private func makeMinimalState() -> PersistedState {
     state.sidebarWidth = 320
     _ = state.addPreset(Preset(name: "p", command: "claude"))
     state.shortcuts = ["a": "cmd+a"]
+    state.setAutoResumeOnLaunch(true)
 
     let object = try JSONDecoder().decode(
         [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(state))))

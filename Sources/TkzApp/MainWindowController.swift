@@ -264,10 +264,16 @@ final class ExitedScrimView: NSView {
 final class EmptyStateView: NSView {
     /// Nothing is selected at all.
     static let noSelectionMessage = "No session selected \u{00B7} \u{2318}N"
-    /// A row *is* selected but has no terminal behind it — the shape of every row restored from
-    /// `state.json` until M5.2 wires Resume. Saying "no session selected" under a highlighted
-    /// sidebar row would simply be untrue.
-    static let notRunningMessage = "Session not running \u{00B7} resume arrives in M5.2"
+    /// A row *is* selected but has no terminal behind it. Since M5.2 a restored row is reopened
+    /// the moment it is shown, so this is only ever seen when that reopen could not spawn a shell
+    /// (see ``missingDirectoryMessage(_:)`` for the usual reason). Saying "no session selected"
+    /// under a highlighted sidebar row would simply be untrue.
+    static let notRunningMessage = "Session not running \u{00B7} \u{2318}R to resume"
+
+    /// The reopen found none of the session's directories on disk.
+    static func missingDirectoryMessage(_ path: String) -> String {
+        "Directory missing \u{00B7} \(path)"
+    }
 
     /// What the label says.
     var message: String = EmptyStateView.noSelectionMessage {
@@ -338,6 +344,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public let palette: CommandPaletteController
     public let newSessionMenu: NewSessionMenu
     public let dispatcher: MenuDispatcher
+    /// Every way a shell gets behind a row (M5.2): start, reopen, resume, close, remove.
+    public let launcher: SessionLauncher
 
     let splitViewController: MainSplitViewController
     /// The window's content view controller: the split view plus the header backdrop.
@@ -370,6 +378,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// A launch-time message shown in the status strip; see ``showNotice(_:)``.
     private var transientNotice: String?
     private var noticeTimer: DispatchSourceTimer?
+    /// Snapshots every live session periodically (M5.2), so a crash loses at most this much screen.
+    private var snapshotTimer: DispatchSourceTimer?
+    /// design.md → *Session flows*: "on a 5-min timer for live sessions".
+    public static let snapshotInterval: TimeInterval = 300
+    /// What the last lazy reopen of the selected row said, for the empty-state caption.
+    private var lastReopenFailure: SessionLauncher.Failure?
     /// Internal rather than private so the width tests can read what layout actually got.
     var sidebarWidthConstraint: NSLayoutConstraint?
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "mainwindow")
@@ -381,12 +395,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         store: AppStore,
         host: any TerminalHost,
         terminalView: NSView,
-        theme: Theme = .default
+        theme: Theme = .default,
+        home: String = NSHomeDirectory()
     ) {
         self.store = store
         self.host = host
         self.terminalView = terminalView
         self.theme = theme
+        self.launcher = SessionLauncher(store: store, host: host, home: home)
 
         self.sidebar = SidebarViewController(store: store, theme: theme)
         self.toolbarController = MainToolbarController(theme: theme)
@@ -411,6 +427,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
         super.init()
 
+        launcher.gridSize = { [weak self] in self?.launchSize() ?? TerminalSize(rows: 40, cols: 120) }
         buildSplitView()
         configureWindow()
         wireSidebar()
@@ -419,6 +436,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         registerMenuHandlers()
         observeStore()
         startEventPump()
+        startSnapshotTimer()
 
         applySidebarVisible(store.state.sidebarVisible)
         applySelection(focusTerminal: false)
@@ -555,22 +573,53 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             self?.presentNewSessionMenu(for: groupID)
         }
         sidebar.onNewGroup = { [weak self] in self?.presentNewGroupPanel() }
+        sidebar.onSessionContextMenu = { [weak self] id in self?.sessionContextMenu(for: id) }
+        sidebar.onGroupContextMenu = { [weak self] id in self?.groupContextMenu(for: id) }
     }
 
     // MARK: New group
 
     /// "＋ New group": a folder picker; the chosen folder becomes a group (see ``createGroup(from:)``).
     public func presentNewGroupPanel() {
+        presentFolderPanel(prompt: "Add group",
+                           message: "Choose a folder. It becomes a group, and its sessions start there.") { [weak self] url in
+            self?.createGroup(from: url)
+        }
+    }
+
+    /// "In another repo…" (M5.2): the same picker, and the new group's first session starts at
+    /// once — `claude` in the chosen folder. Choosing a folder that already roots a group launches
+    /// into that group.
+    public func presentAnotherRepoPanel() {
+        presentFolderPanel(prompt: "Start here",
+                           message: "Choose a repo. It becomes a group, and claude starts in it.") { [weak self] url in
+            guard let self, let groupID = self.createGroup(from: url) else { return }
+            self.store.flush()
+            self.newSessionMenu.configure(state: self.store.state, groupID: groupID)
+            guard let launch = self.newSessionMenu.repoRootLaunch() else { return }
+            self.newSessionMenu.perform(launch)
+        }
+    }
+
+    /// Overrides the folder picker: returns the folder, or nil for cancel. Tests set it — an
+    /// `NSOpenPanel` sheet needs a key window and a run loop.
+    public var folderPrompt: ((String) -> URL?)?
+
+    private func presentFolderPanel(prompt: String, message: String, completion: @escaping (URL) -> Void) {
+        if let folderPrompt {
+            if let url = folderPrompt(prompt) { completion(url) }
+            return
+        }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = true
-        panel.prompt = "Add group"
-        panel.message = "Choose a folder. It becomes a group, and its sessions start there."
-        panel.beginSheetModal(for: window) { [weak self] response in
+        panel.prompt = prompt
+        panel.message = message
+        panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
-            self?.createGroup(from: url)
+            completion(url)
         }
     }
 
@@ -597,6 +646,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     private func wireToolbar() {
         newSessionMenu.configureForSelection(state: store.state)
         newSessionMenu.onLaunch = { [weak self] launch in self?.launch(launch) }
+        newSessionMenu.onChooseAnotherRepo = { [weak self] in self?.presentAnotherRepoPanel() }
+        newSessionMenu.onManagePresets = { [weak self] in self?.presentPresetsSheet() }
         toolbarController.newSessionMenu = newSessionMenu.menu
         // `>_` is "new terminal" in the design: a bare shell in the selected group's directory,
         // not another way to open the `＋` menu.
@@ -688,6 +739,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         recordSidebarWidth()
         noticeTimer?.cancel()
         noticeTimer = nil
+        snapshotTimer?.cancel()
+        snapshotTimer = nil
         eventPump?.cancel()
         eventPump = nil
         if let host = host as? TerminalViewHost {
@@ -718,6 +771,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             guard let claude else { return }
             sidebar.lastMessageProvider = { id in claude.lastMessage(for: id) }
             claude.isSessionAttended = { [weak self] id in self?.isSessionAttended(id) ?? false }
+            // `claude -w` removes its worktree when the conversation ends, which is before the
+            // shell exits — so the worktree list is re-read on Claude's exit, not only the shell's.
+            claude.onClaudeExited = { [weak self] id in self?.launcher.noteExit(id) }
         }
     }
 
@@ -755,7 +811,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// ⇧⌘R. Was in the menu since M2.4 with no handler behind it (GUI pass 2026-09-08, 5d).
     /// An empty answer clears the rename, so the derived title comes back.
     func renameSelectedSession() {
-        guard let id = store.state.selection, let session = store.state.sessions[id] else { return }
+        guard let id = store.state.selection else { return }
+        renameSession(id)
+    }
+
+    func renameSession(_ id: SessionID) {
+        guard let session = store.state.sessions[id] else { return }
         let current = session.displayTitle
         if let renamePrompt {
             guard let answer = renamePrompt(current) else { return }
@@ -919,17 +980,45 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     func applySelection(focusTerminal: Bool) {
         let id = store.state.selection
         host.show(id)
+        // M5.2: a selected row the host has nothing for — restored from `state.json`, never shown
+        // in this run — gets its old screen and a fresh prompt now, lazily, on first show. A row
+        // hung up with ⌘W is *not* this case: the host still holds its grid, so it stays dead
+        // under the scrim until the user resumes it.
+        if let id, host.visibleSessionID == nil, store.state.sessions[id]?.live == nil {
+            switch launcher.reopen(id) {
+            case .success:
+                lastReopenFailure = nil
+                host.show(id)
+            case .failure(let failure):
+                lastReopenFailure = failure
+                showNotice(Self.reopenFailureNotice(failure))
+            }
+        }
         // Visibility follows the *host*, not the selection. From M5.1 a restored row exists in the
         // store with no terminal behind it, and showing the surface for one draws an empty black
         // rectangle where the empty state belongs.
         let hasSurface = host.visibleSessionID != nil
         detail.emptyState.isHidden = hasSurface
-        detail.emptyStateMessage = id == nil
-            ? EmptyStateView.noSelectionMessage
-            : EmptyStateView.notRunningMessage
+        detail.emptyStateMessage = emptyStateMessage(selection: id)
         terminalView.isHidden = !hasSurface
         updateExitedScrim()
         if hasSurface, focusTerminal { focusTerminalIfSessionShown() }
+    }
+
+    private func emptyStateMessage(selection: SessionID?) -> String {
+        guard selection != nil else { return EmptyStateView.noSelectionMessage }
+        if case .missingDirectory(let path)? = lastReopenFailure {
+            return EmptyStateView.missingDirectoryMessage(path)
+        }
+        return EmptyStateView.notRunningMessage
+    }
+
+    static func reopenFailureNotice(_ failure: SessionLauncher.Failure) -> String {
+        switch failure {
+        case .missingDirectory(let path): "Can\u{2019}t reopen: \(path) is missing"
+        case .spawnFailed(let reason): "Can\u{2019}t reopen: \(reason)"
+        case .unknownSession: "Can\u{2019}t reopen: unknown session"
+        }
     }
 
     /// Shows the dim over a selected session whose shell has exited. A row with no surface at all
@@ -1087,71 +1176,307 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - Launching
 
-    /// Starts a session for a resolved `Launch`: spawn the pty, put the row in the store, select it.
-    ///
-    /// Selection is what makes the terminal visible — the store observer calls
-    /// ``applySelection(focusTerminal:)``, which calls `host.show`. Nothing here calls `show`.
+    /// Starts a session for a resolved `Launch` (see `SessionLauncher.start`). A failure is modal:
+    /// the user just asked for this and nothing else on screen explains why it did not happen.
     public func launch(_ launch: NewSessionMenu.Launch) {
-        let home = NSHomeDirectory()
-        let cwd = Paths.expandingTilde(launch.cwd, home: home)
-
-        // The pty shim ignores `chdir`'s return value (`tkz_pty_spawn` is post-`fork()`, where
-        // there is nothing safe to report through), so a bad directory does **not** fail the
-        // spawn — it silently starts the shell somewhere else. Validating here is the only way a
-        // launch into a missing directory fails visibly.
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory),
-              isDirectory.boolValue
-        else {
-            presentLaunchFailure("\(cwd) is not a directory.")
-            return
+        switch launcher.start(launch) {
+        case .success:
+            break
+        case .failure(.missingDirectory(let path)):
+            presentLaunchFailure("\(path) is not a directory.")
+        case .failure(.spawnFailed(let reason)):
+            presentLaunchFailure(reason)
+        case .failure(.unknownSession):
+            presentLaunchFailure("unknown session")
         }
-
-        let id = SessionID.generate()
-        let pid: pid_t
-        do {
-            pid = try host.open(
-                id, cwd: cwd, env: launchEnvironment(for: launch), size: launchSize())
-        } catch {
-            logger.error("spawn failed: \(String(describing: error), privacy: .public)")
-            presentLaunchFailure(String(describing: error))
-            return
-        }
-
-        store.update {
-            // `cwd` goes in **unexpanded**: the models keep paths as written (`state.json` persists
-            // them), and expansion belongs at the `chdir` boundary above.
-            $0.createSession(
-                id: id, groupID: launch.groupID, cwd: launch.cwd,
-                accountKey: launch.accountKey, presetID: launch.presetID)
-            // Without live state `Session.status` is `live?.status ?? .exited` and a brand-new row
-            // would draw as a dead one.
-            $0.setLive(LiveSessionState(shellPid: pid, status: .idle), for: id)
-            $0.select(id)
-        }
-
-        // `.shell` types nothing. Everything else waits for the shell to be ready first — a write
-        // in the same turn as the spawn is discarded by zsh's `tcsetattr(TCSAFLUSH)` (M1.10).
-        if !launch.command.isEmpty {
-            host.runWhenReady(id, command: launch.command)
-        }
-        logger.info("launched \(launch.kind.rawValue, privacy: .public): \(launch.logLine, privacy: .public)")
-    }
-
-    /// `CLAUDE_CONFIG_DIR` for a non-primary account, nothing otherwise.
-    ///
-    /// `Launch.accountKey` is an `Account.key` (a basename); the child needs `Account.configDir`.
-    /// The primary account is left alone so the shell uses `~/.claude`.
-    private func launchEnvironment(for launch: NewSessionMenu.Launch) -> [String: String] {
-        guard let key = launch.accountKey, key != Account.defaultKey,
-              let account = store.state.accounts[key]
-        else { return [:] }
-        return ["CLAUDE_CONFIG_DIR": account.configDir]
     }
 
     /// The grid a new session opens at. `metalView` is nil only on the injected-host path (tests).
     private func launchSize() -> TerminalSize {
         metalView?.gridSizeForBounds() ?? TerminalSize(rows: 40, cols: 120)
+    }
+
+    // MARK: - Resume
+
+    /// ⌘R: `claude --resume` the selected row (reopening its shell first if it has none).
+    func resumeSelectedSession() {
+        guard let id = store.state.selection else { return }
+        resumeSession(id)
+    }
+
+    func resumeSession(_ id: SessionID) {
+        let outcome = launcher.resume(id)
+        // A reopen of the *selected* row replaces its host session, which detaches the surface,
+        // and the selection has not changed — so nothing else would re-attach it. Idempotent
+        // when the row was another one: the selection change re-shows through the observer too.
+        reattachSurface()
+        switch outcome {
+        case .success(.resumed):
+            focusTerminalIfSessionShown()
+        case .success(.claudeRunning):
+            showNotice("Claude is already running in this session", for: .seconds(3))
+        case .success(.nothingToResume):
+            showNotice("No Claude conversation to resume \u{00B7} the shell is back", for: .seconds(4))
+        case .failure(let failure):
+            showNotice(Self.reopenFailureNotice(failure))
+        }
+    }
+
+    /// "Resume all in group" — the selected session's group, or `groupID`.
+    func resumeAll(inGroup groupID: GroupID? = nil) {
+        guard let group = groupID ?? store.state.selectedSession?.groupID else { return }
+        let outcome = launcher.resumeAll(in: group)
+        reattachSurface()
+        let name = store.state.groups[group]?.name ?? "group"
+        var text = "Resumed \(outcome.resumed.count) in \(name)"
+        if !outcome.failed.isEmpty { text += " \u{00B7} \(outcome.failed.count) failed" }
+        showNotice(text, for: .seconds(4))
+    }
+
+    /// The "auto-resume on launch" pass. `AppDelegate` calls it once the Claude integration is up,
+    /// so every `claude --resume` runs through the shim and gets a `launch` frame.
+    public func autoResumeIfEnabled() {
+        guard store.state.autoResumeOnLaunch else { return }
+        let ids = store.state.orderedSessions.map(\.id)
+        let outcome = launcher.resumeAll(ids)
+        reattachSurface()
+        logger.info("auto-resume: \(outcome.resumed.count) resumed, \(outcome.failed.count) failed")
+        if !outcome.resumed.isEmpty || !outcome.failed.isEmpty {
+            var text = "Auto-resumed \(outcome.resumed.count) session\(outcome.resumed.count == 1 ? "" : "s")"
+            if !outcome.failed.isEmpty { text += " \u{00B7} \(outcome.failed.count) failed" }
+            showNotice(text, for: .seconds(6))
+        }
+    }
+
+    /// Re-shows the selection after something replaced host sessions underneath it (a reopen).
+    /// `applySelection` reads the store's *current* selection, which a `select` inside the launcher
+    /// has already set even though its change set is delivered next turn.
+    private func reattachSurface() {
+        applySelection(focusTerminal: false)
+    }
+
+    func toggleAutoResume() {
+        store.update { $0.setAutoResumeOnLaunch(!$0.autoResumeOnLaunch) }
+    }
+
+    // MARK: - Close / remove
+
+    /// Overrides the "close a working session?" alert: gets the session, returns whether to go
+    /// ahead. Tests set it.
+    public var confirmClose: ((Session) -> Bool)?
+    /// Overrides the "remove this session?" alert. Tests set it.
+    public var confirmRemove: ((Session) -> Bool)?
+
+    /// ⌘W. Hangs the child up; the row stays and keeps its screen, so it is resumable. A session
+    /// that is `working` or `waiting` is confirmed first — Claude is mid-answer, or mid-question.
+    /// **On a row that has already exited, ⌘W removes it** (Thomas, 2026-09-08): there is nothing
+    /// left to hang up, and the second ⌘W is how a dead row is cleared from the sidebar with the
+    /// keyboard. No confirmation — the session is already dead, and the conversation itself is
+    /// Claude Code's to keep. ⇧⌘W is the confirmed Remove for a row in any state.
+    func closeSelectedTerminal() {
+        guard let id = store.state.selection else { return }
+        closeSession(id)
+    }
+
+    func closeSession(_ id: SessionID) {
+        guard let session = store.state.sessions[id] else { return }
+        let busy: Bool
+        switch session.status {
+        case .working, .waiting: busy = true
+        case .idle: busy = false
+        case .exited:
+            launcher.remove(id)
+            return
+        }
+        if busy {
+            let confirmed = confirmClose?(session) ?? runConfirmation(
+                title: "Close \u{201C}\(session.displayTitle)\u{201D}?",
+                message: session.status == .working
+                    ? "Claude is still working in this session. Closing hangs the shell up; the conversation can be resumed later."
+                    : "This session is waiting for you. Closing hangs the shell up; the conversation can be resumed later.",
+                button: "Close")
+            guard confirmed else { return }
+        }
+        launcher.close(id)
+    }
+
+    /// ⇧⌘W / context menu "Remove": the row and its snapshot go away. Always confirmed — the
+    /// snapshot is the one thing that cannot come back. The worktree on disk is never touched.
+    func removeSelectedSession() {
+        guard let id = store.state.selection else { return }
+        removeSession(id)
+    }
+
+    func removeSession(_ id: SessionID) {
+        guard let session = store.state.sessions[id] else { return }
+        let confirmed = confirmRemove?(session) ?? runConfirmation(
+            title: "Remove \u{201C}\(session.displayTitle)\u{201D}?",
+            message: "The row and its saved screen are deleted. "
+                + (session.isWorktree ? "The worktree on disk is left alone. " : "")
+                + "The Claude conversation itself is kept by Claude Code.",
+            button: "Remove")
+        guard confirmed else { return }
+        launcher.remove(id)
+    }
+
+    private func runConfirmation(title: String, message: String, button: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: button)
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    // MARK: - Context menus
+
+    /// Right-click on a session row: Resume / Rename / Close / Remove, each enabled only when it
+    /// can do something. The row is addressed by id, never by the selection.
+    func sessionContextMenu(for id: SessionID) -> NSMenu? {
+        guard let session = store.state.sessions[id] else { return nil }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        let resume = contextItem("Resume", action: #selector(contextResume(_:)), id: id.rawValue)
+        resume.isEnabled = session.claudeSessionId != nil && session.live?.descriptor == nil
+        resume.identifier = ContextItemID.resume
+        menu.addItem(resume)
+
+        let rename = contextItem("Rename\u{2026}", action: #selector(contextRename(_:)), id: id.rawValue)
+        rename.identifier = ContextItemID.rename
+        menu.addItem(rename)
+        menu.addItem(.separator())
+
+        let close = contextItem("Close", action: #selector(contextClose(_:)), id: id.rawValue)
+        // An exited row has nothing to hang up; ⌘W on it removes, and so the menu's "Remove" row
+        // below is the verb for it.
+        close.isEnabled = session.live != nil
+        close.identifier = ContextItemID.close
+        menu.addItem(close)
+
+        let remove = contextItem("Remove", action: #selector(contextRemove(_:)), id: id.rawValue)
+        remove.identifier = ContextItemID.remove
+        menu.addItem(remove)
+        return menu
+    }
+
+    /// Right-click on a group header: New session… / Resume all in group.
+    func groupContextMenu(for id: GroupID) -> NSMenu? {
+        guard let group = store.state.groups[id] else { return nil }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let new = contextItem("New session in \(group.name)\u{2026}", action: #selector(contextNewSession(_:)), id: id.rawValue)
+        new.identifier = ContextItemID.newSession
+        menu.addItem(new)
+        let resumeAll = contextItem("Resume all in \(group.name)", action: #selector(contextResumeAll(_:)), id: id.rawValue)
+        resumeAll.isEnabled = store.state.sessions(in: id).contains {
+            $0.claudeSessionId != nil && $0.live?.descriptor == nil
+        }
+        resumeAll.identifier = ContextItemID.resumeAll
+        menu.addItem(resumeAll)
+        return menu
+    }
+
+    /// Identifiers for the context-menu rows, so tests can find them.
+    public enum ContextItemID {
+        public static let resume = NSUserInterfaceItemIdentifier("tkzmux.context.resume")
+        public static let rename = NSUserInterfaceItemIdentifier("tkzmux.context.rename")
+        public static let close = NSUserInterfaceItemIdentifier("tkzmux.context.close")
+        public static let remove = NSUserInterfaceItemIdentifier("tkzmux.context.remove")
+        public static let newSession = NSUserInterfaceItemIdentifier("tkzmux.context.newSession")
+        public static let resumeAll = NSUserInterfaceItemIdentifier("tkzmux.context.resumeAll")
+    }
+
+    private func contextItem(_ title: String, action: Selector, id: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.representedObject = id
+        return item
+    }
+
+    private func sessionID(from sender: Any?) -> SessionID? {
+        ((sender as? NSMenuItem)?.representedObject as? String).flatMap(SessionID.init)
+    }
+
+    private func groupID(from sender: Any?) -> GroupID? {
+        ((sender as? NSMenuItem)?.representedObject as? String).flatMap(GroupID.init)
+    }
+
+    @objc private func contextResume(_ sender: Any?) {
+        guard let id = sessionID(from: sender) else { return }
+        resumeSession(id)
+    }
+
+    @objc private func contextRename(_ sender: Any?) {
+        guard let id = sessionID(from: sender) else { return }
+        renameSession(id)
+    }
+
+    @objc private func contextClose(_ sender: Any?) {
+        guard let id = sessionID(from: sender) else { return }
+        closeSession(id)
+    }
+
+    @objc private func contextRemove(_ sender: Any?) {
+        guard let id = sessionID(from: sender) else { return }
+        removeSession(id)
+    }
+
+    @objc private func contextNewSession(_ sender: Any?) {
+        guard let id = groupID(from: sender) else { return }
+        presentNewSessionMenu(for: id)
+    }
+
+    @objc private func contextResumeAll(_ sender: Any?) {
+        guard let id = groupID(from: sender) else { return }
+        resumeAll(inGroup: id)
+    }
+
+    // MARK: - Presets
+
+    /// Overrides the presets sheet. Tests set it.
+    public var presetsPrompt: (([Preset]) -> [Preset]?)?
+
+    /// "Manage presets…": the sheet edits a copy and commits the whole list on Done.
+    public func presentPresetsSheet() {
+        let current = store.state.presets
+        if let presetsPrompt {
+            if let edited = presetsPrompt(current) { commitPresets(edited) }
+            return
+        }
+        let sheet = PresetsSheetController(
+            presets: current, accounts: Array(store.state.accounts.values), theme: theme)
+        sheet.present(over: window) { [weak self] edited in
+            guard let self, let edited else { return }
+            self.commitPresets(edited)
+            self.focusTerminalIfSessionShown()
+        }
+    }
+
+    private func commitPresets(_ presets: [Preset]) {
+        store.update { $0.presets = presets }
+    }
+
+    // MARK: - Periodic snapshots
+
+    /// Every `snapshotInterval`, write the `.ghsnap` of every session that changed. Sessions the
+    /// idle compressor already saved are skipped inside `snapshotAll` (their activity token has
+    /// not moved), so a quiet sidebar costs nothing here.
+    private func startSnapshotTimer() {
+        guard let viewHost = host as? TerminalViewHost else { return }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + Self.snapshotInterval, repeating: Self.snapshotInterval,
+                       leeway: .seconds(10))
+        timer.setEventHandler { [weak viewHost, logger] in
+            MainActor.assumeIsolated {
+                guard let viewHost else { return }
+                let sweep = viewHost.snapshotAll()
+                logger.info("periodic snapshot: saved=\(sweep.saved.count) skipped=\(sweep.skipped.count) failed=\(sweep.failed.count) bytes=\(sweep.totalBytes)")
+            }
+        }
+        snapshotTimer = timer
+        timer.resume()
     }
 
     /// Overrides the modal alert a failed launch shows. Tests set it — `NSAlert.runModal()` in a
@@ -1169,16 +1494,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         alert.informativeText = message
         alert.alertStyle = .warning
         alert.runModal()
-    }
-
-    /// ⌘W. Hangs the child up; the row stays and keeps its screen, so it is resumable (M5.2).
-    /// Removing a row is a different verb (`closeSession`) and is not wired yet.
-    private func closeSelectedTerminal() {
-        guard let id = store.state.selection else { return }
-        host.close(id, signal: SIGHUP)
-        // Do not wait for `.exited`: the row must read as closed the moment the user asks. The
-        // event arrives afterwards and `closeSession` is idempotent.
-        store.update { $0.closeSession(id) }
     }
 
     // MARK: - Terminal events
@@ -1201,6 +1516,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // The row stays, with its last screen: closed is resumable, removed is not.
             // `host.discard` (which the dev window uses) would throw the grid away.
             store.update { $0.closeSession(id) }
+            // The worktree may have gone with it (design.md → *Session flows → New worktree*).
+            launcher.noteExit(id)
         default:
             // `.title`/`.pwd` deliberately do not land in the store: `Session.title` is the rename
             // slot (design.md → Session flows) and a shell-set title is not a rename. M3.4 did not
@@ -1226,6 +1543,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         dispatcher.setHandler(.renameSession) { [weak self] in self?.renameSelectedSession() }
         dispatcher.setHandler(.copyLastMessage) { [weak self] in self?.copyLastMessage() }
         dispatcher.setHandler(.removeShellIntegration) { [weak self] in self?.removeShellIntegration() }
+        // M5.2
+        dispatcher.setHandler(.closeSession) { [weak self] in self?.removeSelectedSession() }
+        dispatcher.setHandler(.resumeSession) { [weak self] in self?.resumeSelectedSession() }
+        dispatcher.setHandler(.resumeAllInGroup) { [weak self] in self?.resumeAll() }
+        dispatcher.setHandler(.managePresets) { [weak self] in self?.presentPresetsSheet() }
+        dispatcher.setHandler(.toggleAutoResume) { [weak self] in self?.toggleAutoResume() }
+        dispatcher.setCheckmark(.toggleAutoResume) { [weak self] in self?.store.state.autoResumeOnLaunch ?? false }
         dispatcher.setHandler(.nextSession) { [weak self] in
             self?.store.update { $0.selectAdjacentSession(offset: 1) }
         }

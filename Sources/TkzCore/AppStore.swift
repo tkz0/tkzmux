@@ -127,6 +127,7 @@ public struct ChangeSet: Hashable, Sendable {
         if old.sidebarVisible != new.sidebarVisible || old.sidebarWidth != new.sidebarWidth
             || old.windowFrame != new.windowFrame
             || old.presets != new.presets || old.shortcuts != new.shortcuts
+            || old.autoResumeOnLaunch != new.autoResumeOnLaunch
         {
             change.chrome = true
         }

@@ -187,18 +187,25 @@ struct MainMenuTests {
 
         for action in [ShortcutAction.newSession, .searchSessions, .commandPalette, .toggleSidebar,
                        .jumpToNeedsYou, .nextSession, .previousSession, .closeTerminal,
-                       .renameSession, .copyLastMessage, .removeShellIntegration] {
+                       .renameSession, .copyLastMessage, .removeShellIntegration,
+                       .closeSession, .resumeSession, .resumeAllInGroup, .managePresets,
+                       .toggleAutoResume] {
             #expect(dispatcher.canPerform(action), "\(action.rawValue) should be wired")
         }
         for n in 1...9 {
             #expect(dispatcher.canPerform(.selectSession(n)))
         }
-        // Present in the menu, deliberately not implemented yet. `closeSession` (remove the row) is
-        // M5.2's; the rest are M3/M4/Later.
-        for action in [ShortcutAction.closeSession, .notifications,
-                       .settings, .openFolder, .reloadConfig] {
+        // Present in the menu, deliberately not implemented yet (M3.5/M4/Later).
+        for action in [ShortcutAction.notifications, .settings, .openFolder, .reloadConfig] {
             #expect(dispatcher.canPerform(action) == false, "\(action.rawValue) is not implemented yet")
         }
+        // The auto-resume toggle is the one checkmark item; it follows the store.
+        #expect(dispatcher.checkmark(for: .toggleAutoResume) == false)
+        harness.mutate { $0.setAutoResumeOnLaunch(true) }
+        #expect(dispatcher.checkmark(for: .toggleAutoResume) == true)
+        let item = MainMenu.commandItems(in: MainMenu.build(dispatcher: dispatcher))[.toggleAutoResume]!
+        _ = dispatcher.validateMenuItem(item)
+        #expect(item.state == .on)
     }
 
     @Test("⌘B through the menu dispatcher toggles the real sidebar")

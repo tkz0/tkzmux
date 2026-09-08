@@ -78,7 +78,14 @@ public protocol TerminalHost: AnyObject {
     /// The `.ghsnap` bytes for `id`.
     func snapshot(_ id: SessionID) throws -> Data
     /// Rebuilds `id` from a snapshot and spawns a fresh shell under it. Returns the new pid.
+    /// An id the host still holds (a hung-up session whose grid is kept) is replaced.
     func restore(_ id: SessionID, from: Data, cwd: String, env: [String: String]) throws -> pid_t
+    /// The `.ghsnap` on disk for `id`, if one was saved — what a row restored from `state.json`
+    /// comes back from (M5.2). Not the live grid: that is `snapshot(_:)`.
+    func savedSnapshot(_ id: SessionID) -> Data?
+    /// **Remove**: forgets the session entirely — hangs it up if alive, drops its grid, deletes its
+    /// snapshot on disk. The one call that makes a row unresumable; design.md → *Session flows*.
+    func discard(_ id: SessionID)
     /// Every session's events, tagged.
     var events: AsyncStream<(SessionID, TerminalEvent)> { get }
 }
@@ -230,8 +237,27 @@ public final class TerminalViewHost: TerminalHost {
     ) throws -> pid_t {
         let session = try makeSession(size: size)
         let pty = try spawn(id: id, session: session, cwd: cwd, env: env, size: size)
+        evict(id)
         adopt(HostSession(id: id, session: session, pty: pty))
         return pty.pid
+    }
+
+    /// Drops a session the host still holds under `id` so a new one can take its place — the
+    /// Resume-after-⌘W case, where the dead grid is kept on screen until the row is reopened.
+    /// Unlike `discard`, the snapshot on disk is left alone: it is what the reopen restores from.
+    /// Without this, `adopt` would overwrite `sessions[id]`, append `id` to `order` a second time
+    /// and leave the old event pump running against a session nothing references.
+    private func evict(_ id: SessionID) {
+        guard let host = sessions.removeValue(forKey: id) else { return }
+        order.removeAll { $0 == id }
+        host.eventsTask?.cancel()
+        host.session.finishEvents()
+        if host.isAlive { _ = host.pty.terminate(signal: SIGHUP) }
+        compressor?.forget(id.rawValue)
+        if visibleID == id {
+            view.show(nil)
+            visibleID = nil
+        }
     }
 
     /// A `TerminalSession` sized for the grid, themed from the view's render context.
@@ -453,18 +479,19 @@ public final class TerminalViewHost: TerminalHost {
 
     /// Forgets the row entirely: cancels the event pump, drops the session, deletes its snapshot.
     ///
-    /// **Not part of the protocol** — design.md's `close` explicitly keeps the row resumable, so
-    /// there is no way to remove one. M2 needs this (a closed tab must not come back on the next
-    /// launch); reported as a design.md delta.
+    /// The snapshot is deleted **whether or not the host holds the session**: a row restored from
+    /// `state.json` that was never selected has a `.ghsnap` and no `HostSession`, and Remove on it
+    /// must still take the file with it (M5.2). Part of the protocol since M5.2; design.md's
+    /// `close` keeps the row resumable, so this is the only way to make one go away.
     public func discard(_ id: SessionID) {
-        guard let host = sessions.removeValue(forKey: id) else { return }
-        order.removeAll { $0 == id }
-        host.eventsTask?.cancel()
-        host.session.finishEvents()
-        if host.isAlive { _ = host.pty.terminate(signal: SIGHUP) }
-        compressor?.forget(id.rawValue)
+        let wasVisible = visibleID == id
+        evict(id)
         _ = try? snapshots.delete(id.rawValue)
-        if visibleID == id { show(order.last) }
+        if wasVisible { show(order.last) }
+    }
+
+    public func savedSnapshot(_ id: SessionID) -> Data? {
+        try? snapshots.load(id.rawValue)
     }
 
     /// Hangs up every shell and detaches the surface. Called from the window controller's
@@ -510,6 +537,7 @@ public final class TerminalViewHost: TerminalHost {
         let pty = try spawn(id: id, session: session, cwd: cwd, env: env, size: size)
         let host = HostSession(id: id, session: session, pty: pty)
         host.wasRestored = true
+        evict(id)
         adopt(host)
         return pty.pid
     }

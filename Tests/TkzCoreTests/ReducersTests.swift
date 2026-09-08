@@ -153,12 +153,94 @@ import Testing
     }
 
     @Test func resumeDirectoryPrefersTheWorktree() {
-        var session = Session(groupID: .generate(), cwd: "/repo/wt", repoRoot: "/repo",
+        // `claude -w` runs from the repo root, so cwd == repoRoot for a worktree session.
+        var session = Session(groupID: .generate(), cwd: "/repo", repoRoot: "/repo",
                               worktreePath: "/repo/.claude/worktrees/wt", isWorktree: true,
                               accountKey: "claude")
         #expect(session.resumeDirectory == "/repo/.claude/worktrees/wt")
+        #expect(session.resumeDirectoryCandidates == ["/repo/.claude/worktrees/wt", "/repo"])
         session.isWorktree = false  // worktree gone → repo root, badge cleared
         #expect(session.resumeDirectory == "/repo")
+        #expect(session.resumeDirectoryCandidates == ["/repo"])
+    }
+
+    @Test func resumeDirectoryCandidatesPutTheStartDirectoryBeforeTheRepoRoot() {
+        // A fixed-path preset: Claude ran in `cwd`, which is the project `--resume` looks under,
+        // so it outranks the group's repo root. The launcher takes the first that exists (M5.2).
+        let fixed = Session(groupID: .generate(), cwd: "/elsewhere", repoRoot: "/repo",
+                            accountKey: "claude")
+        #expect(fixed.resumeDirectoryCandidates == ["/elsewhere", "/repo"])
+        let bare = Session(groupID: .generate(), cwd: "/home", accountKey: "claude")
+        #expect(bare.resumeDirectoryCandidates == ["/home"])
+    }
+
+    @Test func worktreeRootOfPath() {
+        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees/review") == "/repo/.claude/worktrees/review")
+        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees/review/src/deep") == "/repo/.claude/worktrees/review")
+        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees/") == nil)
+        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees") == nil)
+        #expect(Session.worktreeRoot(ofPath: "/repo/src") == nil)
+        #expect(Session.worktreeRoot(ofPath: "~/dev/x/.claude/worktrees/a") == "~/dev/x/.claude/worktrees/a")
+    }
+
+    @Test func descriptorInsideAWorktreeSetsTheBadge() {
+        var state = AppState()
+        let group = state.addGroup(name: "repo", repoRoot: "/repo")
+        let session = state.createSession(groupID: group.id, cwd: "/repo", accountKey: "claude")
+        state.setLive(LiveSessionState(shellPid: 1), for: session.id)
+        #expect(state.sessions[session.id]?.isWorktree == false)
+
+        // `claude -w` reports the worktree it created as its cwd.
+        let descriptor = ClaudeSessionInfo(
+            configDir: "/home/.claude", pid: 99, sessionId: "sid-1",
+            cwd: "/repo/.claude/worktrees/tkz-30", status: .idle)
+        state.applyDescriptor(descriptor, alive: true, to: session.id)
+        #expect(state.sessions[session.id]?.isWorktree == true)
+        #expect(state.sessions[session.id]?.worktreePath == "/repo/.claude/worktrees/tkz-30")
+        #expect(state.sessions[session.id]?.displayTitle == "tkz-30")
+
+        // A plain repo-root descriptor leaves a non-worktree row alone.
+        var plain = AppState()
+        let g2 = plain.addGroup(name: "repo", repoRoot: "/repo")
+        let s2 = plain.createSession(groupID: g2.id, cwd: "/repo", accountKey: "claude")
+        plain.applyDescriptor(
+            ClaudeSessionInfo(configDir: "/home/.claude", pid: 7, sessionId: "sid-2", cwd: "/repo"),
+            alive: true, to: s2.id)
+        #expect(plain.sessions[s2.id]?.isWorktree == false)
+        #expect(plain.sessions[s2.id]?.worktreePath == nil)
+    }
+
+    @Test func clearingTheWorktreeBadgeKeepsThePath() {
+        var state = AppState()
+        let group = state.addGroup(name: "repo", repoRoot: "/repo")
+        let session = state.createSession(
+            groupID: group.id, cwd: "/repo", worktreePath: "/repo/.claude/worktrees/x",
+            isWorktree: true, accountKey: "claude")
+        state.clearWorktreeBadge(session.id)
+        #expect(state.sessions[session.id]?.isWorktree == false)
+        #expect(state.sessions[session.id]?.worktreePath == "/repo/.claude/worktrees/x")
+        #expect(state.sessions[session.id]?.resumeDirectory == "/repo")
+        state.setWorktree(session.id, path: "/repo/.claude/worktrees/y", isWorktree: true)
+        #expect(state.sessions[session.id]?.worktreePath == "/repo/.claude/worktrees/y")
+        #expect(state.sessions[session.id]?.isWorktree == true)
+    }
+
+    @Test func accountConfigDirectoryIsDerivedFromTheKey() {
+        #expect(Account.configDirectory(forKey: "claude", home: "/Users/x") == nil)
+        #expect(Account.configDirectory(forKey: "claude-work", home: "/Users/x") == "/Users/x/.claude-work")
+        #expect(Account.configDirectory(forKey: "claude-work", home: "/Users/x/") == "/Users/x/.claude-work")
+        #expect(Account.configDirectory(forKey: "", home: "/Users/x") == nil)
+        #expect(Account.configDirectory(forKey: "../etc", home: "/Users/x") == nil)
+    }
+
+    @Test func autoResumePreferenceIsAChromeChange() {
+        var state = AppState()
+        let before = state
+        state.setAutoResumeOnLaunch(true)
+        let change = ChangeSet.diff(from: before, to: state)
+        #expect(change.chrome)
+        #expect(change.structure == false)
+        #expect(change.sessions.isEmpty)
     }
 }
 

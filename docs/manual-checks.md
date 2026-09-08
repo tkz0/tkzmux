@@ -276,9 +276,11 @@ What still needs a real login, because it needs a screen and a mouse:
    **Fail**: the sidebar snaps back on mouse-up (reported and fixed 2026-09-08 — the seeding width
    constraint was re-asserting itself on every layout pass after the drag ended), or
    `sidebar.width` is 240 or 300. Confirmed working by hand on 2026-09-08.
-2. Relaunch. **Pass**: everything above is back; both rows read `exited`; the detail half shows
-   *"Session not running · resume arrives in M5.2"*, **not** a blank black rectangle. **Fail**: an
-   empty terminal grid under the exited scrim.
+2. Relaunch. **Pass**: everything above is back; the selected row's last screen is visible with a
+   fresh prompt under it (M5.2 reopens the selected row on first show); every other row reads
+   `exited` until it is selected. **Fail**: a blank black rectangle, or an empty terminal grid
+   under the exited scrim. (Before M5.2 the pass condition here was the empty state reading
+   *"Session not running · resume arrives in M5.2"*.)
 3. `printf 'x' > "$HOME/Library/Application Support/tkzmux/state.json"`, relaunch. **Pass**: the
    sidebar is back and the status strip reads *"Restored sidebar from backup"* for ~10 s.
 4. `kill -9` the app while working, relaunch. **Pass**: the sidebar is back (the last ≤500 ms of
@@ -326,6 +328,60 @@ reinstalls.
 
 **5f. Idle cost.** 10 live sessions, Activity Monitor 60 s. **Pass**: the watcher's share is
 invisible (< 0.3 % total for the app at idle).
+
+---
+
+### 6. M5.2 — launch and restore flows (TKZ-30)
+
+Verified headlessly on 2026-09-08: `SessionLauncherTests`, `MainWindowRestoreTests`,
+`PresetsSheetTests` and `WorktreeListTests` cover start/reopen/resume/close/remove against a spy
+host and real directories; a `swift run tkzmux` with `TKZMUX_DEV_AUTOQUIT_MS` over the real
+`state.json` (10 rows) reopened the selected row and housekeeping removed 14 orphaned `.ghsnap`
+files. What is left is the ticket's acceptance list, which needs a display and real Claude sessions.
+Keep Console.app open on subsystem `se.tkz.tkzmux`, category `launch`, for every step — each
+start/reopen logs its cwd, `CLAUDE_CONFIG_DIR` and command (docs/perf.md → *Launch audit*).
+
+**6a. New worktree.** Select a repo group (＋ New group on CoreInvest if it is not there yet),
+⌘N → *New worktree (claude -w)*. **Pass**: `<repo>/.claude/worktrees/<name>` exists within a few
+seconds, the row shows the `WT` badge and the worktree name as its title, and Claude's auto-name
+replaces the title later. **Fail**: no badge (the descriptor's cwd was not under
+`.claude/worktrees`), or the title stays the repo's basename.
+
+**6b. Quit and restore.** Open ~10 sessions across both accounts (Account submenu on ⌘N), some
+worktree, some repo root, a couple of plain `>_` shells; rename one; ⌘Q. Relaunch. **Pass**:
+groups, order and selection are identical; the selected row shows its last screen with a fresh
+prompt; clicking any other row shows *its* last screen with a fresh prompt (a login zsh, so
+~50 ms). ⌘R on a row → `claude --resume <id>` is typed, the conversation continues, the title is
+kept, and in that Claude `/usage` shows the plan of the account the row was started on. In
+Console the `launch` line for that row carries the right `CLAUDE_CONFIG_DIR` (`default` for the
+primary account, `~/.<key>` otherwise). **Fail**: a row reopens in the wrong directory, on the
+wrong account, or `--resume` starts a *new* conversation (the descriptor's `sessionId` changed).
+
+**6c. Worktree deleted by hand.** Quit; `rm -rf <repo>/.claude/worktrees/<name>` (and
+`git -C <repo> worktree prune`); relaunch; ⌘R on that row. **Pass**: the shell opens in the repo
+root, the `WT` badge is gone, the status strip says nothing alarming. Also: let a `claude -w`
+session end and answer "remove the worktree" — within a second the badge comes off that row without
+a relaunch.
+
+**6d. Preset.** ＋ → *From preset…* → *Manage presets…*: add one with command `claude`, start in
+*New worktree*, name `preset-test`, account = the second account, env `TKZ_PRESET=1`; Done. Run it
+from the presets submenu. **Pass**: a session in `<repo>/.claude/worktrees/preset-test` on the
+second account (`/usage`), and `echo $TKZ_PRESET` in a `>_` shell of the same preset prints 1.
+
+**6e. Close and remove.** ⌘W on a `working` row → an alert; Cancel keeps it running; Close hangs
+it up, the screen dims, the row stays. ⌘W again on that (now exited) row → the row is gone, no
+alert. ⇧⌘W (or right-click → Remove) on a live row → an alert; Remove deletes the row; its
+`.ghsnap` under Application Support is gone; the worktree on disk is **not**.
+Right-click a group header → *Resume all in <group>* resumes every resumable row and leaves the
+selection alone.
+
+**6f. Auto-resume.** App menu → *Auto-resume Sessions on Launch* (checkmark on). ⌘Q, relaunch.
+**Pass**: every row with a conversation gets `claude --resume` typed, the status strip says
+"Auto-resumed N sessions", and each lands on its own account.
+
+**6g. A day of use.** ≥ 20 sessions over a working day. **Pass**: no lost rows after any quit or
+crash, and in Console every `launch` line's `CLAUDE_CONFIG_DIR` matches the row's account chip.
+Paste the `log show` extract into docs/perf.md → *Launch audit* → run notes.
 
 ## Reporting back
 
