@@ -294,6 +294,12 @@ public final class SidebarViewController: NSViewController {
     // MARK: Change-set dispatch
 
     private func apply(_ change: ChangeSet) {
+        // Captured *before* `applyStructure`, which ends in `syncSelectionToOutline` and therefore
+        // overwrites `appliedSelection` with the incoming id. Reading it afterwards makes "the row
+        // that lost the selection" and "the row that gained it" the same row, so the old one is
+        // never reloaded and keeps painting `Theme.selection` — one extra highlighted row per
+        // launch, since creating a session selects it in the same change set.
+        let losingSelection = appliedSelection
         if change.structure { applyStructure() }
         if !change.groups.isEmpty { applyGroups(change.groups) }
 
@@ -306,7 +312,7 @@ public final class SidebarViewController: NSViewController {
             // Both the row that lost the selection and the one that gained it repaint their own
             // `Theme.selection`, so both need a reload. The new id is usually already in
             // `change.sessions` (`select` touches `lastActiveAt`); the old one never is.
-            for id in [appliedSelection, store.state.selection].compactMap({ $0 }) {
+            for id in [losingSelection, store.state.selection].compactMap({ $0 }) {
                 let row = self.row(forSession: id)
                 if row >= 0 { rows.insert(row) }
             }

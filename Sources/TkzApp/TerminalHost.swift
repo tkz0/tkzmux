@@ -60,6 +60,12 @@ public protocol TerminalHost: AnyObject {
     func open(_ id: SessionID, cwd: String, env: [String: String], size: TerminalSize) throws -> pid_t
     /// Types `command` followed by `\r` into the session's pty.
     func run(_ id: SessionID, command: String)
+    /// Types `command` **once the shell is ready to receive it** — see `Pty.writeWhenReady`.
+    ///
+    /// A protocol requirement rather than an extension-only method on purpose: `host` is held as
+    /// `any TerminalHost`, and a call to a method that exists only in a protocol extension is
+    /// statically dispatched on an existential — the implementation below would never run.
+    func runWhenReady(_ id: SessionID, command: String)
     /// Attaches the single renderer to `id`; `nil` shows nothing.
     func show(_ id: SessionID?)
     func resize(_ id: SessionID, _ size: TerminalSize)
@@ -71,6 +77,18 @@ public protocol TerminalHost: AnyObject {
     func restore(_ id: SessionID, from: Data, cwd: String, env: [String: String]) throws -> pid_t
     /// Every session's events, tagged.
     var events: AsyncStream<(SessionID, TerminalEvent)> { get }
+}
+
+extension TerminalHost {
+    /// The stopgap the M1 harness used, kept as the default so a test double (or any future
+    /// conformer) does not have to reimplement readiness: wait long enough that a login zsh has
+    /// finished its `tcsetattr(TCSAFLUSH)`, then type. `TerminalViewHost` overrides it with the
+    /// real signal.
+    public func runWhenReady(_ id: SessionID, command: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            MainActor.assumeIsolated { self.run(id, command: command) }
+        }
+    }
 }
 
 public enum TerminalHostError: Error, Equatable, Sendable {
@@ -155,12 +173,28 @@ public final class TerminalViewHost: TerminalHost {
             ?? URL(filePath: NSTemporaryDirectory()).appending(path: "tkzmux", directoryHint: .isDirectory)
         self.baseEnvironment = baseEnvironment
         self.compressor = compressor
+        TerminalViewHost.createShellDirectory(in: self.tkzmuxDirectory)
         var escapee: AsyncStream<(SessionID, TerminalEvent)>.Continuation!
         self.events = AsyncStream(bufferingPolicy: .unbounded) { escapee = $0 }
         self.continuation = escapee
     }
 
     deinit { continuation.finish() }
+
+    /// Creates the `ZDOTDIR` the spawned shells are pointed at.
+    ///
+    /// `TerminalEnvironment.make` sets `ZDOTDIR` to `<tkzmuxDirectory>/zsh` unconditionally, and
+    /// until M3.3 writes the wrapper rc files into it nothing created the directory — so every
+    /// login zsh failed to lock its history file and printed
+    /// `zsh: locking failed for …/zsh/.zsh_history: no such file or directory` into the user's
+    /// terminal, most visibly on SIGHUP, when zsh flushes history on the way out. An empty
+    /// directory is enough: zsh finds no rc files there either way, which is the intended state
+    /// until M3.3. Failure is ignored on purpose — a shell that cannot keep history is still a
+    /// working shell, and refusing to construct the host over it would be worse.
+    private static func createShellDirectory(in tkzmuxDirectory: URL) {
+        let zdotdir = tkzmuxDirectory.appending(path: "zsh", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: zdotdir, withIntermediateDirectories: true)
+    }
 
     // MARK: Introspection (tests and diagnostics)
 
@@ -270,6 +304,8 @@ public final class TerminalViewHost: TerminalHost {
             sessions[id]?.title = title.isEmpty ? "zsh" : title
         case .exited:
             sessions[id]?.isAlive = false
+            // A dead session keeps its screen but must stop blinking a cursor at the user.
+            if id == visibleID { view.setCursorSuppressed(true) }
         default:
             break
         }
@@ -292,6 +328,21 @@ public final class TerminalViewHost: TerminalHost {
         let pty = host.pty
         for chunk in TerminalViewHost.chunkForCanonicalTty(data) {
             host.session.ioQueue.async { try? pty.write(chunk) }
+        }
+        compressor?.noteActivity(id.rawValue)
+    }
+
+    /// Types `command` once the shell has printed its prompt and gone quiet.
+    ///
+    /// `run` in the same turn as `open` is silently swallowed: a login zsh's line-editor setup
+    /// calls `tcsetattr(…, TCSAFLUSH, …)`, which discards the tty's input queue (measured in
+    /// M1.10). `Pty.writeWhenReady` parks the bytes until the child has produced output and then
+    /// settled, with a timeout for a shell that prints nothing.
+    public func runWhenReady(_ id: SessionID, command: String) {
+        guard let host = sessions[id], host.isAlive else { return }
+        let data = Data(command.utf8) + Data([0x0D])
+        for chunk in TerminalViewHost.chunkForCanonicalTty(data) {
+            host.pty.writeWhenReady(chunk)
         }
         compressor?.noteActivity(id.rawValue)
     }
@@ -338,6 +389,9 @@ public final class TerminalViewHost: TerminalHost {
         visibleID = id
         if let id, let host = sessions[id] {
             view.show(host.session)
+            // `show` resets the flag, so re-apply it: selecting back to an already-dead session
+            // must not resurrect its cursor.
+            view.setCursorSuppressed(!host.isAlive)
         } else {
             visibleID = nil
             view.show(nil)

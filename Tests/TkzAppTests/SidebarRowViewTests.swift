@@ -237,6 +237,26 @@ struct SidebarRowViewTests {
 
     // MARK: Badges
 
+    @Test("A closed row says \"exited\" where its branch would be, and never overwrites a branch")
+    func exitedRowSaysSo() {
+        // A closed session has no `live`, so no branch — and the detail line would otherwise be
+        // blank, leaving ⌘W with nothing to show but a 7 pt hollow dot.
+        let closed = Self.sessionRow(SidebarSessionRowModel(title: "s", status: .exited))
+        #expect(closed.branchTextLayer.isHidden == false)
+        #expect(closed.branchTextLayer.string as? String == SessionRowView.exitedDetail)
+
+        // A live row is untouched.
+        for status in [SidebarStatus.working, .waiting, .idle] {
+            let row = Self.sessionRow(SidebarSessionRowModel(title: "s", status: status))
+            #expect(row.branchTextLayer.isHidden, "\(status) must not claim to have exited")
+        }
+
+        // A branch always wins: an exited row that still knows its branch shows the branch.
+        let withBranch = Self.sessionRow(
+            SidebarSessionRowModel(title: "s", branch: "main", status: .exited))
+        #expect(withBranch.branchTextLayer.string as? String == "⎇ main")
+    }
+
     @Test("NEEDS YOU appears only when needsAttention; WT only when isWorktree")
     func badgesAreConditional() throws {
         for needs in [false, true] {

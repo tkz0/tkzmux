@@ -105,11 +105,22 @@ final class MainSplitViewController: NSSplitViewController {
 /// The status bar installs its own 30 pt height constraint (`StatusBarView.init`), so this only
 /// pins its three edges — adding a second height constraint here would be a conflict waiting for
 /// the first layout pass.
+///
+/// **The terminal follows the safe area at the top, not the view's edge.** The window is
+/// `.fullSizeContentView` with a transparent titlebar (that is what makes the unified toolbar work
+/// and what the sidebar's concentric glass needs), so the content view really does extend up
+/// behind the toolbar — pinning to `topAnchor` draws the first rows of the grid underneath the
+/// toolbar, where the ＋ menu and the search field sit on top of them. The sidebar looks right
+/// without this only because macOS insets the glass container it wraps a sidebar item in.
+/// `safeAreaLayoutGuide` carries the window's `contentLayoutRect`, so it is the titlebar+toolbar
+/// height on screen and zero everywhere else (a headless render is unaffected).
 final class DetailViewController: NSViewController {
     let terminalContainer = NSView()
     let terminalView: NSView
     let statusBar: StatusBarView
     let emptyState: NSView
+    /// Dims the last screen of a session whose shell has exited. See ``ExitedScrimView``.
+    let exitedScrim = ExitedScrimView()
 
     private var theme: Theme
 
@@ -136,14 +147,24 @@ final class DetailViewController: NSViewController {
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         emptyState.translatesAutoresizingMaskIntoConstraints = false
         terminalContainer.addSubview(terminalView)
+        exitedScrim.translatesAutoresizingMaskIntoConstraints = false
+        exitedScrim.isHidden = true
+        // Without this the scrim's layer has no background colour and no caption: present,
+        // constrained, unhidden on ⌘W — and completely invisible.
+        exitedScrim.apply(theme: theme)
+        // Subview order alone is not a strong enough guarantee over a `CAMetalLayer`; pin the
+        // z-order explicitly so the scrim cannot end up composited underneath the terminal.
+        exitedScrim.layer?.zPosition = 1
+        terminalContainer.addSubview(exitedScrim)
         terminalContainer.addSubview(emptyState)
+        emptyState.layer?.zPosition = 2
 
         root.addSubview(terminalContainer)
         root.addSubview(statusBar)
         statusBar.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
-            terminalContainer.topAnchor.constraint(equalTo: root.topAnchor),
+            terminalContainer.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
             terminalContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             terminalContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             terminalContainer.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
@@ -152,6 +173,11 @@ final class DetailViewController: NSViewController {
             terminalView.leadingAnchor.constraint(equalTo: terminalContainer.leadingAnchor),
             terminalView.trailingAnchor.constraint(equalTo: terminalContainer.trailingAnchor),
             terminalView.bottomAnchor.constraint(equalTo: terminalContainer.bottomAnchor),
+
+            exitedScrim.topAnchor.constraint(equalTo: terminalContainer.topAnchor),
+            exitedScrim.leadingAnchor.constraint(equalTo: terminalContainer.leadingAnchor),
+            exitedScrim.trailingAnchor.constraint(equalTo: terminalContainer.trailingAnchor),
+            exitedScrim.bottomAnchor.constraint(equalTo: terminalContainer.bottomAnchor),
 
             emptyState.topAnchor.constraint(equalTo: terminalContainer.topAnchor),
             emptyState.leadingAnchor.constraint(equalTo: terminalContainer.leadingAnchor),
@@ -172,12 +198,71 @@ final class DetailViewController: NSViewController {
         terminalContainer.layer?.backgroundColor = theme.terminalBackground.cgColor
         statusBar.theme = theme
         (emptyState as? EmptyStateView)?.apply(theme: theme)
+        exitedScrim.apply(theme: theme)
     }
 
     static func makeEmptyState(theme: Theme) -> NSView {
         let view = EmptyStateView()
         view.apply(theme: theme)
         return view
+    }
+}
+
+/// The dim over a closed session's last screen.
+///
+/// ⌘W hangs the shell up but **keeps the row resumable** (design.md → *Session flows*: Close is not
+/// Remove), so the grid stays exactly as the shell left it. Without this the only feedback was the
+/// status dot changing from a filled disc to a 7 pt hollow ring, and ⌘W read as doing nothing.
+///
+/// Layers, not subviews — design.md → *Testing without UI*: a windowless `NSView` subtree does not
+/// render, so a headless assertion would silently see nothing.
+final class ExitedScrimView: NSView {
+    /// The caption over the dimmed screen. A constant so a test asserts the string.
+    static let message = "Session exited \u{00B7} \u{2318}N for a new one"
+
+    /// How much of the dead screen is covered. Enough to read as inert, little enough that the
+    /// last output stays legible — that is the point of keeping it.
+    static let dimOpacity: Float = 0.55
+
+    private let textLayer = CATextLayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.opacity = 1
+        layer?.addSublayer(textLayer)
+        textLayer.alignmentMode = .center
+        textLayer.truncationMode = .end
+        textLayer.contentsScale = 2
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("ExitedScrimView is code-only") }
+
+    override var isFlipped: Bool { false }
+
+    /// The scrim never takes clicks: the terminal underneath still owns selection and scrollback.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func apply(theme: Theme) {
+        var dim = theme.terminalBackground
+        dim.a = Double(Self.dimOpacity)
+        layer?.backgroundColor = dim.cgColor
+        let font = Theme.Fonts.ui(theme.fontUI.body)
+        textLayer.string = NSAttributedString(string: Self.message, attributes: [
+            .font: font,
+            .foregroundColor: theme.foregroundMuted.nsColor,
+        ])
+        textLayer.font = font
+        textLayer.fontSize = font.pointSize
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let height: CGFloat = 20
+        textLayer.frame = CGRect(
+            x: 0, y: bounds.height - height - 12, width: bounds.width, height: height)
     }
 }
 
@@ -266,6 +351,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     private let defaults: UserDefaults
     private var theme: Theme
     private var storeToken: AppStore.ObserverToken?
+    /// Drains `host.events` for the lifetime of the window.
+    private var eventPump: Task<Void, Never>?
     private var isApplyingStoreFrame = false
     private var sidebarWidthConstraint: NSLayoutConstraint?
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "mainwindow")
@@ -314,6 +401,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         wirePalette()
         registerMenuHandlers()
         observeStore()
+        startEventPump()
 
         applySidebarVisible(store.state.sidebarVisible)
         applySelection(focusTerminal: false)
@@ -409,13 +497,16 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     private func wireToolbar() {
         newSessionMenu.configureForSelection(state: store.state)
-        newSessionMenu.onLaunch = { [weak self] launch in
-            // M2.5 turns this into a real `TerminalHost.open`; the stub logs what it would run.
-            self?.logger.info("new session: \(launch.logLine, privacy: .public)")
-        }
+        newSessionMenu.onLaunch = { [weak self] launch in self?.launch(launch) }
         toolbarController.newSessionMenu = newSessionMenu.menu
+        // `>_` is "new terminal" in the design: a bare shell in the selected group's directory,
+        // not another way to open the `＋` menu.
         toolbarController.onNewTerminal = { [weak self] in
-            self?.dispatcher.perform(.newSession)
+            guard let self else { return }
+            newSessionMenu.configureForSelection(state: store.state)
+            guard let launch = newSessionMenu.shellLaunch(fallbackDirectory: NSHomeDirectory())
+            else { return }
+            newSessionMenu.perform(launch)
         }
         toolbarController.onSearchChanged = { [weak self] query in
             guard let self, !query.isEmpty else { return }
@@ -493,6 +584,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Saves the chrome and hangs up every session. `AppDelegate` calls this on terminate.
     public func shutdown() {
         saveChrome()
+        eventPump?.cancel()
+        eventPump = nil
         if let host = host as? TerminalViewHost {
             _ = host.snapshotAll()
             host.closeAll(signal: SIGHUP)
@@ -542,6 +635,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let selected = store.state.selection
         if change.selection || change.usage || (selected.map(change.touches) ?? false) {
             updateStatusBar()
+            // ⌘W and an `.exited` event both arrive as a status change on the selected row, not as a
+            // selection change, so the scrim has to follow this branch too.
+            updateExitedScrim()
             updateToolbarTitle()
         }
     }
@@ -564,7 +660,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         host.show(id)
         detail.emptyState.isHidden = id != nil
         terminalView.isHidden = id == nil
+        updateExitedScrim()
         if id != nil, focusTerminal { focusTerminalIfSessionShown() }
+    }
+
+    /// Shows the dim over a selected session whose shell has exited.
+    func updateExitedScrim() {
+        let isExited = store.state.selectedSession.map { $0.status == .exited } ?? false
+        detail.exitedScrim.isHidden = !isExited
     }
 
     /// The one place that decides the terminal has the keyboard. Without it a selected session
@@ -683,6 +786,130 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    // MARK: - Launching
+
+    /// Starts a session for a resolved `Launch`: spawn the pty, put the row in the store, select it.
+    ///
+    /// Selection is what makes the terminal visible — the store observer calls
+    /// ``applySelection(focusTerminal:)``, which calls `host.show`. Nothing here calls `show`.
+    public func launch(_ launch: NewSessionMenu.Launch) {
+        let home = NSHomeDirectory()
+        let cwd = Paths.expandingTilde(launch.cwd, home: home)
+
+        // The pty shim ignores `chdir`'s return value (`tkz_pty_spawn` is post-`fork()`, where
+        // there is nothing safe to report through), so a bad directory does **not** fail the
+        // spawn — it silently starts the shell somewhere else. Validating here is the only way a
+        // launch into a missing directory fails visibly.
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: cwd, isDirectory: &isDirectory),
+              isDirectory.boolValue
+        else {
+            presentLaunchFailure("\(cwd) is not a directory.")
+            return
+        }
+
+        let id = SessionID.generate()
+        let pid: pid_t
+        do {
+            pid = try host.open(
+                id, cwd: cwd, env: launchEnvironment(for: launch), size: launchSize())
+        } catch {
+            logger.error("spawn failed: \(String(describing: error), privacy: .public)")
+            presentLaunchFailure(String(describing: error))
+            return
+        }
+
+        store.update {
+            // `cwd` goes in **unexpanded**: the models keep paths as written (`state.json` persists
+            // them), and expansion belongs at the `chdir` boundary above.
+            $0.createSession(
+                id: id, groupID: launch.groupID, cwd: launch.cwd,
+                accountKey: launch.accountKey, presetID: launch.presetID)
+            // Without live state `Session.status` is `live?.status ?? .exited` and a brand-new row
+            // would draw as a dead one.
+            $0.setLive(LiveSessionState(shellPid: pid, status: .idle), for: id)
+            $0.select(id)
+        }
+
+        // `.shell` types nothing. Everything else waits for the shell to be ready first — a write
+        // in the same turn as the spawn is discarded by zsh's `tcsetattr(TCSAFLUSH)` (M1.10).
+        if !launch.command.isEmpty {
+            host.runWhenReady(id, command: launch.command)
+        }
+        logger.info("launched \(launch.kind.rawValue, privacy: .public): \(launch.logLine, privacy: .public)")
+    }
+
+    /// `CLAUDE_CONFIG_DIR` for a non-primary account, nothing otherwise.
+    ///
+    /// `Launch.accountKey` is an `Account.key` (a basename); the child needs `Account.configDir`.
+    /// The primary account is left alone so the shell uses `~/.claude`.
+    private func launchEnvironment(for launch: NewSessionMenu.Launch) -> [String: String] {
+        guard let key = launch.accountKey, key != Account.defaultKey,
+              let account = store.state.accounts[key]
+        else { return [:] }
+        return ["CLAUDE_CONFIG_DIR": account.configDir]
+    }
+
+    /// The grid a new session opens at. `metalView` is nil only on the injected-host path (tests).
+    private func launchSize() -> TerminalSize {
+        metalView?.gridSizeForBounds() ?? TerminalSize(rows: 40, cols: 120)
+    }
+
+    /// Overrides the modal alert a failed launch shows. Tests set it — `NSAlert.runModal()` in a
+    /// test process blocks the run forever.
+    public var onLaunchFailure: ((String) -> Void)?
+
+    private func presentLaunchFailure(_ message: String) {
+        logger.error("launch failed: \(message, privacy: .public)")
+        if let onLaunchFailure {
+            onLaunchFailure(message)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Could not start a session"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.runModal()
+    }
+
+    /// ⌘W. Hangs the child up; the row stays and keeps its screen, so it is resumable (M5.2).
+    /// Removing a row is a different verb (`closeSession`) and is not wired yet.
+    private func closeSelectedTerminal() {
+        guard let id = store.state.selection else { return }
+        host.close(id, signal: SIGHUP)
+        // Do not wait for `.exited`: the row must read as closed the moment the user asks. The
+        // event arrives afterwards and `closeSession` is idempotent.
+        store.update { $0.closeSession(id) }
+    }
+
+    // MARK: - Terminal events
+
+    /// Drains `host.events`. Nothing else consumes the stream — and an `AsyncStream` with no
+    /// consumer buffers forever — so this is also what keeps it from growing.
+    private func startEventPump() {
+        let stream = host.events
+        eventPump = Task { [weak self] in
+            for await (id, event) in stream {
+                guard let self else { return }
+                handle(event, for: id)
+            }
+        }
+    }
+
+    private func handle(_ event: TerminalEvent, for id: SessionID) {
+        switch event {
+        case .exited:
+            // The row stays, with its last screen: closed is resumable, removed is not.
+            // `host.discard` (which the dev window uses) would throw the grid away.
+            store.update { $0.closeSession(id) }
+        default:
+            // `.title`/`.pwd` deliberately do not land in the store: `Session.title` is the rename
+            // slot (design.md → Session flows) and a shell-set title is not a rename. M3.4 gives
+            // them a home.
+            break
+        }
+    }
+
     // MARK: Menu handlers
 
     /// Everything the main menu can dispatch. Actions with no implementation yet are deliberately
@@ -690,6 +917,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// shows the whole vocabulary and lies about none of it.
     private func registerMenuHandlers() {
         dispatcher.setHandler(.newSession) { [weak self] in self?.presentNewSessionMenu() }
+        dispatcher.setHandler(.closeTerminal) { [weak self] in self?.closeSelectedTerminal() }
         dispatcher.setHandler(.searchSessions) { [weak self] in self?.beginSearch() }
         dispatcher.setHandler(.commandPalette) { [weak self] in self?.presentPalette(mode: .all) }
         dispatcher.setHandler(.toggleSidebar) { [weak self] in self?.toggleSidebar() }

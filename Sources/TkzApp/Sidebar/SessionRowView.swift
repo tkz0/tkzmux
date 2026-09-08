@@ -45,6 +45,9 @@ public final class SessionRowView: NSTableCellView {
     // MARK: Fonts
 
     private let titleFont = Theme.Fonts.ui(Theme.Fonts.ui.title, weight: .medium)
+    /// What the detail line says for a closed session. Asserted by tests, not eyeballed.
+    static let exitedDetail = "exited"
+
     private let branchFont = Theme.Fonts.mono(Theme.Fonts.mono.detail)
     private let badgeFont = Theme.Fonts.ui(9, weight: .semibold)
 
@@ -162,11 +165,20 @@ public final class SessionRowView: NSTableCellView {
         if let branch = model.branch, !branch.isEmpty {
             branchLayer.string = "⎇ \(branch)"
             branchLayer.isHidden = false
+        } else if model.status == .exited {
+            // A closed session has no `live`, so it has no branch either and the detail line would
+            // be blank — leaving ⌘W looking like it did nothing (the dot goes from a filled disc to
+            // a 7 pt hollow ring and that is easy to miss). The row says so in words instead.
+            branchLayer.string = Self.exitedDetail
+            branchLayer.isHidden = false
         } else {
             branchLayer.string = nil
             branchLayer.isHidden = true
         }
-        branchLayer.foregroundColor = theme.foregroundMuted.cgColor
+        // Only the "exited" caption is dimmer; a real branch keeps the design's muted token.
+        branchLayer.foregroundColor = model.status == .exited && (model.branch ?? "").isEmpty
+            ? theme.foregroundDim.cgColor
+            : theme.foregroundMuted.cgColor
 
         wtBadge.isHidden = !model.isWorktree
         if model.isWorktree {

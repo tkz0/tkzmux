@@ -186,14 +186,15 @@ struct MainMenuTests {
         let dispatcher = harness.controller.dispatcher
 
         for action in [ShortcutAction.newSession, .searchSessions, .commandPalette, .toggleSidebar,
-                       .jumpToNeedsYou, .nextSession, .previousSession] {
+                       .jumpToNeedsYou, .nextSession, .previousSession, .closeTerminal] {
             #expect(dispatcher.canPerform(action), "\(action.rawValue) should be wired")
         }
         for n in 1...9 {
             #expect(dispatcher.canPerform(.selectSession(n)))
         }
-        // Present in the menu, deliberately not implemented yet (M2.5 / M4).
-        for action in [ShortcutAction.renameSession, .closeTerminal, .closeSession, .notifications,
+        // Present in the menu, deliberately not implemented yet. `closeSession` (remove the row) is
+        // M5.2's; the rest are M3/M4/Later.
+        for action in [ShortcutAction.renameSession, .closeSession, .notifications,
                        .settings, .openFolder, .reloadConfig] {
             #expect(dispatcher.canPerform(action) == false, "\(action.rawValue) is not implemented yet")
         }

@@ -108,6 +108,75 @@ struct PtyTests {
         _ = pty
     }
 
+    /// Acceptance (M2.5 / TKZ-43): a command handed to `writeWhenReady` reaches a login zsh and
+    /// **runs**, rather than being discarded before the shell ever sees it.
+    ///
+    /// The failure this guards against (measured in M1.10) is that a login zsh calls
+    /// `tcsetattr(…, TCSAFLUSH, …)` while it brings up its line editor, which discards whatever is
+    /// already sitting in the tty's input queue — a command written in the same turn as the spawn
+    /// is silently swallowed.
+    ///
+    /// **The mirror-image control is deliberately not asserted.** It was tried: writing the same
+    /// command straight after the spawn, in this hermetic single-session setup, reliably *runs*
+    /// (three marker occurrences, three runs out of three) — so the M1.10 loss is not a property
+    /// of every spawn, and a `#expect` on it would be a flaky claim about someone else's timing.
+    /// M1.10 measured it at 30 simultaneous spawns under the full tkzmux environment; what is
+    /// reproducible here is the positive, which is also what the app depends on.
+    ///
+    /// Asserted by counting: the marker must appear **twice** — once as the tty's echo of the
+    /// typed line, once as the command's own output. A line typed but never run appears once.
+    @Test func deferredWritesReachTheShellAndRun() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        var environment = minimalEnvironment(home: dir.path)
+        // An empty ZDOTDIR: zsh finds no rc files, so nothing the developer has configured can
+        // change what this shell prints or when.
+        environment["ZDOTDIR"] = dir.path
+
+        let (pty, sink) = try makePty(
+            PtySpawn(
+                executablePath: TerminalEnvironment.shellPath,
+                argv: TerminalEnvironment.shellArgv,
+                environment: environment,
+                cwd: dir.path,
+                size: TerminalSize(rows: 40, cols: 120, cellWidthPx: 8, cellHeightPx: 17)
+            ),
+            label: "deferred-write"
+        )
+        defer { _ = pty.terminate(signal: SIGKILL) }
+
+        pty.writeWhenReady(Data("echo TKZMUX-DEFERRED\r".utf8))
+
+        let ran = await waitUntil {
+            sink.text.components(separatedBy: "TKZMUX-DEFERRED").count - 1 >= 2
+        }
+        #expect(ran, "the deferred command was never executed by the shell: \(sink.text)")
+    }
+
+    /// A child that prints nothing before it reads still gets the write, via the outer timeout.
+    @Test func deferredWritesFallBackToTheTimeout() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let (pty, sink) = try makePty(
+            PtySpawn(
+                executablePath: "/bin/sh",
+                argv: ["/bin/sh", "-c", "read line; echo GOT:$line"],
+                environment: minimalEnvironment(home: dir.path),
+                cwd: dir.path,
+                size: TerminalSize(rows: 40, cols: 120)
+            ),
+            label: "deferred-timeout"
+        )
+        defer { _ = pty.terminate(signal: SIGKILL) }
+
+        pty.writeWhenReady(
+            Data("hello\r".utf8), settle: .milliseconds(50), timeout: .milliseconds(300))
+
+        #expect(await waitUntil { sink.text.contains("GOT:hello") }, "timeout never fired: \(sink.text)")
+    }
+
     /// Acceptance: TIOCSWINSZ reaches a running shell.
     @Test func resizeIsVisibleToTheShell() async throws {
         let dir = try temporaryDirectory()

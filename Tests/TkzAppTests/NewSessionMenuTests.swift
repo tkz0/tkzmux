@@ -210,6 +210,27 @@ struct NewSessionMenuTests {
         #expect(menu.performItem(NewSessionMenu.ItemID.anotherRepo))
         #expect(asked == 1)
     }
+
+    // MARK: - The shell launch (M2.5 / TKZ-43)
+
+    @Test("A shell launch carries no command and works for a bucket group too")
+    func shellLaunchNeedsNoRepo() throws {
+        // A repo group starts in its root.
+        let repo = try #require(Self.menu(for: Self.frontinvest).shellLaunch())
+        #expect(repo.kind == .shell)
+        #expect(repo.command.isEmpty)
+        #expect(repo.cwd == "~/dev/frontinvest")
+        // ...and the log line says so without a dangling `&&`.
+        #expect(repo.logLine == "cd ~/dev/frontinvest")
+
+        // A bucket has no repo root, so the two `claude` rows are dead — but a shell is not.
+        let bucketMenu = Self.menu(for: Self.scheduled)
+        #expect(bucketMenu.repoRootLaunch() == nil)
+        let bucket = try #require(bucketMenu.shellLaunch(fallbackDirectory: "/tmp"))
+        #expect(bucket.cwd == "/tmp")
+
+        #expect(NewSessionMenu().shellLaunch() == nil, "no group selected, no launch")
+    }
 }
 
 /// design.md → Decisions → Shortcuts. The table is data; wave 3 builds the menu from it.

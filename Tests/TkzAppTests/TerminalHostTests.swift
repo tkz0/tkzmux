@@ -151,6 +151,19 @@ struct RunChunkingTests {
 
 // MARK: - Background sessions cost only IO
 
+/// Poll until `predicate` holds or the deadline passes — never a fixed sleep.
+@MainActor
+private func waitForHost(
+    _ timeout: Duration = .seconds(10), _ predicate: @MainActor () -> Bool
+) async -> Bool {
+    let deadline = ContinuousClock.now + timeout
+    while ContinuousClock.now < deadline {
+        if predicate() { return true }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    return predicate()
+}
+
 @Suite("TerminalHost — background sessions", .serialized)
 @MainActor
 struct BackgroundSessionTests {
@@ -185,6 +198,82 @@ struct BackgroundSessionTests {
         #expect(!view.surface.isAttached)
         #expect(view.surface.glyphCount == 0)
         #expect(context.liveSurfaces().count == 1)
+    }
+
+    /// A session whose shell has exited keeps its screen (the row is resumable) but must stop
+    /// blinking a cursor at the user — it reads as ready for input that goes nowhere.
+    @Test("an exited session stops showing a cursor, and selecting back to it does not resurrect it")
+    func exitedSessionSuppressesTheCursor() async throws {
+        let temp = try TempDirectory()
+        guard let (_, view, host) = try makeHost(temp) else { return }
+        defer { host.closeAll(signal: SIGKILL) }
+
+        let id = SessionID.generate()
+        _ = try host.open(id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
+        host.show(id)
+        #expect(!view.surface.isCursorSuppressed, "a live session must keep its cursor")
+
+        host.close(id, signal: SIGKILL)
+        let died = await waitForHost { !host.isAlive(id) && view.surface.isCursorSuppressed }
+        #expect(died, "the cursor was still being drawn for a dead shell")
+
+        // `show` resets the flag; re-selecting an already-dead session must re-apply it.
+        host.show(nil)
+        host.show(id)
+        #expect(view.surface.isCursorSuppressed)
+    }
+
+    /// `ZDOTDIR` must exist before a shell is spawned, or zsh cannot lock its history file and
+    /// says so **in the user's terminal**:
+    /// `zsh: locking failed for …/zsh/.zsh_history: no such file or directory`, most visibly on
+    /// SIGHUP when it flushes history on the way out. `TerminalEnvironment.make` points every
+    /// session at that directory unconditionally; until M3.3 writes rc files into it, nothing else
+    /// creates it.
+    @Test("the host creates the ZDOTDIR its shells are pointed at")
+    func hostCreatesTheShellDirectory() throws {
+        let temp = try TempDirectory()
+        let zdotdir = temp.supportDirectory.appending(path: "zsh", directoryHint: .isDirectory)
+        #expect(!FileManager.default.fileExists(atPath: zdotdir.path), "precondition")
+
+        guard let (_, _, host) = try makeHost(temp) else { return }
+        defer { host.closeAll(signal: SIGKILL) }
+
+        var isDirectory: ObjCBool = false
+        #expect(FileManager.default.fileExists(atPath: zdotdir.path, isDirectory: &isDirectory))
+        #expect(isDirectory.boolValue)
+        // Empty is the point: zsh must still find no rc files there until M3.3 ships them.
+        #expect(try FileManager.default.contentsOfDirectory(atPath: zdotdir.path).isEmpty)
+    }
+
+    /// End-to-end for M2.5 (TKZ-43): `open` then `runWhenReady` on the real host actually runs the
+    /// command in the spawned shell, and the result lands on the rendered screen.
+    ///
+    /// The spy-host tests assert the wiring; this is the one that would catch the M1.10 failure
+    /// (a command written in the same turn as the spawn is discarded by zsh's `tcsetattr`) coming
+    /// back through `TerminalViewHost` rather than through `Pty`.
+    @Test("runWhenReady types into a real shell and its output reaches the screen")
+    func runWhenReadyReachesTheShell() async throws {
+        let temp = try TempDirectory()
+        guard let (_, view, host) = try makeHost(temp) else { return }
+        defer { host.closeAll(signal: SIGKILL) }
+
+        let id = SessionID.generate()
+        _ = try host.open(id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
+        host.show(id)
+        host.runWhenReady(id, command: "echo TKZMUX-E2E-OK")
+
+        let session = try #require(host.session(for: id))
+        let deadline = ContinuousClock.now + .seconds(10)
+        var screen = ""
+        while ContinuousClock.now < deadline {
+            screen = (try? session.formatted()) ?? ""
+            // Twice: once as the tty's echo of the typed line, once as the command's output.
+            if screen.components(separatedBy: "TKZMUX-E2E-OK").count - 1 >= 2 { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(
+            screen.components(separatedBy: "TKZMUX-E2E-OK").count - 1 >= 2,
+            "the command never ran in the shell. Screen:\n\(screen)")
     }
 
     /// A background session that produces output must not be able to schedule a frame. This is

@@ -29,8 +29,18 @@ struct MainWindowControllerTests {
     /// Records what the window asked of the terminal half.
     @MainActor
     final class SpyTerminalHost: TerminalHost {
+        struct Opened: Equatable {
+            var id: SessionID
+            var cwd: String
+            var env: [String: String]
+        }
+
         private(set) var shown: [SessionID?] = []
-        private(set) var closed: [SessionID] = []
+        private(set) var closed: [(id: SessionID, signal: Int32)] = []
+        private(set) var opened: [Opened] = []
+        private(set) var ran: [(id: SessionID, command: String)] = []
+        /// Set to make the next `open` throw, so the failure path can be asserted.
+        var openError: (any Error)?
         let events: AsyncStream<(SessionID, TerminalEvent)>
         private let continuation: AsyncStream<(SessionID, TerminalEvent)>.Continuation
 
@@ -40,15 +50,28 @@ struct MainWindowControllerTests {
             continuation = escapee
         }
 
-        func open(_ id: SessionID, cwd: String, env: [String: String], size: TerminalSize) throws -> pid_t { 0 }
-        func run(_ id: SessionID, command: String) {}
+        func open(_ id: SessionID, cwd: String, env: [String: String], size: TerminalSize) throws -> pid_t {
+            if let openError { throw openError }
+            opened.append(Opened(id: id, cwd: cwd, env: env))
+            return 4242
+        }
+        func run(_ id: SessionID, command: String) { ran.append((id, command)) }
+        /// Records synchronously rather than inheriting the protocol's 2 s delayed default — the
+        /// point of the assertion is *that the call arrives here at all* (a `runWhenReady` living
+        /// only in a protocol extension would be statically dispatched on `any TerminalHost` and
+        /// never reach a conformer's override).
+        func runWhenReady(_ id: SessionID, command: String) { run(id, command: command) }
         func show(_ id: SessionID?) { shown.append(id) }
         func resize(_ id: SessionID, _ size: TerminalSize) {}
-        func close(_ id: SessionID, signal: Int32) { closed.append(id) }
+        func close(_ id: SessionID, signal: Int32) { closed.append((id, signal)) }
         func snapshot(_ id: SessionID) throws -> Data { Data() }
         func restore(_ id: SessionID, from: Data, cwd: String, env: [String: String]) throws -> pid_t { 0 }
 
+        /// Pushes an event as if a child had produced it.
+        func emit(_ event: TerminalEvent, for id: SessionID) { continuation.yield((id, event)) }
+
         var lastShown: SessionID?? { shown.last }
+        var closedIDs: [SessionID] { closed.map(\.id) }
     }
 
     /// Stands in for `TerminalMetalView`: focusable, layer-backed, nothing else.
@@ -120,6 +143,24 @@ struct MainWindowControllerTests {
         // The real, laid-out width — not the constant it was asked for.
         #expect(abs(sidebar.viewController.view.frame.width - 300) < 1)
         #expect(harness.controller.splitViewController.splitViewItems[1].canCollapse == false)
+    }
+
+    @Test("The terminal starts below the titlebar, not underneath it")
+    func terminalRespectsTheSafeArea() {
+        let harness = Self.makeHarness()
+        defer { harness.tearDown() }
+        harness.layout()
+        let detail = harness.controller.detail
+
+        // The window is `.fullSizeContentView` with a transparent titlebar and a unified toolbar,
+        // so its content view really does extend up behind them — that is what the safe area
+        // reports. Pinned to `topAnchor` instead, the first rows of the grid render *underneath*
+        // the toolbar, with the ＋ menu and the search field sitting on top of them.
+        let inset = detail.view.safeAreaInsets.top
+        #expect(inset > 0, "this window is supposed to have a titlebar to sit below")
+        #expect(abs(detail.terminalContainer.frame.maxY - (detail.view.bounds.height - inset)) < 1)
+        // The empty state rides inside the container, so it is inset by construction.
+        #expect(detail.emptyState.frame.height == detail.terminalContainer.frame.height)
     }
 
     @Test("The status bar is pinned along the bottom at exactly 30 pt")

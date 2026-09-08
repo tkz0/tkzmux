@@ -31,10 +31,14 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     public struct Launch: Hashable, Sendable {
         public enum Kind: String, Sendable {
             case worktree, repoRoot, preset
+            /// A bare login shell with nothing typed into it — the toolbar's `>_` button. The one
+            /// launch that does not depend on `claude` being installed or the group being a repo.
+            case shell
         }
 
         public let kind: Kind
         /// The command line to run in the pty, e.g. `claude -w` or `claude --permission-mode plan`.
+        /// **Empty for `.shell`**: the pty opens and nothing is typed into it.
         public let command: String
         /// The directory to start in, **verbatim from the model** — tilde expansion is the real
         /// launcher's job, not the menu's.
@@ -64,6 +68,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         /// The one-line description the stub logs — and what the tests assert on.
         /// `cd <cwd> && CLAUDE_CONFIG_DIR=<key> claude -w`
         public var logLine: String {
+            if command.isEmpty { return "cd \(cwd)" }
             var line = "cd \(cwd) && "
             if let accountKey { line += "CLAUDE_CONFIG_DIR=\(accountKey) " }
             return line + command
@@ -344,6 +349,20 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         return Launch(
             kind: .worktree, command: command, cwd: repoRoot,
             accountKey: effectiveAccountKey, groupID: group.id)
+    }
+
+    /// A bare login shell in the group's directory. The toolbar's `>_` ("new terminal") button.
+    ///
+    /// Unlike the two `claude` rows this does **not** need `group.repoRoot`: any group can host a
+    /// shell, and a bucket group falls back to `fallbackDirectory`.
+    public func shellLaunch(fallbackDirectory: String = "~") -> Launch? {
+        guard let group else { return nil }
+        return Launch(
+            kind: .shell,
+            command: "",
+            cwd: group.repoRoot ?? fallbackDirectory,
+            accountKey: effectiveAccountKey,
+            groupID: group.id)
     }
 
     public func repoRootLaunch() -> Launch? {

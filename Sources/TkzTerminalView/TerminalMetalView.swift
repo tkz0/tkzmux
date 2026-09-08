@@ -212,6 +212,7 @@ public final class TerminalMetalView: NSView {
 
         surface.isFocused = isTerminalFocused
         surface.cursorBlinkOn = true
+        surface.isCursorSuppressed = false
 
         let relay = RenderSignalRelay { [weak self] in self?.frameDriver.requestFrame() }
         self.relay = relay
@@ -223,6 +224,22 @@ public final class TerminalMetalView: NSView {
         }
         applyGridSize(force: true)
         startBlinkTimerIfNeeded()
+    }
+
+    /// Hides the visible session's cursor and parks the blink timer.
+    ///
+    /// The owner calls this when the shell behind the visible session has exited: the last screen
+    /// stays (the row is resumable), but nothing should look like it is waiting for a keystroke.
+    /// Reset by the next `show(_:)`, so it cannot leak onto a live session.
+    public func setCursorSuppressed(_ suppressed: Bool) {
+        guard surface.isCursorSuppressed != suppressed else { return }
+        surface.isCursorSuppressed = suppressed
+        if suppressed {
+            stopBlinkTimer()
+        } else {
+            startBlinkTimerIfNeeded()
+        }
+        frameDriver.update { $0.needsUpdate = true }
     }
 
     /// The relay currently wired to the visible session. Tests hold on to it across a `show(_:)`

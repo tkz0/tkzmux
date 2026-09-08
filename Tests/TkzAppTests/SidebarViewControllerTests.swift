@@ -654,3 +654,37 @@ struct SidebarViewControllerTests {
         }
     }
 }
+
+/// Regression: launching a session creates it and selects it in **one** change set, so the sidebar
+/// sees `structure` and `selection` together. Reported from the app (M2.5 / TKZ-43): after `>_` the
+/// sidebar painted two rows as selected.
+@MainActor
+@Suite(.serialized)
+struct SidebarSelectionOnInsertTests {
+
+    @Test("Creating and selecting in one change set leaves exactly one row painted selected")
+    func oneSelectionAfterInsert() {
+        var state = AppState()
+        let group = state.addGroup(name: "Scratch", repoRoot: "/tmp")
+        let harness = SidebarViewControllerTests.makeHarness(state)
+        defer { harness.window.orderOut(nil) }
+
+        var ids: [SessionID] = []
+        for _ in 0..<3 {
+            harness.mutate { s in
+                let created = s.createSession(groupID: group.id, cwd: "/tmp")
+                s.setLive(LiveSessionState(shellPid: 1, status: .idle), for: created.id)
+                s.select(created.id)
+                ids.append(created.id)
+            }
+
+            let painted = (0..<harness.outline.numberOfRows).filter { row in
+                guard let view = harness.outline.view(atColumn: 0, row: row, makeIfNecessary: true)
+                    as? SessionRowView else { return false }
+                return (view.selectionBackgroundLayer.backgroundColor?.alpha ?? 0) > 0
+            }
+            #expect(painted.count == 1, "after \(ids.count) launches, rows painted selected: \(painted)")
+            #expect(harness.outline.selectedRowIndexes.count == 1)
+        }
+    }
+}

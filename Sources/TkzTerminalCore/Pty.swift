@@ -131,6 +131,13 @@ public final class Pty: Sendable {
         var fdClosed = false
         var shuttingDown = false
         var didQueuePendingWrite = false
+        /// Writes parked by `writeWhenReady(_:)` until the child has spoken. See that method.
+        var deferredWrites: [Data] = []
+        /// Bumped by every settle re-arm and by the flush, so a stale timer hop does nothing.
+        var deferredGeneration: UInt64 = 0
+        /// Set once the outer timeout for the parked writes has been scheduled.
+        var deferredTimeoutArmed = false
+        var deferredSettleSeconds: Double = 0
     }
 
     private static let readChunk = 64 * 1024
@@ -244,6 +251,83 @@ public final class Pty: Sendable {
         ioQueue.async { [weak self] in self?.reapIfNeeded() }
     }
 
+    // MARK: - Deferred writes (waiting for the child to be ready)
+
+    /// Writes `data` **once the child has started talking**, instead of immediately.
+    ///
+    /// A login zsh calls `tcsetattr(…, TCSAFLUSH, …)` while it sets up its line editor, and that
+    /// *discards whatever is already sitting in the tty's input queue* — so a command written in
+    /// the same turn as the spawn is silently swallowed and never runs (measured in M1.10: all 30
+    /// sessions came back showing a bare prompt). The shell's first output is its prompt, which it
+    /// prints after ZLE is up, so "the child has produced output and then gone quiet for `settle`"
+    /// is the readiness signal.
+    ///
+    /// The settle window is re-armed by every further chunk, so a child that is still spewing does
+    /// not get written to mid-burst; `timeout` is the backstop for a child that prints nothing at
+    /// all (measured from the first parked write, not from the last output).
+    ///
+    /// Safe to call from any thread; the write itself happens on `ioQueue` like every other.
+    /// Order is preserved across several calls, and a `writeWhenReady` never overtakes a
+    /// `write(_:)` that has already been issued.
+    public func writeWhenReady(
+        _ data: Data,
+        settle: Duration = .milliseconds(150),
+        timeout: Duration = .seconds(2)
+    ) {
+        if data.isEmpty { return }
+        let settleSeconds = Pty.seconds(settle)
+        let timeoutSeconds = Pty.seconds(timeout)
+        ioQueue.async { [weak self] in
+            guard let self else { return }
+            let armTimeout: Bool = state.withLock { s in
+                s.deferredWrites.append(data)
+                s.deferredSettleSeconds = settleSeconds
+                if s.deferredTimeoutArmed { return false }
+                s.deferredTimeoutArmed = true
+                return true
+            }
+            guard armTimeout else { return }
+            ioQueue.asyncAfter(deadline: .now() + timeoutSeconds) { [weak self] in
+                self?.flushDeferredWrites()
+            }
+        }
+    }
+
+    /// Called on `ioQueue` for every chunk the child produced. Cheap (one lock, one early return)
+    /// when nothing is parked, which is the normal case on the read hot path.
+    private func noteChildOutput() {
+        let armed: (generation: UInt64, settle: Double)? = state.withLock { s in
+            guard !s.deferredWrites.isEmpty else { return nil }
+            s.deferredGeneration &+= 1
+            return (s.deferredGeneration, s.deferredSettleSeconds)
+        }
+        guard let armed else { return }
+        ioQueue.asyncAfter(deadline: .now() + armed.settle) { [weak self] in
+            guard let self else { return }
+            // A later chunk re-armed the window: this hop is stale, the newer one will fire.
+            guard state.withLock({ $0.deferredGeneration == armed.generation }) else { return }
+            flushDeferredWrites()
+        }
+    }
+
+    /// Writes everything parked, on `ioQueue`. Idempotent: a stale timeout after the settle already
+    /// fired finds an empty queue.
+    private func flushDeferredWrites() {
+        let pending: [Data] = state.withLock { s in
+            let parked = s.deferredWrites
+            s.deferredWrites = []
+            s.deferredTimeoutArmed = false
+            s.deferredGeneration &+= 1
+            return parked
+        }
+        for chunk in pending { try? write(chunk) }
+    }
+
+    nonisolated static func seconds(_ duration: Duration) -> Double {
+        let components = duration.components
+        return Double(components.seconds) + Double(components.attoseconds) / 1e18
+    }
+
     // MARK: - Reading
 
     /// Drain the master. `bounded` limits one wakeup to 4 × 64 KiB so a chatty child cannot starve
@@ -261,6 +345,7 @@ public final class Pty: Sendable {
             if n > 0 {
                 chunks += 1
                 onData(Data(buffer[0..<n]))
+                noteChildOutput()
                 continue
             }
             if n < 0 {

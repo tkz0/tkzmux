@@ -334,9 +334,18 @@ public final class TerminalSurface {
         return (cursor.column, cursor.row)
     }
 
+    /// Suppresses the cursor entirely, whatever the terminal's own modes say.
+    ///
+    /// Set when the session's shell has exited: the grid is kept so the row stays resumable, but a
+    /// blinking insertion point on a dead session invites typing that goes nowhere. The terminal's
+    /// own cursor state is left untouched, so restoring the session restores its cursor.
+    public var isCursorSuppressed: Bool = false {
+        didSet { if isCursorSuppressed != oldValue { markNeedsDisplay() } }
+    }
+
     /// True when the cursor should appear this frame (visible, inside the grid, blink phase on).
     public var isCursorDrawn: Bool {
-        cursor.isVisible && cursorBlinkOn
+        !isCursorSuppressed && cursor.isVisible && cursorBlinkOn
             && cursor.column >= 0 && cursor.column < columns
             && cursor.row >= 0 && cursor.row < rowCount
     }

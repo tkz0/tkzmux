@@ -35,6 +35,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let autoQuitKey = "TKZMUX_DEV_AUTOQUIT_MS"
     /// Opens the M1 development window (and its perf harness) instead of the main window.
     private static let devWindowKey = "TKZMUX_DEV_WINDOW"
+    private static let fixtureKey = "TKZMUX_FIXTURE"
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -74,17 +75,26 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// `TKZMUX_DEV_WINDOW=1` (or `true`/`yes`).
-    static var wantsDevWindow: Bool {
-        guard let raw = ProcessInfo.processInfo.environment[devWindowKey]?.lowercased() else {
-            return false
-        }
+    static var wantsDevWindow: Bool { isEnabled(devWindowKey) }
+
+    /// `TKZMUX_FIXTURE=1` seeds the window with `AppState.fixture` instead of an empty state, so
+    /// the sidebar can be compared against the design artboards (M2.3 / M2.4). Its rows are
+    /// fabricated and deliberately not launchable — see `AppState.startup`.
+    static var wantsFixture: Bool { isEnabled(fixtureKey) }
+
+    private static func isEnabled(_ key: String) -> Bool {
+        guard let raw = ProcessInfo.processInfo.environment[key]?.lowercased() else { return false }
         return ["1", "true", "yes", "on"].contains(raw)
     }
 
-    /// The state the main window starts from: `AppState.fixture` (real sessions arrive in M3/M5),
+    /// The state the main window starts from: one group for the home directory and no sessions,
     /// with the persisted window frame and sidebar visibility applied on top.
+    ///
+    /// Real sessions arrive by launching one (M2.5) and, from M5.1, by restoring `state.json`.
     static func initialState() -> AppState {
-        var state = AppState.fixture
+        var state = wantsFixture
+            ? AppState.fixture
+            : AppState.startup(homeDirectory: NSHomeDirectory())
         MainWindowController.restoreChrome(into: &state, from: .standard)
         return state
     }
