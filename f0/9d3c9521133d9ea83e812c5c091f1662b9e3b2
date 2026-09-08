@@ -1,0 +1,25 @@
+Sources/ClaudeBridge/ClaudeSessionWatcher.swift
+  s_093857b3ed8828::t_19ccca8fb0ef46 1-435
+Tests/ClaudeBridgeTests/ClaudeSessionWatcherTests.swift
+  s_093857b3ed8828::t_19ccca8fb0ef46 1-432
+Sources/ClaudeBridge/ProcessLiveness.swift
+  s_093857b3ed8828::t_19ccca8fb0ef46 1-96
+Tests/ClaudeBridgeTests/ProcessLivenessTests.swift
+  s_093857b3ed8828::t_19ccca8fb0ef46 1-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "f09d3c9521133d9ea83e812c5c091f1662b9e3b2",
+  "prompts": {},
+  "sessions": {
+    "s_093857b3ed8828": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5e7fafd-1256-4bd3-bd40-2906accdec3f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
