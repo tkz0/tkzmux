@@ -1,15 +1,15 @@
 // TerminalHost — the seam between the terminal engine and the app (M1.10 / TKZ-16).
 // See docs/design.md → *TerminalHost — the seam between halves*, and docs/perf.md → *GUI half*.
 //
-// This file holds three things:
+// This file holds two things. (`SessionID` used to live here as a stopgap; M2.1 moved it to
+// `TkzCore/Models.swift` as a UUID wrapper, which is stricter than the old rule — anything that
+// could be a `.ghsnap` basename — but loses nothing, because every id ever written came from
+// `generate()` as an uppercase UUID.)
 //
-//   1. `SessionID` — a minimal, validated session identifier. **M2 must move this into `TkzCore`**
-//      (design.md → *Models*); it lives here only because `TkzCore` has no session model yet and
-//      the protocol below cannot be written without one.
-//   2. `TerminalHost` — the protocol design.md specifies, verbatim apart from `@MainActor`
+//   1. `TerminalHost` — the protocol design.md specifies, verbatim apart from `@MainActor`
 //      (see the DESIGN.MD DELTA in the ticket: an implementation over `NSView` cannot be
 //      nonisolated under Swift 6 strict concurrency).
-//   3. `TerminalViewHost` — its implementation over `TerminalMetalView` + `Pty` +
+//   2. `TerminalViewHost` — its implementation over `TerminalMetalView` + `Pty` +
 //      `TerminalSession`, plus `TerminalIdleCompressor`, the background-session idle timer that
 //      drives `IdleCompressionPolicy`.
 //

@@ -1,4 +1,4 @@
-// MainMenu.swift — the application menu bar.
+// MainMenu.swift — the application menu bar, built from `ShortcutsTable` (M2.2 / TKZ-18).
 //
 // An app built without an `.xcodeproj` and without a MainMenu.nib starts with **no menu bar at
 // all**, and a missing menu bar is not merely cosmetic: `NSApplication` matches ⌘-key equivalents
@@ -7,72 +7,242 @@
 // (reported 2026-09-08: "cmd-Q did not quit the app"), and it is invisible to a headless test —
 // nothing here can be exercised without a real menu bar and a key window.
 //
-// Deliberately minimal for M1. **There is no Edit menu**: `TerminalInputController` declines ⌘
-// combinations so they reach the app, and `MouseController` implements ⌘C / ⌘V itself against the
-// terminal's own selection and paste paths. An Edit menu claiming those key equivalents would win
-// the match and route them to `copy:` / `paste:` on the first responder, which the terminal view
-// does not implement — silently breaking copy and paste. M2.2 replaces this file with the real menu
-// built from `ShortcutsTable`, and should move ⌘C/⌘V to `copy:`/`paste:` on the view *in the same
-// change* rather than adding the menu items first.
+// **There is still no Edit menu, on purpose.** `TerminalInputController` declines ⌘ combinations so
+// they reach the app, and `MouseController` implements ⌘C / ⌘V itself (through a local key monitor
+// in `MainWindowController`) against the terminal's own selection and paste paths. An Edit menu
+// claiming those key equivalents would win the match and route them to `copy:` / `paste:` on the
+// first responder, which `TerminalMetalView` does not implement — **silently breaking copy and
+// paste**. The Edit menu can only come back together with `copy:`/`paste:`/`selectAll:` on the
+// view, in the same change; `MainMenuTests` guards the invariant meanwhile.
+//
+// The same collision is why "Close Window" carries no key equivalent: `closeTerminal` owns ⌘W
+// (design.md → Decisions → Shortcuts, the cmux binding), and two items with the same equivalent
+// are resolved by menu order, not by which one is enabled.
+//
+// Every binding comes from `ShortcutsTable.resolved(state:)` — the menu is a *view* of that table
+// and invents nothing. An action with no handler in the dispatcher is present and **disabled**
+// rather than absent, so the menu is an honest inventory of the app's vocabulary.
+
 import AppKit
+import TkzCore
+
+// MARK: - Dispatcher
+
+/// The single `target` behind every command item in the menu bar.
+///
+/// Menu items carry their `ShortcutAction` in `representedObject`, so one selector serves the whole
+/// menu and the palette can dispatch the same ids (`PaletteDataSource` builds command rows with
+/// `actionID == ShortcutAction.rawValue`). `validateMenuItem` disables anything with no handler.
+@MainActor
+public final class MenuDispatcher: NSObject, NSMenuItemValidation {
+    private var handlers: [ShortcutAction: () -> Void] = [:]
+
+    public override init() { super.init() }
+
+    public func setHandler(_ action: ShortcutAction, _ body: @escaping () -> Void) {
+        handlers[action] = body
+    }
+
+    public func removeHandler(_ action: ShortcutAction) { handlers[action] = nil }
+
+    public func canPerform(_ action: ShortcutAction) -> Bool { handlers[action] != nil }
+
+    /// Runs the action, if it has a handler. Returns whether anything ran.
+    @discardableResult
+    public func perform(_ action: ShortcutAction) -> Bool {
+        guard let handler = handlers[action] else { return false }
+        handler()
+        return true
+    }
+
+    @objc public func performShortcutAction(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let raw = item.representedObject as? String else { return }
+        perform(ShortcutAction(raw))
+    }
+
+    public func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(performShortcutAction(_:)) else { return true }
+        guard let raw = menuItem.representedObject as? String else { return false }
+        return canPerform(ShortcutAction(raw))
+    }
+}
+
+// MARK: - Menu
 
 @MainActor
-enum MainMenu {
-    /// Builds and installs the menu bar. Safe to call more than once.
-    static func install(appName: String = "tkzmux") {
+public enum MainMenu {
+
+    /// Builds the whole menu bar. Pure: it touches no global state, so a test can build one and
+    /// walk it without installing it.
+    public static func build(
+        appName: String = "tkzmux",
+        shortcuts: [ShortcutAction: Shortcut] = ShortcutsTable.defaults,
+        dispatcher: MenuDispatcher
+    ) -> NSMenu {
         let main = NSMenu()
 
-        // MARK: Application menu
-        //
+        main.addItem(submenu(applicationMenu(appName: appName, shortcuts: shortcuts, dispatcher: dispatcher)))
+        main.addItem(submenu(fileMenu(shortcuts: shortcuts, dispatcher: dispatcher)))
+        main.addItem(submenu(viewMenu(shortcuts: shortcuts, dispatcher: dispatcher)))
+        main.addItem(submenu(sessionMenu(shortcuts: shortcuts, dispatcher: dispatcher)))
+        main.addItem(submenu(windowMenu()))
+
+        return main
+    }
+
+    /// Installs a built menu. Safe to call more than once.
+    public static func install(_ menu: NSMenu) {
+        NSApp.mainMenu = menu
+        NSApp.windowsMenu = menu.items.first { $0.submenu?.title == "Window" }?.submenu
+    }
+
+    /// Convenience for a default menu with no window behind it (the renderer-unavailable path).
+    @discardableResult
+    public static func installDefault(appName: String = "tkzmux") -> MenuDispatcher {
+        let dispatcher = MenuDispatcher()
+        install(build(appName: appName, dispatcher: dispatcher))
+        return dispatcher
+    }
+
+    // MARK: Menus
+
+    private static func applicationMenu(
+        appName: String, shortcuts: [ShortcutAction: Shortcut], dispatcher: MenuDispatcher
+    ) -> NSMenu {
         // The first item's submenu is the application menu regardless of its title; AppKit
         // substitutes the process name for the title it displays.
-        let appItem = NSMenuItem()
-        let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About \(appName)",
-                        action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
-                        keyEquivalent: "")
-        appMenu.addItem(.separator())
+        let menu = NSMenu(title: appName)
+        menu.addItem(withTitle: "About \(appName)",
+                     action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+                     keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(command(.settings, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.reloadConfig, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(.separator())
 
-        let hide = appMenu.addItem(withTitle: "Hide \(appName)",
-                                   action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let hide = menu.addItem(withTitle: "Hide \(appName)",
+                                action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         hide.target = NSApp
 
-        let hideOthers = appMenu.addItem(withTitle: "Hide Others",
-                                         action: #selector(NSApplication.hideOtherApplications(_:)),
-                                         keyEquivalent: "h")
+        let hideOthers = menu.addItem(withTitle: "Hide Others",
+                                      action: #selector(NSApplication.hideOtherApplications(_:)),
+                                      keyEquivalent: "h")
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         hideOthers.target = NSApp
 
-        let showAll = appMenu.addItem(withTitle: "Show All",
-                                      action: #selector(NSApplication.unhideAllApplications(_:)),
-                                      keyEquivalent: "")
+        let showAll = menu.addItem(withTitle: "Show All",
+                                   action: #selector(NSApplication.unhideAllApplications(_:)),
+                                   keyEquivalent: "")
         showAll.target = NSApp
 
-        appMenu.addItem(.separator())
-        let quit = appMenu.addItem(withTitle: "Quit \(appName)",
-                                   action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(.separator())
+        let quit = menu.addItem(withTitle: "Quit \(appName)",
+                                action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
+        return menu
+    }
 
-        appItem.submenu = appMenu
-        main.addItem(appItem)
+    private static func fileMenu(
+        shortcuts: [ShortcutAction: Shortcut], dispatcher: MenuDispatcher
+    ) -> NSMenu {
+        let menu = NSMenu(title: "File")
+        menu.addItem(command(.newSession, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.openFolder, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(.separator())
+        menu.addItem(command(.closeTerminal, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.closeSession, shortcuts: shortcuts, dispatcher: dispatcher))
+        return menu
+    }
 
-        // MARK: Window menu
-        let windowItem = NSMenuItem()
-        let windowMenu = NSMenu(title: "Window")
-        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)),
-                           keyEquivalent: "m")
-        windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)),
-                           keyEquivalent: "")
-        windowMenu.addItem(.separator())
-        // ⌘W closes the *window*. M2 gives it the cmux meaning (close terminal) and moves
-        // "close window" elsewhere; until the sidebar exists there is only one window, so this is
-        // the honest binding.
-        windowMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)),
-                           keyEquivalent: "w")
-        windowItem.submenu = windowMenu
-        main.addItem(windowItem)
+    private static func viewMenu(
+        shortcuts: [ShortcutAction: Shortcut], dispatcher: MenuDispatcher
+    ) -> NSMenu {
+        let menu = NSMenu(title: "View")
+        menu.addItem(command(.toggleSidebar, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(.separator())
+        menu.addItem(command(.searchSessions, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.commandPalette, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(.separator())
+        menu.addItem(command(.notifications, shortcuts: shortcuts, dispatcher: dispatcher))
+        return menu
+    }
 
-        NSApp.mainMenu = main
-        NSApp.windowsMenu = windowMenu
+    private static func sessionMenu(
+        shortcuts: [ShortcutAction: Shortcut], dispatcher: MenuDispatcher
+    ) -> NSMenu {
+        let menu = NSMenu(title: "Session")
+        menu.addItem(command(.renameSession, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.jumpToNeedsYou, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(.separator())
+        menu.addItem(command(.previousSession, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.nextSession, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(.separator())
+        for n in 1...9 {
+            menu.addItem(command(.selectSession(n), shortcuts: shortcuts, dispatcher: dispatcher))
+        }
+        return menu
+    }
+
+    private static func windowMenu() -> NSMenu {
+        let menu = NSMenu(title: "Window")
+        menu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)),
+                     keyEquivalent: "m")
+        menu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)),
+                     keyEquivalent: "")
+        menu.addItem(.separator())
+        // **No key equivalent**: ⌘W belongs to `closeTerminal` (design.md → Shortcuts). Two items
+        // with the same equivalent are resolved by menu order, and the window's would shadow it.
+        menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)),
+                     keyEquivalent: "")
+        return menu
+    }
+
+    // MARK: Item construction
+
+    /// One command item: title and binding from `ShortcutsTable`, `representedObject` = the action
+    /// id, target = the dispatcher. Enablement is `MenuDispatcher.validateMenuItem`'s job.
+    static func command(
+        _ action: ShortcutAction,
+        shortcuts: [ShortcutAction: Shortcut],
+        dispatcher: MenuDispatcher
+    ) -> NSMenuItem {
+        let shortcut = shortcuts[action]
+        let item = NSMenuItem(
+            title: ShortcutsTable.title(for: action),
+            action: #selector(MenuDispatcher.performShortcutAction(_:)),
+            keyEquivalent: shortcut?.keyEquivalent ?? "")
+        item.keyEquivalentModifierMask = shortcut?.modifierMask ?? []
+        item.representedObject = action.rawValue
+        item.target = dispatcher
+        item.identifier = NSUserInterfaceItemIdentifier("tkzmux.menu.\(action.rawValue)")
+        return item
+    }
+
+    private static func submenu(_ menu: NSMenu) -> NSMenuItem {
+        let item = NSMenuItem()
+        item.title = menu.title
+        item.submenu = menu
+        return item
+    }
+
+    // MARK: Introspection (tests, and the palette's "what is bound to what")
+
+    /// Every command item in `menu`, keyed by its action. Walks submenus.
+    public static func commandItems(in menu: NSMenu) -> [ShortcutAction: NSMenuItem] {
+        var out: [ShortcutAction: NSMenuItem] = [:]
+        for item in allItems(in: menu) {
+            guard item.action == #selector(MenuDispatcher.performShortcutAction(_:)),
+                  let raw = item.representedObject as? String else { continue }
+            out[ShortcutAction(raw)] = item
+        }
+        return out
+    }
+
+    /// Depth-first list of every item in the menu bar, separators included.
+    public static func allItems(in menu: NSMenu) -> [NSMenuItem] {
+        menu.items.flatMap { item -> [NSMenuItem] in
+            [item] + (item.submenu.map { allItems(in: $0) } ?? [])
+        }
     }
 }
