@@ -154,7 +154,11 @@ public final class TerminalMetalView: NSView {
         // Must match the renderer's pipeline attachment format exactly.
         layer.pixelFormat = .bgra8Unorm
         layer.framebufferOnly = true
-        layer.maximumDrawableCount = 2
+        // 3, not 2: with `presentsWithTransaction` during a live resize the present is synchronous
+        // on the main thread, and a pool of 2 leaves `nextDrawable()` blocking (up to a second)
+        // whenever both a drag frame and a display-link frame are in flight. Apple's guidance for
+        // the transactional path is 3.
+        layer.maximumDrawableCount = 3
         layer.displaySyncEnabled = true
         layer.isOpaque = true
         layer.contentsScale = window?.backingScaleFactor ?? renderContext.scale
@@ -299,9 +303,15 @@ public final class TerminalMetalView: NSView {
         static let useTransaction =
             ProcessInfo.processInfo.environment["TKZMUX_RESIZE_MODE"] != "async"
 
+        nonisolated(unsafe) static var start = ContinuousClock.now
+
+        /// Every line is stamped with milliseconds since the first log call: a stall shows up as a
+        /// gap between lines, which is the thing a duration-per-render cannot reveal.
         static func log(_ message: @autoclosure () -> String) {
             guard enabled else { return }
-            FileHandle.standardError.write(Data(("TKZMUX_RESIZE " + message() + "\n").utf8))
+            let ms = Double((ContinuousClock.now - start).components.attoseconds) / 1e15
+            let line = String(format: "TKZMUX_RESIZE %8.1fms ", ms) + message() + "\n"
+            FileHandle.standardError.write(Data(line.utf8))
         }
     }
 

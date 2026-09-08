@@ -25,7 +25,26 @@ struct DisplayLinkPolicyTests {
         #expect(policy.shouldRun(demand { $0.needsUpdate = true }))
         #expect(policy.shouldRun(demand { $0.isDragging = true }))
         #expect(policy.shouldRun(demand { $0.hasSyncDeadline = true }))
-        #expect(policy.shouldRun(demand { $0.isLiveResizing = true }))
+    }
+
+    /// Regression: a live resize *pauses* the link, it does not run it.
+    ///
+    /// During a drag `setFrameSize` renders synchronously under `presentsWithTransaction`. A
+    /// ticking link then competes with it for the layer's drawables, and a synchronous present that
+    /// finds the pool empty blocks for up to a second. Measured on a real drag (2026-09-08): with
+    /// the link running, a multi-second drag delivered only two size updates — which looks exactly
+    /// like a window that does not resize until mouse-up.
+    @Test("a live resize pauses the link, because the drag renders synchronously")
+    func liveResizePauses() {
+        #expect(policy.shouldRun(demand { $0.isLiveResizing = true }) == false)
+        // And it vetoes: even with other work pending, the drag owns the surface while it lasts.
+        #expect(policy.shouldRun(demand {
+            $0.isLiveResizing = true
+            $0.needsUpdate = true
+            $0.hasSyncDeadline = true
+        }) == false)
+        // The veto lifts as soon as the drag ends.
+        #expect(policy.shouldRun(demand { $0.needsUpdate = true }))
     }
 
     @Test("occlusion vetoes every kind of work")

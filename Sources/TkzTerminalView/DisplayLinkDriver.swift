@@ -56,7 +56,14 @@ public struct DisplayLinkPolicy: Sendable, Hashable {
         // Occlusion and "nothing attached" veto everything: an occluded window cannot show a frame
         // and a detached surface renders as "skipped" anyway.
         guard demand.hasVisibleSession, !demand.isOccluded else { return false }
-        return demand.needsUpdate || demand.isDragging || demand.hasSyncDeadline || demand.isLiveResizing
+        // A live resize *pauses* the link rather than running it. During a drag `setFrameSize`
+        // renders synchronously under `presentsWithTransaction`, so a ticking link is not just
+        // redundant, it is harmful: both paths call `nextDrawable()`, the layer only has a few
+        // drawables, and a synchronous present that finds the pool empty blocks for up to a second.
+        // Measured on a real drag (2026-09-08): with the link running, a multi-second drag produced
+        // only two size updates. The drag owns the surface while it lasts.
+        guard !demand.isLiveResizing else { return false }
+        return demand.needsUpdate || demand.isDragging || demand.hasSyncDeadline
     }
 
     public enum Transition: Sendable, Hashable {
