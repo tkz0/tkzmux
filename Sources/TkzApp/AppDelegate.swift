@@ -21,6 +21,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let autoQuitKey = "TKZMUX_DEV_AUTOQUIT_MS"
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything else: without a menu bar, NSApplication has nothing to match ⌘-key
+        // equivalents against, so ⌘Q, ⌘M and ⌘W are simply dead (reported 2026-09-08).
+        MainMenu.install()
         do {
             let context = try TerminalRenderContext(theme: .default)
             let controller = DevWindowController(renderContext: context)
