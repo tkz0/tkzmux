@@ -31,6 +31,10 @@ public enum SidebarStatus: String, Hashable, Sendable, CaseIterable {
     case waiting
     /// Alive but nothing is happening.
     case idle
+    /// Claude finished less than a minute ago and nobody has looked yet: idle with the accent
+    /// tint, so a finished answer is visible before it ages into `NEEDS YOU` (GUI pass
+    /// 2026-09-08, 5c: the dot went straight from green to grey).
+    case done
     /// The process is gone; the row stays in the list and is resumable.
     case exited
 }

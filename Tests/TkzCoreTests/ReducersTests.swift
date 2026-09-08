@@ -79,6 +79,13 @@ import Testing
         #expect(session.displayTitle == "pricing")  // a derived name loses to the worktree
         session.title = "user rename"
         #expect(session.displayTitle == "user rename")  // the rename always wins
+
+        // Claude's own cwd beats the shell's starting directory once a descriptor is bound.
+        var moved = Session(groupID: GroupID.generate(), cwd: "/Users/x", accountKey: "claude")
+        moved.live = LiveSessionState(descriptor: ClaudeSessionInfo(
+            configDir: "/Users/x/.claude", pid: 1, sessionId: "s", cwd: "/Users/x/dev/app",
+            name: "app-3f", nameSource: .derived))
+        #expect(moved.displayTitle == "app")
     }
 
     @Test func moveBetweenGroupsRenumbersBothSides() {

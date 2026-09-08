@@ -398,6 +398,10 @@ struct SidebarRowViewTests {
                     #expect(Self.approxEqual(Self.components(dot.fillColor),
                                              Self.components(theme.idle.cgColor)),
                             "\(theme.preset) idle")
+                case .done:
+                    #expect(Self.approxEqual(Self.components(dot.fillColor),
+                                             Self.components(theme.accent.cgColor)),
+                            "\(theme.preset) done")
                 case .exited:
                     // No token for `exited`: a hollow idle-coloured ring.
                     #expect(Self.components(dot.fillColor).last == 0)

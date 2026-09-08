@@ -27,7 +27,7 @@ public enum SidebarRowAdapter {
 
     // MARK: - Status
 
-    /// `TkzCore.SessionStatus` → the dot's four-case vocabulary.
+    /// `TkzCore.SessionStatus` → the dot's vocabulary.
     public static func status(_ status: SessionStatus) -> SidebarStatus {
         switch status {
         case .working: .working
@@ -35,6 +35,13 @@ public enum SidebarRowAdapter {
         case .idle: .idle
         case .exited: .exited
         }
+    }
+
+    /// The same, plus the "done" tint: `idle` with `LiveSessionState.isDone` (a Stop newer than
+    /// `attendedAt`, younger than the 60 s grace) draws as `.done`.
+    public static func status(of session: Session) -> SidebarStatus {
+        if session.status == .idle, session.live?.isDone == true { return .done }
+        return status(session.status)
     }
 
     // MARK: - Rows
@@ -45,7 +52,7 @@ public enum SidebarRowAdapter {
             title: session.displayTitle,
             branch: session.live?.git?.branch,
             isWorktree: session.isWorktree,
-            status: status(session.status),
+            status: status(of: session),
             accountLabel: accountLabel(for: session, in: state),
             accountColor: SidebarSessionRowModel.accountChipColor(forKey: session.accountKey),
             needsAttention: session.needsAttention,

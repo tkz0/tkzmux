@@ -131,6 +131,11 @@ public final class StatusDotLayer: CALayer {
         case .idle:
             backgroundColor = theme.idle.cgColor
             borderWidth = 0
+        case .done:
+            // No token of its own: the accent is the one chromatic colour not already meaning
+            // "working" (green) or "needs you" (amber) in every preset.
+            backgroundColor = theme.accent.cgColor
+            borderWidth = 0
         case .exited:
             // No token exists for `exited`; a hollow `idle`-coloured ring reads as "gone" without
             // inventing a colour, and stays correct in all five presets.

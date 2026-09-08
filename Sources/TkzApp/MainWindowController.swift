@@ -748,6 +748,38 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Overrides the confirmation alert for "Remove Shell Integration". Tests set it.
     public var confirmRemoveShellIntegration: (() -> Bool)?
 
+    /// Overrides the rename sheet: gets the current title, returns the new one or `nil` for
+    /// cancel. Tests set it — a sheet needs a key window and a run loop.
+    public var renamePrompt: ((String) -> String?)?
+
+    /// ⇧⌘R. Was in the menu since M2.4 with no handler behind it (GUI pass 2026-09-08, 5d).
+    /// An empty answer clears the rename, so the derived title comes back.
+    func renameSelectedSession() {
+        guard let id = store.state.selection, let session = store.state.sessions[id] else { return }
+        let current = session.displayTitle
+        if let renamePrompt {
+            guard let answer = renamePrompt(current) else { return }
+            store.update { $0.renameSession(id, title: answer) }
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Rename Session"
+        alert.informativeText = "Leave it empty to go back to the automatic title."
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.stringValue = session.title ?? ""
+        field.placeholderString = current
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            let answer = field.stringValue
+            self.store.update { $0.renameSession(id, title: answer) }
+            self.focusTerminalIfSessionShown()
+        }
+    }
+
     func removeShellIntegration() {
         guard let claude else { return }
         let confirmed: Bool
@@ -1191,6 +1223,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         dispatcher.setHandler(.jumpToNeedsYou) { [weak self] in
             _ = self?.sidebar.selectFirstSessionNeedingAttention()
         }
+        dispatcher.setHandler(.renameSession) { [weak self] in self?.renameSelectedSession() }
         dispatcher.setHandler(.copyLastMessage) { [weak self] in self?.copyLastMessage() }
         dispatcher.setHandler(.removeShellIntegration) { [weak self] in self?.removeShellIntegration() }
         dispatcher.setHandler(.nextSession) { [weak self] in

@@ -298,11 +298,14 @@ wrappers with the real rc files has `$TKZMUX_BIN` first on PATH and `which claud
 shim delivers the `launch` frame and the `SessionStart` hook to the running app. What is left needs
 the window:
 
+*GUI pass 2026-09-08: 5b, 5c, 5e, 5f pass; 5a (title stayed on the home directory), 5c (no done tint) and 5d (⇧⌘R unwired) fixed afterwards — re-check 5a, 5c, 5d.*
+
 **5a. A row follows Claude.** `>_` → in the new terminal run `which claude` (expect
 `…/tkzmux/bin/claude`), then `claude`. **Pass**: within a second the row's title becomes the
 directory name and the dot is idle; ask for something → dot turns green (`working`) while Claude
 runs; when the answer lands with the row selected and the window key, the dot goes back to idle
-with the "done" tint and no amber badge.
+with the "done" tint (accent colour) and no amber badge. Also: `cd` into a repo *before* running
+`claude` — the row should take that directory's name, not the home directory's.
 
 **5b. NEEDS YOU on a permission prompt.** Ask Claude to run a shell command that needs approval.
 **Pass**: `NEEDS YOU` and the amber dot within 1 s of the prompt; answering clears both within 1 s

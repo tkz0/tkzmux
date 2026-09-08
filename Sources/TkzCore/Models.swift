@@ -215,7 +215,9 @@ public struct Session: Hashable, Sendable, Identifiable {
     public var needsAttention: Bool { live?.attention ?? false }
 
     /// design.md → *Claude integration → Titles*: user rename → descriptor `name` (unless the
-    /// descriptor derived it) → worktree name → `basename(cwd)`.
+    /// descriptor derived it) → worktree name → `basename(cwd)`, where `cwd` is **Claude's own**
+    /// once a descriptor is bound: a shell started in the home group and `cd`'d into a repo before
+    /// `claude` should read as that repo, not as the home directory (GUI pass 2026-09-08, 5a).
     public var displayTitle: String {
         if let title, !title.isEmpty { return title }
         if let name = live?.descriptor?.name, !name.isEmpty, live?.descriptor?.nameSource != .derived {
@@ -223,6 +225,9 @@ public struct Session: Hashable, Sendable, Identifiable {
         }
         if let worktreePath, !worktreePath.isEmpty {
             return (worktreePath as NSString).lastPathComponent
+        }
+        if let claudeCwd = live?.descriptor?.cwd, !claudeCwd.isEmpty {
+            return (claudeCwd as NSString).lastPathComponent
         }
         return (cwd as NSString).lastPathComponent
     }
