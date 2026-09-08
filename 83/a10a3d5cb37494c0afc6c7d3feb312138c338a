@@ -1,0 +1,49 @@
+Sources/ClaudeBridge/HookFrame.swift
+  s_093857b3ed8828::t_22a738c97079f4 1-35
+Sources/ClaudeBridge/HookServer.swift
+  s_093857b3ed8828::t_553fa362e514a4 1-342
+Sources/tkzmux-hook/Debug.swift
+  s_093857b3ed8828::t_02e565e9c85fb8 1-19
+Sources/tkzmux-hook/HookFrameBuilder.swift
+  s_093857b3ed8828::t_2612f53440d828 1-100
+Sources/tkzmux-hook/Json.swift
+  s_093857b3ed8828::t_8cf3f749909a05 1-289
+Sources/tkzmux-hook/LaunchCommand.swift
+  s_093857b3ed8828::t_103a83215a80c1 1-46
+Sources/tkzmux-hook/SettingsMerge.swift
+  s_093857b3ed8828::t_89901567319a05 1-116
+Sources/tkzmux-hook/Socket.swift
+  s_093857b3ed8828::t_eff6fc517384cf 1-96
+Sources/tkzmux-hook/StdinReader.swift
+  s_093857b3ed8828::t_83ea295e1face5 1-31
+Sources/tkzmux-hook/main.swift
+  s_093857b3ed8828::t_8066fe0deae2bb 2-4,7-38
+Tests/ClaudeBridgeTests/Fixtures/hooks/invalid_settings.json
+  s_093857b3ed8828::t_b406f3e8ee5dbd 1
+Tests/ClaudeBridgeTests/Fixtures/hooks/stop.json
+  s_093857b3ed8828::t_88ff9034d3d490 1-8
+Tests/ClaudeBridgeTests/Fixtures/hooks/user_settings.json
+  s_093857b3ed8828::t_4a20959907e7be 1-25
+Tests/ClaudeBridgeTests/HookBinaryTests.swift
+  s_093857b3ed8828::t_175d1ade9849bf 1-500
+Tests/ClaudeBridgeTests/HookHygieneTests.swift
+  s_093857b3ed8828::t_d7501ca9fd7001 1-85
+Tests/ClaudeBridgeTests/HookServerTests.swift
+  s_093857b3ed8828::t_6733a90c129367 1-268
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "83a10a3d5cb37494c0afc6c7d3feb312138c338a",
+  "prompts": {},
+  "sessions": {
+    "s_093857b3ed8828": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5e7fafd-1256-4bd3-bd40-2906accdec3f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
