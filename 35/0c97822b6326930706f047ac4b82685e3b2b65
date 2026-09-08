@@ -1,0 +1,51 @@
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_3ece93cb5b29fc::t_10112a5047dc19 169-175,178-190
+  s_3ece93cb5b29fc::t_e43fba6a961149 218-226
+Sources/TkzTerminalRender/GlyphRasterizer.swift
+  s_3ece93cb5b29fc::t_1b65ee5c95ed6f 10-15
+  s_3ece93cb5b29fc::t_efc50199e9d1a7 142-146
+  s_3ece93cb5b29fc::t_cd2abb8ae30c04 49-50,52-53,59,62-63
+Sources/TkzCore/Theme.swift
+  s_3ece93cb5b29fc::t_7b60831faacf3e 101-102
+  s_3ece93cb5b29fc::t_31ea27d95630e0 88-91
+Sources/tkzmux-vtdump/RenderCommands.swift
+  s_3ece93cb5b29fc::t_fa605948fd8d7d 74-75,79
+Sources/TkzApp/ChromeViewController.swift
+  s_3ece93cb5b29fc::t_85549636e1be74 1-117
+Sources/TkzTerminalRender/TerminalRenderer.swift
+  s_3ece93cb5b29fc::t_736b4aca75c6a8 121
+Sources/TkzApp/MainWindowController.swift
+  s_3ece93cb5b29fc::t_abb7162bd14831 513
+  s_3ece93cb5b29fc::t_5b2768c60da014 495-501
+  s_3ece93cb5b29fc::t_d8ced08b6d5227 97-103
+  s_3ece93cb5b29fc::t_f01ae1751ab3fa 517-521
+  s_3ece93cb5b29fc::t_0557905ac2e681 343-344
+  s_3ece93cb5b29fc::t_df39405fb93395 399-401
+  s_3ece93cb5b29fc::t_fc3fb407eab104 407
+Sources/tkzmux-vtdump/main.swift
+  s_3ece93cb5b29fc::t_77b7fa75b960d8 56
+  s_3ece93cb5b29fc::t_616d965e0e59b0 647,653-654
+Sources/TkzTerminalView/TkzTerminalView.swift
+  s_3ece93cb5b29fc::t_13831857bcd3ba 77,129
+docs/design.md
+  s_3ece93cb5b29fc::t_d26c10fe689915 177
+  s_3ece93cb5b29fc::t_4361294d8cf9d4 82
+Sources/TkzTerminalRender/GlyphAtlas.swift
+  s_3ece93cb5b29fc::t_0a095c400d2408 305,309-310,314
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "350c97822b6326930706f047ac4b82685e3b2b65",
+  "prompts": {},
+  "sessions": {
+    "s_3ece93cb5b29fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc193ddb-afc9-475b-b6a5-6f36410fc646",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
