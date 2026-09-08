@@ -582,3 +582,55 @@ failure mode.
 * Whether the corpus difference explains the whole 578 → 159 MiB gap between the headless bench and
   this harness. The two runs differ in content *and* in how many sessions are filled; neither was
   re-run in the other's shape.
+
+---
+
+## 10. On-screen acceptance run (2026-09-08, real GUI login)
+
+The run §9 describes, executed by Thomas at a real display — the one thing every earlier
+measurement could not do, because an automated session's window never becomes key and therefore
+never presents a frame.
+
+```
+TKZMUX_DEV sessions=30 visible=29 grid=125x40 gridResizes=632
+framesRendered=886 framesEncoded=1486 framesSkipped=30
+drawableRequests=1486 drawablesAcquired=886
+window[visible=true occlusion=8194 key=true]
+link[pauses=894 resumes=895 currentlyPaused=false occluded=false]
+mem[rss=87.5MiB footprint=292.3MiB reusable=0.0MiB threads=6 cpu=0.8551% over 120.3s]
+settled[rss=232.1MiB footprint=377.9MiB reusable=0.3MiB threads=10 sustainedCpu=0.2419% over 108.3s]
+scrollbackRows[max=23122 total=115610]
+compress[tracked=30 ticks=24 passes=29 steps=322 snapshots=29 total=13.4ms maxPass=4.25ms]
+heartbeat[interval=8.0ms samples=13498 worstOvershoot=9.88ms]
+switch[n=600 full=600 over8.3ms[show=0 frame=0]
+       show=0.091/0.108/0.214/0.764ms frame=0.378/0.428/0.605/1.130ms]
+quitSnapshot[saved=1 skipped=29 failed=0 bytes=95811 elapsed=3.1ms]
+```
+
+Workload note: `--busy 5`, so 5 sessions hold scrollback (23 122 rows each, 115 610 total), not 30.
+That is a *lighter* memory workload than §6's 30-filled run and the two are not comparable.
+
+### What this settles
+
+| Criterion | Result |
+|---|---|
+| Frames actually presented | **`drawablesAcquired = 886`**, `occluded=false`, `key=true`. The only criterion §9 could not reach. |
+| Session switch < 8.3 ms | **0 of 600 over budget, for both `show` and a full frame rebuild.** `show` median 0.108 ms, max 0.764 ms; full frame median 0.428 ms, max 1.130 ms. Better than the headless run, which had 3/3600 frame overruns. |
+| Sustained CPU | **0.24 %** over 108 s settled (0.86 % across the whole 120 s including spawn and fill). Well inside the ticket's < 1 %. Higher than §6's 0.015 % because a visible window is actually rendering — 1 486 frames encoded. |
+| Threads | 6 during the run, 10 settled — against Ghostty's ~4 *per surface*. |
+| **Does the idle compressor stall the visible session?** | **No.** `worstOvershoot = 9.88 ms` on an 8 ms heartbeat, i.e. 1.9 ms over, across 13 498 samples, while 29 compression passes ran. This **resolves the open caveat** from §7, where headless runs showed tens-of-ms stalls in both compressor-on and control runs — those were an artefact of the headless harness, not the compressor. |
+| Snapshot on quit | 29 of 30 skipped, 1 saved, 0 failed. **Correct, not a bug**: the compressor had already snapshotted 29 sessions before compressing them, and the activity token doubles as a dirty flag, so quit does not re-save unchanged sessions or rehydrate what the timer just released. |
+
+### Open question, flagged not explained
+
+`settled` shows `footprint=377.9 MiB` with `reusable=0.3 MiB`, while §7's headless run had compression
+move footprint 577 → 67 MiB with `reusable` rising to 95 MiB. Here 29 passes ran (322 steps, 13.4 ms)
+yet almost nothing landed in `reusable`, and footprint is higher in the later sample than the earlier
+one (292.3 → 377.9 MiB).
+
+Possible and **not distinguished by this run**: the workload is much lighter (5 filled sessions, not
+30), so there may simply be little to reclaim; the two samples are taken at different points and the
+switch benchmark allocates between them; or compression is not reclaiming under a live renderer the
+way it does headlessly. Worth one deliberate measurement — a `--busy 30` GUI run with and without
+`TKZMUX_DEV_COMPRESS=0` — before anything is concluded. **Do not quote a compression figure from this
+run.**
