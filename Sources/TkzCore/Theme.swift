@@ -85,6 +85,10 @@ extension Theme {
             public let terminal: Double         // terminal cells: 12.5 pt
             public let detail: Double           // sidebar "⎇ branch" line: 10 pt
             public let statusBar: Double        // status bar: 10.5 pt
+            /// Rasterize terminal glyphs with CoreText font smoothing — the stem-darkening pass
+            /// Ghostty calls `font-thicken`. Without it JetBrains Mono at 12.5 pt reads as a
+            /// lighter face than cmux draws (compared side by side 2026-09-08).
+            public let thicken: Bool
         }
 
         public static let ui = UI(family: nil, title: 12.5, body: 11, caption: 10.5)
@@ -94,7 +98,8 @@ extension Theme {
             fallback: "Menlo",
             terminal: 12.5,
             detail: 10,
-            statusBar: 10.5
+            statusBar: 10.5,
+            thicken: true
         )
     }
 }

@@ -7,6 +7,12 @@
 // A face without a real bold gets synthetic bold (fill + stroke). Anything that does not fit the
 // grapheme's 1- or 2-cell box is uniformly scaled down until it does — Apple Color Emoji at terminal
 // sizes routinely overflows vertically.
+//
+// `thicken` turns on CoreText "font smoothing" for grayscale glyphs. On an alpha-only context that
+// is not LCD filtering but a stem-darkening pass (Ghostty's `font-thicken`): about 17 % more
+// coverage at 12.5 pt, which is the difference between JetBrains Mono looking like itself and
+// looking like a lighter cut. It dilates edges by up to a pixel, so the transparent padding grows by
+// one to hold it. Colour glyphs are bitmaps and unaffected.
 
 import CoreGraphics
 import CoreText
@@ -40,17 +46,21 @@ public struct RasterizedGlyph: Sendable, Equatable {
 public final class GlyphRasterizer {
     public let fontSet: FontSet
     public let metrics: CellMetrics
-    /// Transparent border kept around every glyph so bilinear sampling never bleeds a neighbour.
+    /// Transparent border kept around every glyph so bilinear sampling never bleeds a neighbour
+    /// (one pixel more when `thicken` is on, for the dilation).
     public let padding: Int
+    /// Font smoothing (stem darkening) on grayscale glyphs — see the file header.
+    public let thicken: Bool
 
     private let colorSpace = CGColorSpaceCreateDeviceRGB()
     // Ignored for an alpha-only context, but Swift's CGContext initializer requires a non-nil space.
     private let grayColorSpace = CGColorSpaceCreateDeviceGray()
 
-    public init(fontSet: FontSet, metrics: CellMetrics, padding: Int = 1) {
+    public init(fontSet: FontSet, metrics: CellMetrics, padding: Int = 1, thicken: Bool = true) {
         self.fontSet = fontSet
         self.metrics = metrics
-        self.padding = max(0, padding)
+        self.thicken = thicken
+        self.padding = max(0, padding) + (thicken ? 1 : 0)
     }
 
     /// Rasterizes a shaped grapheme. Returns `nil` for an empty cluster (space, control, no coverage).
@@ -129,8 +139,11 @@ public final class GlyphRasterizer {
 
             ctx.setShouldAntialias(true)
             ctx.setAllowsAntialiasing(true)
-            ctx.setShouldSmoothFonts(false)
-            ctx.setAllowsFontSmoothing(false)
+            // Smoothing on an alpha-only context is the stem-darkening pass (see the header); a
+            // colour glyph is a bitmap and gains nothing from it.
+            let smooth = thicken && !isColor
+            ctx.setAllowsFontSmoothing(smooth)
+            ctx.setShouldSmoothFonts(smooth)
             ctx.setShouldSubpixelPositionFonts(true)
             ctx.setAllowsFontSubpixelPositioning(true)
             ctx.setShouldSubpixelQuantizeFonts(false)

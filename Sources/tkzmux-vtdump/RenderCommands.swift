@@ -71,11 +71,12 @@ public enum RenderCommands {
     // MARK: - atlas
 
     /// `tkzmux-vtdump atlas --out <prefix>` — dump both glyph atlases as PNGs.
-    public static func atlas(pngPrefix: URL, pointSize: Double, scale: Double, sample: String?) throws {
+    public static func atlas(pngPrefix: URL, pointSize: Double, scale: Double, sample: String?,
+                             thicken: Bool = true) throws {
         let fontSet = FontSet(pointSize: pointSize, scale: scale)
         // Small atlases so the dump is legible rather than a postage stamp in a 2048² field.
         let cache = GlyphCache(fontSet: fontSet, device: nil,
-                               grayscaleInitialSize: 512, colorInitialSize: 256)
+                               grayscaleInitialSize: 512, colorInitialSize: 256, thicken: thicken)
 
         let text = sample ?? defaultSample
         for character in text where !character.isNewline {

@@ -166,18 +166,28 @@ struct MainWindowControllerTests {
         harness.layout()
         let detail = harness.controller.detail
 
-        // The content view stops at the titlebar — the window is not `.fullSizeContentView`, so
-        // the titlebar keeps its own material (the glass behind the ＋ menu and the search field)
-        // and the terminal fills the content from its top edge. The pin is still on the safe-area
-        // guide, which is what kept the grid out from under the toolbar when the content *did*
-        // extend up there (M2.5); today the guide coincides with the top edge.
-        let contentHeight = harness.window.contentView?.frame.height ?? 0
-        #expect(abs(harness.window.frame.height - contentHeight - 52) < 1,
-                "titlebar + unified toolbar own their 52 pt; the content sits below them")
-        #expect(detail.view.safeAreaInsets.top == 0)
-        #expect(abs(detail.terminalContainer.frame.maxY - detail.view.bounds.height) < 1)
+        // The window is `.fullSizeContentView` with a transparent titlebar and a unified toolbar,
+        // so its content view really does extend up behind them — that is what the safe area
+        // reports. Pinned to `topAnchor` instead, the first rows of the grid render *underneath*
+        // the toolbar, with the ＋ menu and the search field sitting on top of them.
+        let inset = detail.view.safeAreaInsets.top
+        #expect(inset > 0, "this window is supposed to have a titlebar to sit below")
+        #expect(abs(detail.terminalContainer.frame.maxY - (detail.view.bounds.height - inset)) < 1)
         // The empty state rides inside the container, so it is inset by construction.
         #expect(detail.emptyState.frame.height == detail.terminalContainer.frame.height)
+        // The sidebar's list stops there too.
+        let sidebar = harness.controller.sidebar
+        #expect(abs(sidebar.scrollView.frame.maxY - (sidebar.view.bounds.height - inset)) < 1)
+        // And the header backdrop is exactly that strip, above both columns.
+        let backdrop = harness.controller.chrome.headerBackdrop
+        #expect(abs(backdrop.frame.height - inset) < 1)
+        #expect(abs(backdrop.frame.width - (harness.window.contentView?.frame.width ?? 0)) < 1)
+        #expect(backdrop.superview === harness.window.contentView)
+        #expect(harness.window.contentView?.subviews.last === backdrop, "the backdrop is above the split view")
+        #expect(backdrop.effectView.blendingMode == .behindWindow)
+        #expect(backdrop.effectView.material == HeaderBackdropView.material)
+        #expect(backdrop.borderView.frame.height == 1)
+        #expect(backdrop.mouseDownCanMoveWindow)
     }
 
     @Test("The status bar is pinned along the bottom at exactly 30 pt")
@@ -205,14 +215,15 @@ struct MainWindowControllerTests {
         #expect(harness.window.toolbar === harness.controller.toolbarController.toolbar)
         #expect(harness.window.toolbarStyle == .unified)
         #expect(harness.window.titleVisibility == .hidden)
-        // The titlebar keeps its native material — that is the glass behind the toolbar items —
-        // and draws the design's 1 pt bottom border. A transparent titlebar over full-size
-        // content showed a flat strip of window background instead (reported 2026-09-08).
-        #expect(harness.window.titlebarAppearsTransparent == false)
-        #expect(harness.window.styleMask.contains(.fullSizeContentView) == false)
-        #expect(harness.window.titlebarSeparatorStyle == .line)
-        // A dark preset must put the window in `.darkAqua`, or the titlebar material and the
-        // toolbar come up light over dark content.
+        // Transparent titlebar over full-size content: the glass behind the toolbar items is
+        // `ChromeViewController`'s own backdrop (see `terminalRespectsTheSafeArea`), which also
+        // draws the design's 1 pt border, so AppKit's separator stays off.
+        #expect(harness.window.titlebarAppearsTransparent)
+        #expect(harness.window.styleMask.contains(.fullSizeContentView))
+        #expect(harness.window.titlebarSeparatorStyle == .none)
+        #expect(harness.window.contentViewController === harness.controller.chrome)
+        // A dark preset must put the window in `.darkAqua`, or the vibrancy and the toolbar come
+        // up light over dark content.
         #expect(harness.window.appearance?.name == .darkAqua)
     }
 

@@ -94,12 +94,13 @@ final class MainSplitViewController: NSSplitViewController {
 /// pins its three edges — adding a second height constraint here would be a conflict waiting for
 /// the first layout pass.
 ///
-/// **The terminal follows the safe area at the top, not the view's edge.** The window no longer
-/// extends its content under the titlebar (it is not `.fullSizeContentView`, so the titlebar keeps
-/// its own material — see `configureWindow`), which makes the safe-area inset zero and the two
-/// anchors coincide. The pin stays on `safeAreaLayoutGuide` on purpose: it is what kept the first
-/// grid rows out from under the ＋ menu and the search field when the content *did* extend up
-/// there (M2.5), and it costs nothing when it does not.
+/// **The terminal follows the safe area at the top, not the view's edge.** The window is
+/// `.fullSizeContentView` with a transparent titlebar, so the content view really does extend up
+/// behind the toolbar — pinning to `topAnchor` draws the first rows of the grid underneath the
+/// toolbar, where the ＋ menu and the search field sit on top of them (M2.5). What sits there
+/// instead is `ChromeViewController`'s header backdrop. `safeAreaLayoutGuide` carries the window's
+/// `contentLayoutRect`, so it is the titlebar+toolbar height on screen and zero everywhere else (a
+/// headless render is unaffected).
 final class DetailViewController: NSViewController {
     let terminalContainer = NSView()
     let terminalView: NSView
@@ -339,6 +340,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public let dispatcher: MenuDispatcher
 
     let splitViewController: MainSplitViewController
+    /// The window's content view controller: the split view plus the header backdrop.
+    let chrome: ChromeViewController
     let detail: DetailViewController
     /// The right-hand surface. `NSView` rather than `TerminalMetalView` so a test can drive the
     /// window with a plain focusable view and no GPU.
@@ -393,13 +396,15 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         self.dispatcher = MenuDispatcher()
         self.detail = DetailViewController(
             terminalView: terminalView, statusBar: statusBar, theme: theme)
-        self.splitViewController = MainSplitViewController()
+        let splitViewController = MainSplitViewController()
+        self.splitViewController = splitViewController
+        self.chrome = ChromeViewController(splitViewController: splitViewController, theme: theme)
 
         let frame = store.state.windowFrame
             ?? NSRect(origin: .zero, size: MainWindowController.defaultWindowSize)
         let window = NSWindow(
             contentRect: frame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false)
         self.window = window
@@ -487,13 +492,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     private func configureWindow() {
         window.title = "tkzmux"
         window.titleVisibility = .hidden
-        // The titlebar keeps its own material: on macOS 26 that is the translucent glass the
-        // artboards draw behind the ＋ menu and the search field, spanning both columns, with the
-        // design's 1 pt bottom border as the separator. A transparent titlebar over a
-        // `.fullSizeContentView` window (M2.2–M2.5) left a flat strip of window background there
-        // instead, because nothing but our own opaque views ever sat behind it.
-        window.titlebarAppearsTransparent = false
-        window.titlebarSeparatorStyle = .line
+        // The titlebar is transparent and the content extends under it; `ChromeViewController`
+        // paints its own behind-window vibrancy there (the glass behind the ＋ menu and the search
+        // field) with the design's 1 pt bottom border. AppKit's own titlebar material was tried on
+        // 2026-09-08 and came out nearly opaque with no transparency knob; the M2.2–M2.5 setup had
+        // the transparent titlebar but nothing translucent behind it, so it read as a flat strip.
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
         window.toolbarStyle = .unified
         window.tabbingMode = .disallowed
         window.isReleasedWhenClosed = false
@@ -505,13 +510,15 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // system setting.
         window.appearance = NSAppearance(
             named: theme.windowBackground.relativeLuminance < 0.5 ? .darkAqua : .aqua)
-        window.contentViewController = splitViewController
+        window.contentViewController = chrome
         window.toolbar = toolbarController.toolbar
         window.delegate = self
         // Realise the titlebar and the toolbar *before* placing the window: AppKit lays a toolbar
-        // out lazily and, when it does, re-derives the frame from the content size — so a frame
-        // applied before that point came back 52 pt taller (a stored 700 pt window relaunched at
-        // 752 pt once the titlebar stopped being transparent; reproduced 2026-09-08).
+        // out lazily and, when it does, re-derives the frame from the content size — with a
+        // non-full-size content view a frame applied before that point came back 52 pt taller (a
+        // stored 700 pt window relaunched at 752 pt; reproduced 2026-09-08). Harmless with
+        // `.fullSizeContentView`, where content and frame coincide, and kept so the placement does
+        // not depend on that style bit.
         window.layoutIfNeeded()
         window.setFrame(
             store.state.windowFrame ?? NSRect(origin: .zero, size: Self.defaultWindowSize),

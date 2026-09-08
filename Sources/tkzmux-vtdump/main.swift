@@ -53,7 +53,7 @@ usage: tkzmux-vtdump <command> [options]
 
   render  --out <file.png> [--cols n] [--rows n] <file.tkzrec>
                             replay a recording and rasterise the screen offscreen (M1.5)
-  atlas   --out <prefix> [--point-size n] [--scale n] [--sample <text>]
+  atlas   --out <prefix> [--point-size n] [--scale n] [--sample <text>] [--thicken 0|1]
                             dump the glyph atlas textures as PNGs (M1.4)
 
   bench   --sessions <n> [--busy <k>] [--seconds <s>] [--fill uniform|varied] [--lines <n>]
@@ -644,13 +644,14 @@ do {
         )
 
     case "atlas":
-        let arguments = Arguments(Array(argv.dropFirst()), valueFlags: ["out", "point-size", "scale", "sample"])
+        let arguments = Arguments(Array(argv.dropFirst()), valueFlags: ["out", "point-size", "scale", "sample", "thicken"])
         guard let out = arguments.value("out") else { fail("tkzmux-vtdump atlas: --out is required", code: 2) }
         try RenderCommands.atlas(
             pngPrefix: URL(fileURLWithPath: out),
             pointSize: Double(arguments.value("point-size") ?? "") ?? 12.5,
             scale: Double(arguments.value("scale") ?? "") ?? 2,
-            sample: arguments.value("sample")
+            sample: arguments.value("sample"),
+            thicken: arguments.value("thicken") != "0"
         )
 
     default:

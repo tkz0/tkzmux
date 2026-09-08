@@ -118,7 +118,7 @@ public final class TerminalRenderer {
             scale: 2)
         try self.init(
             device: device,
-            glyphCache: GlyphCache(fontSet: resolvedFontSet, device: device),
+            glyphCache: GlyphCache(fontSet: resolvedFontSet, device: device, thicken: theme.fontMono.thicken),
             theme: theme)
     }
 

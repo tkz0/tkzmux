@@ -302,14 +302,16 @@ public final class GlyphCache {
     }
     private var entries: [Key: CachedGlyph] = [:]
 
+    /// - Parameter thicken: font smoothing on grayscale glyphs (`GlyphRasterizer.thicken`).
     public init(fontSet: FontSet,
                 device: MTLDevice?,
                 grayscaleInitialSize: Int? = nil,
-                colorInitialSize: Int? = nil) {
+                colorInitialSize: Int? = nil,
+                thicken: Bool = true) {
         self.fontSet = fontSet
         self.metrics = CellMetrics(fontSet: fontSet)
         self.shaper = GraphemeShaper(fontSet: fontSet)
-        self.rasterizer = GlyphRasterizer(fontSet: fontSet, metrics: metrics)
+        self.rasterizer = GlyphRasterizer(fontSet: fontSet, metrics: metrics, thicken: thicken)
         self.grayscale = GlyphAtlas(kind: .grayscale, device: device, initialSize: grayscaleInitialSize)
         self.color = GlyphAtlas(kind: .color, device: device, initialSize: colorInitialSize)
     }
