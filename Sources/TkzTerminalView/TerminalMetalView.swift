@@ -309,7 +309,10 @@ public final class TerminalMetalView: NSView {
         /// gap between lines, which is the thing a duration-per-render cannot reveal.
         static func log(_ message: @autoclosure () -> String) {
             guard enabled else { return }
-            let ms = Double((ContinuousClock.now - start).components.attoseconds) / 1e15
+            // `Duration.components.attoseconds` is the *sub-second remainder*, not the total, so
+            // using it alone makes the clock wrap every second. Both halves, always.
+            let c = (ContinuousClock.now - start).components
+            let ms = Double(c.seconds) * 1000 + Double(c.attoseconds) / 1e15
             let line = String(format: "TKZMUX_RESIZE %8.1fms ", ms) + message() + "\n"
             FileHandle.standardError.write(Data(line.utf8))
         }
@@ -350,8 +353,8 @@ public final class TerminalMetalView: NSView {
             let started = ContinuousClock.now
             renderNow(transactional: true)
             if ResizeDiagnostics.enabled {
-                let ms = Double(
-                    (ContinuousClock.now - started).components.attoseconds) / 1e15
+                let c = (ContinuousClock.now - started).components
+                let ms = Double(c.seconds) * 1000 + Double(c.attoseconds) / 1e15
                 resizeFrameCount += 1
                 resizeSlowestMs = max(resizeSlowestMs, ms)
                 ResizeDiagnostics.log(String(format: "  render %.2f ms (frame %d)", ms, resizeFrameCount))
