@@ -320,6 +320,10 @@ public final class TerminalViewHost: TerminalHost {
         host.eventsTask = Task { @MainActor [weak self] in
             for await event in session.events {
                 guard let self else { return }
+                // An evicted session (reopened under the same id) can still deliver its `.exited`
+                // after the replacement was adopted; applying it would kill the fresh shell's row.
+                // Identity, not id, decides.
+                guard self.sessions[id]?.session === session else { continue }
                 self.observe(event, for: id)
                 self.continuation.yield((id, event))
             }

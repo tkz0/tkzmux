@@ -62,7 +62,8 @@ struct MainMenuTests {
         #expect(items[.commandPalette]?.keyEquivalent == "p")
         #expect(items[.commandPalette]?.keyEquivalentModifierMask == [.command, .shift])
         #expect(items[.toggleSidebar]?.keyEquivalent == "b")
-        #expect(items[.closeSession]?.keyEquivalentModifierMask == [.command, .shift])
+        #expect(items[.closeTerminal]?.keyEquivalent == "w")
+        #expect(items[.closeTerminal]?.title == "Close Session")
         #expect(items[.selectSession(1)]?.keyEquivalent == "1")
         #expect(items[.reloadConfig]?.keyEquivalent == ",")
         #expect(items[.reloadConfig]?.keyEquivalentModifierMask == [.command, .shift])
@@ -188,7 +189,7 @@ struct MainMenuTests {
         for action in [ShortcutAction.newSession, .searchSessions, .commandPalette, .toggleSidebar,
                        .jumpToNeedsYou, .nextSession, .previousSession, .closeTerminal,
                        .renameSession, .copyLastMessage, .removeShellIntegration,
-                       .closeSession, .resumeSession, .resumeAllInGroup, .managePresets,
+                       .resumeSession, .resumeAllInGroup, .managePresets,
                        .toggleAutoResume] {
             #expect(dispatcher.canPerform(action), "\(action.rawValue) should be wired")
         }

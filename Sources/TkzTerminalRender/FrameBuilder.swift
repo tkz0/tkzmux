@@ -109,8 +109,21 @@ public final class FrameBuilder {
         default: dirty = .none
         }
         guard dirty != .none else {
-            surface.finishUpdate(dirty: .none, rowsRebuilt: 0)
-            return FrameUpdate(dirty: .none, rowsRebuilt: 0,
+            // libghostty's dirty flag tracks *cells*. A cursor that only moved — a space echoed
+            // onto a blank cell, a bare cursor-motion sequence — leaves every row clean, and the
+            // cursor would stay drawn where it was until the next real change (GUI pass
+            // 2026-09-08: "typing a space does not move the cursor; the next letter jumps two
+            // cells"). The cursor read is one `get`, so do it on clean ticks too and treat a change
+            // as a partial frame with no rows to rebuild.
+            let cursor = try readCursor(rs)
+            guard cursor != surface.cursor else {
+                surface.finishUpdate(dirty: .none, rowsRebuilt: 0)
+                return FrameUpdate(dirty: .none, rowsRebuilt: 0,
+                                   glyphCount: surface.glyphCount, rectCount: surface.rectCount)
+            }
+            surface.setCursor(cursor)
+            surface.finishUpdate(dirty: .partial, rowsRebuilt: 0)
+            return FrameUpdate(dirty: .partial, rowsRebuilt: 0,
                                glyphCount: surface.glyphCount, rectCount: surface.rectCount)
         }
 

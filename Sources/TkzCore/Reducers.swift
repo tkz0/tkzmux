@@ -131,6 +131,20 @@ extension AppState {
         moveSession(id, toGroup: session.groupID, at: index)
     }
 
+    /// The account a session actually runs on, as the shim's `launch` frame reports it — which can
+    /// differ from what the launcher asked for when the user's environment picks another config
+    /// dir (M5.2, GUI pass 2026-09-08). The chip and every later resume follow the truth.
+    public mutating func setSessionAccount(_ id: SessionID, key: String) {
+        guard !key.isEmpty, sessions[id]?.accountKey != key else { return }
+        sessions[id]?.accountKey = key
+    }
+
+    /// The shell reported its working directory (OSC 7). Title-only: nothing is persisted.
+    public mutating func setShellCwd(_ id: SessionID, path: String?) {
+        guard sessions[id]?.live != nil else { return }
+        updateLive(id) { $0.shellCwd = path?.isEmpty == true ? nil : path }
+    }
+
     /// Records where a session's worktree is (or that it has none). `isWorktree` drives the `WT`
     /// badge; the path is kept even when the badge is cleared, for the error message.
     public mutating func setWorktree(_ id: SessionID, path: String?, isWorktree: Bool) {
@@ -146,17 +160,10 @@ extension AppState {
         setWorktree(id, path: nil, isWorktree: false)
     }
 
-    /// **Close**: the process is gone, the row stays and is resumable. Clearing `live` is what
-    /// makes `Session.status` report `.exited` (see `Session`).
-    public mutating func closeSession(_ id: SessionID, now: Date = Date()) {
-        guard var session = sessions[id] else { return }
-        session.live = nil
-        session.lastActiveAt = now
-        sessions[id] = session
-    }
-
-    /// **Remove**: the row goes away. Never touches a worktree on disk. If the removed session was
-    /// selected, selection moves to the next row in sidebar order (or the previous one at the end).
+    /// **Remove** — the only way a row leaves the sidebar (⌘W, the row's ×, a shell that ended;
+    /// decision 2026-09-08: there is no "closed but kept" state). Never touches a worktree on disk.
+    /// If the removed session was selected, selection moves to the next row in sidebar order (or
+    /// the previous one at the end).
     public mutating func removeSession(_ id: SessionID) {
         guard let session = sessions[id] else { return }
         let ordered = orderedSessions
@@ -429,9 +436,14 @@ extension AppState {
         session.lastActiveAt = now
         // `claude -w` starts Claude *inside* the worktree it just created, so the descriptor's cwd
         // is the first thing that says where it went (design.md → *Session flows → New worktree*).
-        if let cwd = descriptor.cwd, let worktree = Session.worktreeRoot(ofPath: cwd) {
-            session.worktreePath = worktree
-            session.isWorktree = true
+        if let cwd = descriptor.cwd, !cwd.isEmpty {
+            // Where Claude runs is where `--resume` must run, and what the row is named after even
+            // before the next descriptor binds — so it becomes the session's directory of record.
+            session.cwd = cwd
+            if let worktree = Session.worktreeRoot(ofPath: cwd) {
+                session.worktreePath = worktree
+                session.isWorktree = true
+            }
         }
         sessions[id] = session
         rederiveStatus(for: id, now: now)

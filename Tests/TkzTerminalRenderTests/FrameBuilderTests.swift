@@ -155,6 +155,56 @@ struct FrameBuilderDirtyTests {
         #expect(fixture.surface.cursor.row == 2)
     }
 
+    @Test("a space echoed onto a blank cell still advances the drawn cursor")
+    func spaceOntoBlankCellMovesTheCursor() throws {
+        // A printed space is a cell write, so libghostty does mark the row dirty and this case was
+        // never broken — it is kept as the shell-side counterpart of `sameRowCursorMoveIsAFrame`,
+        // which is the case the GUI pass actually hit (Ink repositions the cursor without printing).
+        let fixture = try SurfaceFixture()
+        fixture.write("ab")
+        _ = try fixture.update()
+        fixture.surface.clearNeedsDisplay()
+        #expect(fixture.surface.cursor.column == 2)
+
+        fixture.write(" ")
+        let update = try fixture.update()
+        #expect(fixture.surface.cursor.column == 3)
+        #expect(update.dirty != .none, "a cursor that moved is not a clean frame")
+        #expect(fixture.surface.needsDisplay)
+
+        // And a genuinely idle tick after that is still clean.
+        fixture.surface.clearNeedsDisplay()
+        let idle = try fixture.update()
+        #expect(idle.dirty == .none)
+        #expect(!fixture.surface.needsDisplay)
+    }
+
+    @Test("a cursor move within its own row, with no cell change, is still a frame")
+    func sameRowCursorMoveIsAFrame() throws {
+        // Ink (Claude Code's UI) trims trailing whitespace from the lines it draws, so typing a
+        // space at the end of the prompt produces *only* a cursor reposition within the same row —
+        // no cell changes, no dirty row. libghostty's dirty flag tracks cells, so this tick is
+        // reported clean, and the cursor stayed drawn one cell short until the next letter (GUI
+        // pass 2026-09-08). The frame builder reads the cursor on clean ticks for exactly this.
+        let fixture = try SurfaceFixture()
+        fixture.write("abc")
+        _ = try fixture.update()
+        fixture.surface.clearNeedsDisplay()
+        #expect(fixture.surface.cursor.column == 3)
+
+        fixture.write("\u{1b}[1;2H")  // same row, column 2
+        let update = try fixture.update()
+        #expect(fixture.surface.cursor.column == 1)
+        #expect(fixture.surface.cursor.row == 0)
+        #expect(update.dirty != .none, "a cursor that moved is not a clean frame")
+        #expect(fixture.surface.needsDisplay)
+
+        fixture.surface.clearNeedsDisplay()
+        let idle = try fixture.update()
+        #expect(idle.dirty == .none)
+        #expect(!fixture.surface.needsDisplay)
+    }
+
     @Test("a selection is DIRTY_FULL and every row is re-iterated (spike 5)")
     func selectionIsFull() throws {
         let fixture = try SurfaceFixture()

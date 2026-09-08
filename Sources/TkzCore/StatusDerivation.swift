@@ -6,7 +6,7 @@
 //
 // Rule order (first match wins — see the table in design.md):
 //
-//   1. `!alive`                                                        → `.exited`
+//   1. `!alive`                                                        → `.idle` (the row is about to be removed)
 //   1b. `ended` (SessionEnd, reason ∉ clear/resume: Claude quit, the
 //      shell is still there)                                          → `.idle`
 //   2. a pending permission/elicitation/agent-input prompt              → `.waiting(reason)`
@@ -74,10 +74,11 @@ public enum StatusDerivation {
 
     /// The table above, exactly. First match wins.
     public static func derive(_ input: StatusInput) -> StatusOutcome {
-        // 1. Not running. `exited` means the *terminal* is gone: the scrim, the hollow dot and the
-        // suppressed cursor all read it that way.
+        // 1. Not running. There is no "exited" status any more (decision 2026-09-08): a terminal
+        // whose shell ended is removed from the sidebar by the window, so a dead row is only ever
+        // seen for the instant before that. Plain idle, nothing to attend to.
         if !input.alive {
-            return StatusOutcome(status: .exited, attention: false, isDone: false)
+            return StatusOutcome(status: .idle, attention: false, isDone: false)
         }
 
         // 1b. Claude ended (Ctrl-C twice, /exit, logout) but the shell underneath is alive: the

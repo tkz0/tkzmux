@@ -93,18 +93,17 @@ public struct AppState: Hashable, Sendable {
 
     // MARK: Summary strip
 
-    /// "5 working · 2 need you" — counts for the sidebar footer.
-    public var summaryCounts: (working: Int, needsYou: Int, idle: Int, exited: Int) {
-        var working = 0, needsYou = 0, idle = 0, exited = 0
+    /// "5 working · 2 need you" — counts for the sidebar's summary strip.
+    public var summaryCounts: (working: Int, needsYou: Int, idle: Int) {
+        var working = 0, needsYou = 0, idle = 0
         for session in sessions.values {
             if session.needsAttention { needsYou += 1 }
             switch session.status {
             case .working: working += 1
             case .waiting: break
             case .idle: idle += 1
-            case .exited: exited += 1
             }
         }
-        return (working, needsYou, idle, exited)
+        return (working, needsYou, idle)
     }
 }

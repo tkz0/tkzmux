@@ -237,26 +237,6 @@ struct SidebarRowViewTests {
 
     // MARK: Badges
 
-    @Test("A closed row says \"exited\" where its branch would be, and never overwrites a branch")
-    func exitedRowSaysSo() {
-        // A closed session has no `live`, so no branch — and the detail line would otherwise be
-        // blank, leaving ⌘W with nothing to show but a 7 pt hollow dot.
-        let closed = Self.sessionRow(SidebarSessionRowModel(title: "s", status: .exited))
-        #expect(closed.branchTextLayer.isHidden == false)
-        #expect(closed.branchTextLayer.string as? String == SessionRowView.exitedDetail)
-
-        // A live row is untouched.
-        for status in [SidebarStatus.working, .waiting, .idle] {
-            let row = Self.sessionRow(SidebarSessionRowModel(title: "s", status: status))
-            #expect(row.branchTextLayer.isHidden, "\(status) must not claim to have exited")
-        }
-
-        // A branch always wins: an exited row that still knows its branch shows the branch.
-        let withBranch = Self.sessionRow(
-            SidebarSessionRowModel(title: "s", branch: "main", status: .exited))
-        #expect(withBranch.branchTextLayer.string as? String == "⎇ main")
-    }
-
     @Test("NEEDS YOU appears only when needsAttention; WT only when isWorktree")
     func badgesAreConditional() throws {
         for needs in [false, true] {
@@ -402,12 +382,6 @@ struct SidebarRowViewTests {
                     #expect(Self.approxEqual(Self.components(dot.fillColor),
                                              Self.components(theme.accent.cgColor)),
                             "\(theme.preset) done")
-                case .exited:
-                    // No token for `exited`: a hollow idle-coloured ring.
-                    #expect(Self.components(dot.fillColor).last == 0)
-                    #expect(Self.approxEqual(Self.components(dot.strokeColor),
-                                             Self.components(theme.idle.cgColor)),
-                            "\(theme.preset) exited ring")
                 }
             }
         }
@@ -541,7 +515,7 @@ struct SidebarRowViewTests {
             title: "a session whose title is far too long to fit in the sidebar",
             branch: "feature/really-long-branch-name", isWorktree: true, status: .idle))
         group(SidebarGroupRowModel(name: "coreinvest", color: nil, isCollapsed: true, sessionCount: 2))
-        session(SidebarSessionRowModel(title: "exited session", branch: "develop", status: .exited))
+        session(SidebarSessionRowModel(title: "restored session", branch: "develop", status: .idle))
 
         let summary = SummaryStripView(frame: NSRect(
             x: 0, y: 0, width: width, height: SummaryStripView.height))
@@ -583,5 +557,56 @@ struct SidebarRowViewTests {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
             try png.write(to: url.appendingPathComponent("sidebar-rows.png"))
         }
+    }
+}
+
+
+// MARK: - Hover and the close button (2026-09-08)
+
+@MainActor
+@Suite(.serialized)
+struct SessionRowHoverTests {
+    @Test("Hovering a row shows a × on the right and a faint highlight; leaving hides both")
+    func hoverShowsTheCloseButton() {
+        let row = SessionRowView(frame: NSRect(x: 0, y: 0, width: 300, height: 44))
+        row.configure(SidebarSessionRowModel(title: "s", status: .idle, needsAttention: true), theme: .default)
+        row.layoutSubtreeIfNeeded()
+        #expect(row.closeButtonFrame == nil)
+        #expect(row.selectionBackgroundLayer.backgroundColor?.alpha == 0)
+        let badgeBefore = row.needsYouBadgeLayer.frame
+
+        row.setHovered(true)
+        row.layoutSubtreeIfNeeded()
+        let close = try! #require(row.closeButtonFrame)
+        #expect(close.maxX <= 300 && close.maxX > 270, "the × sits at the right edge")
+        #expect(abs(close.midY - 22) < 2, "vertically centred")
+        #expect((row.selectionBackgroundLayer.backgroundColor?.alpha ?? 0) > 0, "hover highlight")
+        #expect(row.needsYouBadgeLayer.frame.maxX < badgeBefore.maxX, "badges shift left, out from under the ×")
+
+        row.setHovered(false)
+        row.layoutSubtreeIfNeeded()
+        #expect(row.closeButtonFrame == nil)
+        #expect(row.needsYouBadgeLayer.frame == badgeBefore)
+    }
+
+    @Test("A selected row keeps its selection tint while hovered")
+    func hoveredSelectedRowStaysSelected() {
+        let row = SessionRowView(frame: NSRect(x: 0, y: 0, width: 300, height: 44))
+        row.configure(SidebarSessionRowModel(title: "s", status: .idle, isSelected: true), theme: .default)
+        let selected = row.selectionBackgroundLayer.backgroundColor
+        row.setHovered(true)
+        #expect(row.selectionBackgroundLayer.backgroundColor == selected)
+    }
+
+    @Test("prepareForReuse clears the hover state and the close handler")
+    func reuseClearsHover() {
+        let row = SessionRowView(frame: NSRect(x: 0, y: 0, width: 300, height: 44))
+        row.configure(SidebarSessionRowModel(title: "s", status: .idle), theme: .default)
+        row.onClose = {}
+        row.setHovered(true)
+        row.prepareForReuse()
+        #expect(row.isHovered == false)
+        #expect(row.onClose == nil)
+        #expect(row.closeButtonFrame == nil)
     }
 }

@@ -19,14 +19,15 @@ import Testing
 
     // MARK: - The table, row by row
 
-    @Test func rule1_notAlive_isExited() {
+    @Test func rule1_notAlive_isIdleWithNothingToAttend() {
+        // There is no "exited" status (decision 2026-09-08): the row goes when the shell does.
         let outcome = StatusDerivation.derive(StatusInput(alive: false, now: Self.epoch))
-        #expect(outcome.status == .exited)
+        #expect(outcome.status == .idle)
         #expect(outcome.attention == false)
+        #expect(outcome.isDone == false)
     }
 
-    /// Claude quit (Ctrl-C twice) but the shell is alive: a plain terminal again, never `exited`
-    /// — `exited` dims the screen and hollows the dot, which is wrong for a live prompt.
+    /// Claude quit (Ctrl-C twice) but the shell is alive: a plain terminal again.
     @Test func rule1b_ended_isIdle_notExited_evenWithAPendingPrompt() {
         let outcome = StatusDerivation.derive(
             StatusInput(
@@ -37,7 +38,7 @@ import Testing
         #expect(outcome.attention == false)
         #expect(outcome.isDone == false)
         let dead = StatusDerivation.derive(StatusInput(alive: false, ended: true, now: Self.epoch))
-        #expect(dead.status == .exited)
+        #expect(dead.status == .idle)
     }
 
     @Test func rule2_pendingPermission_waitsWithAttention() {

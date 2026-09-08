@@ -35,8 +35,6 @@ public enum SidebarStatus: String, Hashable, Sendable, CaseIterable {
     /// tint, so a finished answer is visible before it ages into `NEEDS YOU` (GUI pass
     /// 2026-09-08, 5c: the dot went straight from green to grey).
     case done
-    /// The process is gone; the row stays in the list and is resumable.
-    case exited
 }
 
 /// One 44 pt session row.

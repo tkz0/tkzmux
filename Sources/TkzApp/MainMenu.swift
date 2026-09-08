@@ -167,7 +167,6 @@ public enum MainMenu {
         menu.addItem(command(.openFolder, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(.separator())
         menu.addItem(command(.closeTerminal, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.closeSession, shortcuts: shortcuts, dispatcher: dispatcher))
         return menu
     }
 

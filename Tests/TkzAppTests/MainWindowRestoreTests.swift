@@ -56,7 +56,6 @@ struct MainWindowRestoreTests {
         #expect(host.visibleSessionID == session.id)
         #expect(store.state.sessions[session.id]?.live?.shellPid == 4343)
         #expect(controller.detail.emptyState.isHidden)
-        #expect(controller.detail.exitedScrim.isHidden)
         #expect(host.ran.isEmpty, "reopen types nothing; resume is a separate verb")
     }
 
@@ -75,33 +74,6 @@ struct MainWindowRestoreTests {
         #expect(harness.host.visibleSessionID == ids[0])
     }
 
-    @Test("A hung-up row stays dead under the scrim when re-selected; Resume brings it back")
-    func closedRowIsNotRespawnedBySelection() throws {
-        let (harness, ids, _) = Self.makeRestoredHarness()
-        defer { harness.tearDown() }
-        harness.mutate { $0.select(ids[1]) }
-        harness.controller.dispatcher.perform(.closeTerminal)
-        harness.store.flush()
-        #expect(harness.store.state.sessions[ids[1]]?.live == nil)
-
-        harness.mutate { $0.select(ids[0]) }
-        harness.mutate { $0.select(ids[1]) }
-        #expect(harness.host.opened.count == 2, "⌘W'd row: the host still holds its grid, no respawn")
-        #expect(harness.controller.detail.exitedScrim.isHidden == false)
-
-        harness.controller.dispatcher.perform(.resumeSession)
-        harness.store.flush()
-        #expect(harness.host.restored.map(\.id) == [ids[1]], "resume restores from the live grid")
-        #expect(harness.host.ran.last?.command == "claude --resume conv-1")
-        #expect(harness.controller.detail.exitedScrim.isHidden)
-        #expect(harness.store.state.sessions[ids[1]]?.status == .idle)
-        // The reopen replaced the host's session for the *selected* row, which detaches the
-        // surface; the selection did not change, so nothing else would re-attach it.
-        #expect(harness.host.visibleSessionID == ids[1])
-        #expect(harness.controller.detail.emptyState.isHidden)
-        #expect(harness.terminalView.isHidden == false)
-    }
-
     @Test("A restored row whose directory is gone shows the empty state with the path, non-modally")
     func missingDirectoryIsANotice() throws {
         let missing = NSTemporaryDirectory() + "tkzmux-gone-\(UUID().uuidString)"
@@ -116,87 +88,62 @@ struct MainWindowRestoreTests {
 
     // MARK: - Close and remove
 
-    @Test("⌘W confirms only for a working or waiting session")
-    func closeConfirmsWhenBusy() throws {
+    @Test("⌘W removes an idle row at once and asks first for a working or waiting one")
+    func closeConfirmsOnlyWhenBusy() throws {
         let (harness, ids, _) = Self.makeRestoredHarness()
         defer { harness.tearDown() }
         var asked: [String] = []
-        harness.controller.confirmClose = { session in asked.append(session.status.name); return false }
+        harness.controller.confirmRemove = { session in asked.append(session.status.name); return false }
+        harness.host.savedSnapshots[ids[0]] = Data("x".utf8)
 
-        // Idle: no question, closed straight away.
+        // Idle: gone at once — row, shell, snapshot — and the selection moves on.
         harness.controller.dispatcher.perform(.closeTerminal)
         harness.store.flush()
         #expect(asked.isEmpty)
-        #expect(harness.host.closedIDs == [ids[0]])
+        #expect(harness.host.discarded == [ids[0]])
+        #expect(harness.host.savedSnapshots[ids[0]] == nil)
+        #expect(harness.store.state.sessions[ids[0]] == nil)
+        #expect(harness.store.state.selection == ids[1])
+        // The successor was reopened by the selection change, as any first show is.
+        #expect(harness.host.visibleSessionID == ids[1])
 
-        // Working: asked, and "no" leaves it running.
-        harness.mutate { $0.select(ids[1]); $0.setStatus(.working, for: ids[1]) }
+        // Working: asked, and "no" leaves it alone.
+        harness.mutate { $0.setStatus(.working, for: ids[1]) }
         harness.controller.dispatcher.perform(.closeTerminal)
         harness.store.flush()
         #expect(asked == ["working"])
-        #expect(harness.host.closedIDs == [ids[0]])
-        #expect(harness.store.state.sessions[ids[1]]?.live != nil)
+        #expect(harness.store.state.sessions[ids[1]] != nil)
 
-        // Waiting: asked, and "yes" closes.
-        harness.controller.confirmClose = { session in asked.append(session.status.name); return true }
+        // Waiting: asked, and "yes" removes.
+        harness.controller.confirmRemove = { session in asked.append(session.status.name); return true }
         harness.mutate { $0.setStatus(.waiting(.permission), for: ids[1]) }
         harness.controller.dispatcher.perform(.closeTerminal)
         harness.store.flush()
         #expect(asked.last == "waiting(permission)")
-        #expect(harness.host.closedIDs == [ids[0], ids[1]])
-        #expect(harness.store.state.sessions[ids[1]]?.live == nil)
+        #expect(harness.store.state.sessions[ids[1]] == nil)
+        #expect(harness.host.discarded == [ids[0], ids[1]])
     }
 
-    @Test("⌘W on a row that has already exited removes it, without asking")
-    func closeOnExitedRowRemoves() throws {
+    @Test("The × on a hovered row removes that row, through the sidebar's callback")
+    func closeButtonRemovesTheRow() throws {
         let (harness, ids, _) = Self.makeRestoredHarness()
         defer { harness.tearDown() }
-        harness.controller.confirmRemove = { _ in Issue.record("⌘W on a dead row must not confirm"); return false }
-        harness.controller.confirmClose = { _ in Issue.record("nothing to close"); return false }
-
-        // First ⌘W: hang up. The row stays, dimmed.
-        harness.controller.dispatcher.perform(.closeTerminal)
+        let sidebar = harness.controller.sidebar
+        let row = sidebar.row(forSession: ids[1])
+        let view = try #require(sidebar.outlineView.view(atColumn: 0, row: row, makeIfNecessary: true) as? SessionRowView)
+        view.setHovered(true)
+        #expect(view.closeButtonFrame != nil)
+        let onClose = try #require(view.onClose)
+        onClose()
         harness.store.flush()
-        #expect(harness.host.closedIDs == [ids[0]])
-        #expect(harness.store.state.sessions[ids[0]]?.status == .exited)
-        #expect(harness.host.discarded.isEmpty)
-
-        // Second ⌘W: the dead row goes, snapshot included, and the selection moves on.
-        harness.host.savedSnapshots[ids[0]] = Data("x".utf8)
-        harness.controller.dispatcher.perform(.closeTerminal)
-        harness.store.flush()
-        #expect(harness.host.discarded == [ids[0]])
-        #expect(harness.host.savedSnapshots[ids[0]] == nil)
-        #expect(harness.store.state.sessions[ids[0]] == nil)
-        #expect(harness.store.state.selection == ids[1])
-    }
-
-    @Test("⇧⌘W removes the selected row and its snapshot after confirmation; the selection moves on")
-    func removeThroughShortcut() throws {
-        let (harness, ids, _) = Self.makeRestoredHarness()
-        defer { harness.tearDown() }
-        harness.host.savedSnapshots[ids[0]] = Data("x".utf8)
-
-        harness.controller.confirmRemove = { _ in false }
-        harness.controller.dispatcher.perform(.closeSession)
-        harness.store.flush()
-        #expect(harness.store.state.sessions[ids[0]] != nil)
-        #expect(harness.host.discarded.isEmpty)
-
-        harness.controller.confirmRemove = { _ in true }
-        harness.controller.dispatcher.perform(.closeSession)
-        harness.store.flush()
-        #expect(harness.store.state.sessions[ids[0]] == nil)
-        #expect(harness.host.discarded == [ids[0]])
-        #expect(harness.host.savedSnapshots[ids[0]] == nil)
-        #expect(harness.store.state.selection == ids[1])
-        // The successor was reopened by the selection change, as any first show is.
-        #expect(harness.host.visibleSessionID == ids[1])
+        #expect(harness.store.state.sessions[ids[1]] == nil)
+        #expect(harness.host.discarded == [ids[1]])
+        #expect(harness.store.state.selection == ids[0], "removing another row leaves the selection alone")
     }
 
     // MARK: - Context menus
 
-    @Test("A session row's context menu offers Resume / Rename / Close / Remove, enabled honestly")
+    @Test("A session row's context menu offers Resume / Rename / Remove, enabled honestly")
     func sessionContextMenu() throws {
         let (harness, ids, _) = Self.makeRestoredHarness()
         defer { harness.tearDown() }
@@ -204,17 +151,16 @@ struct MainWindowRestoreTests {
             menu.items.first { $0.identifier == id }
         }
 
-        // ids[1]: restored, never shown → resumable, nothing to close.
+        // ids[1]: restored, never shown → resumable.
         let restored = try #require(harness.controller.sidebar.contextMenu(forSession: ids[1]))
         #expect(item(restored, MainWindowController.ContextItemID.resume)?.isEnabled == true)
-        #expect(item(restored, MainWindowController.ContextItemID.close)?.isEnabled == false)
         #expect(item(restored, MainWindowController.ContextItemID.remove)?.isEnabled == true)
         #expect(item(restored, MainWindowController.ContextItemID.rename) != nil)
+        #expect(restored.items.count == 4, "Resume, Rename, separator, Remove")
 
-        // ids[0]: a live shell, still resumable (no Claude bound), closable.
+        // ids[0]: a live shell, still resumable (no Claude bound).
         let live = try #require(harness.controller.sidebar.contextMenu(forSession: ids[0]))
         #expect(item(live, MainWindowController.ContextItemID.resume)?.isEnabled == true)
-        #expect(item(live, MainWindowController.ContextItemID.close)?.isEnabled == true)
 
         // Claude running in ids[0] → Resume is off.
         harness.mutate { state in

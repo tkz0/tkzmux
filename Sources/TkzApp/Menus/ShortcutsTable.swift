@@ -31,8 +31,9 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     public static let commandPalette = ShortcutAction("commandPalette")
     public static let toggleSidebar = ShortcutAction("toggleSidebar")
     public static let renameSession = ShortcutAction("renameSession")
+    /// ⌘W — removes the selected session (row, shell, snapshot). The id is historical: it was
+    /// "close terminal, keep the row" until 2026-09-08, when the kept row went away.
     public static let closeTerminal = ShortcutAction("closeTerminal")
-    public static let closeSession = ShortcutAction("closeSession")
     public static let jumpToNeedsYou = ShortcutAction("jumpToNeedsYou")
     public static let notifications = ShortcutAction("notifications")
     public static let settings = ShortcutAction("settings")
@@ -117,7 +118,7 @@ public enum ShortcutsTable {
     public static let allActions: [ShortcutAction] =
         [
             .newSession, .searchSessions, .commandPalette, .toggleSidebar, .renameSession,
-            .closeTerminal, .closeSession, .jumpToNeedsYou, .notifications, .settings,
+            .closeTerminal, .jumpToNeedsYou, .notifications, .settings,
             .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
             .removeShellIntegration, .resumeSession, .resumeAllInGroup, .managePresets,
             .toggleAutoResume,
@@ -134,7 +135,6 @@ public enum ShortcutsTable {
             .toggleSidebar: Shortcut("b", .command),
             .renameSession: Shortcut("r", [.shift, .command]),
             .closeTerminal: Shortcut("w", .command),
-            .closeSession: Shortcut("w", [.shift, .command]),
             .jumpToNeedsYou: Shortcut("u", [.shift, .command]),
             .notifications: Shortcut("i", .command),
             .settings: Shortcut(",", .command),
@@ -155,8 +155,7 @@ public enum ShortcutsTable {
         case .commandPalette: "Command Palette\u{2026}"
         case .toggleSidebar: "Toggle Sidebar"
         case .renameSession: "Rename Session\u{2026}"
-        case .closeTerminal: "Close Terminal"
-        case .closeSession: "Close Session"
+        case .closeTerminal: "Close Session"
         case .jumpToNeedsYou: "Jump to Next Needs-You"
         case .notifications: "Notifications"
         case .settings: "Settings\u{2026}"

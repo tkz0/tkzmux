@@ -14,8 +14,8 @@
 //   * `resume(_:)`  — `claude --resume <claudeSessionId>` in the directory the conversation lives
 //                     in: the worktree while it still exists, else where the session started, else
 //                     the repo root. A worktree that is gone clears the `WT` badge.
-//   * `close(_:)` / `remove(_:)` — hang up (row stays, resumable) / forget (row and snapshot gone;
-//                     the worktree on disk is never touched).
+//   * `remove(_:)`  — the row, its shell and its snapshot go (the worktree on disk is never
+//                     touched). There is no "closed but kept" row: ⌘W removes.
 //   * `noteExit(_:)` — after a shell or Claude exits, re-read `git worktree list --porcelain` for
 //                     that repo (debounced) and drop the badge from rows whose worktree Claude
 //                     removed on its way out.
@@ -109,8 +109,7 @@ public final class SessionLauncher {
             $0.createSession(
                 id: id, groupID: spec.groupID, cwd: spec.cwd,
                 accountKey: spec.accountKey, presetID: spec.presetID)
-            // Without live state `Session.status` is `live?.status ?? .exited` and a brand-new row
-            // would draw as a dead one.
+            // `live` is what says the row has a shell; without it the reopen path would fire.
             $0.setLive(LiveSessionState(shellPid: pid, status: .idle), for: id)
             $0.select(id)
         }
@@ -252,15 +251,8 @@ public final class SessionLauncher {
 
     // MARK: - Close / remove
 
-    /// ⌘W: hang the shell up. The row stays with its last screen and is resumable. The store is
-    /// updated at once rather than on `.exited`, so the row reads as closed the moment the user
-    /// asks; `closeSession` is idempotent when the event lands.
-    public func close(_ id: SessionID) {
-        host.close(id, signal: SIGHUP)
-        store.update { $0.closeSession(id) }
-    }
-
-    /// Remove: the row and its snapshot go away. Never touches the worktree on disk.
+    /// Remove (⌘W, the row's `×`, a shell that ended): the row, its shell and its snapshot go
+    /// away. Never touches the worktree on disk.
     public func remove(_ id: SessionID) {
         host.discard(id)
         store.update { $0.removeSession(id) }
@@ -314,20 +306,27 @@ public final class SessionLauncher {
 
     // MARK: - Environment
 
-    /// `CLAUDE_CONFIG_DIR` for a non-primary account, then the caller's extras on top.
+    /// `CLAUDE_CONFIG_DIR` for the account named by `accountKey` — the primary included — then
+    /// the caller's extras on top. `nil` means "no account was chosen": the variable is left
+    /// alone, the user's environment decides, and the shim's `launch` frame reports what that was
+    /// (`ClaudeIntegration.learnAccount`).
+    ///
+    /// The same value goes out as `TKZMUX_CLAUDE_CONFIG_DIR`: the ZDOTDIR wrapper re-exports it
+    /// after the user's own rc files have run, so an `export CLAUDE_CONFIG_DIR=…` in a `.zshrc`
+    /// cannot override an account the user picked in the app.
     public func environment(accountKey: String?, extra: [String: String]) -> [String: String] {
         var env: [String: String] = [:]
         if let key = accountKey, let dir = configDirectory(forKey: key) {
             env["CLAUDE_CONFIG_DIR"] = dir
+            env["TKZMUX_CLAUDE_CONFIG_DIR"] = dir
         }
         env.merge(extra) { _, override in override }
         return env
     }
 
     /// The store's account when it has one (its `configDir` is authoritative — it may live
-    /// somewhere unusual), else the derived `~/.<key>`; `nil` for the primary account either way.
+    /// somewhere unusual), else the derived `~/.<key>`.
     public func configDirectory(forKey key: String) -> String? {
-        guard key != Account.defaultKey else { return nil }
         if let account = store.state.accounts[key] { return account.configDir }
         return Account.configDirectory(forKey: key, home: home)
     }

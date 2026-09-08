@@ -38,6 +38,8 @@ public enum Fixture {
         var worktree: String?
         var account: String
         var status: SessionStatus
+        /// A row with no live state — what a `state.json` row looks like before its first show.
+        var restored: Bool = false
         var attention: Bool = false
         var ports: [UInt16] = []
         var changed: Int = 0
@@ -68,7 +70,7 @@ public enum Fixture {
         .init(group: 0, title: nil, branch: "feat/reporting", worktree: "reporting",
               account: "claude-alt", status: .idle, changed: 1, insertions: 9, deletions: 2),
         .init(group: 0, title: "flaky integration tests", branch: "main", worktree: nil,
-              account: "claude-alt", status: .exited),
+              account: "claude-alt", status: .idle, restored: true),
         .init(group: 0, title: nil, branch: "chore/deps", worktree: "deps", account: "claude",
               status: .working, ports: [3000, 9229], changed: 2, insertions: 18, deletions: 340),
         .init(group: 0, title: "elicitation", branch: "feat/audit-log", worktree: "audit-log",
@@ -78,7 +80,7 @@ public enum Fixture {
               account: "claude", status: .waiting(.agentInput), attention: true),
         .init(group: 0, title: nil, branch: "fix/rounding", worktree: nil, account: "claude-alt",
               status: .working, changed: 4, insertions: 33, deletions: 7, context: 28),
-        .init(group: 0, title: nil, branch: "main", worktree: nil, account: "claude-alt", status: .exited),
+        .init(group: 0, title: nil, branch: "main", worktree: nil, account: "claude-alt", status: .idle, restored: true),
         .init(group: 0, title: "release 4.2", branch: "release/4.2", worktree: "release-4-2",
               account: "claude-alt", status: .idle, changed: 22, insertions: 901, deletions: 455),
 
@@ -93,13 +95,13 @@ public enum Fixture {
               status: .working, changed: 1, insertions: 4, deletions: 1),
         .init(group: 1, title: "db migration", branch: "feat/migrations", worktree: "migrations",
               account: "claude-alt", status: .idle, changed: 6, insertions: 120, deletions: 30),
-        .init(group: 1, title: nil, branch: "develop", worktree: nil, account: "claude", status: .exited),
+        .init(group: 1, title: nil, branch: "develop", worktree: nil, account: "claude", status: .idle, restored: true),
         .init(group: 1, title: nil, branch: "spike/perf", worktree: "perf", account: "claude-alt",
               status: .working, ports: [5001, 5432], changed: 3, insertions: 77, deletions: 12, context: 88),
         .init(group: 1, title: "permission: write outside repo", branch: "develop", worktree: nil,
               account: "claude-alt", status: .waiting(.permission), attention: true),
         .init(group: 1, title: nil, branch: "chore/ci", worktree: "ci", account: "claude-alt", status: .idle),
-        .init(group: 1, title: nil, branch: "develop", worktree: nil, account: "claude-alt", status: .exited),
+        .init(group: 1, title: nil, branch: "develop", worktree: nil, account: "claude-alt", status: .idle, restored: true),
 
         // Scheduled — a bucket with no repo; short-lived jobs.
         .init(group: 2, title: "nightly dependency audit", branch: "main", worktree: nil,
@@ -108,10 +110,10 @@ public enum Fixture {
               status: .idle),
         .init(group: 2, title: "inbox triage", branch: "main", worktree: nil, account: "claude",
               status: .waiting(.doneUnattended), attention: true),
-        .init(group: 2, title: "docs sweep", branch: "main", worktree: nil, account: "claude", status: .exited),
+        .init(group: 2, title: "docs sweep", branch: "main", worktree: nil, account: "claude", status: .idle, restored: true),
         .init(group: 2, title: "link checker", branch: "main", worktree: nil, account: "claude", status: .idle),
         .init(group: 2, title: "release notes draft", branch: "main", worktree: nil, account: "claude-alt",
-              status: .exited),
+              status: .idle, restored: true),
 
         // Aira
         .init(group: 3, title: nil, branch: "main", worktree: nil, account: "claude", status: .working,
@@ -120,7 +122,7 @@ public enum Fixture {
               account: "claude", status: .idle, changed: 8, insertions: 260, deletions: 74),
         .init(group: 3, title: nil, branch: "fix/webhooks", worktree: "webhooks", account: "claude",
               status: .waiting(.doneUnattended), attention: true, changed: 2, insertions: 24, deletions: 6),
-        .init(group: 3, title: nil, branch: "main", worktree: nil, account: "claude", status: .exited),
+        .init(group: 3, title: nil, branch: "main", worktree: nil, account: "claude", status: .idle, restored: true),
         .init(group: 3, title: "prompt tuning for the classifier that keeps mislabelling refunds",
               branch: "spike/classifier", worktree: "classifier", account: "claude", status: .working,
               context: 91),
@@ -131,7 +133,7 @@ public enum Fixture {
         .init(group: 4, title: nil, branch: "main", worktree: nil, account: "claude", status: .idle),
         .init(group: 4, title: "scheduling bug", branch: "fix/shifts", worktree: "shifts",
               account: "claude", status: .working, changed: 3, insertions: 41, deletions: 11),
-        .init(group: 4, title: nil, branch: "main", worktree: nil, account: "claude", status: .exited),
+        .init(group: 4, title: nil, branch: "main", worktree: nil, account: "claude", status: .idle, restored: true),
         .init(group: 4, title: nil, branch: "feat/payroll", worktree: "payroll", account: "claude-alt",
               status: .waiting(.agentInput), attention: true),
         .init(group: 4, title: nil, branch: "main", worktree: nil, account: "claude", status: .idle),
@@ -202,7 +204,7 @@ public enum Fixture {
         ]
         state.shortcuts = [
             "newSession": "cmd+t",
-            "closeSession": "cmd+w",
+            "closeTerminal": "cmd+w",
             "nextSession": "alt+cmd+down",
             "previousSession": "alt+cmd+up",
             "searchSessions": "cmd+p",
@@ -238,7 +240,7 @@ public enum Fixture {
             lastActiveAt: now.addingTimeInterval(-Double(n) * 60)
         )
 
-        guard spec.status != .exited else { return session }  // exited rows carry no live state
+        guard !spec.restored else { return session }  // restored rows carry no live state
 
         var live = LiveSessionState(
             pid: pid_t(40_000 + n),

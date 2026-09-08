@@ -77,13 +77,22 @@ public final class ClaudeIntegration {
         self.home = home
         self.installer = installer
 
-        // `~/.claude` is the only given; any further account comes from the store (its
-        // `configDir`), never from a hard-coded second directory.
-        let primary = (home as NSString).appendingPathComponent(".claude")
-        var configDirs = [primary]
-        for account in store.state.accounts.values where !configDirs.contains(account.configDir) {
-            configDirs.append(account.configDir)
+        // Accounts are discovered, never hard-coded: `~/.claude` plus every `~/.claude-*` that
+        // looks like a config dir, plus whatever the store already knows, plus the account of every
+        // persisted row (a resume must find its descriptor in *that* account's `sessions/`).
+        let discovered = Self.discoverAccounts(home: home)
+        var accounts = store.state.accounts
+        for account in discovered where accounts[account.key] == nil { accounts[account.key] = account }
+        for session in store.state.sessions.values where accounts[session.accountKey] == nil {
+            if let dir = Account.configDirectory(forKey: session.accountKey, home: home) {
+                accounts[session.accountKey] = Account(key: session.accountKey, configDir: dir, label: session.accountKey)
+            }
         }
+        var configDirs: [String] = []
+        for key in accounts.keys.sorted() where !configDirs.contains(accounts[key]!.configDir) {
+            configDirs.append(accounts[key]!.configDir)
+        }
+        watchedConfigDirs = configDirs
 
         // Each closure only hops to the main queue; the real work is in the `handle…` methods so
         // that tests can call them directly with synthetic frames.
@@ -97,6 +106,62 @@ public final class ClaudeIntegration {
             DispatchQueue.main.async { MainActor.assumeIsolated { box.value?.handle(event) } }
         }
         box.value = self
+
+        let toRegister = accounts.values.filter { store.state.accounts[$0.key] == nil }
+        if !toRegister.isEmpty {
+            store.update { state in for account in toRegister { state.setAccount(account) } }
+        }
+    }
+
+    /// The config dirs the watcher is currently pointed at, in registration order.
+    public private(set) var watchedConfigDirs: [String]
+
+    /// `~/.claude` (always) and every `~/.claude-*` directory that carries `settings.json`,
+    /// `sessions/` or `.claude.json` — the discovery rule sketched for M3.5, brought forward
+    /// because a second account that is never watched is a second account whose sessions never
+    /// get a status, a title or a badge. Labels are the keys until the label overlay (TKZ-25)
+    /// exists; nothing here names a particular account.
+    public static func discoverAccounts(home: String, fileManager: FileManager = .default) -> [Account] {
+        var out: [Account] = []
+        let primary = (home as NSString).appendingPathComponent(".claude")
+        out.append(Account(key: Account.defaultKey, configDir: primary, label: Account.defaultKey))
+        let entries = (try? fileManager.contentsOfDirectory(atPath: home)) ?? []
+        for name in entries.sorted() where name.hasPrefix(".claude-") {
+            let path = (home as NSString).appendingPathComponent(name)
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else { continue }
+            let markers = ["settings.json", "sessions", ".claude.json"]
+            guard markers.contains(where: { fileManager.fileExists(atPath: (path as NSString).appendingPathComponent($0)) }) else { continue }
+            let key = Account.key(forConfigDirectory: path)
+            out.append(Account(key: key, configDir: path, label: key))
+        }
+        return out
+    }
+
+    /// A process announced which config dir it really runs under. Registers the account if it is
+    /// new, watches its `sessions/` if it is not watched, and corrects the row's `accountKey` —
+    /// the user's environment (a shell rc, a wrapper) may have picked a different account than the
+    /// launcher asked for, and the chip, the descriptor join and every later resume must follow
+    /// the process, not the request.
+    func learnAccount(configDir: String, for id: SessionID) {
+        let trimmed = configDir.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let standardized = (trimmed as NSString).standardizingPath
+        let key = Account.key(forConfigDirectory: standardized)
+        guard !key.isEmpty else { return }
+        let known = store.state.accounts[key]
+        store.update { state in
+            if known == nil {
+                state.setAccount(Account(key: key, configDir: standardized, label: key))
+            }
+            state.setSessionAccount(id, key: key)
+        }
+        let dir = known?.configDir ?? standardized
+        if !watchedConfigDirs.contains(dir) {
+            logger.info("watching account \(key, privacy: .public) at \(dir, privacy: .public)")
+            watchedConfigDirs.append(dir)
+            watcher.setConfigDirs(watchedConfigDirs)
+        }
     }
 
     /// Lets the service closures reach `self` without capturing it before `init` has finished.
@@ -187,13 +252,15 @@ public final class ClaudeIntegration {
             logger.info("launch frame for unknown session \(launch.rawSid, privacy: .public) pid=\(launch.pid)")
             return
         }
-        logger.info("launch pid \(launch.pid) → \(id.rawValue, privacy: .public)")
+        logger.info("launch pid \(launch.pid) → \(id.rawValue, privacy: .public) config_dir=\(launch.configDir, privacy: .public)")
         pidToSession[launch.pid] = id
         store.update { $0.updateLive(id) { $0.pid = launch.pid } }
+        learnAccount(configDir: launch.configDir, for: id)
         for (key, state) in watcher.snapshot() where state.info.pid == launch.pid {
             // Seen before the frame: it was filed as external; it has an owner now.
             externalDescriptors[key] = nil
             store.update { $0.applyDescriptor(state.info, alive: state.alive, to: id, now: Date()) }
+            learnAccount(configDir: state.info.configDir, for: id)
         }
     }
 
@@ -244,6 +311,9 @@ public final class ClaudeIntegration {
             }
             externalDescriptors[key] = nil
             store.update { $0.applyDescriptor(info, alive: alive, to: id, now: Date()) }
+            // The descriptor's directory is where Claude *actually* keeps this session — truer
+            // than the launch frame, which reports the shell's environment before Claude ran.
+            learnAccount(configDir: info.configDir, for: id)
         case .removed(let key):
             externalDescriptors[key] = nil
             let bound = store.state.sessions.values.first { $0.live?.pid == key.pid }

@@ -135,8 +135,8 @@ private func makeState() -> AppState {
 
     var restored = AppState()
     try StateFile.decode(data).state.apply(to: &restored)
-    // The whole restore semantic, and it is free: no `live` means `.exited`, which means resumable.
-    #expect(restored.sessions[id]?.status == .exited)
+    // The whole restore semantic, and it is free: no `live` means idle until the first show.
+    #expect(restored.sessions[id]?.status == .idle)
     #expect(restored.sessions[id]?.needsAttention == false)
 }
 

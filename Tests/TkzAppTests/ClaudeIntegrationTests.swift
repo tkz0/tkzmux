@@ -140,10 +140,66 @@ struct ClaudeIntegrationTests {
         #expect(h.integration.sessionID(forHook: strangerSid, ppid: 0) == h.session)
     }
 
+    @Test("accounts are discovered from ~/.claude-* at init, watched, and registered in the store")
+    func accountDiscovery() throws {
+        let home = URL(filePath: NSTemporaryDirectory())
+            .appending(path: "tkzci-home-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let fm = FileManager.default
+        try fm.createDirectory(at: home.appending(path: ".claude/sessions"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: home.appending(path: ".claude-work/sessions"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: home.appending(path: ".claude-old"), withIntermediateDirectories: true)  // no markers
+        try fm.createDirectory(at: home.appending(path: ".claude-home"), withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: home.appending(path: ".claude-home/settings.json"))
+        try Data().write(to: home.appending(path: ".claude-notadir"))
+
+        let discovered = ClaudeIntegration.discoverAccounts(home: home.path)
+        #expect(discovered.map(\.key) == ["claude", "claude-home", "claude-work"])
+        #expect(discovered.first?.configDir == home.path + "/.claude")
+        #expect(discovered.map(\.label) == discovered.map(\.key), "labels are the keys until the overlay exists")
+
+        let h = Self.makeHarness(home: home.path)
+        // A persisted row on an account the file system does not show is still watched.
+        h.store.update { $0.sessions[h.session]?.accountKey = "claude-elsewhere" }
+        let integration = ClaudeIntegration(store: h.store, directory: h.directory, home: home.path, installer: nil)
+        #expect(Set(h.store.state.accounts.keys) == ["claude", "claude-home", "claude-work", "claude-elsewhere"])
+        #expect(Set(integration.watchedConfigDirs) == [
+            home.path + "/.claude", home.path + "/.claude-home", home.path + "/.claude-work",
+            home.path + "/.claude-elsewhere",
+        ])
+        #expect(h.store.state.accounts["claude-elsewhere"]?.configDir == home.path + "/.claude-elsewhere")
+    }
+
+    @Test("a launch frame or descriptor from an unknown config dir registers the account and corrects the row")
+    func learnAccountFromTheProcess() {
+        let h = Self.makeHarness()
+        let before = Set(h.integration.watchedConfigDirs)
+        #expect(h.store.state.sessions[h.session]?.accountKey == "claude")
+
+        // The shell's environment sent Claude to a second account the app did not ask for.
+        let launch = HookFrame.launch(LaunchAnnouncement(
+            sessionID: h.session, rawSid: h.session.rawValue, pid: 4242, cwd: "/tmp/nowhere",
+            configDir: "/tmp/nowhere/.claude-work/", argv: []))
+        h.integration.handle(launch)
+        #expect(h.store.state.sessions[h.session]?.accountKey == "claude-work")
+        #expect(h.store.state.accounts["claude-work"]?.configDir == "/tmp/nowhere/.claude-work")
+        #expect(Set(h.integration.watchedConfigDirs) == before.union(["/tmp/nowhere/.claude-work"]))
+
+        // The descriptor is the final word: it is written where Claude actually keeps the session.
+        var info = Self.descriptor(pid: 4242, status: .idle)
+        info.configDir = "/tmp/nowhere/.claude-second"
+        h.integration.handle(DescriptorEvent.updated(info, alive: true))
+        #expect(h.store.state.sessions[h.session]?.accountKey == "claude-second")
+        #expect(h.integration.watchedConfigDirs.contains("/tmp/nowhere/.claude-second"))
+        // A row on a non-default account gets a chip; a row on `~/.claude` never does.
+        let chip = SidebarRowAdapter.accountLabel(for: h.store.state.sessions[h.session]!, in: h.store.state)
+        #expect(chip == "CS")
+    }
+
     @Test("a restored row (no live state) is never an attribution target")
     func deadRowsAreNotTargets() {
         let h = Self.makeHarness()
-        h.store.update { $0.closeSession(h.session) }
+        h.store.update { $0.setLive(nil, for: h.session) }
         h.integration.handle(Self.launch(h.session, pid: 4242))
         #expect(h.integration.pidToSession[4242] == nil)
         let hook = HookEvent(kind: .stop, sessionID: h.session, claudeSessionId: "claude-sid")

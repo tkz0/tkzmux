@@ -146,7 +146,7 @@ struct MainWindowLaunchTests {
 
     // MARK: - Accounts
 
-    @Test("CLAUDE_CONFIG_DIR is set for a non-primary account and left alone for the primary one")
+    @Test("CLAUDE_CONFIG_DIR follows the chosen account, the primary included; unchosen = unset")
     func accountConfigDirectory() {
         var state = AppState()
         let group = state.addGroup(name: "Scratch", repoRoot: NSTemporaryDirectory())
@@ -159,67 +159,65 @@ struct MainWindowLaunchTests {
             Self.launch(cwd: NSTemporaryDirectory(), accountKey: "claude-alt", group: group.id))
         harness.controller.launch(
             Self.launch(cwd: NSTemporaryDirectory(), accountKey: Account.defaultKey, group: group.id))
+        harness.controller.launch(
+            Self.launch(cwd: NSTemporaryDirectory(), accountKey: nil, group: group.id))
         harness.store.flush()
 
-        #expect(harness.host.opened.count == 2)
+        #expect(harness.host.opened.count == 3)
         // The key is a basename; the child needs the directory.
         #expect(harness.host.opened[0].env["CLAUDE_CONFIG_DIR"] == "/tmp/alt")
-        // The primary account uses `~/.claude`, which means *not* setting the variable.
-        #expect(harness.host.opened[1].env["CLAUDE_CONFIG_DIR"] == nil)
+        // The wrapper re-exports this one after the user's rc files, so a rc cannot override it.
+        #expect(harness.host.opened[0].env["TKZMUX_CLAUDE_CONFIG_DIR"] == "/tmp/alt")
+        // An explicitly chosen primary account is pinned too (M5.2 GUI pass: the user's
+        // environment may default to another account).
+        #expect(harness.host.opened[1].env["CLAUDE_CONFIG_DIR"] == "/tmp/primary")
+        // No account chosen: the environment decides, and the launch frame reports what it chose.
+        #expect(harness.host.opened[2].env["CLAUDE_CONFIG_DIR"] == nil)
     }
 
     // MARK: - Closing
 
-    @Test("⌘W hangs the terminal up and keeps the row resumable")
-    func closeTerminalKeepsTheRow() {
+    @Test("⌘W removes the session: row, shell and snapshot")
+    func closeRemovesTheSession() {
         let (harness, group) = Self.makeHarness()
         defer { harness.tearDown() }
         harness.controller.launch(Self.launch(cwd: NSTemporaryDirectory(), group: group))
         harness.store.flush()
         let id = try! #require(harness.host.opened.first?.id)
+        harness.host.savedSnapshots[id] = Data("x".utf8)
 
         harness.controller.dispatcher.perform(.closeTerminal)
         harness.store.flush()
 
-        #expect(harness.host.closed.map(\.id) == [id])
-        #expect(harness.host.closed.first?.signal == SIGHUP)
-        // Closed, not removed: the row survives so M5.2 can resume it.
-        #expect(harness.store.state.sessions[id] != nil)
-        #expect(harness.store.state.sessions[id]?.live == nil)
-        #expect(harness.store.state.sessions[id]?.status == .exited)
+        // There is no "closed but kept" row (decision 2026-09-08): a terminal cannot be exited.
+        #expect(harness.host.discarded == [id])
+        #expect(harness.host.savedSnapshots[id] == nil)
+        #expect(harness.store.state.sessions[id] == nil)
+        #expect(harness.store.state.selection == nil)
     }
 
-    @Test("A closed session says so: the screen dims and the row's detail line reads exited")
-    func closingGivesVisibleFeedback() {
+    @Test("An OSC 7 from the shell retitles the row; a foreign host is ignored")
+    func pwdEventRetitlesTheRow() async throws {
         let (harness, group) = Self.makeHarness()
         defer { harness.tearDown() }
-        harness.controller.launch(Self.launch(cwd: NSTemporaryDirectory(), group: group))
+        harness.controller.launch(Self.launch(.shell, command: "", cwd: NSTemporaryDirectory(), group: group))
         harness.store.flush()
-        let id = try! #require(harness.host.opened.first?.id)
+        let id = try #require(harness.host.opened.first?.id)
 
-        // Alive: no scrim, and the detail line carries no "exited" caption.
-        #expect(harness.controller.detail.exitedScrim.isHidden)
-        var row = SidebarRowAdapter.sessionModel(
-            try! #require(harness.store.state.sessions[id]), in: harness.store.state)
-        #expect(row.status != .exited)
+        harness.host.emit(.pwd("file://localhost/Users/someone/dev/aira%20two"), for: id)
+        let deadline = ContinuousClock.now + .seconds(5)
+        while ContinuousClock.now < deadline {
+            harness.store.flush()
+            if harness.store.state.sessions[id]?.live?.shellCwd != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(harness.store.state.sessions[id]?.live?.shellCwd == "/Users/someone/dev/aira two")
+        #expect(harness.store.state.sessions[id]?.displayTitle == "aira two")
 
-        harness.controller.dispatcher.perform(.closeTerminal)
+        harness.host.emit(.pwd("file://elsewhere.example/nope"), for: id)
+        try await Task.sleep(for: .milliseconds(50))
         harness.store.flush()
-
-        // The dot alone is a 7 pt ring; these two are what make ⌘W legible.
-        let scrim = harness.controller.detail.exitedScrim
-        #expect(scrim.isHidden == false)
-        // Unhidden is not the same as *visible*: a scrim whose theme was never applied has a layer
-        // with no background colour and no caption, and shows nothing at all.
-        #expect(scrim.layer?.backgroundColor != nil, "the scrim was never themed, so it is invisible")
-        #expect(scrim.layer?.sublayers?.isEmpty == false, "the caption is missing")
-        row = SidebarRowAdapter.sessionModel(
-            try! #require(harness.store.state.sessions[id]), in: harness.store.state)
-        #expect(row.status == .exited)
-        #expect(row.branch == nil, "a closed row has no live state, so the detail line is free")
-
-        // The scrim must never eat clicks meant for the terminal underneath.
-        #expect(harness.controller.detail.exitedScrim.hitTest(.zero) == nil)
+        #expect(harness.store.state.sessions[id]?.displayTitle == "aira two", "another host's path is not ours")
     }
 
     @Test("⌘W with nothing selected does nothing")
@@ -230,11 +228,11 @@ struct MainWindowLaunchTests {
         harness.controller.dispatcher.perform(.closeTerminal)
         harness.store.flush()
 
-        #expect(harness.host.closed.isEmpty)
+        #expect(harness.host.discarded.isEmpty)
     }
 
-    @Test("An exiting child closes its row rather than removing it")
-    func exitEventClosesTheRow() async throws {
+    @Test("An exiting shell removes its row, as a terminal tab closes when its shell ends")
+    func exitEventRemovesTheRow() async throws {
         let (harness, group) = Self.makeHarness()
         defer { harness.tearDown() }
         harness.controller.launch(Self.launch(cwd: NSTemporaryDirectory(), group: group))
@@ -248,12 +246,11 @@ struct MainWindowLaunchTests {
         let deadline = ContinuousClock.now + .seconds(5)
         while ContinuousClock.now < deadline {
             harness.store.flush()
-            if harness.store.state.sessions[id]?.live == nil { break }
+            if harness.store.state.sessions[id] == nil { break }
             try await Task.sleep(for: .milliseconds(10))
         }
 
-        // Closed, not removed: the row keeps its last screen and stays resumable.
-        #expect(harness.store.state.sessions[id] != nil)
-        #expect(harness.store.state.sessions[id]?.live == nil)
+        #expect(harness.store.state.sessions[id] == nil)
+        #expect(harness.host.discarded == [id])
     }
 }

@@ -144,8 +144,8 @@ public struct Group: Hashable, Sendable, Codable, Identifiable {
 /// One terminal session — a row in the sidebar and, when selected, the terminal surface.
 ///
 /// The stored properties are durable; `live` is not (see the file header). A restored session
-/// therefore has `live == nil`, which makes `status` report `.exited` — exactly the "rows come back
-/// exited and resumable" behaviour in design.md → *Session flows & persistence*.
+/// therefore has `live == nil` until it is first shown, when the launcher puts a shell behind it
+/// (design.md → *Session flows & persistence*).
 public struct Session: Hashable, Sendable, Identifiable {
     public var id: SessionID
     public var groupID: GroupID
@@ -208,8 +208,10 @@ public struct Session: Hashable, Sendable, Identifiable {
         self.live = live
     }
 
-    /// `.exited` whenever there is no live state — see the type's doc comment.
-    public var status: SessionStatus { live?.status ?? .exited }
+    /// `.idle` whenever there is no live state. There is no "exited" status (decision 2026-09-08:
+    /// a terminal cannot be exited — when its shell ends, the row goes). A row with no `live` is
+    /// one restored from `state.json` that has not been shown yet; it gets its shell on first show.
+    public var status: SessionStatus { live?.status ?? .idle }
 
     /// Amber `NEEDS YOU` badge in the sidebar.
     public var needsAttention: Bool { live?.attention ?? false }
@@ -223,13 +225,32 @@ public struct Session: Hashable, Sendable, Identifiable {
         if let name = live?.descriptor?.name, !name.isEmpty, live?.descriptor?.nameSource != .derived {
             return name
         }
-        if let worktreePath, !worktreePath.isEmpty {
-            return (worktreePath as NSString).lastPathComponent
+        if isWorktree, let worktreePath, !worktreePath.isEmpty {
+            return Self.title(forPath: worktreePath)
         }
-        if let claudeCwd = live?.descriptor?.cwd, !claudeCwd.isEmpty {
-            return (claudeCwd as NSString).lastPathComponent
-        }
-        return (cwd as NSString).lastPathComponent
+        return Self.title(forPath: effectiveCwd)
+    }
+
+    /// Where the session *is*: Claude's cwd while a descriptor is bound, else the shell's last
+    /// reported cwd (it follows `cd`), else the directory the session was started in.
+    public var effectiveCwd: String {
+        if let claudeCwd = live?.descriptor?.cwd, !claudeCwd.isEmpty { return claudeCwd }
+        if let shellCwd = live?.shellCwd, !shellCwd.isEmpty { return shellCwd }
+        return cwd
+    }
+
+    /// The `WT` badge: the session is a `claude -w` session, or it currently sits inside a
+    /// `.claude/worktrees/<name>` directory.
+    public var showsWorktreeBadge: Bool {
+        isWorktree || Self.worktreeRoot(ofPath: effectiveCwd) != nil
+    }
+
+    /// The last segment of a path, as a title: `/Users/x/dev/aira/` → `aira`, `/Users/x` → `x`,
+    /// `~` → the home directory's name, `/` → `/`.
+    public static func title(forPath path: String) -> String {
+        let expanded = path.hasPrefix("~") ? (path as NSString).expandingTildeInPath : path
+        let last = (expanded as NSString).lastPathComponent
+        return last.isEmpty ? expanded : last
     }
 
     /// Where a resume should start, best first: the worktree while it still applies, then the
@@ -321,6 +342,9 @@ public struct LiveSessionState: Hashable, Sendable {
     public var lastPromptAt: Date?
     /// The "done" tint: a `Stop` newer than `attendedAt` that has not yet aged into `NEEDS YOU`.
     public var isDone: Bool
+    /// The shell's working directory as it last reported it (OSC 7 from the ZDOTDIR wrapper on
+    /// every `cd`). Process state: the title follows it, nothing is persisted (2026-09-08).
+    public var shellCwd: String?
 
     public init(
         pid: pid_t? = nil,
@@ -339,7 +363,8 @@ public struct LiveSessionState: Hashable, Sendable {
         pendingNotification: PendingNotification? = nil,
         attendedAt: Date? = nil,
         lastPromptAt: Date? = nil,
-        isDone: Bool = false
+        isDone: Bool = false,
+        shellCwd: String? = nil
     ) {
         self.pid = pid
         self.shellPid = shellPid
@@ -358,6 +383,7 @@ public struct LiveSessionState: Hashable, Sendable {
         self.attendedAt = attendedAt
         self.lastPromptAt = lastPromptAt
         self.isDone = isDone
+        self.shellCwd = shellCwd
     }
 }
 
@@ -379,7 +405,6 @@ public enum SessionStatus: Hashable, Sendable, Codable {
     case working
     case waiting(WaitReason)
     case idle
-    case exited
 
     public var isWaiting: Bool { if case .waiting = self { return true }; return false }
 
@@ -389,7 +414,6 @@ public enum SessionStatus: Hashable, Sendable, Codable {
         case .working: "working"
         case .waiting(let reason): "waiting(\(reason.rawValue))"
         case .idle: "idle"
-        case .exited: "exited"
         }
     }
 }
@@ -636,17 +660,26 @@ extension Account {
     /// the key of the default `~/.claude` config dir.
     public static let defaultKey = "claude"
 
-    /// The `CLAUDE_CONFIG_DIR` an account key stands for, or `nil` for the primary account, whose
-    /// config dir is Claude Code's own default and must not be set.
+    /// The `CLAUDE_CONFIG_DIR` an account key stands for: `claude-work` → `<home>/.claude-work`,
+    /// and the primary `claude` → `<home>/.claude`. `nil` only for a key that is not a config-dir
+    /// basename (empty, or containing a `/`).
     ///
     /// The key is the config dir's basename minus its leading dot (design.md → *Claude integration
-    /// → Account key*), so the mapping inverts without a lookup: `claude-work` → `<home>/.claude-work`.
-    /// This is the fallback for a session whose account the store does not (yet) know — every
-    /// restored row after a relaunch, since accounts are rediscovered rather than persisted — and
-    /// it is what keeps a resume on the account the session was started with.
+    /// → Account key*), so the mapping inverts without a lookup. This is the fallback for a session
+    /// whose account the store does not (yet) know — every restored row after a relaunch, since
+    /// accounts are rediscovered rather than persisted — and it is what keeps a resume on the
+    /// account the session was started with. **The primary is spelled out too** (M5.2, GUI pass):
+    /// a user whose environment points `CLAUDE_CONFIG_DIR` at a second account by default would
+    /// otherwise resume a `~/.claude` conversation on the wrong account.
     public static func configDirectory(forKey key: String, home: String) -> String? {
-        guard key != defaultKey, !key.isEmpty, !key.contains("/") else { return nil }
+        guard !key.isEmpty, !key.contains("/"), key != ".", key != ".." else { return nil }
         return home.hasSuffix("/") ? "\(home).\(key)" : "\(home)/.\(key)"
+    }
+
+    /// The inverse: `/Users/x/.claude-work` → `claude-work`, `/Users/x/.claude` → `claude`.
+    public static func key(forConfigDirectory configDir: String) -> String {
+        let basename = (configDir as NSString).lastPathComponent
+        return basename.hasPrefix(".") ? String(basename.dropFirst()) : basename
     }
 }
 

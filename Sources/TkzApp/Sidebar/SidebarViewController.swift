@@ -149,10 +149,11 @@ final class SidebarOutlineView: NSOutlineView {
 
 // MARK: - Container
 
-/// Root view. Stacks, bottom to top, the "＋ New group" footer, the fixed-height summary strip and
-/// the scroll view, and tells the controller when it changes window so occlusion notifications can
-/// follow. The scroll view stops at the top safe-area inset, so if the window ever extends the
-/// content under its titlebar again the rows still start below it.
+/// Root view. Stacks, top to bottom, the fixed-height summary strip (under the toolbar, as
+/// artboard 2c draws it — moved there 2026-09-08), the scroll view and the "＋ New group" footer,
+/// and tells the controller when it changes window so occlusion notifications can follow. The
+/// strip starts at the top safe-area inset, so with the content extending under the titlebar the
+/// strip and the rows still start below it.
 final class SidebarContainerView: NSView {
     var onWindowChange: (@MainActor (NSWindow?) -> Void)?
     var scrollView: NSScrollView?
@@ -172,11 +173,11 @@ final class SidebarContainerView: NSView {
         let stripHeight = CGFloat(SidebarMetrics.summaryStripHeight)
         let topInset = safeAreaInsets.top
         newGroupFooter?.frame = NSRect(x: 0, y: 0, width: bounds.width, height: footerHeight)
-        summaryStrip?.frame = NSRect(x: 0, y: footerHeight, width: bounds.width, height: stripHeight)
-        let listBottom = footerHeight + stripHeight
+        let stripY = max(footerHeight, bounds.height - topInset - stripHeight)
+        summaryStrip?.frame = NSRect(x: 0, y: stripY, width: bounds.width, height: stripHeight)
         scrollView?.frame = NSRect(
-            x: 0, y: listBottom, width: bounds.width,
-            height: max(0, bounds.height - listBottom - topInset))
+            x: 0, y: footerHeight, width: bounds.width,
+            height: max(0, stripY - footerHeight))
     }
 }
 
@@ -204,6 +205,10 @@ public final class SidebarViewController: NSViewController {
     public var onGroupContextMenu: (@MainActor (GroupID) -> NSMenu?)? {
         didSet { wireContextMenu() }
     }
+
+    /// The `×` that appears on a hovered row was clicked (2026-09-08). The assembler removes the
+    /// session, with the same confirmation ⌘W has.
+    public var onRemoveSession: (@MainActor (SessionID) -> Void)?
 
     private func wireContextMenu() {
         outline.onContextMenu = { [weak self] kind in
@@ -509,6 +514,18 @@ public final class SidebarViewController: NSViewController {
 
         outline.endUpdates()
 
+        // A group whose rows came or went shows a different count in its header, but the group
+        // *value* did not change, so `change.groups` never names it. Reload those headers here
+        // (GUI pass 2026-09-08: "COREINVEST 0" over a freshly launched row).
+        var countChanged = IndexSet()
+        for groupID in newGroups where (shadowSessions[groupID] ?? []).count != (newSessions[groupID] ?? []).count {
+            let row = row(forGroup: groupID)
+            if row >= 0 { countChanged.insert(row) }
+        }
+        if !countChanged.isEmpty {
+            outline.reloadData(forRowIndexes: countChanged, columnIndexes: IndexSet(integer: 0))
+        }
+
         shadowGroups = newGroups
         shadowSessions = newSessions
 
@@ -747,6 +764,7 @@ extension SidebarViewController: NSOutlineViewDelegate {
                 self.showLastMessage(for: id)
                 return true
             }
+            view.onClose = { [weak self] in self?.onRemoveSession?(id) }
             return view
         }
     }

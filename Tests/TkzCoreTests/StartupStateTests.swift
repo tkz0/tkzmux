@@ -31,7 +31,7 @@ import Testing
     @Test("The startup state summarises as empty")
     func startupSummary() {
         let counts = AppState.startup(homeDirectory: "/Users/someone").summaryCounts
-        #expect(counts == (0, 0, 0, 0))
+        #expect(counts == (0, 0, 0))
     }
 
     @Test("Tilde expansion happens only for a leading ~ and only against the given home")

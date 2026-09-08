@@ -178,7 +178,7 @@ import Testing
         #expect(!text.contains("\"live\""))
         let back = try JSONDecoder().decode(Session.self, from: data)
         #expect(back.live == nil)
-        #expect(back.status == .exited)  // a restored row is exited and resumable
+        #expect(back.status == .idle)  // a restored row is idle until it is first shown
         #expect(back.id == session.id)
         #expect(back.accountKey == "claude")
     }

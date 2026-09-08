@@ -23,7 +23,7 @@
 import AppKit
 import TkzCore
 
-/// A 7 pt status dot. `exited` draws as a hollow ring so it reads as "not alive" without needing a
+/// A 7 pt status dot. (Until 2026-09-08 `exited` drew as a hollow ring; that status is gone.) A
 /// colour token of its own.
 public final class StatusDotLayer: CALayer {
     /// Key the pulse is registered under. Exposed so the row view and the tests can assert presence
@@ -107,10 +107,10 @@ public final class StatusDotLayer: CALayer {
     /// `true` when the pulse animation is attached. Structural, so tests need no window.
     public var isPulsing: Bool { animation(forKey: Self.pulseAnimationKey) != nil }
 
-    /// The dot's fill colour as configured — transparent for `.exited`, which draws as a ring.
+    /// The dot's fill colour as configured.
     public var fillColor: CGColor? { backgroundColor }
 
-    /// The dot's ring colour — non-nil only for `.exited`.
+    /// The dot's ring colour, when it draws one (no status does today).
     public var strokeColor: CGColor? { borderWidth > 0 ? borderColor : nil }
 
     /// The layer clock speed; `0` while occluded.
@@ -136,12 +136,6 @@ public final class StatusDotLayer: CALayer {
             // "working" (green) or "needs you" (amber) in every preset.
             backgroundColor = theme.accent.cgColor
             borderWidth = 0
-        case .exited:
-            // No token exists for `exited`; a hollow `idle`-coloured ring reads as "gone" without
-            // inventing a colour, and stays correct in all five presets.
-            backgroundColor = NSColor.clear.cgColor
-            borderWidth = 1
-            borderColor = theme.idle.cgColor
         }
 
         if status == .working {

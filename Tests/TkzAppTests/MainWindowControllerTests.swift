@@ -216,9 +216,11 @@ struct MainWindowControllerTests {
         #expect(abs(detail.terminalContainer.frame.maxY - (detail.view.bounds.height - inset)) < 1)
         // The empty state rides inside the container, so it is inset by construction.
         #expect(detail.emptyState.frame.height == detail.terminalContainer.frame.height)
-        // The sidebar's list stops there too.
+        // The sidebar's column stops there too: the summary strip is its top-most piece (since
+        // 2026-09-08) and the list starts under the strip.
         let sidebar = harness.controller.sidebar
-        #expect(abs(sidebar.scrollView.frame.maxY - (sidebar.view.bounds.height - inset)) < 1)
+        #expect(abs(sidebar.summaryStrip.frame.maxY - (sidebar.view.bounds.height - inset)) < 1)
+        #expect(abs(sidebar.scrollView.frame.maxY - sidebar.summaryStrip.frame.minY) < 1)
         // And the header backdrop is exactly that strip, above both columns.
         let backdrop = harness.controller.chrome.headerBackdrop
         #expect(abs(backdrop.frame.height - inset) < 1)

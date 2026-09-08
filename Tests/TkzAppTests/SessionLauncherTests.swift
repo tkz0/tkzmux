@@ -100,7 +100,7 @@ struct SessionLauncherTests {
         #expect(h.store.state.selection == id)
     }
 
-    @Test("start: a known account's configured dir wins over the derived one; the primary sets nothing")
+    @Test("start: a known account's configured dir wins over the derived one; the primary is pinned; none chosen = unset")
     func startKnownAccount() throws {
         let h = try Self.makeHarness()
         defer { h.tree.tearDown() }
@@ -109,8 +109,22 @@ struct SessionLauncherTests {
         _ = h.launcher.start(NewSessionMenu.Launch(kind: .repoRoot, command: "claude", cwd: h.tree.repo, accountKey: "claude", groupID: h.group))
         _ = h.launcher.start(NewSessionMenu.Launch(kind: .repoRoot, command: "claude", cwd: h.tree.repo, accountKey: nil, groupID: h.group))
         #expect(h.host.opened[0].env["CLAUDE_CONFIG_DIR"] == "/somewhere/else")
-        #expect(h.host.opened[1].env["CLAUDE_CONFIG_DIR"] == nil)
+        #expect(h.host.opened[0].env["TKZMUX_CLAUDE_CONFIG_DIR"] == "/somewhere/else")
+        #expect(h.host.opened[1].env["CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
         #expect(h.host.opened[2].env["CLAUDE_CONFIG_DIR"] == nil)
+        #expect(h.host.opened[2].env["TKZMUX_CLAUDE_CONFIG_DIR"] == nil)
+    }
+
+    @Test("reopen and resume always pin the row's recorded account, the primary included")
+    func reopenPinsThePrimary() throws {
+        let h = try Self.makeHarness()
+        defer { h.tree.tearDown() }
+        let id = Self.restoredRow(h, accountKey: "claude", claudeSessionId: "abc")
+        #expect(h.launcher.resume(id) == .success(.resumed(claudeSessionId: "abc")))
+        // A row that ran on `~/.claude` must resume there even if the user's shell defaults
+        // elsewhere — the recorded key is the truth, and the wrapper re-export enforces it.
+        #expect(h.host.opened.first?.env["CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
+        #expect(h.host.opened.first?.env["TKZMUX_CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
     }
 
     @Test("start: a preset env may override the account's config dir, on purpose")
@@ -170,10 +184,10 @@ struct SessionLauncherTests {
         #expect(h.launcher.reopen(fresh) == .success(.reopened(directory: h.tree.repo, restoredContent: false)))
         #expect(h.host.opened.map(\.id) == [fresh])
 
-        // ⌘W: the host keeps the grid; the store drops `live`. Reopen restores from that grid.
-        h.launcher.close(fresh)
+        // The store lost `live` while the host still holds the grid (a stale event, a crash of the
+        // bookkeeping): reopen prefers that live grid over anything on disk.
+        h.store.update { $0.setLive(nil, for: fresh) }
         h.store.flush()
-        #expect(h.host.closedIDs == [fresh])
         #expect(h.session(fresh)?.live == nil)
         h.host.savedSnapshots[fresh] = Data("stale".utf8)
         #expect(h.launcher.reopen(fresh) == .success(.reopened(directory: h.tree.repo, restoredContent: true)))
@@ -316,25 +330,24 @@ struct SessionLauncherTests {
 
     // MARK: - Close / remove
 
-    @Test("close hangs up and keeps the row; remove discards the row and its snapshot")
-    func closeAndRemove() throws {
+    @Test("remove discards the row and its snapshot, whether or not the host ever held it")
+    func remove() throws {
         let h = try Self.makeHarness()
         defer { h.tree.tearDown() }
         let id = try #require(try? h.launcher.start(NewSessionMenu.Launch(
             kind: .shell, command: "", cwd: h.tree.repo, accountKey: nil, groupID: h.group)).get())
         h.store.flush()
 
-        h.launcher.close(id)
+        h.launcher.remove(id)
         h.store.flush()
-        #expect(h.host.closed.first?.signal == SIGHUP)
-        #expect(h.session(id) != nil)
-        #expect(h.session(id)?.status == .exited)
+        #expect(h.host.discarded == [id])
+        #expect(h.session(id) == nil)
 
         let neverOpened = Self.restoredRow(h)
         h.host.savedSnapshots[neverOpened] = Data("x".utf8)
         h.launcher.remove(neverOpened)
         h.store.flush()
-        #expect(h.host.discarded == [neverOpened])
+        #expect(h.host.discarded == [id, neverOpened])
         #expect(h.host.savedSnapshots[neverOpened] == nil, "the snapshot goes even for a row the host never held")
         #expect(h.session(neverOpened) == nil)
     }

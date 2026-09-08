@@ -33,7 +33,6 @@ public enum SidebarRowAdapter {
         case .working: .working
         case .waiting: .waiting
         case .idle: .idle
-        case .exited: .exited
         }
     }
 
@@ -51,7 +50,7 @@ public enum SidebarRowAdapter {
         SidebarSessionRowModel(
             title: session.displayTitle,
             branch: session.live?.git?.branch,
-            isWorktree: session.isWorktree,
+            isWorktree: session.showsWorktreeBadge,
             status: status(of: session),
             accountLabel: accountLabel(for: session, in: state),
             accountColor: SidebarSessionRowModel.accountChipColor(forKey: session.accountKey),
@@ -86,13 +85,15 @@ public enum SidebarRowAdapter {
 
     /// Short label for the account chip, or `nil` to hide the chip entirely.
     ///
-    /// A single-account setup carries no useful information in the chip, so it is hidden: the chip
-    /// only appears once the state knows about more than one account. The label is derived from the
-    /// account's *configured* `label` (never hardcoded — see CLAUDE.md): initials for a multi-word
-    /// label ("Claude (alt)" → `CA`), the first two characters for a single word ("Claude" → `CL`).
-    /// An account the state has never heard of falls back to the same derivation over its key.
+    /// **The default account (`~/.claude`) never shows a chip** (Thomas, 2026-09-08): almost
+    /// nobody runs more than one Claude plan, and for the one plan everybody has the chip says
+    /// nothing. A chip appears only on a row that runs on some *other* config dir, and reads as
+    /// "this one is different". The label is derived from the account's *configured* `label`
+    /// (never hardcoded — see CLAUDE.md): initials for a multi-word label ("Claude (work)" → `CW`),
+    /// the first two characters for a single word ("work" → `WO`). An account the state has never
+    /// heard of falls back to the same derivation over its key.
     public static func accountLabel(for session: Session, in state: AppState) -> String? {
-        guard state.accounts.count > 1 else { return nil }
+        guard session.accountKey != Account.defaultKey else { return nil }
         let source = state.accounts[session.accountKey]?.label ?? session.accountKey
         return shortLabel(source) ?? shortLabel(session.accountKey)
     }

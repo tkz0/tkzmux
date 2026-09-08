@@ -175,3 +175,69 @@ private func runInteractiveLoginShell(
     #expect(result.status == 0)
     #expect(result.stdout.contains("ok"))
 }
+
+@Test func chosenAccountWinsOverTheUsersRc() throws {
+    // The user's own .zshrc exports a default account; the account picked in tkzmux must win,
+    // and when none was picked the user's export must survive untouched (M5.2).
+    let fixture = try makeWrapperFixture()
+    let rc = fixture.fakeHome.appendingPathComponent(".zshrc")
+    try (String(contentsOf: rc, encoding: .utf8) + "\nexport CLAUDE_CONFIG_DIR=\"$HOME/.claude-work\"\n")
+        .write(to: rc, atomically: true, encoding: .utf8)
+    func configDir(_ extra: [String: String]) throws -> String {
+        var env: [String: String] = [
+            "HOME": fixture.fakeHome.path,
+            "ZDOTDIR": fixture.tkzmuxZdotdir.path,
+            "TKZMUX_ZDOTDIR": fixture.tkzmuxZdotdir.path,
+            "TKZMUX_USER_ZDOTDIR": fixture.fakeHome.path,
+            "TKZMUX_BIN": fixture.tkzmuxBin.path,
+            "MARKER_LOG": fixture.log.path,
+            "TERM": "dumb",
+            "PATH": "/usr/bin:/bin",
+        ]
+        for (key, value) in extra { env[key] = value }
+        let result = try run(
+            URL(fileURLWithPath: "/bin/zsh"), ["-l", "-i", "-c", "print -r -- ${CLAUDE_CONFIG_DIR:-unset}"],
+            environment: env)
+        return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    #expect(try configDir([:]) == "\(fixture.fakeHome.path)/.claude-work")
+    let pinned = "\(fixture.fakeHome.path)/.claude"
+    #expect(try configDir(["CLAUDE_CONFIG_DIR": pinned, "TKZMUX_CLAUDE_CONFIG_DIR": pinned]) == pinned)
+}
+
+
+@Test func theWorkingDirectoryIsReportedAsOSC7OnStartAndOnEveryCd() throws {
+    // The sidebar title follows `cd` through OSC 7 (2026-09-08). Percent-encoded path, `localhost`
+    // as the host, once at startup and again after every directory change.
+    let fixture = try makeWrapperFixture()
+    let spaced = fixture.fakeHome.appendingPathComponent("has space", isDirectory: true)
+    try FileManager.default.createDirectory(at: spaced, withIntermediateDirectories: true)
+    var env: [String: String] = [
+        "HOME": fixture.fakeHome.path,
+        "ZDOTDIR": fixture.tkzmuxZdotdir.path,
+        "TKZMUX_ZDOTDIR": fixture.tkzmuxZdotdir.path,
+        "TKZMUX_USER_ZDOTDIR": fixture.fakeHome.path,
+        "TKZMUX_BIN": fixture.tkzmuxBin.path,
+        "MARKER_LOG": fixture.log.path,
+        "TERM": "dumb",
+        "PATH": "/usr/bin:/bin",
+        "TKZMUX_OSC7_TO_STDOUT": "1",
+    ]
+    let result = try run(
+        URL(fileURLWithPath: "/bin/zsh"),
+        ["-l", "-i", "-c", "cd \"$HOME/has space\"; cd /tmp; print -r -- end"],
+        environment: env)
+    let reports = result.stdout.components(separatedBy: "\u{1b}]7;").dropFirst()
+        .map { String($0.prefix { $0 != "\u{07}" }) }
+    // The startup report is wherever the shell was launched (the test process's cwd; a login zsh
+    // does not cd to $HOME), then one per cd.
+    #expect(reports.count == 3, "\(reports)")
+    #expect(reports.first?.hasPrefix("file://localhost/") == true)
+    #expect(reports.dropFirst().first == "file://localhost\(fixture.fakeHome.path)/has%20space")
+    #expect(reports.last == "file://localhost/tmp" || reports.last == "file://localhost/private/tmp")
+
+    // Piped stdout without the override: no escape bytes at all.
+    env["TKZMUX_OSC7_TO_STDOUT"] = nil
+    let quiet = try run(URL(fileURLWithPath: "/bin/zsh"), ["-l", "-i", "-c", "cd /tmp; print -r -- end"], environment: env)
+    #expect(!quiet.stdout.contains("\u{1b}]7;"))
+}

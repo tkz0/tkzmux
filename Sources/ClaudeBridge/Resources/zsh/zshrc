@@ -24,4 +24,36 @@ if [[ -n "${TKZMUX_ZDOTDIR:-}" && -n "${TKZMUX_USER_ZDOTDIR:-}" ]]; then
     # $TKZMUX_BIN first on PATH, exactly once.
     path=("$TKZMUX_BIN" ${path:#$TKZMUX_BIN})
     export PATH
+
+    # Report the working directory to tkzmux as OSC 7 (`file://localhost/<percent-encoded path>`)
+    # once now and on every `cd`/`pushd`/`popd`, so the sidebar title follows the shell (2026-09-08).
+    # Only inside tkzmux (this whole block is), and `localhost` rather than $HOST on purpose: only
+    # tkzmux reads it, and a hostname that does not match what the app resolves would be dropped.
+    __tkzmux_report_cwd() {
+        emulate -L zsh
+        # Only to a terminal: a `zsh -c` with stdout piped (the wrapper tests, a script) must not
+        # get escape bytes in its output. TKZMUX_OSC7_TO_STDOUT is the tests' way to see it.
+        [[ -t 1 || -n "${TKZMUX_OSC7_TO_STDOUT:-}" ]] || return 0
+        local LC_ALL=C
+        local encoded="" ch
+        local -i i
+        for (( i = 1; i <= ${#PWD}; i++ )); do
+            ch="${PWD[i]}"
+            case "$ch" in
+                [A-Za-z0-9/._~-]) encoded+="$ch" ;;
+                *) printf -v ch '%%%02X' "'$ch"; encoded+="$ch" ;;
+            esac
+        done
+        printf '\e]7;file://localhost%s\a' "$encoded"
+    }
+    autoload -Uz add-zsh-hook
+    add-zsh-hook chpwd __tkzmux_report_cwd
+    __tkzmux_report_cwd
+
+    # The account the user picked in tkzmux wins over an `export CLAUDE_CONFIG_DIR=...` in their
+    # own rc files, which ran above. Unset when no account was chosen -- then the user's
+    # environment decides, and the shim reports what it decided.
+    if [[ -n "${TKZMUX_CLAUDE_CONFIG_DIR:-}" ]]; then
+        export CLAUDE_CONFIG_DIR="$TKZMUX_CLAUDE_CONFIG_DIR"
+    fi
 fi

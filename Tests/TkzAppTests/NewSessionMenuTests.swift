@@ -255,7 +255,6 @@ struct ShortcutsTableTests {
             (.toggleSidebar, "b", .command),
             (.renameSession, "r", [.shift, .command]),
             (.closeTerminal, "w", .command),
-            (.closeSession, "w", [.shift, .command]),
             (.jumpToNeedsYou, "u", [.shift, .command]),
             (.notifications, "i", .command),
             (.settings, ",", .command),

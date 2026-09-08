@@ -18,7 +18,7 @@ import Testing
         #expect(created.order == before)
         #expect(created.accountKey == state.groups[group]?.defaultAccountKey)
         #expect(created.repoRoot == state.groups[group]?.repoRoot)
-        #expect(created.status == .exited)  // nothing is running yet
+        #expect(created.status == .idle)  // nothing is running yet; idle until its shell is spawned
     }
 
     @Test func createFallsBackToTheDefaultAccount() {
@@ -30,7 +30,7 @@ import Testing
 
     @Test func adoptBindsTheDescriptorAndRecordsTheResumeID() {
         var state = AppState.fixture
-        let id = Fixture.sessionID(4)  // an exited fixture row
+        let id = Fixture.sessionID(4)  // a restored fixture row (no live state)
         #expect(state.sessions[id]?.live == nil)
         let descriptor = ClaudeSessionInfo(
             configDir: "~/.claude-alt", pid: 900, sessionId: "new-session-id",
@@ -120,16 +120,10 @@ import Testing
         #expect(state.sessions(in: group).first?.id == ids[0])
     }
 
-    /// Close keeps the row (resumable); remove deletes it.
-    @Test func closeKeepsTheRowAndRemoveDeletesIt() {
+    /// Remove deletes the row; there is no "close but keep" (decision 2026-09-08).
+    @Test func removeDeletesTheRow() {
         var state = AppState.fixture
         let id = Fixture.sessionID(0)
-        let claudeID = state.sessions[id]?.claudeSessionId
-        state.closeSession(id)
-        #expect(state.sessions[id] != nil)
-        #expect(state.sessions[id]?.status == .exited)
-        #expect(state.sessions[id]?.claudeSessionId == claudeID)  // still resumable
-
         let count = state.sessions.count
         state.removeSession(id)
         #expect(state.sessions[id] == nil)
@@ -172,6 +166,62 @@ import Testing
         #expect(fixed.resumeDirectoryCandidates == ["/elsewhere", "/repo"])
         let bare = Session(groupID: .generate(), cwd: "/home", accountKey: "claude")
         #expect(bare.resumeDirectoryCandidates == ["/home"])
+    }
+
+    @Test func titleIsTheLastPathSegment() {
+        #expect(Session.title(forPath: "/Users/x/dev/aira/") == "aira")
+        #expect(Session.title(forPath: "/Users/x/dev/aira") == "aira")
+        #expect(Session.title(forPath: "/Users/thomas") == "thomas")
+        #expect(Session.title(forPath: "/") == "/")
+        #expect(Session.title(forPath: "~") == (NSHomeDirectory() as NSString).lastPathComponent)
+        #expect(Session.title(forPath: "~/dev/x/") == "x")
+
+        // Rename → Claude's auto-name → worktree name (+ WT) → Claude's cwd → the start dir.
+        var session = Session(groupID: .generate(), cwd: "/Users/x/dev/aira/", accountKey: "claude")
+        #expect(session.displayTitle == "aira")
+        session.worktreePath = "/Users/x/dev/.claude/worktrees/hello"
+        session.isWorktree = true
+        #expect(session.displayTitle == "hello")
+        session.title = "mine"
+        #expect(session.displayTitle == "mine")
+    }
+
+    @Test func theTitleFollowsTheShellsReportedDirectory() {
+        var state = AppState()
+        let group = state.addGroup(name: "home", repoRoot: "/Users/x")
+        let session = state.createSession(groupID: group.id, cwd: "/Users/x", accountKey: "claude")
+        #expect(state.sessions[session.id]?.displayTitle == "x")
+
+        // A restored row has no live state: OSC 7 for it is ignored (there is no shell).
+        state.setShellCwd(session.id, path: "/Users/x/dev/aira")
+        #expect(state.sessions[session.id]?.displayTitle == "x")
+
+        state.setLive(LiveSessionState(shellPid: 1), for: session.id)
+        state.setShellCwd(session.id, path: "/Users/x/dev/aira/")
+        #expect(state.sessions[session.id]?.displayTitle == "aira")
+        #expect(state.sessions[session.id]?.effectiveCwd == "/Users/x/dev/aira/")
+        #expect(state.sessions[session.id]?.cwd == "/Users/x", "the start directory is not rewritten by a cd")
+
+        // Inside a worktree the badge shows, without touching the persisted flag.
+        state.setShellCwd(session.id, path: "/Users/x/dev/repo/.claude/worktrees/hello")
+        #expect(state.sessions[session.id]?.displayTitle == "hello")
+        #expect(state.sessions[session.id]?.showsWorktreeBadge == true)
+        #expect(state.sessions[session.id]?.isWorktree == false)
+
+        // Claude's own cwd wins while a descriptor is bound, and becomes the directory of record.
+        state.applyDescriptor(
+            ClaudeSessionInfo(configDir: "/Users/x/.claude", pid: 9, sessionId: "s", cwd: "/Users/x/dev/repo"),
+            alive: true, to: session.id)
+        #expect(state.sessions[session.id]?.displayTitle == "repo")
+        #expect(state.sessions[session.id]?.cwd == "/Users/x/dev/repo")
+        #expect(state.sessions[session.id]?.showsWorktreeBadge == false)
+
+        // Claude gone: back to the shell's cwd.
+        state.descriptorLost(for: session.id)
+        #expect(state.sessions[session.id]?.displayTitle == "hello")
+
+        state.setShellCwd(session.id, path: "")
+        #expect(state.sessions[session.id]?.displayTitle == "repo", "an empty report falls back to the directory of record")
     }
 
     @Test func worktreeRootOfPath() {
@@ -226,11 +276,27 @@ import Testing
     }
 
     @Test func accountConfigDirectoryIsDerivedFromTheKey() {
-        #expect(Account.configDirectory(forKey: "claude", home: "/Users/x") == nil)
+        // The primary is spelled out too: a resume must land on `~/.claude` even when the user's
+        // environment defaults to another account.
+        #expect(Account.configDirectory(forKey: "claude", home: "/Users/x") == "/Users/x/.claude")
         #expect(Account.configDirectory(forKey: "claude-work", home: "/Users/x") == "/Users/x/.claude-work")
         #expect(Account.configDirectory(forKey: "claude-work", home: "/Users/x/") == "/Users/x/.claude-work")
         #expect(Account.configDirectory(forKey: "", home: "/Users/x") == nil)
         #expect(Account.configDirectory(forKey: "../etc", home: "/Users/x") == nil)
+        #expect(Account.key(forConfigDirectory: "/Users/x/.claude-work") == "claude-work")
+        #expect(Account.key(forConfigDirectory: "/Users/x/.claude") == "claude")
+        #expect(Account.key(forConfigDirectory: "/Users/x/.claude/") == "claude")
+    }
+
+    @Test func setSessionAccountFollowsTheProcess() {
+        var state = AppState()
+        let group = state.addGroup(name: "repo", repoRoot: "/repo")
+        let session = state.createSession(groupID: group.id, cwd: "/repo")
+        #expect(state.sessions[session.id]?.accountKey == "claude")
+        state.setSessionAccount(session.id, key: "claude-work")
+        #expect(state.sessions[session.id]?.accountKey == "claude-work")
+        state.setSessionAccount(session.id, key: "")
+        #expect(state.sessions[session.id]?.accountKey == "claude-work")
     }
 
     @Test func autoResumePreferenceIsAChromeChange() {
@@ -370,7 +436,7 @@ import Testing
             var (state, id) = makeState()
             state.applyHook(.init(kind: .sessionEnd, reason: reason), to: id, now: now)
             #expect(state.sessions[id]?.live?.ended == false, "reason \(reason)")
-            #expect(state.sessions[id]?.status != .exited, "reason \(reason)")
+            #expect(state.sessions[id]?.status == .idle, "reason \(reason)")
         }
     }
 
@@ -506,10 +572,13 @@ import Testing
         #expect(state.sessions[id]?.status == .idle)
     }
 
-    @Test func setAliveFalseDerivesExited() {
+    @Test func setAliveFalseIsPlainIdle() {
+        // No "exited" status: a dead shell's row is removed by the window, so for the instant it
+        // still exists it is idle with nothing to attend to.
         var (state, id) = makeState()
         state.setAlive(false, for: id, now: now)
-        #expect(state.sessions[id]?.status == .exited)
+        #expect(state.sessions[id]?.status == .idle)
+        #expect(state.sessions[id]?.needsAttention == false)
         state.setAlive(true, for: id, now: now)
         #expect(state.sessions[id]?.status == .idle)
     }
@@ -598,7 +667,6 @@ import Testing
         let statuses = Set(state.sessions.values.map(\.status.name))
         #expect(statuses.contains("working"))
         #expect(statuses.contains("idle"))
-        #expect(statuses.contains("exited"))
         #expect(statuses.contains("waiting(doneUnattended)"))
         #expect(statuses.contains("waiting(permission)"))
 

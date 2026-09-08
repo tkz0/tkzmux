@@ -203,6 +203,13 @@ struct SidebarViewControllerTests {
         #expect(harness.outline.insertedItemCalls.map(\.rows).reduce(0) { $0 + $1.count } == 5)
         #expect(harness.outline.insertedItemCalls.allSatisfy { $0.parent?.groupID == groupID })
         #expect(harness.outline.numberOfRows == before + 5)
+        // The group's header shows a count, and the group *value* did not change — so the header
+        // row must be reloaded explicitly (GUI pass 2026-09-08: "COREINVEST 0" over a live row).
+        let header = harness.controller.row(forGroup: groupID)
+        #expect(harness.outline.reloadedRowIndexSets.contains { $0.contains(header) })
+        // The five new rows are reloaded by the `sessions` half of the change set as before; the
+        // header is the one extra row.
+        #expect(harness.outline.reloadedRowCount == 6)
     }
 
     @Test("Removing five sessions goes through removeItems, not reloadData")
@@ -505,7 +512,7 @@ struct SidebarViewControllerTests {
 
     // MARK: - Summary strip
 
-    @Test("The ＋ New group footer sits under the summary strip and its button fires onNewGroup")
+    @Test("The summary strip is at the top, the ＋ New group footer at the bottom, the list between")
     func newGroupFooter() {
         let harness = Self.makeHarness()
         harness.window.layoutIfNeeded()
@@ -513,11 +520,17 @@ struct SidebarViewControllerTests {
 
         let footer = harness.controller.newGroupFooter
         let strip = harness.controller.summaryStrip
-        #expect(footer.superview === harness.controller.view)
+        let container = harness.controller.view
+        #expect(footer.superview === container)
         #expect(footer.frame.height == CGFloat(SidebarMetrics.newGroupFooterHeight))
         #expect(footer.frame.minY == 0, "the footer is the bottom-most strip")
-        #expect(abs(strip.frame.minY - footer.frame.maxY) < 0.5, "the summary strip sits right above it")
-        #expect(abs(harness.controller.scrollView.frame.minY - strip.frame.maxY) < 0.5)
+        // The strip moved to the top on 2026-09-08 (artboard 2c draws it under the toolbar).
+        let topInset = container.safeAreaInsets.top
+        #expect(abs(strip.frame.maxY - (container.bounds.height - topInset)) < 0.5, "the strip sits at the top, under the toolbar")
+        #expect(abs(harness.controller.scrollView.frame.maxY - strip.frame.minY) < 0.5, "the list starts right under it")
+        #expect(abs(harness.controller.scrollView.frame.minY - footer.frame.maxY) < 0.5, "and ends at the footer")
+        #expect(strip.summaryText.hasSuffix("need you"))
+        #expect(SummaryStripView.displayText(for: SidebarSummaryModel(working: 2, needAttention: 1)) == "2 WORKING · 1 NEED YOU")
         #expect(footer.labelTextLayer.string as? String == NewGroupFooterView.title)
         #expect(footer.dashedBorderLayer.path != nil)
         #expect(footer.buttonFrame.height == NewGroupFooterView.buttonHeight)
@@ -567,7 +580,6 @@ struct SidebarViewControllerTests {
         }
         #expect(SidebarRowAdapter.status(.working) == .working)
         #expect(SidebarRowAdapter.status(.idle) == .idle)
-        #expect(SidebarRowAdapter.status(.exited) == .exited)
     }
 
     @Test("needsAttention is the attention flag, not the waiting status")
@@ -611,17 +623,19 @@ struct SidebarViewControllerTests {
         #expect(model.color != Theme.default.groupEdgeDefault)
     }
 
-    @Test("The account chip is hidden with one account and short-labelled with two")
-    func accountChipDependsOnAccountCount() {
+    @Test("The account chip is hidden on the default account and short-labelled on any other")
+    func accountChipDependsOnAccount() {
         let state = AppState.fixture
         let alt = state.sessions[Fixture.sessionID(0)]!
         #expect(SidebarRowAdapter.accountLabel(for: alt, in: state) == "CA")  // "Claude (alt)"
+        // `~/.claude` never gets a chip: for the one plan everybody has, it would say nothing.
         let main = state.sessions[Fixture.sessionID(5)]!
-        #expect(SidebarRowAdapter.accountLabel(for: main, in: state) == "CL")  // "Claude"
+        #expect(SidebarRowAdapter.accountLabel(for: main, in: state) == nil)
 
-        var single = state
-        single.accounts = ["claude": state.accounts["claude"]!]
-        #expect(SidebarRowAdapter.accountLabel(for: main, in: single) == nil)
+        // A second account the store has never heard of still gets a chip, derived from its key.
+        var unknown = alt
+        unknown.accountKey = "claude-work"
+        #expect(SidebarRowAdapter.accountLabel(for: unknown, in: state) == "CW")
 
         // The chip colour is the documented, process-independent derivation.
         #expect(

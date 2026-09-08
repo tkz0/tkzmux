@@ -345,7 +345,11 @@ start/reopen logs its cwd, `CLAUDE_CONFIG_DIR` and command (docs/perf.md → *La
 ⌘N → *New worktree (claude -w)*. **Pass**: `<repo>/.claude/worktrees/<name>` exists within a few
 seconds, the row shows the `WT` badge and the worktree name as its title, and Claude's auto-name
 replaces the title later. **Fail**: no badge (the descriptor's cwd was not under
-`.claude/worktrees`), or the title stays the repo's basename.
+`.claude/worktrees`), or the title stays the repo's basename. Failed on 2026-09-08 (no badge, title
+stayed "CoreInvest", header count "0"): the claude process ran under `~/.claude-alt`, which the app
+did not watch, so nothing was attributed. Fixed by account discovery + learning the account from
+the descriptor's directory, and the header count reloads on insert. Re-check, and also check that
+the row's account chip reads the account the session actually runs on (`/usage`).
 
 **6b. Quit and restore.** Open ~10 sessions across both accounts (Account submenu on ⌘N), some
 worktree, some repo root, a couple of plain `>_` shells; rename one; ⌘Q. Relaunch. **Pass**:
@@ -368,10 +372,11 @@ a relaunch.
 from the presets submenu. **Pass**: a session in `<repo>/.claude/worktrees/preset-test` on the
 second account (`/usage`), and `echo $TKZ_PRESET` in a `>_` shell of the same preset prints 1.
 
-**6e. Close and remove.** ⌘W on a `working` row → an alert; Cancel keeps it running; Close hangs
-it up, the screen dims, the row stays. ⌘W again on that (now exited) row → the row is gone, no
-alert. ⇧⌘W (or right-click → Remove) on a live row → an alert; Remove deletes the row; its
-`.ghsnap` under Application Support is gone; the worktree on disk is **not**.
+**6e. Close and remove.** There is no exited state (2026-09-08). ⌘W on a `working` row → an
+alert; Cancel keeps it running; Close removes the row, its shell and its `.ghsnap` under
+Application Support; the worktree on disk is **not** touched. ⌘W on an idle row removes it with
+no alert. Hover a row → it tints and a `×` appears at the right; clicking it does the same as ⌘W.
+Type `exit` in a shell → its row disappears.
 Right-click a group header → *Resume all in <group>* resumes every resumable row and leaves the
 selection alone.
 

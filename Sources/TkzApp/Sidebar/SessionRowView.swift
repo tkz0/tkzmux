@@ -45,9 +45,6 @@ public final class SessionRowView: NSTableCellView {
     // MARK: Fonts
 
     private let titleFont = Theme.Fonts.ui(Theme.Fonts.ui.title, weight: .medium)
-    /// What the detail line says for a closed session. Asserted by tests, not eyeballed.
-    static let exitedDetail = "exited"
-
     private let branchFont = Theme.Fonts.mono(Theme.Fonts.mono.detail)
     private let badgeFont = Theme.Fonts.ui(9, weight: .semibold)
 
@@ -71,6 +68,23 @@ public final class SessionRowView: NSTableCellView {
     /// `GroupRowView.onAdd`, so the controller rewires it on every vend rather than a stale closure
     /// firing for whatever session got recycled into this row.
     public var onStatusDotClick: (() -> Bool)?
+    /// Invoked by a click on the `×` that appears while the pointer is over the row (2026-09-08).
+    /// Cleared by `prepareForReuse()` like `onStatusDotClick`.
+    public var onClose: (() -> Void)?
+
+    /// The pointer is over the row: a faint highlight and the `×` close button.
+    public private(set) var isHovered = false {
+        didSet {
+            guard isHovered != oldValue else { return }
+            apply()
+            needsLayout = true
+        }
+    }
+    /// The `×` glyph; a text layer, hit-tested in `mouseDown`.
+    private lazy var closeLayer = SidebarLayers.text(closeFont, color: NSColor.clear.cgColor, alignment: .center)
+    private let closeFont = Theme.Fonts.ui(13, weight: .medium)
+    private static let closeSize: CGFloat = 18
+    private var trackingArea: NSTrackingArea?
     /// Extra hit-test margin around the 7 pt dot — a 7 pt target is not reliably clickable on its
     /// own.
     private static let dotHitSlop: CGFloat = 5
@@ -97,8 +111,31 @@ public final class SessionRowView: NSTableCellView {
         root.addSublayer(needsYouBadge)
         root.addSublayer(accountChip)
         root.addSublayer(statusDot)
+        root.addSublayer(closeLayer)
         apply()
     }
+
+    // MARK: Hover
+
+    public override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    public override func mouseEntered(with event: NSEvent) { isHovered = true }
+    public override func mouseExited(with event: NSEvent) { isHovered = false }
+
+    /// Tests have no pointer; they set the hover state directly.
+    public func setHovered(_ hovered: Bool) { isHovered = hovered }
+
+    /// The `×` button's frame in the row's coordinates, or nil while it is not shown.
+    public var closeButtonFrame: CGRect? { closeLayer.isHidden ? nil : closeLayer.frame }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used; tkzmux builds views in code") }
@@ -132,17 +169,24 @@ public final class SessionRowView: NSTableCellView {
         accountChip.isHidden = true
         selectionLayer.backgroundColor = NSColor.clear.cgColor
         onStatusDotClick = nil
+        onClose = nil
+        isHovered = false
     }
 
     /// A click on the status dot is handled here rather than falling through to selection — the
     /// controller decides (from the *store's* session, not this presentation-only model) whether
     /// the row is showing a last message worth popping over.
     public override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        // The `×` first: it is only there while hovered, and a click on it must not select the row.
+        if !closeLayer.isHidden, closeLayer.frame.insetBy(dx: -4, dy: -6).contains(point), let onClose {
+            onClose()
+            return
+        }
         guard let onStatusDotClick else {
             super.mouseDown(with: event)
             return
         }
-        let point = convert(event.locationInWindow, from: nil)
         let hitArea = statusDot.frame.insetBy(dx: -Self.dotHitSlop, dy: -Self.dotHitSlop)
         guard hitArea.contains(point), onStatusDotClick() else {
             super.mouseDown(with: event)
@@ -183,7 +227,19 @@ public final class SessionRowView: NSTableCellView {
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
 
-        selectionLayer.backgroundColor = model.isSelected ? theme.selection.cgColor : NSColor.clear.cgColor
+        // Hover is a fainter version of the selection tint, so a hovered selected row stays selected-looking.
+        if model.isSelected {
+            selectionLayer.backgroundColor = theme.selection.cgColor
+        } else if isHovered {
+            var hover = theme.selection
+            hover.a *= 0.45
+            selectionLayer.backgroundColor = hover.cgColor
+        } else {
+            selectionLayer.backgroundColor = NSColor.clear.cgColor
+        }
+        closeLayer.isHidden = !isHovered
+        closeLayer.string = "\u{00D7}"
+        closeLayer.foregroundColor = theme.foregroundMuted.cgColor
 
         titleLayer.string = model.title
         titleLayer.foregroundColor = theme.foreground.cgColor
@@ -193,20 +249,11 @@ public final class SessionRowView: NSTableCellView {
         if let branch = model.branch, !branch.isEmpty {
             branchLayer.string = "⎇ \(branch)"
             branchLayer.isHidden = false
-        } else if model.status == .exited {
-            // A closed session has no `live`, so it has no branch either and the detail line would
-            // be blank — leaving ⌘W looking like it did nothing (the dot goes from a filled disc to
-            // a 7 pt hollow ring and that is easy to miss). The row says so in words instead.
-            branchLayer.string = Self.exitedDetail
-            branchLayer.isHidden = false
         } else {
             branchLayer.string = nil
             branchLayer.isHidden = true
         }
-        // Only the "exited" caption is dimmer; a real branch keeps the design's muted token.
-        branchLayer.foregroundColor = model.status == .exited && (model.branch ?? "").isEmpty
-            ? theme.foregroundDim.cgColor
-            : theme.foregroundMuted.cgColor
+        branchLayer.foregroundColor = theme.foregroundMuted.cgColor
 
         wtBadge.isHidden = !model.isWorktree
         if model.isWorktree {
@@ -282,10 +329,18 @@ public final class SessionRowView: NSTableCellView {
             height: d
         )
 
+        // While hovered the `×` takes the right edge, vertically centred, and everything on the
+        // right shifts left by its width so nothing is drawn under it.
+        let closeReserve: CGFloat = isHovered ? Self.closeSize + Self.badgeGap : 0
+        closeLayer.frame = CGRect(
+            x: w - Self.rightInset - Self.closeSize + 2,
+            y: ((h - Self.closeSize) / 2).rounded(),
+            width: Self.closeSize, height: Self.closeSize)
+
         // Title line: the NEEDS YOU badge is right-aligned and the title gets what is left.
-        var titleRight = w - Self.rightInset
+        var titleRight = w - Self.rightInset - closeReserve
         if !needsYouBadge.isHidden {
-            let x = w - Self.rightInset - needsYouBadgeWidth
+            let x = w - Self.rightInset - closeReserve - needsYouBadgeWidth
             needsYouBadge.frame = CGRect(
                 x: x,
                 y: Self.titleLineY + (Self.titleLineHeight - badgeH) / 2,
@@ -302,9 +357,9 @@ public final class SessionRowView: NSTableCellView {
         )
 
         // Detail line: account chip right-aligned, then branch text, then the WT badge after it.
-        var detailRight = w - Self.rightInset
+        var detailRight = w - Self.rightInset - closeReserve
         if !accountChip.isHidden {
-            let x = w - Self.rightInset - accountChipWidth
+            let x = w - Self.rightInset - closeReserve - accountChipWidth
             accountChip.frame = CGRect(x: x, y: Self.detailLineY, width: accountChipWidth, height: badgeH)
             detailRight = x - Self.badgeGap
         }

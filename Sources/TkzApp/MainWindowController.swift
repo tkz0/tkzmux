@@ -112,8 +112,6 @@ final class DetailViewController: NSViewController {
         get { (emptyState as? EmptyStateView)?.message ?? "" }
         set { (emptyState as? EmptyStateView)?.message = newValue }
     }
-    /// Dims the last screen of a session whose shell has exited. See ``ExitedScrimView``.
-    let exitedScrim = ExitedScrimView()
 
     private var theme: Theme
 
@@ -140,15 +138,6 @@ final class DetailViewController: NSViewController {
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         emptyState.translatesAutoresizingMaskIntoConstraints = false
         terminalContainer.addSubview(terminalView)
-        exitedScrim.translatesAutoresizingMaskIntoConstraints = false
-        exitedScrim.isHidden = true
-        // Without this the scrim's layer has no background colour and no caption: present,
-        // constrained, unhidden on ⌘W — and completely invisible.
-        exitedScrim.apply(theme: theme)
-        // Subview order alone is not a strong enough guarantee over a `CAMetalLayer`; pin the
-        // z-order explicitly so the scrim cannot end up composited underneath the terminal.
-        exitedScrim.layer?.zPosition = 1
-        terminalContainer.addSubview(exitedScrim)
         terminalContainer.addSubview(emptyState)
         emptyState.layer?.zPosition = 2
 
@@ -166,11 +155,6 @@ final class DetailViewController: NSViewController {
             terminalView.leadingAnchor.constraint(equalTo: terminalContainer.leadingAnchor),
             terminalView.trailingAnchor.constraint(equalTo: terminalContainer.trailingAnchor),
             terminalView.bottomAnchor.constraint(equalTo: terminalContainer.bottomAnchor),
-
-            exitedScrim.topAnchor.constraint(equalTo: terminalContainer.topAnchor),
-            exitedScrim.leadingAnchor.constraint(equalTo: terminalContainer.leadingAnchor),
-            exitedScrim.trailingAnchor.constraint(equalTo: terminalContainer.trailingAnchor),
-            exitedScrim.bottomAnchor.constraint(equalTo: terminalContainer.bottomAnchor),
 
             emptyState.topAnchor.constraint(equalTo: terminalContainer.topAnchor),
             emptyState.leadingAnchor.constraint(equalTo: terminalContainer.leadingAnchor),
@@ -191,71 +175,12 @@ final class DetailViewController: NSViewController {
         terminalContainer.layer?.backgroundColor = theme.terminalBackground.cgColor
         statusBar.theme = theme
         (emptyState as? EmptyStateView)?.apply(theme: theme)
-        exitedScrim.apply(theme: theme)
     }
 
     static func makeEmptyState(theme: Theme) -> NSView {
         let view = EmptyStateView()
         view.apply(theme: theme)
         return view
-    }
-}
-
-/// The dim over a closed session's last screen.
-///
-/// ⌘W hangs the shell up but **keeps the row resumable** (design.md → *Session flows*: Close is not
-/// Remove), so the grid stays exactly as the shell left it. Without this the only feedback was the
-/// status dot changing from a filled disc to a 7 pt hollow ring, and ⌘W read as doing nothing.
-///
-/// Layers, not subviews — design.md → *Testing without UI*: a windowless `NSView` subtree does not
-/// render, so a headless assertion would silently see nothing.
-final class ExitedScrimView: NSView {
-    /// The caption over the dimmed screen. A constant so a test asserts the string.
-    static let message = "Session exited \u{00B7} \u{2318}N for a new one"
-
-    /// How much of the dead screen is covered. Enough to read as inert, little enough that the
-    /// last output stays legible — that is the point of keeping it.
-    static let dimOpacity: Float = 0.55
-
-    private let textLayer = CATextLayer()
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.opacity = 1
-        layer?.addSublayer(textLayer)
-        textLayer.alignmentMode = .center
-        textLayer.truncationMode = .end
-        textLayer.contentsScale = 2
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("ExitedScrimView is code-only") }
-
-    override var isFlipped: Bool { false }
-
-    /// The scrim never takes clicks: the terminal underneath still owns selection and scrollback.
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    func apply(theme: Theme) {
-        var dim = theme.terminalBackground
-        dim.a = Double(Self.dimOpacity)
-        layer?.backgroundColor = dim.cgColor
-        let font = Theme.Fonts.ui(theme.fontUI.body)
-        textLayer.string = NSAttributedString(string: Self.message, attributes: [
-            .font: font,
-            .foregroundColor: theme.foregroundMuted.nsColor,
-        ])
-        textLayer.font = font
-        textLayer.fontSize = font.pointSize
-        needsLayout = true
-    }
-
-    override func layout() {
-        super.layout()
-        let height: CGFloat = 20
-        textLayer.frame = CGRect(
-            x: 0, y: bounds.height - height - 12, width: bounds.width, height: height)
     }
 }
 
@@ -573,6 +498,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             self?.presentNewSessionMenu(for: groupID)
         }
         sidebar.onNewGroup = { [weak self] in self?.presentNewGroupPanel() }
+        // The × on a hovered row: the same verb as ⌘W, confirmation included.
+        sidebar.onRemoveSession = { [weak self] id in self?.removeSession(id) }
         sidebar.onSessionContextMenu = { [weak self] id in self?.sessionContextMenu(for: id) }
         sidebar.onGroupContextMenu = { [weak self] id in self?.groupContextMenu(for: id) }
     }
@@ -892,9 +819,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let selected = store.state.selection
         if change.selection || change.usage || (selected.map(change.touches) ?? false) {
             updateStatusBar()
-            // ⌘W and an `.exited` event both arrive as a status change on the selected row, not as a
-            // selection change, so the scrim has to follow this branch too.
-            updateExitedScrim()
             updateToolbarTitle()
         }
     }
@@ -1001,7 +925,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         detail.emptyState.isHidden = hasSurface
         detail.emptyStateMessage = emptyStateMessage(selection: id)
         terminalView.isHidden = !hasSurface
-        updateExitedScrim()
         if hasSurface, focusTerminal { focusTerminalIfSessionShown() }
     }
 
@@ -1019,13 +942,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         case .spawnFailed(let reason): "Can\u{2019}t reopen: \(reason)"
         case .unknownSession: "Can\u{2019}t reopen: unknown session"
         }
-    }
-
-    /// Shows the dim over a selected session whose shell has exited. A row with no surface at all
-    /// shows the empty state instead, so there is nothing to scrim.
-    func updateExitedScrim() {
-        let isExited = store.state.selectedSession.map { $0.status == .exited } ?? false
-        detail.exitedScrim.isHidden = !(isExited && host.visibleSessionID != nil)
     }
 
     /// The one place that decides the terminal has the keyboard. Without it a selected session
@@ -1261,47 +1177,15 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - Close / remove
 
-    /// Overrides the "close a working session?" alert: gets the session, returns whether to go
-    /// ahead. Tests set it.
-    public var confirmClose: ((Session) -> Bool)?
-    /// Overrides the "remove this session?" alert. Tests set it.
+    /// Overrides the "remove a working session?" alert: gets the session, returns whether to go
+    /// ahead. Only asked for a `working` or `waiting` row. Tests set it.
     public var confirmRemove: ((Session) -> Bool)?
 
-    /// ⌘W. Hangs the child up; the row stays and keeps its screen, so it is resumable. A session
-    /// that is `working` or `waiting` is confirmed first — Claude is mid-answer, or mid-question.
-    /// **On a row that has already exited, ⌘W removes it** (Thomas, 2026-09-08): there is nothing
-    /// left to hang up, and the second ⌘W is how a dead row is cleared from the sidebar with the
-    /// keyboard. No confirmation — the session is already dead, and the conversation itself is
-    /// Claude Code's to keep. ⇧⌘W is the confirmed Remove for a row in any state.
-    func closeSelectedTerminal() {
-        guard let id = store.state.selection else { return }
-        closeSession(id)
-    }
-
-    func closeSession(_ id: SessionID) {
-        guard let session = store.state.sessions[id] else { return }
-        let busy: Bool
-        switch session.status {
-        case .working, .waiting: busy = true
-        case .idle: busy = false
-        case .exited:
-            launcher.remove(id)
-            return
-        }
-        if busy {
-            let confirmed = confirmClose?(session) ?? runConfirmation(
-                title: "Close \u{201C}\(session.displayTitle)\u{201D}?",
-                message: session.status == .working
-                    ? "Claude is still working in this session. Closing hangs the shell up; the conversation can be resumed later."
-                    : "This session is waiting for you. Closing hangs the shell up; the conversation can be resumed later.",
-                button: "Close")
-            guard confirmed else { return }
-        }
-        launcher.close(id)
-    }
-
-    /// ⇧⌘W / context menu "Remove": the row and its snapshot go away. Always confirmed — the
-    /// snapshot is the one thing that cannot come back. The worktree on disk is never touched.
+    /// ⌘W, the row's `×`, the context menu: the session goes — row, shell and snapshot. There is
+    /// no "closed but kept" state (decision 2026-09-08: a terminal cannot be exited). A session
+    /// that is `working` or `waiting` is confirmed first — Claude is mid-answer, or mid-question;
+    /// an idle one goes at once. The worktree on disk is never touched, and the conversation
+    /// itself is Claude Code's to keep.
     func removeSelectedSession() {
         guard let id = store.state.selection else { return }
         removeSession(id)
@@ -1309,13 +1193,20 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     func removeSession(_ id: SessionID) {
         guard let session = store.state.sessions[id] else { return }
-        let confirmed = confirmRemove?(session) ?? runConfirmation(
-            title: "Remove \u{201C}\(session.displayTitle)\u{201D}?",
-            message: "The row and its saved screen are deleted. "
-                + (session.isWorktree ? "The worktree on disk is left alone. " : "")
-                + "The Claude conversation itself is kept by Claude Code.",
-            button: "Remove")
-        guard confirmed else { return }
+        let busy: Bool
+        switch session.status {
+        case .working, .waiting: busy = true
+        case .idle: busy = false
+        }
+        if busy {
+            let confirmed = confirmRemove?(session) ?? runConfirmation(
+                title: "Close \u{201C}\(session.displayTitle)\u{201D}?",
+                message: session.status == .working
+                    ? "Claude is still working in this session. Closing ends the shell and removes the row; the conversation is kept by Claude Code."
+                    : "This session is waiting for you. Closing ends the shell and removes the row; the conversation is kept by Claude Code.",
+                button: "Close")
+            guard confirmed else { return }
+        }
         launcher.remove(id)
     }
 
@@ -1331,8 +1222,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - Context menus
 
-    /// Right-click on a session row: Resume / Rename / Close / Remove, each enabled only when it
-    /// can do something. The row is addressed by id, never by the selection.
+    /// Right-click on a session row: Resume / Rename / Remove, each enabled only when it can do
+    /// something. The row is addressed by id, never by the selection.
     func sessionContextMenu(for id: SessionID) -> NSMenu? {
         guard let session = store.state.sessions[id] else { return nil }
         let menu = NSMenu()
@@ -1347,13 +1238,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         rename.identifier = ContextItemID.rename
         menu.addItem(rename)
         menu.addItem(.separator())
-
-        let close = contextItem("Close", action: #selector(contextClose(_:)), id: id.rawValue)
-        // An exited row has nothing to hang up; ⌘W on it removes, and so the menu's "Remove" row
-        // below is the verb for it.
-        close.isEnabled = session.live != nil
-        close.identifier = ContextItemID.close
-        menu.addItem(close)
 
         let remove = contextItem("Remove", action: #selector(contextRemove(_:)), id: id.rawValue)
         remove.identifier = ContextItemID.remove
@@ -1382,7 +1266,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public enum ContextItemID {
         public static let resume = NSUserInterfaceItemIdentifier("tkzmux.context.resume")
         public static let rename = NSUserInterfaceItemIdentifier("tkzmux.context.rename")
-        public static let close = NSUserInterfaceItemIdentifier("tkzmux.context.close")
         public static let remove = NSUserInterfaceItemIdentifier("tkzmux.context.remove")
         public static let newSession = NSUserInterfaceItemIdentifier("tkzmux.context.newSession")
         public static let resumeAll = NSUserInterfaceItemIdentifier("tkzmux.context.resumeAll")
@@ -1411,11 +1294,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     @objc private func contextRename(_ sender: Any?) {
         guard let id = sessionID(from: sender) else { return }
         renameSession(id)
-    }
-
-    @objc private func contextClose(_ sender: Any?) {
-        guard let id = sessionID(from: sender) else { return }
-        closeSession(id)
     }
 
     @objc private func contextRemove(_ sender: Any?) {
@@ -1513,15 +1391,20 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     private func handle(_ event: TerminalEvent, for id: SessionID) {
         switch event {
         case .exited:
-            // The row stays, with its last screen: closed is resumable, removed is not.
-            // `host.discard` (which the dev window uses) would throw the grid away.
-            store.update { $0.closeSession(id) }
-            // The worktree may have gone with it (design.md → *Session flows → New worktree*).
+            // The shell ended (`exit`, Ctrl-D, a hang-up): the row goes with it, as a terminal tab
+            // does. There is no "exited" row (decision 2026-09-08). The worktree may have gone too
+            // (design.md → *Session flows → New worktree*), so the list is re-read first.
             launcher.noteExit(id)
+            launcher.remove(id)
+        case .pwd(let raw):
+            // OSC 7 from the ZDOTDIR wrapper on every `cd`: the row's title follows the shell
+            // (2026-09-08). A `file://` URI for another host decodes to nil and is dropped.
+            if let path = SessionEventHandler.decodePwd(raw) {
+                store.update { $0.setShellCwd(id, path: path) }
+            }
         default:
-            // `.title`/`.pwd` deliberately do not land in the store: `Session.title` is the rename
-            // slot (design.md → Session flows) and a shell-set title is not a rename. M3.4 did not
-            // give them a slot either; the git service (M4) is the likely consumer of `.pwd`.
+            // `.title` deliberately does not land in the store: `Session.title` is the rename slot
+            // (design.md → Session flows) and a shell-set title is not a rename.
             break
         }
     }
@@ -1533,7 +1416,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// shows the whole vocabulary and lies about none of it.
     private func registerMenuHandlers() {
         dispatcher.setHandler(.newSession) { [weak self] in self?.presentNewSessionMenu() }
-        dispatcher.setHandler(.closeTerminal) { [weak self] in self?.closeSelectedTerminal() }
+        dispatcher.setHandler(.closeTerminal) { [weak self] in self?.removeSelectedSession() }
         dispatcher.setHandler(.searchSessions) { [weak self] in self?.beginSearch() }
         dispatcher.setHandler(.commandPalette) { [weak self] in self?.presentPalette(mode: .all) }
         dispatcher.setHandler(.toggleSidebar) { [weak self] in self?.toggleSidebar() }
@@ -1544,7 +1427,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         dispatcher.setHandler(.copyLastMessage) { [weak self] in self?.copyLastMessage() }
         dispatcher.setHandler(.removeShellIntegration) { [weak self] in self?.removeShellIntegration() }
         // M5.2
-        dispatcher.setHandler(.closeSession) { [weak self] in self?.removeSelectedSession() }
         dispatcher.setHandler(.resumeSession) { [weak self] in self?.resumeSelectedSession() }
         dispatcher.setHandler(.resumeAllInGroup) { [weak self] in self?.resumeAll() }
         dispatcher.setHandler(.managePresets) { [weak self] in self?.presentPresetsSheet() }
