@@ -212,14 +212,33 @@ check "terminfo/78/xterm-ghostty resolves" \
   "TERMINFO='$CONTENTS/Resources/terminfo' infocmp xterm-ghostty"
 check "default.metallib present"           "[[ -s '$CONTENTS/Resources/default.metallib' ]]"
 check "no unsealed contents at app root"   "[[ \$(ls -A '$APP' | grep -cv '^Contents\$') -eq 0 ]]"
+# The two signed-build predicates below capture codesign's output and match it in the shell
+# rather than piping into `grep -q`. That is not a style preference: `grep -q` exits at its first
+# match and closes the pipe, `codesign` is still writing, so it dies of SIGPIPE and the pipeline
+# exits 141 -- which `set -o pipefail` turns into a failed check even though the pattern matched.
+# It is also a race (whether codesign has finished writing), so it fails intermittently. All
+# three checks below failed on the first real Developer ID build, 2026-09-08, for exactly this
+# reason while the signature itself was perfectly correct.
+has_runtime_flag() {
+  local out
+  out="$(codesign --display --verbose=2 "$1" 2>&1)" || return 1
+  # e.g. "CodeDirectory v=20500 size=13753 flags=0x10000(runtime) hashes=423+3 location=embedded"
+  [[ "$out" == *"flags=0x"*"(runtime"* ]]
+}
+has_secure_timestamp() {
+  local out
+  out="$(codesign --display --verbose=4 "$1" 2>&1)" || return 1
+  # A real timestamp is its own line, "Timestamp=8 Sep 2026 at 20:57:22". Anchor to the line so
+  # this cannot be satisfied by "Signed Time=", which is what an *unsigned* timestamp looks like.
+  [[ "$out" == "Timestamp="* || "$out" == *$'\n'"Timestamp="* ]]
+}
+
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
   # Notarization rejects a bundle without the hardened runtime or without a secure timestamp,
   # and it checks the nested helper too. Cheaper to find out here than after a 5-minute upload.
-  check "hardened runtime flag on tkzmux" \
-    "codesign --display --verbose=2 '$APP' 2>&1 | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]*\\(.*runtime'"
-  check "hardened runtime flag on tkzmux-hook" \
-    "codesign --display --verbose=2 '$CONTENTS/MacOS/tkzmux-hook' 2>&1 | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]*\\(.*runtime'"
-  check "secure timestamp on tkzmux" "codesign --display --verbose=4 '$APP' 2>&1 | grep -q '^Timestamp='"
+  check "hardened runtime flag on tkzmux"      "has_runtime_flag '$APP'"
+  check "hardened runtime flag on tkzmux-hook" "has_runtime_flag '$CONTENTS/MacOS/tkzmux-hook'"
+  check "secure timestamp on tkzmux"           "has_secure_timestamp '$APP'"
 fi
 if ((fail)); then echo "==> $APP is NOT usable (see FAIL above)"; exit 1; fi
 
