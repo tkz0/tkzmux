@@ -505,6 +505,29 @@ struct SidebarViewControllerTests {
 
     // MARK: - Summary strip
 
+    @Test("The ＋ New group footer sits under the summary strip and its button fires onNewGroup")
+    func newGroupFooter() {
+        let harness = Self.makeHarness()
+        harness.window.layoutIfNeeded()
+        harness.controller.view.layoutSubtreeIfNeeded()
+
+        let footer = harness.controller.newGroupFooter
+        let strip = harness.controller.summaryStrip
+        #expect(footer.superview === harness.controller.view)
+        #expect(footer.frame.height == CGFloat(SidebarMetrics.newGroupFooterHeight))
+        #expect(footer.frame.minY == 0, "the footer is the bottom-most strip")
+        #expect(abs(strip.frame.minY - footer.frame.maxY) < 0.5, "the summary strip sits right above it")
+        #expect(abs(harness.controller.scrollView.frame.minY - strip.frame.maxY) < 0.5)
+        #expect(footer.labelTextLayer.string as? String == NewGroupFooterView.title)
+        #expect(footer.dashedBorderLayer.path != nil)
+        #expect(footer.buttonFrame.height == NewGroupFooterView.buttonHeight)
+
+        var clicks = 0
+        harness.controller.onNewGroup = { clicks += 1 }
+        footer.button.performClick(nil)
+        #expect(clicks == 1)
+    }
+
     @Test("The summary strip counts NEEDS YOU badges and follows the change set")
     func summaryStripFollowsTheStore() {
         let harness = Self.makeHarness()

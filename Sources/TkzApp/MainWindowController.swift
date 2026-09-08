@@ -94,14 +94,12 @@ final class MainSplitViewController: NSSplitViewController {
 /// pins its three edges — adding a second height constraint here would be a conflict waiting for
 /// the first layout pass.
 ///
-/// **The terminal follows the safe area at the top, not the view's edge.** The window is
-/// `.fullSizeContentView` with a transparent titlebar (that is what makes the unified toolbar work
-/// and what the sidebar's concentric glass needs), so the content view really does extend up
-/// behind the toolbar — pinning to `topAnchor` draws the first rows of the grid underneath the
-/// toolbar, where the ＋ menu and the search field sit on top of them. The sidebar looks right
-/// without this only because macOS insets the glass container it wraps a sidebar item in.
-/// `safeAreaLayoutGuide` carries the window's `contentLayoutRect`, so it is the titlebar+toolbar
-/// height on screen and zero everywhere else (a headless render is unaffected).
+/// **The terminal follows the safe area at the top, not the view's edge.** The window no longer
+/// extends its content under the titlebar (it is not `.fullSizeContentView`, so the titlebar keeps
+/// its own material — see `configureWindow`), which makes the safe-area inset zero and the two
+/// anchors coincide. The pin stays on `safeAreaLayoutGuide` on purpose: it is what kept the first
+/// grid rows out from under the ＋ menu and the search field when the content *did* extend up
+/// there (M2.5), and it costs nothing when it does not.
 final class DetailViewController: NSViewController {
     let terminalContainer = NSView()
     let terminalView: NSView
@@ -321,7 +319,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     // MARK: Geometry (design.md → App architecture; artboard 2c is 1240×820)
 
-    public static let defaultContentSize = NSSize(width: 1240, height: 820)
+    /// The whole window, titlebar included — the artboard is drawn at this size.
+    public static let defaultWindowSize = NSSize(width: 1240, height: 820)
     public static let minimumContentSize = NSSize(width: 720, height: 420)
     /// Sidebar width and minimum, shared with the sidebar's own metrics so there is one number.
     public static let sidebarWidth = CGFloat(SidebarMetrics.sidebarWidth)
@@ -397,10 +396,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         self.splitViewController = MainSplitViewController()
 
         let frame = store.state.windowFrame
-            ?? NSRect(origin: .zero, size: MainWindowController.defaultContentSize)
+            ?? NSRect(origin: .zero, size: MainWindowController.defaultWindowSize)
         let window = NSWindow(
             contentRect: frame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false)
         self.window = window
@@ -444,7 +443,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     // MARK: Assembly
 
     private func buildSplitView() {
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
+        // A *plain* item, not `sidebarWithViewController:`. On macOS 26 the sidebar flavour wraps
+        // its view in a concentric glass container — rounded corners, an 8 pt inset and a vibrancy
+        // backdrop — which is not what artboard 2c draws: a flat column on `sidebarBackground`
+        // with a 1 pt border against the terminal. A plain item gives the view the whole column
+        // and the thin divider is the border. Collapsing, thickness and holding priority are all
+        // set by hand below, so nothing the sidebar flavour configured is lost.
+        let sidebarItem = NSSplitViewItem(viewController: sidebar)
         // The initial width is a *constraint*, not a divider position: an autolayout split view
         // ignores `setPosition` until it has been laid out in a real window, and a headless
         // assembly would otherwise come up with an 8 pt sidebar. The priority sits just above the
@@ -482,23 +487,35 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     private func configureWindow() {
         window.title = "tkzmux"
         window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
+        // The titlebar keeps its own material: on macOS 26 that is the translucent glass the
+        // artboards draw behind the ＋ menu and the search field, spanning both columns, with the
+        // design's 1 pt bottom border as the separator. A transparent titlebar over a
+        // `.fullSizeContentView` window (M2.2–M2.5) left a flat strip of window background there
+        // instead, because nothing but our own opaque views ever sat behind it.
+        window.titlebarAppearsTransparent = false
+        window.titlebarSeparatorStyle = .line
         window.toolbarStyle = .unified
         window.tabbingMode = .disallowed
         window.isReleasedWhenClosed = false
         window.minSize = Self.minimumContentSize
         window.backgroundColor = theme.windowBackground.nsColor
-        // The sidebar's `NSVisualEffectView`, the toolbar and every system control take their
-        // colours from the window's appearance, not from our tokens. A dark preset in an `.aqua`
-        // window gives a white sidebar behind dark rows — visible in the offscreen render of the
-        // first assembly. Derive it from the theme rather than from the system setting.
+        // The titlebar material, the toolbar and every system control take their colours from
+        // the window's appearance, not from our tokens. A dark preset in an `.aqua` window gives
+        // a white titlebar over dark content. Derive it from the theme rather than from the
+        // system setting.
         window.appearance = NSAppearance(
             named: theme.windowBackground.relativeLuminance < 0.5 ? .darkAqua : .aqua)
         window.contentViewController = splitViewController
         window.toolbar = toolbarController.toolbar
         window.delegate = self
-        window.setContentSize(store.state.windowFrame?.size ?? Self.defaultContentSize)
-        if let frame = store.state.windowFrame { window.setFrame(frame, display: false) }
+        // Realise the titlebar and the toolbar *before* placing the window: AppKit lays a toolbar
+        // out lazily and, when it does, re-derives the frame from the content size — so a frame
+        // applied before that point came back 52 pt taller (a stored 700 pt window relaunched at
+        // 752 pt once the titlebar stopped being transparent; reproduced 2026-09-08).
+        window.layoutIfNeeded()
+        window.setFrame(
+            store.state.windowFrame ?? NSRect(origin: .zero, size: Self.defaultWindowSize),
+            display: false)
         // The divider position is a *layout* decision, so it only sticks after the window has a
         // size; `minimumThickness` alone would leave the sidebar at whatever AppKit picked.
         window.contentView?.layoutSubtreeIfNeeded()
@@ -530,6 +547,44 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         sidebar.onNewSession = { [weak self] groupID in
             self?.presentNewSessionMenu(for: groupID)
         }
+        sidebar.onNewGroup = { [weak self] in self?.presentNewGroupPanel() }
+    }
+
+    // MARK: New group
+
+    /// "＋ New group": a folder picker; the chosen folder becomes a group (see ``createGroup(from:)``).
+    public func presentNewGroupPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Add group"
+        panel.message = "Choose a folder. It becomes a group, and its sessions start there."
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            self?.createGroup(from: url)
+        }
+    }
+
+    /// Adds a group rooted at `folder` (it comes up expanded, as every new group does). The group
+    /// is named after the folder; the folder is its `repoRoot`, so the new-session menu can launch
+    /// into it straight away.
+    /// Choosing a folder that is already a group's root just selects nothing new — no duplicate.
+    @discardableResult
+    public func createGroup(from folder: URL) -> GroupID? {
+        let path = folder.standardizedFileURL.path
+        if let existing = store.state.groups.values.first(where: {
+            $0.repoRoot.map { ($0 as NSString).expandingTildeInPath } == path
+        }) {
+            return existing.id
+        }
+        let name = folder.lastPathComponent.isEmpty ? path : folder.lastPathComponent
+        var created: GroupID?
+        store.update { state in
+            created = state.addGroup(name: name, repoRoot: path).id
+        }
+        return created
     }
 
     private func wireToolbar() {
@@ -678,11 +733,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     ///
     /// This is the quantity `setPosition` takes, and once the seeding constraint is retired
     /// `setPosition` is the only thing that places the sidebar, so recording and restoring it is a
-    /// fixed point. Measured, because the near-misses all drift: `sidebar.view.frame.width` is
-    /// 8 pt smaller (the macOS 26 glass-container inset), so mixing the two loses or gains 8 pt on
-    /// every launch, and neither `subviews.first` nor `arrangedSubviews.first` is the sidebar at
-    /// all — the split view's children are not in visual order and the *detail* wrapper comes
-    /// first, which recorded 852 pt.
+    /// fixed point. Measured by walking up from the sidebar view, because the near-misses all
+    /// drift: while the sidebar was a `sidebarWithViewController:` item its own view was 8 pt
+    /// narrower than the column (the macOS 26 glass-container inset), so mixing the two lost or
+    /// gained 8 pt on every launch; and neither `subviews.first` nor `arrangedSubviews.first` is
+    /// the sidebar at all — the split view's children are not in visual order and the *detail*
+    /// wrapper comes first, which recorded 852 pt. With today's plain item the walk stops at the
+    /// sidebar view itself, and the two numbers agree.
     var sidebarWidthForRestore: CGFloat {
         let splitView = splitViewController.splitView
         var view: NSView? = sidebar.view

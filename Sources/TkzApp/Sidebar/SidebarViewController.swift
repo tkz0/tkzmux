@@ -138,12 +138,15 @@ final class SidebarOutlineView: NSOutlineView {
 
 // MARK: - Container
 
-/// Root view. Lays the scroll view over a fixed-height summary strip, and tells the controller when
-/// it changes window so occlusion notifications can follow.
+/// Root view. Stacks, bottom to top, the "＋ New group" footer, the fixed-height summary strip and
+/// the scroll view, and tells the controller when it changes window so occlusion notifications can
+/// follow. The scroll view stops at the top safe-area inset, so if the window ever extends the
+/// content under its titlebar again the rows still start below it.
 final class SidebarContainerView: NSView {
     var onWindowChange: (@MainActor (NSWindow?) -> Void)?
     var scrollView: NSScrollView?
     var summaryStrip: SummaryStripView?
+    var newGroupFooter: NewGroupFooterView?
 
     override var isFlipped: Bool { false }
 
@@ -154,10 +157,15 @@ final class SidebarContainerView: NSView {
 
     override func layout() {
         super.layout()
+        let footerHeight = CGFloat(SidebarMetrics.newGroupFooterHeight)
         let stripHeight = CGFloat(SidebarMetrics.summaryStripHeight)
-        summaryStrip?.frame = NSRect(x: 0, y: 0, width: bounds.width, height: stripHeight)
+        let topInset = safeAreaInsets.top
+        newGroupFooter?.frame = NSRect(x: 0, y: 0, width: bounds.width, height: footerHeight)
+        summaryStrip?.frame = NSRect(x: 0, y: footerHeight, width: bounds.width, height: stripHeight)
+        let listBottom = footerHeight + stripHeight
         scrollView?.frame = NSRect(
-            x: 0, y: stripHeight, width: bounds.width, height: max(0, bounds.height - stripHeight))
+            x: 0, y: listBottom, width: bounds.width,
+            height: max(0, bounds.height - listBottom - topInset))
     }
 }
 
@@ -170,6 +178,14 @@ public final class SidebarViewController: NSViewController {
 
     /// Invoked by a group header's `＋`. M2.4 replaces this with the new-session menu.
     public var onNewSession: (@MainActor (GroupID) -> Void)?
+
+    /// Invoked by the "＋ New group" footer. The assembler opens the folder picker.
+    public var onNewGroup: (@MainActor () -> Void)? {
+        didSet { footer.onNewGroup = onNewGroup }
+    }
+
+    /// The "＋ New group" footer beneath the summary strip.
+    public var newGroupFooter: NewGroupFooterView { footer }
 
     /// The list itself, for the split-view host (sizing, first responder, scrolling).
     public var outlineView: NSOutlineView { outline }
@@ -187,6 +203,7 @@ public final class SidebarViewController: NSViewController {
     private let outline = SidebarOutlineView()
     private let scroll = NSScrollView()
     private let strip = SummaryStripView()
+    private let footer = NewGroupFooterView()
 
     private var itemCache: [SidebarItem.Kind: SidebarItem] = [:]
 
@@ -251,8 +268,12 @@ public final class SidebarViewController: NSViewController {
 
         container.addSubview(scroll)
         container.addSubview(strip)
+        footer.configure(theme: theme)
+        footer.onNewGroup = onNewGroup
+        container.addSubview(footer)
         container.scrollView = scroll
         container.summaryStrip = strip
+        container.newGroupFooter = footer
         container.onWindowChange = { [weak self] window in self?.windowChanged(to: window) }
 
         view = container
@@ -272,6 +293,7 @@ public final class SidebarViewController: NSViewController {
         outline.backgroundColor = theme.sidebarBackground.nsColor
         scroll.backgroundColor = theme.sidebarBackground.nsColor
         strip.configure(SidebarRowAdapter.summaryModel(for: store.state), theme: theme)
+        footer.configure(theme: theme)
         outline.reloadData(
             forRowIndexes: IndexSet(integersIn: 0..<outline.numberOfRows),
             columnIndexes: IndexSet(integer: 0))

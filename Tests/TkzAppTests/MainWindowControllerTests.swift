@@ -143,12 +143,19 @@ struct MainWindowControllerTests {
         #expect(sidebar.canCollapse)
         #expect(sidebar.minimumThickness == 240)
         #expect(sidebar.viewController === harness.controller.sidebar)
-        // The real, laid-out **divider position** — not the constant it was asked for, and not the
-        // sidebar view's own width: macOS 26 wraps a sidebar item in a glass container and insets
-        // it 8 pt, so a 300 pt sidebar holds 292 pt of content. The divider is the number the
-        // design names and the only one `setPosition` can set.
+        // The real, laid-out **divider position** — not the constant it was asked for. With a
+        // plain split item the sidebar view *is* the column, so the two agree at 300; the old
+        // `sidebarWithViewController:` flavour put a glass container with an 8 pt inset between
+        // them, which is exactly the rounded, inset sidebar artboard 2c does not draw.
         #expect(abs(harness.controller.sidebarWidthForRestore - 300) < 1)
-        #expect(abs(sidebar.viewController.view.frame.width - 292) < 1)
+        #expect(abs(sidebar.viewController.view.frame.width - 300) < 1)
+        // AppKit still puts a plain `_NSSplitViewItemViewWrapper` between them; what must be gone
+        // is the visual-effect container.
+        var ancestor = sidebar.viewController.view.superview
+        while let view = ancestor, view !== harness.controller.splitViewController.splitView {
+            #expect(!(view is NSVisualEffectView), "no glass container between the split view and the sidebar")
+            ancestor = view.superview
+        }
         #expect(harness.controller.splitViewController.splitViewItems[1].canCollapse == false)
     }
 
@@ -159,13 +166,16 @@ struct MainWindowControllerTests {
         harness.layout()
         let detail = harness.controller.detail
 
-        // The window is `.fullSizeContentView` with a transparent titlebar and a unified toolbar,
-        // so its content view really does extend up behind them — that is what the safe area
-        // reports. Pinned to `topAnchor` instead, the first rows of the grid render *underneath*
-        // the toolbar, with the ＋ menu and the search field sitting on top of them.
-        let inset = detail.view.safeAreaInsets.top
-        #expect(inset > 0, "this window is supposed to have a titlebar to sit below")
-        #expect(abs(detail.terminalContainer.frame.maxY - (detail.view.bounds.height - inset)) < 1)
+        // The content view stops at the titlebar — the window is not `.fullSizeContentView`, so
+        // the titlebar keeps its own material (the glass behind the ＋ menu and the search field)
+        // and the terminal fills the content from its top edge. The pin is still on the safe-area
+        // guide, which is what kept the grid out from under the toolbar when the content *did*
+        // extend up there (M2.5); today the guide coincides with the top edge.
+        let contentHeight = harness.window.contentView?.frame.height ?? 0
+        #expect(abs(harness.window.frame.height - contentHeight - 52) < 1,
+                "titlebar + unified toolbar own their 52 pt; the content sits below them")
+        #expect(detail.view.safeAreaInsets.top == 0)
+        #expect(abs(detail.terminalContainer.frame.maxY - detail.view.bounds.height) < 1)
         // The empty state rides inside the container, so it is inset by construction.
         #expect(detail.emptyState.frame.height == detail.terminalContainer.frame.height)
     }
@@ -195,10 +205,14 @@ struct MainWindowControllerTests {
         #expect(harness.window.toolbar === harness.controller.toolbarController.toolbar)
         #expect(harness.window.toolbarStyle == .unified)
         #expect(harness.window.titleVisibility == .hidden)
-        #expect(harness.window.titlebarAppearsTransparent)
-        #expect(harness.window.styleMask.contains(.fullSizeContentView))
-        // A dark preset must put the window in `.darkAqua`, or the sidebar's visual-effect
-        // backing and the toolbar come up light behind dark rows.
+        // The titlebar keeps its native material — that is the glass behind the toolbar items —
+        // and draws the design's 1 pt bottom border. A transparent titlebar over full-size
+        // content showed a flat strip of window background instead (reported 2026-09-08).
+        #expect(harness.window.titlebarAppearsTransparent == false)
+        #expect(harness.window.styleMask.contains(.fullSizeContentView) == false)
+        #expect(harness.window.titlebarSeparatorStyle == .line)
+        // A dark preset must put the window in `.darkAqua`, or the titlebar material and the
+        // toolbar come up light over dark content.
         #expect(harness.window.appearance?.name == .darkAqua)
     }
 
@@ -216,18 +230,19 @@ struct MainWindowControllerTests {
         #expect(harness.controller.toolbarController.plainTitle == "No session")
     }
 
-    @Test("The sidebar stays dark inside the system's glass wrapper")
+    @Test("The sidebar is a flat themed column, not a glass wrapper")
     func sidebarAppearance() throws {
         let harness = Self.makeHarness()
         defer { harness.tearDown() }
 
-        // macOS 26 wraps a `sidebarWithViewController:` item in an
-        // `NSContainerConcentricGlassEffectView` (and insets it by 8 pt). Two things have to
-        // survive that: the window's dark appearance must reach the sidebar as *vibrant dark* —
-        // otherwise the glass is milk-white behind dark rows — and the container's own themed
-        // background must not be replaced by the effect view's.
+        // Artboard 2c draws the sidebar as a flat column on `sidebarBackground` with a 1 pt border
+        // against the terminal. A `sidebarWithViewController:` item on macOS 26 wrapped it in an
+        // `NSContainerConcentricGlassEffectView` — rounded corners, an 8 pt inset and a vibrancy
+        // backdrop (reported 2026-09-08). With a plain item the view inherits the window's dark
+        // appearance directly and paints its own themed background.
         let container = harness.controller.sidebar.view
-        #expect(container.effectiveAppearance.name == .vibrantDark)
+        #expect(container.effectiveAppearance.name == .darkAqua)
+        #expect(!(container.superview is NSVisualEffectView))
         let background = try #require(container.layer?.backgroundColor)
         let expected = Theme.default.sidebarBackground
         let components = try #require(background.components)
@@ -383,6 +398,34 @@ struct MainWindowControllerTests {
         #expect(harness.controller.statusBar.model.diffAdded == 5)
     }
 
+    // MARK: - New group
+
+    @Test("A chosen folder becomes a group named after it, rooted there, exactly once")
+    func createGroupFromFolder() throws {
+        let harness = Self.makeHarness()
+        defer { harness.tearDown() }
+        let before = harness.store.state.groups.count
+
+        let folder = URL(fileURLWithPath: "/tmp/tkzmux-tests/Some Repo", isDirectory: true)
+        let id = try #require(harness.controller.createGroup(from: folder))
+        let group = try #require(harness.store.state.groups[id])
+        #expect(group.name == "Some Repo")
+        #expect(group.repoRoot == "/tmp/tkzmux-tests/Some Repo")
+        #expect(harness.store.state.groups.count == before + 1)
+
+        // The same folder again is the same group, not a duplicate.
+        #expect(harness.controller.createGroup(from: folder) == id)
+        #expect(harness.store.state.groups.count == before + 1)
+    }
+
+    @Test("The sidebar's ＋ New group footer reaches the window controller")
+    func newGroupFooterIsWired() {
+        let harness = Self.makeHarness()
+        defer { harness.tearDown() }
+        #expect(harness.controller.sidebar.onNewGroup != nil)
+        #expect(harness.controller.sidebar.newGroupFooter.onNewGroup != nil)
+    }
+
     // MARK: - Chrome persistence
 
     @Test("A stored frame places the window at launch")
@@ -515,13 +558,12 @@ struct MainWindowControllerTests {
         ctx.scaleBy(x: scale, y: scale)
         try #require(root.layer).render(in: ctx)
 
-        // What the picture can and cannot show: the status strip and the window/terminal grounds
-        // are real, the sidebar column is **not**. `NSSplitViewItem(sidebarWithViewController:)`
-        // wraps the sidebar in an `NSVisualEffectView`, which has no offscreen content — it paints
-        // a flat fallback and the rows' layers are not in the captured tree at all (design.md →
-        // *Testing without UI*). `SidebarViewControllerTests.sidebarRendersOffscreen` is where the
-        // rows themselves are proved to draw; rendering that layer *into this context* only
-        // repaints the whole canvas, so it is deliberately not done here.
+        // What the picture shows: the status strip, the window/terminal grounds, and — since the
+        // sidebar became a plain split item — the sidebar column itself, rows, summary strip and
+        // the ＋ New group footer included. (The old `sidebarWithViewController:` flavour wrapped
+        // it in an `NSVisualEffectView`, which has no offscreen content and painted a flat
+        // fallback.) The titlebar and its material are not part of the content view, so they are
+        // never in this picture; the user is the verifier for those.
 
         let data = try #require(rep.bitmapData)
         var distinct = Set<UInt32>()

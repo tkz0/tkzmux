@@ -174,6 +174,8 @@ public enum SidebarMetrics {
     public static let sessionRowHeight: Double = 44
     /// Summary strip height, in points.
     public static let summaryStripHeight: Double = 26
+    /// The "＋ New group" footer strip: a 26 pt dashed button with 2 pt above and 10 pt below.
+    public static let newGroupFooterHeight: Double = 38
     /// How far a session row's content sits inside its group header's.
     ///
     /// `NSOutlineView.indentationPerLevel` is 0 because the rows lay themselves out, so the
