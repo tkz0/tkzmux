@@ -269,6 +269,21 @@ public struct LiveSessionState: Hashable, Sendable {
     public var ports: [UInt16]
     /// The per-session statusline sidecar (context %, model, PR).
     public var context: SessionSidecar?
+    /// The `claude` process (when a descriptor is bound) or the shell is running. `false` only once
+    /// the pty itself has gone away — see `AppState.setAlive`/`descriptorLost`.
+    public var alive: Bool
+    /// `true` once a `SessionEnd` with a reason other than `clear`/`resume` has been seen; reset by
+    /// `SessionStart` or by binding a new descriptor. design.md → *Claude integration → Status
+    /// derivation*.
+    public var ended: Bool
+    /// The most recent unanswered `Notification` hook, if any.
+    public var pendingNotification: PendingNotification?
+    /// When the user last looked at this session — the other half of the `NEEDS YOU` (60 s) rule.
+    public var attendedAt: Date?
+    /// `UserPromptSubmit`'s timestamp.
+    public var lastPromptAt: Date?
+    /// The "done" tint: a `Stop` newer than `attendedAt` that has not yet aged into `NEEDS YOU`.
+    public var isDone: Bool
 
     public init(
         pid: pid_t? = nil,
@@ -281,7 +296,13 @@ public struct LiveSessionState: Hashable, Sendable {
         lastHook: HookEvent? = nil,
         git: GitSummary? = nil,
         ports: [UInt16] = [],
-        context: SessionSidecar? = nil
+        context: SessionSidecar? = nil,
+        alive: Bool = true,
+        ended: Bool = false,
+        pendingNotification: PendingNotification? = nil,
+        attendedAt: Date? = nil,
+        lastPromptAt: Date? = nil,
+        isDone: Bool = false
     ) {
         self.pid = pid
         self.shellPid = shellPid
@@ -294,6 +315,24 @@ public struct LiveSessionState: Hashable, Sendable {
         self.git = git
         self.ports = ports
         self.context = context
+        self.alive = alive
+        self.ended = ended
+        self.pendingNotification = pendingNotification
+        self.attendedAt = attendedAt
+        self.lastPromptAt = lastPromptAt
+        self.isDone = isDone
+    }
+}
+
+/// One outstanding `Notification` hook — the kind and when it was received. design.md → *Claude
+/// integration → Status derivation*.
+public struct PendingNotification: Hashable, Sendable {
+    public var type: HookEvent.NotificationType
+    public var receivedAt: Date
+
+    public init(type: HookEvent.NotificationType, receivedAt: Date) {
+        self.type = type
+        self.receivedAt = receivedAt
     }
 }
 
@@ -376,12 +415,17 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
     public enum Status: Hashable, Sendable {
         case idle
         case busy
+        /// Claude Code 2.1.263 writes `"waiting"` while a permission prompt is on screen
+        /// (measured 2026-09-08: idle → busy on submit → waiting at the prompt → busy the moment
+        /// it is answered → idle at Stop). It is the hook-free way to see NEEDS YOU.
+        case waiting
         case unknown(String)
 
         public init(raw: String) {
             switch raw {
             case "idle": self = .idle
             case "busy": self = .busy
+            case "waiting": self = .waiting
             default: self = .unknown(raw)
             }
         }

@@ -254,6 +254,249 @@ import Testing
     }
 }
 
+@MainActor
+@Suite struct HookTests {
+    let now = Fixture.now
+
+    /// A session with `live` already present (idle, alive), so hooks have something to fold into.
+    func makeState() -> (AppState, SessionID) {
+        var state = AppState()
+        let group = state.addGroup(name: "g")
+        let session = state.createSession(groupID: group.id, cwd: "/tmp")
+        state.setLive(LiveSessionState(status: .idle), for: session.id)
+        return (state, session.id)
+    }
+
+    @Test func sessionStartClearsEndedAndPendingAndAdoptsTheClaudeID() {
+        var (state, id) = makeState()
+        state.updateLive(id) { $0.ended = true; $0.pendingNotification = PendingNotification(type: .permissionPrompt, receivedAt: now) }
+        state.applyHook(.init(kind: .sessionStart, claudeSessionId: "new-id", source: "startup"), to: id, now: now)
+        #expect(state.sessions[id]?.live?.ended == false)
+        #expect(state.sessions[id]?.live?.pendingNotification == nil)
+        #expect(state.sessions[id]?.claudeSessionId == "new-id")
+    }
+
+    @Test func sessionEndTreatsClearAndResumeAsNotExited() {
+        for reason in ["clear", "resume"] {
+            var (state, id) = makeState()
+            state.applyHook(.init(kind: .sessionEnd, reason: reason), to: id, now: now)
+            #expect(state.sessions[id]?.live?.ended == false, "reason \(reason)")
+            #expect(state.sessions[id]?.status != .exited, "reason \(reason)")
+        }
+    }
+
+    @Test func sessionEndTreatsOtherReasonsAsClaudeGone_theShellStaysIdle() {
+        for reason in ["logout", "prompt_input_exit", "other", nil] {
+            var (state, id) = makeState()
+            state.applyHook(.init(kind: .sessionEnd, reason: reason), to: id, now: now)
+            #expect(state.sessions[id]?.live?.ended == true, "reason \(String(describing: reason))")
+            // The terminal is still there (`alive`), so never `exited` — that would dim a live shell.
+            #expect(state.sessions[id]?.status == .idle, "reason \(String(describing: reason))")
+            #expect(state.sessions[id]?.needsAttention == false)
+        }
+    }
+
+    @Test func userPromptSubmitMarksAttendedAndClearsPending() {
+        var (state, id) = makeState()
+        state.updateLive(id) { $0.pendingNotification = PendingNotification(type: .agentNeedsInput, receivedAt: now) }
+        state.applyHook(.init(kind: .userPromptSubmit), to: id, now: now)
+        #expect(state.sessions[id]?.live?.lastPromptAt == now)
+        #expect(state.sessions[id]?.live?.attendedAt == now)
+        #expect(state.sessions[id]?.live?.pendingNotification == nil)
+    }
+
+    @Test func stopRecordsTheMessageAndKeepsThePreviousOneWhenAbsent() {
+        var (state, id) = makeState()
+        state.applyHook(.init(kind: .stop, lastAssistantMessage: "done"), to: id, now: now)
+        #expect(state.sessions[id]?.live?.lastStopAt == now)
+        #expect(state.sessions[id]?.live?.lastStopMessage == "done")
+
+        let later = now.addingTimeInterval(30)
+        state.applyHook(.init(kind: .stop, lastAssistantMessage: nil), to: id, now: later)
+        #expect(state.sessions[id]?.live?.lastStopAt == later)
+        #expect(state.sessions[id]?.live?.lastStopMessage == "done")  // kept
+    }
+
+    @Test func notificationSetsPendingByType() {
+        let cases: [(HookEvent.NotificationType, WaitReason)] = [
+            (.permissionPrompt, .permission), (.elicitationDialog, .elicitation), (.agentNeedsInput, .agentInput),
+        ]
+        for (type, reason) in cases {
+            var (state, id) = makeState()
+            state.applyHook(.init(kind: .notification, notificationType: type), to: id, now: now)
+            #expect(state.sessions[id]?.live?.pendingNotification?.type == type)
+            #expect(state.sessions[id]?.status == .waiting(reason))
+        }
+    }
+
+    @Test func elicitationCompleteClearsPending() {
+        var (state, id) = makeState()
+        state.updateLive(id) { $0.pendingNotification = PendingNotification(type: .elicitationDialog, receivedAt: now) }
+        state.applyHook(.init(kind: .notification, notificationType: .elicitationComplete), to: id, now: now)
+        #expect(state.sessions[id]?.live?.pendingNotification == nil)
+    }
+
+    @Test func unknownNotificationIsIgnored() {
+        var (state, id) = makeState()
+        state.applyHook(.init(kind: .notification, notificationType: .unknown("mystery")), to: id, now: now)
+        #expect(state.sessions[id]?.live?.pendingNotification == nil)
+    }
+
+    @Test func busyDescriptorNewerThanPendingClearsIt() {
+        var (state, id) = makeState()
+        state.updateLive(id) {
+            $0.pendingNotification = PendingNotification(type: .permissionPrompt, receivedAt: now)
+        }
+        let descriptor = ClaudeSessionInfo(
+            configDir: "~/.claude", pid: 1, sessionId: "s", status: .busy,
+            statusUpdatedAt: now.addingTimeInterval(5))
+        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
+        #expect(state.sessions[id]?.live?.pendingNotification == nil)
+        #expect(state.sessions[id]?.status == .working)
+    }
+
+    @Test func busyDescriptorOlderThanPendingDoesNotClearIt() {
+        var (state, id) = makeState()
+        state.updateLive(id) {
+            $0.pendingNotification = PendingNotification(type: .permissionPrompt, receivedAt: now)
+        }
+        let descriptor = ClaudeSessionInfo(
+            configDir: "~/.claude", pid: 1, sessionId: "s", status: .busy,
+            statusUpdatedAt: now.addingTimeInterval(-5))
+        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
+        #expect(state.sessions[id]?.live?.pendingNotification != nil)
+        #expect(state.sessions[id]?.status == .waiting(.permission))
+    }
+
+    @Test func applyDescriptorReboundClearsEnded() {
+        var (state, id) = makeState()
+        state.updateLive(id) {
+            $0.ended = true
+            $0.descriptor = ClaudeSessionInfo(configDir: "~/.claude", pid: 1, sessionId: "old")
+        }
+        let descriptor = ClaudeSessionInfo(configDir: "~/.claude", pid: 2, sessionId: "new")
+        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
+        #expect(state.sessions[id]?.live?.ended == false)
+    }
+
+    @Test func applyDescriptorSetsAliveAndClaudeSessionID() {
+        var (state, id) = makeState()
+        let descriptor = ClaudeSessionInfo(configDir: "~/.claude", pid: 42, sessionId: "abc", status: .busy)
+        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
+        #expect(state.sessions[id]?.live?.alive == true)
+        #expect(state.sessions[id]?.live?.pid == 42)
+        #expect(state.sessions[id]?.claudeSessionId == "abc")
+        #expect(state.sessions[id]?.status == .working)
+    }
+
+    @Test func applyDescriptorChangesDisplayTitleAndDiffsAsSessionsOnly() throws {
+        var state = AppState()
+        let group = state.addGroup(name: "g")
+        let session = state.createSession(groupID: group.id, cwd: "/repo/app")
+        let store = AppStore(state: state)
+        var delivered: ChangeSet?
+        _ = store.addObserver { delivered = $0 }
+        let descriptor = ClaudeSessionInfo(
+            configDir: "~/.claude", pid: 1, sessionId: "abc", name: "from claude", nameSource: .auto)
+        store.update { $0.applyDescriptor(descriptor, alive: true, to: session.id, now: now) }
+        store.flush()
+        #expect(store.state.sessions[session.id]?.displayTitle == "from claude")
+        let change = try #require(delivered)
+        #expect(change.sessions == [session.id])
+        #expect(change.structure == false)
+    }
+
+    @Test func descriptorLostClearsTheDescriptorButKeepsAlive() {
+        var (state, id) = makeState()
+        let descriptor = ClaudeSessionInfo(configDir: "~/.claude", pid: 1, sessionId: "s", status: .busy)
+        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
+        state.descriptorLost(for: id, now: now)
+        #expect(state.sessions[id]?.live?.descriptor == nil)
+        #expect(state.sessions[id]?.live?.pid == nil)
+        #expect(state.sessions[id]?.live?.alive == true)
+        #expect(state.sessions[id]?.status == .idle)
+    }
+
+    @Test func setAliveFalseDerivesExited() {
+        var (state, id) = makeState()
+        state.setAlive(false, for: id, now: now)
+        #expect(state.sessions[id]?.status == .exited)
+        state.setAlive(true, for: id, now: now)
+        #expect(state.sessions[id]?.status == .idle)
+    }
+
+    @Test func rederiveStatusesAgesAnUnattendedStopIntoDoneUnattended() {
+        var (state, id) = makeState()
+        state.applyHook(.init(kind: .stop, lastAssistantMessage: "done"), to: id, now: now)
+        #expect(state.sessions[id]?.status == .idle)  // fresh, <60s
+        #expect(state.sessions[id]?.live?.isDone == true)
+
+        state.rederiveStatuses(now: now.addingTimeInterval(61))
+        #expect(state.sessions[id]?.status == .waiting(.doneUnattended))
+        #expect(state.sessions[id]?.needsAttention == true)
+    }
+
+    @Test func rederiveStatusesTouchesOnlyChangedSessions() {
+        var state = AppState()
+        let group = state.addGroup(name: "g")
+        let a = state.createSession(groupID: group.id, cwd: "/tmp/a")
+        let b = state.createSession(groupID: group.id, cwd: "/tmp/b")
+        state.setLive(LiveSessionState(status: .idle, lastStopAt: now.addingTimeInterval(-70)), for: a.id)
+        state.setLive(
+            LiveSessionState(
+                descriptor: ClaudeSessionInfo(configDir: "~/.claude", pid: 1, sessionId: "s", status: .busy),
+                status: .working),
+            for: b.id)
+
+        let store = AppStore(state: state)
+        store.update { $0.rederiveStatuses(now: now) }
+        store.flush()
+        #expect(store.state.sessions[a.id]?.status == .waiting(.doneUnattended))
+        #expect(store.state.sessions[b.id]?.status == .working)  // unchanged
+    }
+
+    @Test func markAttendedClearsDoneUnattended() {
+        var (state, id) = makeState()
+        state.applyHook(.init(kind: .stop, lastAssistantMessage: "done"), to: id, now: now)
+        state.rederiveStatuses(now: now.addingTimeInterval(61))
+        #expect(state.sessions[id]?.status == .waiting(.doneUnattended))
+
+        state.markAttended(id, now: now.addingTimeInterval(61))
+        #expect(state.sessions[id]?.status == .idle)
+        #expect(state.sessions[id]?.needsAttention == false)
+        #expect(state.sessions[id]?.live?.isDone == false)
+    }
+
+    @Test func aStatusFlipDiffsAsSessionsOnlyNeverStructure() throws {
+        let (state, id) = makeState()
+        let store = AppStore(state: state)
+        var delivered: ChangeSet?
+        _ = store.addObserver { delivered = $0 }
+        // idle → waiting(.permission), driven by `applyHook` itself.
+        store.update { $0.applyHook(.init(kind: .notification, notificationType: .permissionPrompt), to: id, now: now) }
+        store.flush()
+        let change = try #require(delivered)
+        #expect(change.sessions == [id])
+        #expect(change.structure == false)
+        #expect(store.state.sessions[id]?.status == .waiting(.permission))
+    }
+
+    @Test func summaryCountsNeedsYouFollowsAttention() {
+        let (state, id) = makeState()
+        let store = AppStore(state: state)
+        store.update { $0.applyHook(.init(kind: .notification, notificationType: .permissionPrompt), to: id, now: now) }
+        store.flush()
+        #expect(store.state.summaryCounts.needsYou == 1)
+        store.update { $0.markAttended(id, now: now.addingTimeInterval(1)) }
+        store.flush()
+        // A permission prompt is still pending, so attendance alone does not clear it.
+        #expect(store.state.summaryCounts.needsYou == 1)
+        store.update { $0.applyHook(.init(kind: .userPromptSubmit), to: id, now: now.addingTimeInterval(2)) }
+        store.flush()
+        #expect(store.state.summaryCounts.needsYou == 0)
+    }
+}
+
 @Suite struct FixtureTests {
     /// TKZ-19 exercises row-granular reloads against this; it must stay big and varied.
     @Test func isBigEnoughAndCoversEveryState() {

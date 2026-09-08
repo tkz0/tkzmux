@@ -152,11 +152,16 @@ extension AppState {
     }
 
     /// Records that the user looked at a session — the `attendedAt` half of the NEEDS YOU rule.
+    /// Re-derives afterwards, so a `doneUnattended` row the user just selected becomes `idle`
+    /// (unless something else, e.g. a pending permission prompt, still needs them).
     public mutating func markAttended(_ id: SessionID, now: Date = Date()) {
         guard var session = sessions[id] else { return }
         session.lastActiveAt = now
         session.live?.attention = false
+        session.live?.attendedAt = now
+        session.live?.isDone = false
         sessions[id] = session
+        rederiveStatus(for: id, now: now)
     }
 
     /// Next `order` value for a group.
@@ -323,5 +328,127 @@ extension AppState {
 
     public func preset(_ id: UUID) -> Preset? {
         presets.first { $0.id == id }
+    }
+}
+
+// MARK: - Status: hooks, descriptors, liveness
+
+extension AppState {
+    /// Folds one relayed hook frame into a session's live state, then re-derives its status.
+    /// design.md → *Claude integration → Status derivation* names exactly what each hook kind
+    /// clears/sets; this is that table.
+    public mutating func applyHook(_ event: HookEvent, to id: SessionID, now: Date = Date()) {
+        guard sessions[id] != nil else { return }
+        updateLive(id) { live in
+            live.lastHook = event
+            switch event.kind {
+            case .sessionStart:
+                live.ended = false
+                live.pendingNotification = nil
+            case .sessionEnd:
+                // `clear` and `resume` are not an exit — see the SessionEnd `reason` values in
+                // design.md → *Claude integration*.
+                let reason = event.reason
+                live.ended = !(reason == "clear" || reason == "resume")
+                live.pendingNotification = nil
+            case .userPromptSubmit:
+                live.lastPromptAt = now
+                live.attendedAt = now
+                live.pendingNotification = nil
+            case .stop:
+                live.lastStopAt = now
+                if let message = event.lastAssistantMessage {
+                    live.lastStopMessage = message
+                }
+                live.pendingNotification = nil
+            case .notification:
+                if let type = event.notificationType {
+                    switch type {
+                    case .permissionPrompt, .elicitationDialog, .agentNeedsInput, .idlePrompt:
+                        live.pendingNotification = PendingNotification(type: type, receivedAt: now)
+                    case .elicitationComplete:
+                        live.pendingNotification = nil
+                    case .unknown:
+                        break
+                    }
+                }
+            case .unknown:
+                break
+            }
+        }
+        if event.kind == .sessionStart, let claudeSessionId = event.claudeSessionId {
+            sessions[id]?.claudeSessionId = claudeSessionId
+        }
+        rederiveStatus(for: id, now: now)
+    }
+
+    /// Binds a discovered descriptor and its liveness together — the M3.4 successor to
+    /// `adoptDescriptor`, which callers that only have the descriptor (no liveness signal yet) may
+    /// keep using.
+    public mutating func applyDescriptor(
+        _ descriptor: ClaudeSessionInfo, alive: Bool, to id: SessionID, now: Date = Date()
+    ) {
+        guard var session = sessions[id] else { return }
+        var live = session.live ?? LiveSessionState()
+        let rebound = live.descriptor?.sessionId != descriptor.sessionId
+            || live.descriptor?.pid != descriptor.pid
+        live.pid = descriptor.pid
+        live.descriptor = descriptor
+        live.alive = alive
+        if rebound {
+            live.ended = false
+        }
+        if descriptor.status == .busy,
+            let statusUpdatedAt = descriptor.statusUpdatedAt,
+            let pendingAt = live.pendingNotification?.receivedAt,
+            statusUpdatedAt > pendingAt
+        {
+            live.pendingNotification = nil
+        }
+        session.live = live
+        session.claudeSessionId = descriptor.sessionId
+        session.lastActiveAt = now
+        sessions[id] = session
+        rederiveStatus(for: id, now: now)
+    }
+
+    /// The descriptor file is gone (the `claude` process exited, or the discovery watcher lost it),
+    /// but the pty/shell underneath may still be there — `alive` stays `true`.
+    public mutating func descriptorLost(for id: SessionID, now: Date = Date()) {
+        guard sessions[id]?.live != nil else { return }
+        updateLive(id) { live in
+            live.descriptor = nil
+            live.pid = nil
+            live.alive = true
+        }
+        rederiveStatus(for: id, now: now)
+    }
+
+    /// Sets whether the process behind this session (the `claude` process when bound, else the
+    /// shell) is running.
+    public mutating func setAlive(_ alive: Bool, for id: SessionID, now: Date = Date()) {
+        guard sessions[id] != nil else { return }
+        updateLive(id) { $0.alive = alive }
+        rederiveStatus(for: id, now: now)
+    }
+
+    /// Re-derives one session's status/attention/isDone from its current live state.
+    public mutating func rederiveStatus(for id: SessionID, now: Date = Date()) {
+        guard let live = sessions[id]?.live else { return }
+        let outcome = StatusDerivation.derive(live, now: now)
+        guard live.status != outcome.status || live.attention != outcome.attention
+            || live.isDone != outcome.isDone
+        else { return }
+        sessions[id]?.live?.status = outcome.status
+        sessions[id]?.live?.attention = outcome.attention
+        sessions[id]?.live?.isDone = outcome.isDone
+    }
+
+    /// The periodic tick for the 60 s "done → NEEDS YOU" rule. Touches only the sessions whose
+    /// derived outcome actually changed, so a quiet sidebar costs nothing in `ChangeSet` terms.
+    public mutating func rederiveStatuses(now: Date = Date()) {
+        for id in sessions.keys where sessions[id]?.live != nil {
+            rederiveStatus(for: id, now: now)
+        }
     }
 }

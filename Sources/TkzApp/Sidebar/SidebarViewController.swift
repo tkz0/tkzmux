@@ -184,6 +184,10 @@ public final class SidebarViewController: NSViewController {
         didSet { footer.onNewGroup = onNewGroup }
     }
 
+    /// What `showLastMessage(for:)` shows. Defaults to the session's `lastStopMessage`; overridable
+    /// for tests and for anyone who wants to feed the popover something else.
+    public var lastMessageProvider: (@MainActor (SessionID) -> String?)?
+
     /// The "＋ New group" footer beneath the summary strip.
     public var newGroupFooter: NewGroupFooterView { footer }
 
@@ -204,6 +208,9 @@ public final class SidebarViewController: NSViewController {
     private let scroll = NSScrollView()
     private let strip = SummaryStripView()
     private let footer = NewGroupFooterView()
+    /// Internal rather than private: `LastMessagePopoverTests` asserts `isShown` on this directly,
+    /// since `showLastMessage(for:)` deliberately returns nothing to check against.
+    var lastMessagePopover: LastMessagePopover
 
     private var itemCache: [SidebarItem.Kind: SidebarItem] = [:]
 
@@ -220,6 +227,7 @@ public final class SidebarViewController: NSViewController {
     public init(store: AppStore, theme: Theme = .default) {
         self.store = store
         self.theme = theme
+        self.lastMessagePopover = LastMessagePopover(theme: theme)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -294,6 +302,8 @@ public final class SidebarViewController: NSViewController {
         scroll.backgroundColor = theme.sidebarBackground.nsColor
         strip.configure(SidebarRowAdapter.summaryModel(for: store.state), theme: theme)
         footer.configure(theme: theme)
+        lastMessagePopover.close()
+        lastMessagePopover = LastMessagePopover(theme: theme)
         outline.reloadData(
             forRowIndexes: IndexSet(integersIn: 0..<outline.numberOfRows),
             columnIndexes: IndexSet(integer: 0))
@@ -539,6 +549,25 @@ public final class SidebarViewController: NSViewController {
         store.update { $0.toggleGroupCollapsed(groupID) }
     }
 
+    // MARK: Last-message popover
+
+    /// Shows `id`'s last message (via `lastMessageProvider`, or `LiveSessionState.lastStopMessage`
+    /// by default) anchored to its row. A missing row or an empty message shows nothing.
+    public func showLastMessage(for id: SessionID) {
+        let message = lastMessageProvider?(id) ?? store.state.sessions[id]?.live?.lastStopMessage
+        guard let message, !message.isEmpty else { return }
+        let row = self.row(forSession: id)
+        guard row >= 0 else { return }
+        lastMessagePopover.show(message: message, relativeTo: outline.rect(ofRow: row), of: outline)
+    }
+
+    /// `true` when a click on the status dot should open the popover instead of selecting the row
+    /// — design.md's amber/"done" rows, i.e. `waiting` or an idle row still showing the "done" tint.
+    private func statusDotClickIsEligible(for id: SessionID) -> Bool {
+        guard let session = store.state.sessions[id] else { return false }
+        return session.status.isWaiting || (session.live?.isDone ?? false)
+    }
+
     // MARK: Occlusion
     //
     // Per row, as the row-view agent specified: the row owns detach/re-attach (`viewDidMoveToWindow`)
@@ -671,6 +700,12 @@ extension SidebarViewController: NSOutlineViewDelegate {
                 }()
             view.configure(SidebarRowAdapter.sessionModel(session, in: store.state), theme: theme)
             view.setOccluded(isOccluded)
+            // Cleared by `prepareForReuse()`, so it is rewired on every vend — see `GroupRowView.onAdd`.
+            view.onStatusDotClick = { [weak self] in
+                guard let self, self.statusDotClickIsEligible(for: id) else { return false }
+                self.showLastMessage(for: id)
+                return true
+            }
             return view
         }
     }

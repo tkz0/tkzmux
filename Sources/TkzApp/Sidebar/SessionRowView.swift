@@ -64,6 +64,17 @@ public final class SessionRowView: NSTableCellView {
     /// preferred entry point.
     public let statusDot = StatusDotLayer()
 
+    /// Invoked by `mouseDown(with:)` when the click lands on the status dot. Returns `true` when the
+    /// click was handled (eligible row: idle-done or waiting) — the row must **not** also select in
+    /// that case. Returns `false` for an ineligible row, so the click falls through to the normal
+    /// selection behaviour instead of silently swallowing it. `prepareForReuse()` clears it, like
+    /// `GroupRowView.onAdd`, so the controller rewires it on every vend rather than a stale closure
+    /// firing for whatever session got recycled into this row.
+    public var onStatusDotClick: (() -> Bool)?
+    /// Extra hit-test margin around the 7 pt dot — a 7 pt target is not reliably clickable on its
+    /// own.
+    private static let dotHitSlop: CGFloat = 5
+
     // MARK: Cached layout inputs
 
     private var model = SidebarSessionRowModel(title: "")
@@ -120,6 +131,23 @@ public final class SessionRowView: NSTableCellView {
         needsYouBadge.isHidden = true
         accountChip.isHidden = true
         selectionLayer.backgroundColor = NSColor.clear.cgColor
+        onStatusDotClick = nil
+    }
+
+    /// A click on the status dot is handled here rather than falling through to selection — the
+    /// controller decides (from the *store's* session, not this presentation-only model) whether
+    /// the row is showing a last message worth popping over.
+    public override func mouseDown(with event: NSEvent) {
+        guard let onStatusDotClick else {
+            super.mouseDown(with: event)
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        let hitArea = statusDot.frame.insetBy(dx: -Self.dotHitSlop, dy: -Self.dotHitSlop)
+        guard hitArea.contains(point), onStatusDotClick() else {
+            super.mouseDown(with: event)
+            return
+        }
     }
 
     /// Parks or resumes the pulse. The controller calls this from
