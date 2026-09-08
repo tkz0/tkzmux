@@ -82,12 +82,13 @@ extension Theme {
             public let family: String
             public let postScriptName: String   // what CTFontCreateWithName gets
             public let fallback: String         // used when the family is not installed
-            public let terminal: Double         // terminal cells: 12.5 pt
+            public let terminal: Double         // terminal cells: 14 pt (cmux runs 14 via its
+                                                // Ghostty config; 12.5 read visibly lighter)
             public let detail: Double           // sidebar "⎇ branch" line: 10 pt
             public let statusBar: Double        // status bar: 10.5 pt
             /// Rasterize terminal glyphs with CoreText font smoothing — the stem-darkening pass
-            /// Ghostty calls `font-thicken`. Without it JetBrains Mono at 12.5 pt reads as a
-            /// lighter face than cmux draws (compared side by side 2026-09-08).
+            /// Ghostty calls `font-thicken`. Without it JetBrains Mono reads as a lighter face
+            /// than cmux draws (compared side by side 2026-09-08).
             public let thicken: Bool
         }
 
@@ -96,7 +97,7 @@ extension Theme {
             family: "JetBrains Mono",
             postScriptName: "JetBrainsMono-Regular",
             fallback: "Menlo",
-            terminal: 12.5,
+            terminal: 14,
             detail: 10,
             statusBar: 10.5,
             thicken: true
