@@ -284,7 +284,32 @@ public final class TerminalMetalView: NSView {
             cellHeightPx: UInt16(min(metrics.height, Int(UInt16.max))))
     }
 
+    // MARK: - Resize diagnostics
+
+    /// Live-resize instrumentation, off unless `TKZMUX_RESIZE_DEBUG=1`.
+    ///
+    /// Live resize cannot be driven headlessly (a window that never becomes key never presents a
+    /// frame), so this is how a real display reports what actually happens during a drag.
+    struct ResizeDiagnostics {
+        static let enabled = ProcessInfo.processInfo.environment["TKZMUX_RESIZE_DEBUG"] == "1"
+
+        /// `TKZMUX_RESIZE_MODE=async` drops `presentsWithTransaction` and presents through the
+        /// command buffer instead. The A/B that says whether the transactional present is the
+        /// thing stalling the drag.
+        static let useTransaction =
+            ProcessInfo.processInfo.environment["TKZMUX_RESIZE_MODE"] != "async"
+
+        static func log(_ message: @autoclosure () -> String) {
+            guard enabled else { return }
+            FileHandle.standardError.write(Data(("TKZMUX_RESIZE " + message() + "\n").utf8))
+        }
+    }
+
+    private var resizeFrameCount = 0
+    private var resizeSlowestMs = 0.0
+
     // MARK: - Resize
+
 
     /// AppKit calls this many times during a live resize and several times during a single layout
     /// pass. Outside a live resize the new size is only *recorded*; the display-link tick applies it
@@ -293,6 +318,14 @@ public final class TerminalMetalView: NSView {
         super.setFrameSize(newSize)
         updateDrawableSize()
         pendingGridResize = true
+        if ResizeDiagnostics.enabled {
+            ResizeDiagnostics.log(
+                "setFrameSize \(Int(newSize.width))x\(Int(newSize.height)) "
+                + "inLiveResize=\(inLiveResize) drawable=\(Int(metalLayer?.drawableSize.width ?? 0))"
+                + "x\(Int(metalLayer?.drawableSize.height ?? 0)) "
+                + "pwt=\(metalLayer?.presentsWithTransaction ?? false) "
+                + "needsDisplay=\(surface.needsDisplay) attached=\(surface.isAttached)")
+        }
         if inLiveResize {
             // Live resize must be synchronous: the frame has to reach the screen inside the same
             // Core Animation transaction that resized the layer, or the window tears.
@@ -304,7 +337,15 @@ public final class TerminalMetalView: NSView {
             // while dragging, every layout pass owes Core Animation a presented frame.
             applyPendingGridResize()
             surface.markNeedsDisplay()
+            let started = ContinuousClock.now
             renderNow(transactional: true)
+            if ResizeDiagnostics.enabled {
+                let ms = Double(
+                    (ContinuousClock.now - started).components.attoseconds) / 1e15
+                resizeFrameCount += 1
+                resizeSlowestMs = max(resizeSlowestMs, ms)
+                ResizeDiagnostics.log(String(format: "  render %.2f ms (frame %d)", ms, resizeFrameCount))
+            }
         } else {
             frameDriver.requestFrame()
         }
@@ -312,12 +353,18 @@ public final class TerminalMetalView: NSView {
 
     public override func viewWillStartLiveResize() {
         super.viewWillStartLiveResize()
-        metalLayer?.presentsWithTransaction = true
+        resizeFrameCount = 0
+        resizeSlowestMs = 0
+        ResizeDiagnostics.log(
+            "willStartLiveResize mode=\(ResizeDiagnostics.useTransaction ? "transaction" : "async")")
+        metalLayer?.presentsWithTransaction = ResizeDiagnostics.useTransaction
         frameDriver.update { $0.isLiveResizing = true }
     }
 
     public override func viewDidEndLiveResize() {
         super.viewDidEndLiveResize()
+        ResizeDiagnostics.log(String(
+            format: "didEndLiveResize frames=%d slowest=%.2f ms", resizeFrameCount, resizeSlowestMs))
         metalLayer?.presentsWithTransaction = false
         frameDriver.update { $0.isLiveResizing = false }
         applyPendingGridResize()
