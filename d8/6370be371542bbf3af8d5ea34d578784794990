@@ -1,0 +1,55 @@
+Tests/TkzCoreTests/ReducersTests.swift
+  s_093857b3ed8828::t_c429a3fa992838 258-389,391-394,397-400,405-442,448-467,470-472,475,477-478,480-482,484-497
+  s_093857b3ed8828::t_4ce142384bf674 443-447
+  s_093857b3ed8828::t_e12fb419621d3d 469,483
+  s_093857b3ed8828::t_c7d8342768a433 257
+  s_093857b3ed8828::t_2812b60d6f7d74 468
+  s_093857b3ed8828::t_12c501ce31d977 390,395-396,401-404
+  s_093857b3ed8828::t_9bd6aede0a10b1 473-474,476,479
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_093857b3ed8828::t_7acd99d807cfa4 230
+  s_093857b3ed8828::t_405083eae9e6a5 305-306
+  s_093857b3ed8828::t_06c138f30692ba 211-213
+  s_093857b3ed8828::t_9a2701a3463700 703-708
+  s_093857b3ed8828::t_a4abf7b6963bdf 187-190
+  s_093857b3ed8828::t_283c1d59681885 552-570
+Sources/TkzCore/Reducers.swift
+  s_093857b3ed8828::t_7b87fdbd99438f 333-454
+  s_093857b3ed8828::t_3d48d54dda7000 155-156,161-162,164
+Sources/TkzApp/Sidebar/LastMessagePopover.swift
+  s_093857b3ed8828::t_bdfea8db2f3451 31-34
+  s_093857b3ed8828::t_5bcd042bc0ce45 1-30,35-113
+Sources/TkzCore/Models.swift
+  s_093857b3ed8828::t_cdd9b5fda21f81 272-286,299-305,318-335
+Sources/TkzCore/StatusDerivation.swift
+  s_093857b3ed8828::t_21a4c5ea51f2b0 1-134
+Tests/TkzAppTests/LastMessagePopoverTests.swift
+  s_093857b3ed8828::t_a41e5074352e49 73-75,87-89,103,112
+  s_093857b3ed8828::t_e3865f900b28af 1-17,19-25,30-72,76-86,90-102,104-111,113,158
+  s_093857b3ed8828::t_f00fa583d4e908 114-157
+  s_093857b3ed8828::t_1e7f171699f9bf 18,26-29
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_093857b3ed8828::t_244b3431bb19d0 134-146,148-150
+  s_093857b3ed8828::t_e80ea6ac152ea1 74-77
+  s_093857b3ed8828::t_a42b7c905ffef8 147
+  s_093857b3ed8828::t_488b45a15e3b5e 67-73
+Tests/TkzCoreTests/StatusDerivationTests.swift
+  s_093857b3ed8828::t_18916a50f4c746 163-164
+  s_093857b3ed8828::t_e8a155e217ed03 1-162,165-194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "d86370be371542bbf3af8d5ea34d578784794990",
+  "prompts": {},
+  "sessions": {
+    "s_093857b3ed8828": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5e7fafd-1256-4bd3-bd40-2906accdec3f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
