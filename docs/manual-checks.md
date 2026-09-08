@@ -289,6 +289,41 @@ firing `onDismiss`. If "click outside dismisses" is wanted, say so.
 
 ---
 
+### 5. M3 — Claude integration (TKZ-21, TKZ-22, TKZ-23, TKZ-24)
+
+Verified headlessly on 2026-09-08 (see design.md → *Claude integration*): the installer writes
+`bin/claude`, `bin/tkzmux-hook`, the four dotted wrappers and `VERSION`; a login zsh under the
+wrappers with the real rc files has `$TKZMUX_BIN` first on PATH and `which claude` → the shim;
+`settings-merge` keeps the git-ai hooks and appends tkzmux's; a real `claude` started through the
+shim delivers the `launch` frame and the `SessionStart` hook to the running app. What is left needs
+the window:
+
+**5a. A row follows Claude.** `>_` → in the new terminal run `which claude` (expect
+`…/tkzmux/bin/claude`), then `claude`. **Pass**: within a second the row's title becomes the
+directory name and the dot is idle; ask for something → dot turns green (`working`) while Claude
+runs; when the answer lands with the row selected and the window key, the dot goes back to idle
+with the "done" tint and no amber badge.
+
+**5b. NEEDS YOU on a permission prompt.** Ask Claude to run a shell command that needs approval.
+**Pass**: `NEEDS YOU` and the amber dot within 1 s of the prompt; answering clears both within 1 s
+(the descriptor flips `waiting → busy`). The summary strip counts it.
+
+**5c. Finished while you were elsewhere.** Start a long request, select another row (or another
+app), wait. **Pass**: amber `NEEDS YOU` at 60 s after the answer landed (immediately on an
+`idle_prompt` notification); selecting the row clears it. Then ⇧⌘C copies the last message, and
+clicking the done/waiting dot opens the popover with the full text.
+
+**5d. Auto-naming.** Let a session run long enough for Claude to name it (`nameSource: auto`).
+**Pass**: the row re-titles live; ⇧⌘R still wins over it.
+
+**5e. Nothing changes outside tkzmux.** In Terminal.app: `which claude` is unchanged and
+`claude` runs without tkzmux hooks. Then *Remove Shell Integration* from the app menu: a new
+tkzmux terminal is a plain login shell (`which claude` → the real one); relaunching the app
+reinstalls.
+
+**5f. Idle cost.** 10 live sessions, Activity Monitor 60 s. **Pass**: the watcher's share is
+invisible (< 0.3 % total for the app at idle).
+
 ## Reporting back
 
 For anything that fails: which step, what you saw instead, and — for rendering issues — whether the

@@ -4,3 +4,6 @@ build/
 .swiftpm/
 .DS_Store
 # vendor/ is committed (prebuilt libghostty-vt xcframework, M1.1)
+
+# claude -w worktrees and the Agent tool's isolated checkouts
+.claude/worktrees/

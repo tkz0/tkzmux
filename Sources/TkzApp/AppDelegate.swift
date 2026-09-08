@@ -13,6 +13,7 @@
 // so either window can be smoke-tested headlessly.
 
 import AppKit
+import ClaudeBridge
 import Foundation
 import Persistence
 import TkzCore
@@ -29,6 +30,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var fallbackWindow: NSWindow?
     private var store: AppStore?
     private var autosaver: StateAutosaver?
+    private var claude: ClaudeIntegration?
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "app")
 
     /// Milliseconds after launch to print engine diagnostics and quit. Development only: it is how
@@ -72,6 +74,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 // After the window: the menu's handlers capture the controller.
                 controller.installMainMenu()
                 controller.showWindow()
+                // M3: shim install, hook socket, descriptor watcher, usage + sidecar readers.
+                // After the window because `TerminalViewHost` owns the directory the socket and
+                // the shim live in; nothing here blocks the launch.
+                if let host = controller.host as? TerminalViewHost {
+                    let integration = ClaudeIntegration(
+                        store: store, directory: host.tkzmuxDirectory,
+                        installer: Self.makeShimInstaller(directory: host.tkzmuxDirectory))
+                    controller.claude = integration
+                    integration.start()
+                    claude = integration
+                }
             }
         } catch {
             MainMenu.installDefault()
@@ -86,6 +99,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
+        claude?.stop()
         devWindow?.shutdown()
         mainWindow?.shutdown()
         // After `shutdown`, and synchronously: the debounced write for the last mutation before ⌘Q
@@ -108,6 +122,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     static var stateFile: StateFile { .standard() }
+
+    /// The shim installer for the real app, or nil when its resources cannot be found (a build
+    /// with no `tkzmux-hook` next to the executable): the app still runs, hooks are just absent.
+    static func makeShimInstaller(directory: URL) -> ShimInstaller? {
+        let hook = ShimInstaller.standardHookBinary()
+        guard FileManager.default.isExecutableFile(atPath: hook.path) else {
+            Logger(subsystem: "se.tkz.tkzmux", category: "app")
+                .warning("tkzmux-hook not found at \(hook.path, privacy: .public); shell integration disabled")
+            return nil
+        }
+        do {
+            return ShimInstaller(directory: directory, hookBinary: hook, resources: try ShimResources.bundled())
+        } catch {
+            Logger(subsystem: "se.tkz.tkzmux", category: "app")
+                .error("shim resources unavailable: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
 
     struct RestoredState {
         var state: AppState

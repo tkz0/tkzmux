@@ -703,6 +703,76 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public func windowDidResize(_ notification: Notification) { recordWindowFrame() }
     public func windowDidMove(_ notification: Notification) { recordWindowFrame() }
 
+    /// The user is looking at the selected row again: the `attendedAt` half of the NEEDS YOU rule
+    /// (design.md → *Claude integration → Status derivation*). Selecting a row already marks it
+    /// attended; this covers coming back to the window with a row still selected.
+    public func windowDidBecomeKey(_ notification: Notification) {
+        guard let id = store.state.selection else { return }
+        store.update { $0.markAttended(id) }
+    }
+
+    /// The M3 coordinator, once `AppDelegate` has built it. Setting it routes the last-message
+    /// popover at the *full* Stop text rather than the 4 KiB the store keeps.
+    public var claude: ClaudeIntegration? {
+        didSet {
+            guard let claude else { return }
+            sidebar.lastMessageProvider = { id in claude.lastMessage(for: id) }
+            claude.isSessionAttended = { [weak self] id in self?.isSessionAttended(id) ?? false }
+        }
+    }
+
+    /// The selected row, in a key window the user can actually see. `NSApp.isActive` alone is not
+    /// enough — an occluded key window still counts as active.
+    func isSessionAttended(_ id: SessionID) -> Bool {
+        guard store.state.selection == id, window.isKeyWindow, NSApp?.isActive == true else { return false }
+        return window.isVisible && window.occlusionState.contains(.visible)
+    }
+
+    /// The whole last Stop message of the selected session, or nil.
+    func lastMessageOfSelection() -> String? {
+        guard let id = store.state.selection else { return nil }
+        return claude?.lastMessage(for: id) ?? store.state.sessions[id]?.live?.lastStopMessage
+    }
+
+    /// ⇧⌘C.
+    func copyLastMessage() {
+        guard let text = lastMessageOfSelection(), !text.isEmpty else {
+            showNotice("No message from Claude yet", for: .seconds(2))
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        showNotice("Copied the last message", for: .seconds(2))
+    }
+
+    /// Overrides the confirmation alert for "Remove Shell Integration". Tests set it.
+    public var confirmRemoveShellIntegration: (() -> Bool)?
+
+    func removeShellIntegration() {
+        guard let claude else { return }
+        let confirmed: Bool
+        if let confirmRemoveShellIntegration {
+            confirmed = confirmRemoveShellIntegration()
+        } else {
+            let alert = NSAlert()
+            alert.messageText = "Remove shell integration?"
+            alert.informativeText = "Deletes the claude shim and the zsh wrappers under Application Support. "
+                + "New shells will not report to tkzmux until the app is relaunched. Sessions and the sidebar are kept."
+            alert.addButton(withTitle: "Remove")
+            alert.addButton(withTitle: "Cancel")
+            alert.alertStyle = .warning
+            confirmed = alert.runModal() == .alertFirstButtonReturn
+        }
+        guard confirmed else { return }
+        do {
+            try claude.removeShellIntegration()
+            showNotice("Shell integration removed")
+        } catch {
+            logger.error("remove shell integration failed: \(String(describing: error), privacy: .public)")
+            showNotice("Could not remove shell integration: \(error.localizedDescription)")
+        }
+    }
+
     private func recordWindowFrame() {
         guard !isApplyingStoreFrame else { return }
         let frame = window.frame
@@ -1101,8 +1171,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             store.update { $0.closeSession(id) }
         default:
             // `.title`/`.pwd` deliberately do not land in the store: `Session.title` is the rename
-            // slot (design.md → Session flows) and a shell-set title is not a rename. M3.4 gives
-            // them a home.
+            // slot (design.md → Session flows) and a shell-set title is not a rename. M3.4 did not
+            // give them a slot either; the git service (M4) is the likely consumer of `.pwd`.
             break
         }
     }
@@ -1121,6 +1191,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         dispatcher.setHandler(.jumpToNeedsYou) { [weak self] in
             _ = self?.sidebar.selectFirstSessionNeedingAttention()
         }
+        dispatcher.setHandler(.copyLastMessage) { [weak self] in self?.copyLastMessage() }
+        dispatcher.setHandler(.removeShellIntegration) { [weak self] in self?.removeShellIntegration() }
         dispatcher.setHandler(.nextSession) { [weak self] in
             self?.store.update { $0.selectAdjacentSession(offset: 1) }
         }

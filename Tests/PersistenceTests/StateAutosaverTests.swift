@@ -39,7 +39,12 @@ private func withSaver(
 /// main queue, and blocking the main actor inside `RunLoop.run` starves it — the timer simply never
 /// fires and the test times out having proved nothing.
 @MainActor
-private func settle(until condition: @MainActor () -> Bool, timeout: Duration = .seconds(2)) async {
+///
+/// 10 s rather than 2 s: the whole suite runs in parallel in one process, and since M3 added the
+/// process-spawning ClaudeBridge suites the main actor was measured to be starved for more than
+/// 2 s while these tests waited (they pass alone and in pairs with every other suite). The saver's
+/// own debounce is 20–60 ms here, so a real regression still fails fast.
+private func settle(until condition: @MainActor () -> Bool, timeout: Duration = .seconds(10)) async {
     let deadline = ContinuousClock.now + timeout
     while !condition(), ContinuousClock.now < deadline {
         try? await Task.sleep(for: .milliseconds(5))

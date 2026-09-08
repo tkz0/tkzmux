@@ -188,12 +188,12 @@ public final class TerminalViewHost: TerminalHost {
     /// Creates the `ZDOTDIR` the spawned shells are pointed at.
     ///
     /// `TerminalEnvironment.make` sets `ZDOTDIR` to `<tkzmuxDirectory>/zsh` unconditionally, and
-    /// until M3.3 writes the wrapper rc files into it nothing created the directory — so every
+    /// before M3.3's `ShimInstaller` wrote the wrapper rc files into it nothing created it — so every
     /// login zsh failed to lock its history file and printed
     /// `zsh: locking failed for …/zsh/.zsh_history: no such file or directory` into the user's
     /// terminal, most visibly on SIGHUP, when zsh flushes history on the way out. An empty
-    /// directory is enough: zsh finds no rc files there either way, which is the intended state
-    /// until M3.3. Failure is ignored on purpose — a shell that cannot keep history is still a
+    /// directory is enough: zsh finds no rc files there and behaves as a plain login shell, which
+    /// is also what a shell gets after *Remove Shell Integration*. Failure is ignored on purpose — a shell that cannot keep history is still a
     /// working shell, and refusing to construct the host over it would be worse.
     private static func createShellDirectory(in tkzmuxDirectory: URL) {
         let zdotdir = tkzmuxDirectory.appending(path: "zsh", directoryHint: .isDirectory)

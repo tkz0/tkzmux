@@ -41,6 +41,10 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     /// No cmux default (⌘T/⌘D are reserved) — reachable only through an override or the palette.
     public static let nextSession = ShortcutAction("nextSession")
     public static let previousSession = ShortcutAction("previousSession")
+    /// ⇧⌘C — copies the selected session's last Stop message (M3.4).
+    public static let copyLastMessage = ShortcutAction("copyLastMessage")
+    /// No key: deletes `bin/` and `zsh/` under Application Support so new shells are plain (M3.3).
+    public static let removeShellIntegration = ShortcutAction("removeShellIntegration")
 
     /// ⌘1…⌘9 — `selectSession1` … `selectSession9`.
     public static func selectSession(_ n: Int) -> ShortcutAction { ShortcutAction("selectSession\(n)") }
@@ -106,7 +110,8 @@ public enum ShortcutsTable {
         [
             .newSession, .searchSessions, .commandPalette, .toggleSidebar, .renameSession,
             .closeTerminal, .closeSession, .jumpToNeedsYou, .notifications, .settings,
-            .openFolder, .reloadConfig, .nextSession, .previousSession,
+            .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
+            .removeShellIntegration,
         ] + (1...9).map { ShortcutAction.selectSession($0) }
 
     /// design.md → Decisions → Shortcuts, verbatim. `nextSession`/`previousSession` are absent on
@@ -125,6 +130,7 @@ public enum ShortcutsTable {
             .settings: Shortcut(",", .command),
             .openFolder: Shortcut("o", .command),
             .reloadConfig: Shortcut(",", [.shift, .command]),
+            .copyLastMessage: Shortcut("c", [.shift, .command]),
         ]
         for n in 1...9 { table[.selectSession(n)] = Shortcut("\(n)", .command) }
         return table
@@ -147,6 +153,8 @@ public enum ShortcutsTable {
         case .reloadConfig: "Reload Config"
         case .nextSession: "Next Session"
         case .previousSession: "Previous Session"
+        case .copyLastMessage: "Copy Last Message"
+        case .removeShellIntegration: "Remove Shell Integration"
         default:
             if let n = selectSessionIndex(action) { "Select Session \(n)" } else { action.rawValue }
         }
