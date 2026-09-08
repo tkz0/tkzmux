@@ -76,7 +76,7 @@ import Testing
         """
 
     @Test func decodesARealisticDescriptorAndIgnoresUnknownKeys() throws {
-        let info = try ClaudeSessionInfo.decode(Data(Self.realistic.utf8), configDir: "/Users/x/.claude-alt")
+        let info = try ClaudeSessionInfo.decode(Data(Self.realistic.utf8), configDir: "/Users/x/.claude-work")
         #expect(info.pid == 43117)
         #expect(info.sessionId == "5c1f2d90-7f3a-4a1e-9d1e-6a2b0c8e11ff")
         #expect(info.cwd == "/repo/.claude/worktrees/pricing")
@@ -87,8 +87,8 @@ import Testing
         #expect(info.jobId == "job-4")
         #expect(info.parkedJobId == nil)
         // configDir is injected, not decoded — it is what identifies the account.
-        #expect(info.configDir == "/Users/x/.claude-alt")
-        #expect(info.accountKey == "claude-alt")  // basename minus the leading dot
+        #expect(info.configDir == "/Users/x/.claude-work")
+        #expect(info.accountKey == "claude-work")  // basename minus the leading dot
     }
 
     /// `startedAt` is epoch **milliseconds**.
@@ -157,8 +157,8 @@ import Testing
     /// because M3 joins descriptors to sessions on it.
     @Test func accountKeyMatchesTheAccountKeySpelling() {
         #expect(ClaudeSessionInfo(configDir: "/Users/x/.claude", pid: 1, sessionId: "s").accountKey == "claude")
-        #expect(ClaudeSessionInfo(configDir: "/Users/x/.claude-alt", pid: 1, sessionId: "s").accountKey
-            == "claude-alt")
+        #expect(ClaudeSessionInfo(configDir: "/Users/x/.claude-work", pid: 1, sessionId: "s").accountKey
+            == "claude-work")
         // …and it agrees with the fixture's sessions, which is the join M3 performs.
         let state = AppState.fixture
         for session in state.sessions.values {
@@ -185,7 +185,7 @@ import Testing
 
     @Test func groupsPresetsAndAccountsRoundTrip() throws {
         let group = Group(name: "Repo", repoRoot: "~/dev/repo", color: RGB(hex: 0x41c6a8, alpha: 0.5),
-                          isCollapsed: true, order: 3, defaultAccountKey: "claude-alt")
+                          isCollapsed: true, order: 3, defaultAccountKey: "claude-work")
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
         #expect(try decoder.decode(Group.self, from: encoder.encode(group)) == group)
@@ -217,15 +217,15 @@ import Testing
         let json = """
             {
               "updated_at": "2026-09-08T05:07:24.249Z",
-              "account": {"key": "claude-alt", "label": "Alt", "plan": "Team 5x",
+              "account": {"key": "claude-work", "label": "Alt", "plan": "Team 5x",
                           "uuid": "9ea88c5d-0e4f-4847-9810-46137558a0b2",
-                          "config_dir": "/Users/x/.claude-alt"},
+                          "config_dir": "/Users/x/.claude-work"},
               "five_hour": {"used_percentage": 1, "resets_at": "2026-09-08T06:00:00.000Z"},
               "seven_day": {"used_percentage": 39, "resets_at": "2026-09-10T13:00:00.000Z"}
             }
             """
         let snapshot = try JSONDecoder().decode(UsageSnapshot.self, from: Data(json.utf8))
-        #expect(snapshot.accountKey == "claude-alt")
+        #expect(snapshot.accountKey == "claude-work")
         #expect(snapshot.plan == "Team 5x")
         #expect(snapshot.sevenDay?.usedPercentage == 39)
         #expect(snapshot.fiveHour?.resetsAt != nil)

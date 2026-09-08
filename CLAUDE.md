@@ -10,9 +10,12 @@ The architecture is in **`docs/design.md`**. Read the section a ticket points to
 swift build                 # debug build of everything
 swift test                  # all test targets (Swift Testing)
 swift run tkzmux            # run the app outside a bundle (window still appears)
-make app                    # release build → build/tkzmux.app (ad-hoc signed)
+make app                    # release build → build/tkzmux.app (ad-hoc signed, version stamped from git describe)
 open build/tkzmux.app
-SIGN_IDENTITY="Developer ID Application: …" make app   # real signing = one variable
+SIGN_IDENTITY="Developer ID Application: …" make app   # real signing = one variable (adds hardened runtime + timestamp)
+VERSION=1.2.3 make app      # override the derived version
+make notarize               # notarize + staple an already-built, really-signed app (network)
+make dist                   # tag → signed+notarized zip + sha256 → gh release (see docs/release.md)
 make vendor                 # rebuild vendor/ghostty-vt at vendor/ghostty-vt/COMMIT (zig 0.16.x, xcodebuild, tic; network)
 make clean                  # rm -rf .build build
 ```

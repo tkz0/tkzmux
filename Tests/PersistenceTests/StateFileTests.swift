@@ -34,7 +34,7 @@ private func makeState() -> AppState {
     let one = state.createSession(groupID: alpha.id, cwd: "~/dev/alpha", title: "review")
     let two = state.createSession(
         groupID: beta.id, cwd: "/tmp/beta", repoRoot: "/tmp/beta",
-        worktreePath: "/tmp/beta/.claude/worktrees/x", isWorktree: true, accountKey: "claude-alt")
+        worktreePath: "/tmp/beta/.claude/worktrees/x", isWorktree: true, accountKey: "claude-work")
     state.select(one.id)
     _ = state.addPreset(Preset(name: "worktree", command: "claude -w", cwdMode: .worktree(name: "x")))
     _ = state.addPreset(Preset(name: "fixed", command: "claude", cwdMode: .fixed(path: "/tmp")))

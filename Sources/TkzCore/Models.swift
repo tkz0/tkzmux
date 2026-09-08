@@ -163,7 +163,7 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// because a restored session whose worktree has been deleted clears the badge but may keep
     /// the path for the error message.
     public var isWorktree: Bool
-    /// `Account.key` — the basename of the Claude config dir (`claude`, `claude-alt`).
+    /// `Account.key` — the basename of the Claude config dir (`claude`, `claude-work`).
     public var accountKey: String
     /// The most recent Claude `sessionId`, used for `claude --resume <id>`. Rotates on
     /// `/clear`, resume and fork, so it is updated whenever a descriptor or SessionStart says so.
@@ -245,7 +245,7 @@ public struct Session: Hashable, Sendable, Identifiable {
         isWorktree || Self.worktreeRoot(ofPath: effectiveCwd) != nil
     }
 
-    /// The last segment of a path, as a title: `/Users/x/dev/aira/` → `aira`, `/Users/x` → `x`,
+    /// The last segment of a path, as a title: `/Users/x/dev/toolbox/` → `toolbox`, `/Users/x` → `x`,
     /// `~` → the home directory's name, `/` → `/`.
     public static func title(forPath path: String) -> String {
         let expanded = path.hasPrefix("~") ? (path as NSString).expandingTildeInPath : path
@@ -438,7 +438,7 @@ public enum WaitReason: String, Hashable, Sendable, Codable, CaseIterable {
 
 // MARK: - Claude descriptor
 
-/// A parsed `~/.claude/sessions/<pid>.json` (or `~/.claude-alt/…`) descriptor.
+/// A parsed `~/.claude/sessions/<pid>.json` (or `~/.claude-work/…`) descriptor.
 ///
 /// Shape from design.md → *Evidence*. **Another program writes this file in place**, so a read can
 /// land mid-write: decoding is deliberately forgiving. Only `pid` and `sessionId` are required;
@@ -498,7 +498,7 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
         }
     }
 
-    /// The directory the descriptor was found in (`~/.claude`, `~/.claude-alt`) — the account key
+    /// The directory the descriptor was found in (`~/.claude`, `~/.claude-work`) — the account key
     /// is its basename. Injected, never decoded.
     public var configDir: String
     public var pid: pid_t
@@ -520,7 +520,7 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
     public var jobId: String?
 
     /// The account key: the basename of the config dir **minus its leading dot**, so
-    /// `~/.claude` → `"claude"` and `~/.claude-alt` → `"claude-alt"`. That is the spelling
+    /// `~/.claude` → `"claude"` and `~/.claude-work` → `"claude-work"`. That is the spelling
     /// `Account.key`, `Session.accountKey` and the `dash-usage-<key>.json` filenames all use, and
     /// the join key for `descriptor.accountKey == session.accountKey` in M3.
     public var accountKey: String {
@@ -643,7 +643,7 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
 
 /// One Claude account = one `CLAUDE_CONFIG_DIR`.
 public struct Account: Hashable, Sendable, Codable, Identifiable {
-    /// Basename of `configDir` (`claude`, `claude-alt`); also the `dash-usage-<key>.json` suffix.
+    /// Basename of `configDir` (`claude`, `claude-work`); also the `dash-usage-<key>.json` suffix.
     public var key: String
     public var configDir: String
     /// Display label. Comes from config (`dash-accounts.json` overlay), never hard-coded.

@@ -40,6 +40,14 @@ public final class MenuDispatcher: NSObject, NSMenuItemValidation {
     /// every validation, so the mark follows the store without any observer of its own.
     private var checkmarks: [ShortcutAction: () -> Bool] = [:]
 
+    /// Options handed to the standard About panel, filled in by `MainMenu.build`.
+    ///
+    /// `orderFrontStandardAboutPanel(_:)` with no options reads `Info.plist` — which does not
+    /// exist under `swift run tkzmux`, so the stock panel would show an empty version there, and
+    /// even inside the `.app` it knows nothing about libghostty-vt. Every field is passed
+    /// explicitly instead; see `MainMenu.aboutPanelOptions(appName:version:)`.
+    public var aboutPanelOptions: [NSApplication.AboutPanelOptionKey: Any] = [:]
+
     public override init() { super.init() }
 
     public func setHandler(_ action: ShortcutAction, _ body: @escaping () -> Void) {
@@ -64,6 +72,16 @@ public final class MenuDispatcher: NSObject, NSMenuItemValidation {
         guard let handler = handlers[action] else { return false }
         handler()
         return true
+    }
+
+    /// "About tkzmux". Not a `ShortcutAction`: it is never bound, never disabled, and the
+    /// dispatcher is simply the retained target that an `NSMenuItem`'s weak `target` needs.
+    ///
+    /// `NSApplication.shared` rather than `NSApp`: the latter is an implicitly-unwrapped global
+    /// that is **nil until something touches `.shared`**, and this method is reachable from a test
+    /// that never brings the application up.
+    @objc public func orderFrontAboutPanel(_ sender: Any?) {
+        NSApplication.shared.orderFrontStandardAboutPanel(options: aboutPanelOptions)
     }
 
     @objc public func performShortcutAction(_ sender: Any?) {
@@ -126,9 +144,11 @@ public enum MainMenu {
         // The first item's submenu is the application menu regardless of its title; AppKit
         // substitutes the process name for the title it displays.
         let menu = NSMenu(title: appName)
-        menu.addItem(withTitle: "About \(appName)",
-                     action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
-                     keyEquivalent: "")
+        dispatcher.aboutPanelOptions = aboutPanelOptions(appName: appName)
+        let about = menu.addItem(withTitle: "About \(appName)",
+                                 action: #selector(MenuDispatcher.orderFrontAboutPanel(_:)),
+                                 keyEquivalent: "")
+        about.target = dispatcher
         menu.addItem(.separator())
         menu.addItem(command(.settings, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.reloadConfig, shortcuts: shortcuts, dispatcher: dispatcher))
@@ -236,6 +256,41 @@ public enum MainMenu {
         item.target = dispatcher
         item.identifier = NSUserInterfaceItemIdentifier("tkzmux.menu.\(action.rawValue)")
         return item
+    }
+
+    // MARK: About panel (M6.1 / TKZ-37)
+
+    /// Everything the standard About panel should show, taken from `AppVersion` rather than from
+    /// `Info.plist` — see `MenuDispatcher.aboutPanelOptions`. `.applicationVersion` is the
+    /// marketing version, `.version` the build number AppKit renders in parentheses after it.
+    public static func aboutPanelOptions(
+        appName: String = AppVersion.productName,
+        version: AppVersion = .current
+    ) -> [NSApplication.AboutPanelOptionKey: Any] {
+        [
+            .applicationName: appName,
+            .applicationVersion: version.marketingVersion,
+            .version: version.build,
+            .credits: aboutCredits(version),
+        ]
+    }
+
+    /// The credits block: which libghostty-vt is inside, and the two licences that matter.
+    /// Short on purpose — the panel is not a documentation surface.
+    private static func aboutCredits(_ version: AppVersion) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.paragraphSpacing = 6
+        let text = """
+            libghostty-vt \(version.shortGhosttyCommit)
+            MIT License.
+            Terminal emulation by libghostty-vt, from Ghostty — MIT License.
+            """
+        return NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraph,
+        ])
     }
 
     private static func submenu(_ menu: NSMenu) -> NSMenuItem {

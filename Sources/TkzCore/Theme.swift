@@ -46,7 +46,7 @@ public struct Theme: Hashable, Sendable {
     // MARK: Badges, groups, diff, separators
     public let wtText: RGB                // WT badge (sidebar row and status bar)
     public let wtBackground: RGB
-    public let groupEdgeDefault: RGB      // 2 pt group colour edge (the "Aira" example group)
+    public let groupEdgeDefault: RGB      // 2 pt group colour edge (the "Toolbox" example group)
     public let diffAdd: RGB               // +142
     public let diffRemove: RGB            // −38
     public let border: RGB                // sidebar border-right / title-bar border-bottom

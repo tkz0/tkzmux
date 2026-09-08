@@ -12,7 +12,7 @@ import Testing
     @Test func createAppendsAndInheritsTheGroupDefaults() {
         var state = AppState.fixture
         let before = state.sessions(in: group).count
-        let created = state.createSession(groupID: group, cwd: "~/dev/frontinvest")
+        let created = state.createSession(groupID: group, cwd: "~/dev/northwind")
         #expect(state.sessions(in: group).count == before + 1)
         #expect(state.sessions(in: group).last?.id == created.id)
         #expect(created.order == before)
@@ -33,7 +33,7 @@ import Testing
         let id = Fixture.sessionID(4)  // a restored fixture row (no live state)
         #expect(state.sessions[id]?.live == nil)
         let descriptor = ClaudeSessionInfo(
-            configDir: "~/.claude-alt", pid: 900, sessionId: "new-session-id",
+            configDir: "~/.claude-work", pid: 900, sessionId: "new-session-id",
             kind: .interactive, name: "adopted", nameSource: .auto, status: .busy)
         state.adoptDescriptor(descriptor, for: id)
         #expect(state.sessions[id]?.live?.pid == 900)
@@ -169,16 +169,16 @@ import Testing
     }
 
     @Test func titleIsTheLastPathSegment() {
-        #expect(Session.title(forPath: "/Users/x/dev/aira/") == "aira")
-        #expect(Session.title(forPath: "/Users/x/dev/aira") == "aira")
-        #expect(Session.title(forPath: "/Users/thomas") == "thomas")
+        #expect(Session.title(forPath: "/Users/x/dev/toolbox/") == "toolbox")
+        #expect(Session.title(forPath: "/Users/x/dev/toolbox") == "toolbox")
+        #expect(Session.title(forPath: "/Users/someone") == "someone")
         #expect(Session.title(forPath: "/") == "/")
         #expect(Session.title(forPath: "~") == (NSHomeDirectory() as NSString).lastPathComponent)
         #expect(Session.title(forPath: "~/dev/x/") == "x")
 
         // Rename → Claude's auto-name → worktree name (+ WT) → Claude's cwd → the start dir.
-        var session = Session(groupID: .generate(), cwd: "/Users/x/dev/aira/", accountKey: "claude")
-        #expect(session.displayTitle == "aira")
+        var session = Session(groupID: .generate(), cwd: "/Users/x/dev/toolbox/", accountKey: "claude")
+        #expect(session.displayTitle == "toolbox")
         session.worktreePath = "/Users/x/dev/.claude/worktrees/hello"
         session.isWorktree = true
         #expect(session.displayTitle == "hello")
@@ -193,13 +193,13 @@ import Testing
         #expect(state.sessions[session.id]?.displayTitle == "x")
 
         // A restored row has no live state: OSC 7 for it is ignored (there is no shell).
-        state.setShellCwd(session.id, path: "/Users/x/dev/aira")
+        state.setShellCwd(session.id, path: "/Users/x/dev/toolbox")
         #expect(state.sessions[session.id]?.displayTitle == "x")
 
         state.setLive(LiveSessionState(shellPid: 1), for: session.id)
-        state.setShellCwd(session.id, path: "/Users/x/dev/aira/")
-        #expect(state.sessions[session.id]?.displayTitle == "aira")
-        #expect(state.sessions[session.id]?.effectiveCwd == "/Users/x/dev/aira/")
+        state.setShellCwd(session.id, path: "/Users/x/dev/toolbox/")
+        #expect(state.sessions[session.id]?.displayTitle == "toolbox")
+        #expect(state.sessions[session.id]?.effectiveCwd == "/Users/x/dev/toolbox/")
         #expect(state.sessions[session.id]?.cwd == "/Users/x", "the start directory is not rewritten by a cd")
 
         // Inside a worktree the badge shows, without touching the persisted flag.
@@ -329,8 +329,8 @@ import Testing
         #expect(state.groups[a.id]?.isCollapsed == true)
         state.setGroupCollapsed(a.id, false)
         #expect(state.groups[a.id]?.isCollapsed == false)
-        state.setGroupDefaultAccount(a.id, accountKey: "claude-alt")
-        #expect(state.groups[a.id]?.defaultAccountKey == "claude-alt")
+        state.setGroupDefaultAccount(a.id, accountKey: "claude-work")
+        #expect(state.groups[a.id]?.defaultAccountKey == "claude-work")
         #expect(state.group(forRepoRoot: "/a")?.id == a.id)
     }
 
@@ -662,7 +662,7 @@ import Testing
         #expect(state.sessions.count == 40)
         #expect(state.groups.count == 5)
         #expect(state.orderedGroups.map(\.name)
-            == ["Almi FrontInvest", "Core Invest", "Scheduled", "Aira", "Workamo"])
+            == ["Northwind Trading", "Acme Ledger", "Scheduled", "Toolbox", "Playground"])
 
         let statuses = Set(state.sessions.values.map(\.status.name))
         #expect(statuses.contains("working"))
@@ -672,7 +672,7 @@ import Testing
 
         #expect(state.sessions.values.contains { $0.isWorktree })
         #expect(state.sessions.values.contains { $0.needsAttention })
-        #expect(Set(state.sessions.values.map(\.accountKey)) == ["claude", "claude-alt"])
+        #expect(Set(state.sessions.values.map(\.accountKey)) == ["claude", "claude-work"])
         #expect(state.sessions.values.contains { $0.displayTitle.count > 50 })  // truncation case
         #expect(state.groups.values.contains { $0.isCollapsed })
         #expect(state.sessions.values.contains { !($0.live?.ports.isEmpty ?? true) })

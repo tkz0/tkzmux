@@ -124,9 +124,9 @@ struct StatusModelMappingTests {
         isWorktree: Bool = false
     ) -> AppState {
         var state = AppState()
-        let group = state.addGroup(name: "aira", repoRoot: "/tmp/aira")
+        let group = state.addGroup(name: "toolbox", repoRoot: "/tmp/toolbox")
         let session = state.createSession(
-            groupID: group.id, cwd: "/tmp/aira",
+            groupID: group.id, cwd: "/tmp/toolbox",
             worktreePath: worktreePath, isWorktree: isWorktree)
         state.setLive(
             LiveSessionState(git: git, ports: ports, portOwners: portOwners, context: sidecar),
@@ -177,7 +177,7 @@ struct StatusModelMappingTests {
 
     @Test func theWorktreeNameReachesTheBadgeTooltip() {
         let model = MainWindowController.statusModel(for: Self.state(
-            worktreePath: "/tmp/aira/.claude/worktrees/tkz-26", isWorktree: true))
+            worktreePath: "/tmp/toolbox/.claude/worktrees/tkz-26", isWorktree: true))
         #expect(model.isWorktree == true)
         #expect(model.worktreeName == "tkz-26")
     }
@@ -192,12 +192,12 @@ struct StatusModelMappingTests {
     @Test func theUsageTooltipListsEveryAccountsWindow() throws {
         var state = Self.state()
         state.setAccount(Account(key: "claude", configDir: "/h/.claude", label: "Private"))
-        state.setAccount(Account(key: "claude-alt", configDir: "/h/.claude-alt", label: "Work"))
+        state.setAccount(Account(key: "claude-work", configDir: "/h/.claude-work", label: "Work"))
         state.setUsage(UsageSnapshot(
             accountKey: "claude", label: "Private",
             sevenDay: UsageWindow(usedPercentage: 5)))
         state.setUsage(UsageSnapshot(
-            accountKey: "claude-alt", label: "Work",
+            accountKey: "claude-work", label: "Work",
             sevenDay: UsageWindow(usedPercentage: 61)))
 
         let tooltip = try #require(MainWindowController.statusModel(for: state).usageTooltip)

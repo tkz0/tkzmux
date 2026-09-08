@@ -191,7 +191,7 @@ private func runHook(
         #expect(event.claudeSessionId == "11111111-2222-3333-4444-555555555555")
         #expect(event.lastAssistantMessage == "All done, the build is green.")
         #expect(fullMessage == "All done, the build is green.")
-        #expect(cwd == "/Users/thomas/dev/tkzmux")
+        #expect(cwd == "/Users/someone/dev/tkzmux")
         #expect(ppid > 0)
     }
 
@@ -315,8 +315,8 @@ private func runHook(
         defer { server.stop() }
 
         let sessionID = SessionID.generate()
-        let cwd = "/Users/thomas/dev/tkzmux worktrees/agent one"
-        let configDir = "/Users/thomas/.claude-alt"
+        let cwd = "/Users/someone/dev/tkzmux worktrees/agent one"
+        let configDir = "/Users/someone/.claude-work"
         let result = try runHook(
             ["launch", "--pid", "4242", "--cwd", cwd, "--", "claude", "--resume", "abc\"def", "arg with space"],
             environment: cleanEnvironment([
@@ -343,7 +343,7 @@ private func runHook(
 
     /// Contract #2: `config_dir` falls back to `$HOME/.claude` when `CLAUDE_CONFIG_DIR` is unset —
     /// this is the string design.md derives the account key from (`~/.claude` → `claude`,
-    /// `~/.claude-alt` → `claude-alt`), so getting the fallback right matters.
+    /// `~/.claude-work` → `claude-work`), so getting the fallback right matters.
     @Test func launchConfigDirFallsBackToHomeDotClaude() async throws {
         let binary = try hookBinaryURL()
         let dir = try makeSocketDir()

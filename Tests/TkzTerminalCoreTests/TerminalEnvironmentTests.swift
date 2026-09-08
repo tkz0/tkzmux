@@ -97,10 +97,10 @@ private func hostEnvironment(home: String) -> [String: String] {
         #expect(primary["CLAUDE_CONFIG_DIR"] == nil)
 
         let alt = TerminalEnvironment.make(
-            sessionID: "S2", accountConfigDir: "\(home.path)/.claude-alt", tkzmuxDir: support,
+            sessionID: "S2", accountConfigDir: "\(home.path)/.claude-work", tkzmuxDir: support,
             baseEnvironment: base, home: home.path
         )
-        #expect(alt["CLAUDE_CONFIG_DIR"] == "\(home.path)/.claude-alt")
+        #expect(alt["CLAUDE_CONFIG_DIR"] == "\(home.path)/.claude-work")
     }
 
     @Test func langFallsBackWhenNotInherited() throws {

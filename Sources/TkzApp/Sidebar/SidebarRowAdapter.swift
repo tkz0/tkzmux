@@ -85,7 +85,7 @@ public enum SidebarRowAdapter {
 
     /// Short label for the account chip, or `nil` to hide the chip entirely.
     ///
-    /// **The default account (`~/.claude`) never shows a chip** (Thomas, 2026-09-08): almost
+    /// **The default account (`~/.claude`) never shows a chip** (decision 2026-09-08): almost
     /// nobody runs more than one Claude plan, and for the one plan everybody has the chip says
     /// nothing. A chip appears only on a row that runs on some *other* config dir, and reads as
     /// "this one is different". The label is derived from the account's *configured* `label`

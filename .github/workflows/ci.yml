@@ -1,0 +1,39 @@
+# Build + test on every push and PR. No signing, no secrets — this workflow must stay runnable
+# from a fork's pull request. The release path lives in release.yml.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    # tkzmux is macOS 26+ / arm64 only (Package.swift platform, and libghostty-vt is vendored as
+    # an arm64-only static xcframework), so there is no other runner this can use.
+    runs-on: macos-26
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode 26.1
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.1.app
+          swift --version
+
+      - name: swift build
+        run: swift build
+
+      # Swift Testing. No GUI session on a runner, so anything needing a window must be marked
+      # .disabled/.enabled(if:) in the test target rather than skipped here.
+      - name: swift test
+        run: swift test

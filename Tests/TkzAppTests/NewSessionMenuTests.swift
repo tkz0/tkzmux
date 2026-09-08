@@ -14,9 +14,9 @@ import TkzCore
 struct NewSessionMenuTests {
 
     static let state = AppState.fixture
-    static let frontinvest = Fixture.groupID(0)   // Almi FrontInvest, ~/dev/frontinvest, claude-alt
+    static let northwind = Fixture.groupID(0)   // Northwind Trading, ~/dev/northwind, claude-work
     static let scheduled = Fixture.groupID(2)     // Scheduled — a bucket with no repo, claude
-    static let aira = Fixture.groupID(3)          // Aira, ~/dev/aira, claude
+    static let toolbox = Fixture.groupID(3)          // Toolbox, ~/dev/toolbox, claude
 
     static func menu(for groupID: GroupID) -> NewSessionMenu {
         let menu = NewSessionMenu()
@@ -42,17 +42,17 @@ struct NewSessionMenuTests {
     // MARK: Content
 
     @Test func namesTheGroupAndEveryTarget() throws {
-        let menu = Self.menu(for: Self.frontinvest)
-        #expect(Self.text(menu.item(NewSessionMenu.ItemID.header)!) == "New session in Almi FrontInvest")
+        let menu = Self.menu(for: Self.northwind)
+        #expect(Self.text(menu.item(NewSessionMenu.ItemID.header)!) == "New session in Northwind Trading")
 
         let worktree = try #require(Self.item(menu, NewSessionMenu.ItemID.worktree))
         #expect(Self.text(worktree).contains("claude -w"), "the command must be visible")
-        #expect(Self.text(worktree).contains("~/dev/frontinvest"), "the target directory must be visible")
+        #expect(Self.text(worktree).contains("~/dev/northwind"), "the target directory must be visible")
         #expect(worktree.isEnabled)
 
         let root = try #require(Self.item(menu, NewSessionMenu.ItemID.repoRoot))
         #expect(Self.text(root).contains("claude"))
-        #expect(Self.text(root).contains("~/dev/frontinvest"))
+        #expect(Self.text(root).contains("~/dev/northwind"))
 
         let another = try #require(Self.item(menu, NewSessionMenu.ItemID.anotherRepo))
         #expect(another.isEnabled)
@@ -68,7 +68,7 @@ struct NewSessionMenuTests {
     }
 
     @Test func presetsSubmenuCountsAndNamesEachPreset() throws {
-        let menu = Self.menu(for: Self.frontinvest)
+        let menu = Self.menu(for: Self.northwind)
         let presets = try #require(Self.item(menu, NewSessionMenu.ItemID.presets))
         #expect(presets.title == "From preset\u{2026} (3 saved)")
         // Three presets, a separator, and "Manage presets…" (M5.2).
@@ -77,7 +77,7 @@ struct NewSessionMenuTests {
         let first = try #require(presets.submenu?.items.first)
         #expect(Self.text(first).hasPrefix("Worktree from ticket"))
         #expect(Self.text(first).contains("claude -w"))
-        #expect(Self.text(first).contains("~/dev/frontinvest"))
+        #expect(Self.text(first).contains("~/dev/northwind"))
         let manage = try #require(presets.submenu?.items.last)
         #expect(manage.identifier == NewSessionMenu.ItemID.managePresets)
         var asked = 0
@@ -90,7 +90,7 @@ struct NewSessionMenuTests {
         let empty = NewSessionMenu()
         var bare = Self.state
         bare.presets = []
-        empty.configure(state: bare, groupID: Self.frontinvest)
+        empty.configure(state: bare, groupID: Self.northwind)
         let none = try #require(Self.item(empty, NewSessionMenu.ItemID.presets))
         #expect(none.title == "From preset\u{2026} (none saved)")
         #expect(none.isEnabled)
@@ -99,18 +99,18 @@ struct NewSessionMenuTests {
     }
 
     @Test func accountSubmenuDefaultsToTheGroupsAccount() throws {
-        let menu = Self.menu(for: Self.frontinvest)
-        #expect(menu.effectiveAccountKey == "claude-alt")
+        let menu = Self.menu(for: Self.northwind)
+        #expect(menu.effectiveAccountKey == "claude-work")
         let account = try #require(Self.item(menu, NewSessionMenu.ItemID.account))
         #expect(account.title == "Account: Claude (alt)")
         let rows = try #require(account.submenu?.items)
-        #expect(rows.map { $0.representedObject as? String } == ["claude", "claude-alt"])
+        #expect(rows.map { $0.representedObject as? String } == ["claude", "claude-work"])
         #expect(Self.text(rows[0]).hasPrefix("Claude   "))
         #expect(Self.text(rows[1]).hasPrefix("Claude (alt)   "))
-        #expect(rows.first { $0.representedObject as? String == "claude-alt" }?.state == .on)
+        #expect(rows.first { $0.representedObject as? String == "claude-work" }?.state == .on)
         #expect(rows.first { $0.representedObject as? String == "claude" }?.state == .off)
         // Each row names the config dir it means, and which one is the group's default.
-        #expect(Self.text(rows[1]).contains("~/.claude-alt"))
+        #expect(Self.text(rows[1]).contains("~/.claude-work"))
         #expect(Self.text(rows[1]).contains("group default"))
 
         // Picking one overrides the group default until the menu is re-scoped.
@@ -124,15 +124,15 @@ struct NewSessionMenuTests {
 
     @Test func contentFollowsTheSelectedGroup() throws {
         let menu = NewSessionMenu()
-        menu.configure(state: Self.state, groupID: Self.frontinvest)
-        #expect(Self.text(menu.item(NewSessionMenu.ItemID.header)!) == "New session in Almi FrontInvest")
-        #expect(menu.worktreeLaunch()?.cwd == "~/dev/frontinvest")
-        #expect(menu.effectiveAccountKey == "claude-alt")
+        menu.configure(state: Self.state, groupID: Self.northwind)
+        #expect(Self.text(menu.item(NewSessionMenu.ItemID.header)!) == "New session in Northwind Trading")
+        #expect(menu.worktreeLaunch()?.cwd == "~/dev/northwind")
+        #expect(menu.effectiveAccountKey == "claude-work")
 
         // The sidebar's per-group ＋ scopes the same object to another group.
-        menu.configure(state: Self.state, groupID: Self.aira)
-        #expect(Self.text(menu.item(NewSessionMenu.ItemID.header)!) == "New session in Aira")
-        #expect(menu.worktreeLaunch()?.cwd == "~/dev/aira")
+        menu.configure(state: Self.state, groupID: Self.toolbox)
+        #expect(Self.text(menu.item(NewSessionMenu.ItemID.header)!) == "New session in Toolbox")
+        #expect(menu.worktreeLaunch()?.cwd == "~/dev/toolbox")
         #expect(menu.effectiveAccountKey == "claude")
         let account = try #require(Self.item(menu, NewSessionMenu.ItemID.account))
         #expect(account.title == "Account: Claude")
@@ -157,10 +157,10 @@ struct NewSessionMenuTests {
     }
 
     @Test func rebuildsWhenTheMenuOpens() throws {
-        let menu = Self.menu(for: Self.frontinvest)
+        let menu = Self.menu(for: Self.northwind)
         var renamed = Self.state
-        renamed.groups[Self.frontinvest]!.name = "Renamed"
-        menu.group = renamed.groups[Self.frontinvest]
+        renamed.groups[Self.northwind]!.name = "Renamed"
+        menu.group = renamed.groups[Self.northwind]
         menu.menuNeedsUpdate(menu.menu)
         #expect(Self.text(menu.item(NewSessionMenu.ItemID.header)!) == "New session in Renamed")
     }
@@ -168,7 +168,7 @@ struct NewSessionMenuTests {
     // MARK: The launcher stub
 
     @Test func launcherStubReportsTheExactCommandAndCwd() throws {
-        let menu = Self.menu(for: Self.frontinvest)
+        let menu = Self.menu(for: Self.northwind)
         var launches: [NewSessionMenu.Launch] = []
         menu.onLaunch = { launches.append($0) }
 
@@ -179,42 +179,42 @@ struct NewSessionMenuTests {
         #expect(launches.count == 2)
         #expect(launches.first?.kind == .worktree)
         #expect(launches.first?.command == "claude -w")
-        #expect(launches.first?.cwd == "~/dev/frontinvest", "the path is passed through verbatim")
-        #expect(launches.first?.accountKey == "claude-alt")
-        #expect(launches.first?.groupID == Self.frontinvest)
-        #expect(launches.first?.logLine == "cd ~/dev/frontinvest && CLAUDE_CONFIG_DIR=claude-alt claude -w")
+        #expect(launches.first?.cwd == "~/dev/northwind", "the path is passed through verbatim")
+        #expect(launches.first?.accountKey == "claude-work")
+        #expect(launches.first?.groupID == Self.northwind)
+        #expect(launches.first?.logLine == "cd ~/dev/northwind && CLAUDE_CONFIG_DIR=claude-work claude -w")
 
         #expect(launches.last?.kind == .repoRoot)
         #expect(launches.last?.command == "claude")
-        #expect(launches.last?.logLine == "cd ~/dev/frontinvest && CLAUDE_CONFIG_DIR=claude-alt claude")
+        #expect(launches.last?.logLine == "cd ~/dev/northwind && CLAUDE_CONFIG_DIR=claude-work claude")
 
         // The menu also records the last resolved launch, which is what the no-closure stub logs.
         #expect(menu.lastLaunch == launches.last)
     }
 
     @Test func presetLaunchesResolveCommandCwdAndAccount() throws {
-        let menu = Self.menu(for: Self.frontinvest)
+        let menu = Self.menu(for: Self.northwind)
         var launches: [NewSessionMenu.Launch] = []
         menu.onLaunch = { launches.append($0) }
 
         let presets = try #require(Self.item(menu, NewSessionMenu.ItemID.presets))
         presets.submenu!.performActionForItem(at: 2)   // "Plan mode": claude --permission-mode plan
         #expect(launches.first?.command == "claude --permission-mode plan")
-        #expect(launches.first?.cwd == "~/dev/frontinvest")
+        #expect(launches.first?.cwd == "~/dev/northwind")
         #expect(launches.first?.accountKey == "claude", "the preset's own account wins over the group's")
         #expect(launches.first?.presetID == Self.state.presets[2].id)
 
         // A named worktree preset passes the name to -w; a fixed cwd is used verbatim.
         let named = Preset(name: "Ticket", command: "claude -w", cwdMode: .worktree(name: "tkz-20"))
         #expect(menu.launch(for: named)?.command == "claude -w tkz-20")
-        #expect(menu.launch(for: named)?.cwd == "~/dev/frontinvest", "a worktree starts from the main checkout")
+        #expect(menu.launch(for: named)?.cwd == "~/dev/northwind", "a worktree starts from the main checkout")
         let fixed = Preset(name: "Elsewhere", command: "claude", cwdMode: .fixed(path: "~/dev/other"))
         #expect(menu.launch(for: fixed)?.cwd == "~/dev/other")
-        #expect(menu.launch(for: fixed)?.accountKey == "claude-alt", "no preset account → the group's")
+        #expect(menu.launch(for: fixed)?.accountKey == "claude-work", "no preset account → the group's")
     }
 
     @Test func anotherRepoIsHandedToTheAssembler() throws {
-        let menu = Self.menu(for: Self.frontinvest)
+        let menu = Self.menu(for: Self.northwind)
         var asked = 0
         menu.onChooseAnotherRepo = { asked += 1 }
         #expect(menu.performItem(NewSessionMenu.ItemID.anotherRepo))
@@ -226,12 +226,12 @@ struct NewSessionMenuTests {
     @Test("A shell launch carries no command and works for a bucket group too")
     func shellLaunchNeedsNoRepo() throws {
         // A repo group starts in its root.
-        let repo = try #require(Self.menu(for: Self.frontinvest).shellLaunch())
+        let repo = try #require(Self.menu(for: Self.northwind).shellLaunch())
         #expect(repo.kind == .shell)
         #expect(repo.command.isEmpty)
-        #expect(repo.cwd == "~/dev/frontinvest")
+        #expect(repo.cwd == "~/dev/northwind")
         // ...and the log line says so without a dangling `&&`.
-        #expect(repo.logLine == "cd ~/dev/frontinvest")
+        #expect(repo.logLine == "cd ~/dev/northwind")
 
         // A bucket has no repo root, so the two `claude` rows are dead — but a shell is not.
         let bucketMenu = Self.menu(for: Self.scheduled)

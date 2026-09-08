@@ -169,7 +169,7 @@ struct SidebarRowViewTests {
         #expect(SidebarSessionRowModel.accountChipColor(forKey: "private") ==
                 SidebarSessionRowModel.accountChipColor(forKey: "private"))
         #expect(SidebarSessionRowModel.accountChipColor(forKey: "private").hexString == "#5b8def")
-        #expect(SidebarSessionRowModel.accountChipColor(forKey: "almi").hexString == "#e0956a")
+        #expect(SidebarSessionRowModel.accountChipColor(forKey: "work").hexString == "#e0956a")
     }
 
     // MARK: Pulse
@@ -271,7 +271,7 @@ struct SidebarRowViewTests {
         let none = Self.sessionRow(SidebarSessionRowModel(title: "s"))
         #expect(none.accountChipLayer.isHidden)
 
-        let tint = SidebarSessionRowModel.accountChipColor(forKey: "almi")
+        let tint = SidebarSessionRowModel.accountChipColor(forKey: "work")
         let chip = Self.sessionRow(SidebarSessionRowModel(title: "s", accountLabel: "AL", accountColor: tint))
         #expect(!chip.accountChipLayer.isHidden)
         let expected = RGB(r: tint.r, g: tint.g, b: tint.b, a: 0.18)
@@ -297,7 +297,7 @@ struct SidebarRowViewTests {
     @Test("a session row's content is indented under its group header")
     func sessionRowsIndentUnderTheirGroup() {
         let group = GroupRowView()
-        group.configure(SidebarGroupRowModel(name: "Almi FrontInvest", color: nil,
+        group.configure(SidebarGroupRowModel(name: "Northwind Trading", color: nil,
                                              isCollapsed: false, sessionCount: 12),
                         theme: .midnightIndigo)
         group.frame = CGRect(x: 0, y: 0, width: SidebarMetrics.sidebarWidth,
@@ -305,7 +305,7 @@ struct SidebarRowViewTests {
         group.layoutSubtreeIfNeeded()
 
         let session = SessionRowView()
-        session.configure(SidebarSessionRowModel(title: "frontinvest", branch: "main",
+        session.configure(SidebarSessionRowModel(title: "northwind", branch: "main",
                                                  isWorktree: false, status: .working,
                                                  accountLabel: nil, accountColor: nil,
                                                  needsAttention: false, isSelected: false),
@@ -509,12 +509,12 @@ struct SidebarRowViewTests {
             isSelected: true))
         session(SidebarSessionRowModel(
             title: "app store & change sets", branch: "main", status: .waiting,
-            accountLabel: "AL", accountColor: SidebarSessionRowModel.accountChipColor(forKey: "almi"),
+            accountLabel: "AL", accountColor: SidebarSessionRowModel.accountChipColor(forKey: "work"),
             needsAttention: true))
         session(SidebarSessionRowModel(
             title: "a session whose title is far too long to fit in the sidebar",
             branch: "feature/really-long-branch-name", isWorktree: true, status: .idle))
-        group(SidebarGroupRowModel(name: "coreinvest", color: nil, isCollapsed: true, sessionCount: 2))
+        group(SidebarGroupRowModel(name: "acme-ledger", color: nil, isCollapsed: true, sessionCount: 2))
         session(SidebarSessionRowModel(title: "restored session", branch: "develop", status: .idle))
 
         let summary = SummaryStripView(frame: NSRect(

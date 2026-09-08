@@ -12,7 +12,7 @@ import TkzCore
 /// belongs to another module's committed code, so the nearest equivalents are used and the *field*
 /// the hit came from is asserted, which is the part that actually matters:
 ///   * branch — session 9 is `fix/rounding` with no title and no worktree, so `"rounding"` appears in
-///     nothing else about that row (its display title is `frontinvest`);
+///     nothing else about that row (its display title is `northwind`);
 ///   * title  — session "docs sweep" in the Scheduled group.
 @MainActor
 struct PaletteTests {
@@ -53,9 +53,9 @@ struct PaletteTests {
         #expect(fields == [.title, .branch, .cwd, .group])
 
         // A group name that appears in no session title still finds that group's sessions.
-        let byGroup = Self.source().search("workamo").filter { $0.item.kind == .session }
+        let byGroup = Self.source().search("playground").filter { $0.item.kind == .session }
         #expect(!byGroup.isEmpty)
-        #expect(byGroup.allSatisfy { Self.state.group(of: $0.item.sessionID!)?.name == "Workamo" })
+        #expect(byGroup.allSatisfy { Self.state.group(of: $0.item.sessionID!)?.name == "Playground" })
 
         // A worktree path fragment is reachable through cwd.
         let byCwd = Self.source().search("worktrees/classifier")

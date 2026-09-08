@@ -12,7 +12,7 @@ import Foundation
 public struct AppState: Hashable, Sendable {
     public var groups: [GroupID: Group]
     public var sessions: [SessionID: Session]
-    /// Keyed by `Account.key` (`claude`, `claude-alt`).
+    /// Keyed by `Account.key` (`claude`, `claude-work`).
     public var accounts: [String: Account]
     /// Keyed by `Account.key`; what `UsageReader` (M3.5) publishes.
     public var usage: [String: UsageSnapshot]

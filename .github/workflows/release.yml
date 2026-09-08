@@ -1,0 +1,171 @@
+# Tag v* -> signed + notarized build/dist/tkzmux-<version>-arm64.zip -> GitHub release -> cask bump.
+#
+# This is `make dist` (scripts/make-dist.sh) with the two things a laptop has and a runner does
+# not: a keychain holding the Developer ID Application identity, and a notarytool credential
+# profile. Everything else — version derivation, zipping, checksums, the GitHub release — stays
+# in the script so that a release can also be cut by hand. Runbook: docs/release.md.
+#
+# Secrets (see docs/release.md -> "CI secrets and rotation"):
+#   APPLE_DEVELOPER_ID_P12_BASE64    base64 of the Developer ID Application .p12 (with chain)
+#   APPLE_DEVELOPER_ID_P12_PASSWORD  password used when exporting that .p12
+#   APPLE_SIGN_IDENTITY              "Developer ID Application: NAME (TEAMID)"
+#   ASC_API_KEY_P8_BASE64            base64 of the App Store Connect AuthKey_<KEYID>.p8
+#   ASC_API_KEY_ID                   that key's 10-character Key ID
+#   ASC_API_ISSUER_ID                the App Store Connect issuer UUID
+#   HOMEBREW_TAP_TOKEN               fine-grained PAT, Contents:write on tkz0/homebrew-tap only
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# scripts/make-dist.sh creates the GitHub release and uploads the assets via `gh`.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NOTARY_PROFILE: tkzmux-notary
+  TAP_CHECKOUT: homebrew-tap
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 90
+
+    steps:
+      # fetch-depth: 0 — scripts/make-app.sh derives CFBundleShortVersionString from
+      # `git describe --tags --match 'v*' --dirty` and CFBundleVersion from
+      # `git rev-list --count HEAD`. A shallow clone silently yields 0.0.0-dev+<sha> and build 1.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      # actions/checkout leaves annotated tags unpeeled in some cases; re-fetching them makes
+      # `git describe` see the tag this workflow was triggered by.
+      - name: Fetch tags
+        run: |
+          git fetch --force --tags
+          # Diagnostic only — `|| true` so a workflow_dispatch run from an untagged commit
+          # reaches make-dist.sh's preflight, which explains the problem properly.
+          git describe --tags --match 'v*' --dirty || true
+
+      # The tap is a separate repository; scripts/bump-cask.sh expects TAP_DIR to be an existing
+      # clone with a push remote.
+      #
+      # NOT actions/checkout: its `path:` must stay inside $GITHUB_WORKSPACE, and make-dist.sh's
+      # preflight refuses to build when `git status --porcelain` is non-empty — untracked files
+      # included, deliberately, because `swift build` compiles whatever is on disk. A tap checked
+      # out into the workspace shows up as `?? homebrew-tap/` and aborts the release before it
+      # builds anything. Cloning into $RUNNER_TEMP keeps the workspace pristine. The token lives
+      # in the remote URL, which is what lets the script push (same effect as persist-credentials).
+      - name: Clone the Homebrew tap outside the workspace
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone --depth 1 \
+            "https://x-access-token:${TAP_TOKEN}@github.com/tkz0/homebrew-tap.git" \
+            "$RUNNER_TEMP/$TAP_CHECKOUT"
+
+      - name: Select Xcode 26.1
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.1.app
+          swift --version
+
+      # Xcode 26 ships the Metal compiler as a separately downloaded component. scripts/make-app.sh
+      # runs `xcrun metal` under `set -e`, so without this the whole build dies at the shader step.
+      - name: Install the Metal toolchain
+        run: |
+          xcodebuild -downloadComponent MetalToolchain \
+            || sudo xcodebuild -downloadComponent MetalToolchain
+          xcrun -sdk macosx metal --version
+
+      - name: Import the Developer ID signing identity
+        env:
+          P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/tkzmux-signing.keychain-db"
+          # Ephemeral runner, ephemeral keychain: the password only has to be unguessable for the
+          # life of the job, so it is generated here rather than stored as a secret.
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 20)"
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # -lut 21600: no auto-lock in the middle of a long notarization wait.
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # Default + on the search list, so codesign and notarytool find it with no extra flags
+          # (the Makefile targets pass none).
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          security default-keychain -s "$KEYCHAIN"
+
+          printf '%s' "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          # Without this, codesign blocks on a UI prompt for keychain access that nobody can answer.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+
+          # The .p12 must carry the "Developer ID Certification Authority" intermediate, or the
+          # identity imports but does not appear as valid for codesigning. This is the check that
+          # catches a badly exported certificate before 20 minutes of build time.
+          security find-identity -v -p codesigning "$KEYCHAIN"
+          security find-identity -v -p codesigning "$KEYCHAIN" | grep -q 'Developer ID Application'
+
+      # `--keychain` is deliberately NOT passed: the Makefile's notarize target runs
+      # `notarytool submit --keychain-profile "$(NOTARY_PROFILE)"` with no --keychain either, and
+      # this workflow must not edit the Makefile. Storing and reading under the same unqualified
+      # default (the default keychain, which the previous step pointed at the temporary one) is
+      # the only way the two are guaranteed to agree. `notarytool history` then proves the profile
+      # is readable the exact way `make notarize` will read it — cheap, and 20 minutes before the
+      # build would otherwise discover it.
+      - name: Store notarytool credentials
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          xcrun notarytool store-credentials "$NOTARY_PROFILE" \
+            --key "$RUNNER_TEMP/AuthKey.p8" \
+            --key-id "$ASC_KEY_ID" \
+            --issuer "$ASC_ISSUER_ID"
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
+          xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null
+
+      # Builds, signs, notarizes, staples, zips to build/dist/, publishes the GitHub release, and
+      # — because TAP_DIR is set — finishes by calling scripts/bump-cask.sh with the version and
+      # sha256 it just produced. That ordering matters: the cask's `url` points at a release asset,
+      # so the cask must not move until the assets are published. Deriving the version a second
+      # time here would risk disagreeing with the one stamped into the app, so it is not done.
+      - name: make dist
+        env:
+          SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+          GH_TOKEN: ${{ github.token }}
+          TAP_DIR: ${{ runner.temp }}/${{ env.TAP_CHECKOUT }}
+        run: make dist
+
+      - name: Upload the release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tkzmux-dist
+          path: |
+            build/dist/
+            build/notarytool.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Clean up the signing keychain
+        if: always()
+        run: |
+          security default-keychain -s login.keychain-db || true
+          security list-keychains -d user -s login.keychain-db || true
+          security delete-keychain "${KEYCHAIN:-$RUNNER_TEMP/tkzmux-signing.keychain-db}" || true

@@ -70,24 +70,24 @@ struct SidebarViewControllerTests {
 
     // MARK: - Population
 
-    @Test("The fixture populates the outline: 5 group rows + 35 session rows, Workamo's 5 absent")
+    @Test("The fixture populates the outline: 5 group rows + 35 session rows, Playground's 5 absent")
     func fixturePopulatesTheOutline() throws {
         let harness = Self.makeHarness()
         let state = harness.store.state
 
         #expect(state.sessions.count == 40)
         #expect(state.groups.count == 5)
-        // Workamo (group 4) is collapsed in the fixture, so its 5 sessions are not rows.
+        // Playground (group 4) is collapsed in the fixture, so its 5 sessions are not rows.
         #expect(harness.outline.numberOfRows == 5 + 35)
 
-        let workamo = try #require(state.orderedGroups.last)
-        #expect(workamo.isCollapsed)
-        for session in state.sessions(in: workamo.id) {
+        let playground = try #require(state.orderedGroups.last)
+        #expect(playground.isCollapsed)
+        for session in state.sessions(in: playground.id) {
             #expect(harness.controller.row(forSession: session.id) == -1)
         }
         // …but the data source still reports them: collapse must not be structural.
         #expect(
-            harness.controller.outlineView(harness.outline, numberOfChildrenOfItem: harness.controller.item(.group(workamo.id))) == 5)
+            harness.controller.outlineView(harness.outline, numberOfChildrenOfItem: harness.controller.item(.group(playground.id))) == 5)
 
         // Every non-collapsed group's sessions are rows, in sidebar order.
         let visible = SidebarRowAdapter.visibleSessions(in: state)
@@ -195,7 +195,7 @@ struct SidebarViewControllerTests {
         let groupID = harness.store.state.orderedGroups[0].id
         harness.mutate { state in
             for n in 0..<5 {
-                _ = state.createSession(groupID: groupID, cwd: "~/dev/frontinvest", title: "added \(n)")
+                _ = state.createSession(groupID: groupID, cwd: "~/dev/northwind", title: "added \(n)")
             }
         }
 
@@ -204,7 +204,7 @@ struct SidebarViewControllerTests {
         #expect(harness.outline.insertedItemCalls.allSatisfy { $0.parent?.groupID == groupID })
         #expect(harness.outline.numberOfRows == before + 5)
         // The group's header shows a count, and the group *value* did not change — so the header
-        // row must be reloaded explicitly (GUI pass 2026-09-08: "COREINVEST 0" over a live row).
+        // row must be reloaded explicitly (GUI pass 2026-09-08: "ACME LEDGER 0" over a live row).
         let header = harness.controller.row(forGroup: groupID)
         #expect(harness.outline.reloadedRowIndexSets.contains { $0.contains(header) })
         // The five new rows are reloaded by the `sessions` half of the change set as before; the
@@ -388,7 +388,7 @@ struct SidebarViewControllerTests {
         harness.store.flush()
         #expect(harness.store.state.selection == Fixture.sessionID(0))
 
-        // …and at the bottom (the last visible session is group 3's last; Workamo is collapsed).
+        // …and at the bottom (the last visible session is group 3's last; Playground is collapsed).
         let last = SidebarRowAdapter.visibleSessions(in: harness.store.state).last!.id
         harness.mutate { $0.select(last) }
         harness.controller.moveSelection(by: 1)
@@ -452,22 +452,22 @@ struct SidebarViewControllerTests {
     @Test("Expanding the outline directly writes back to the store")
     func outlineExpansionWritesBackToTheStore() {
         let harness = Self.makeHarness()
-        let workamo = harness.store.state.orderedGroups[4].id
-        harness.outline.expandItem(harness.controller.item(.group(workamo)))
-        #expect(harness.store.state.groups[workamo]?.isCollapsed == false)
+        let playground = harness.store.state.orderedGroups[4].id
+        harness.outline.expandItem(harness.controller.item(.group(playground)))
+        #expect(harness.store.state.groups[playground]?.isCollapsed == false)
 
-        harness.outline.collapseItem(harness.controller.item(.group(workamo)))
-        #expect(harness.store.state.groups[workamo]?.isCollapsed == true)
+        harness.outline.collapseItem(harness.controller.item(.group(playground)))
+        #expect(harness.store.state.groups[playground]?.isCollapsed == true)
     }
 
     @Test("A collapsed group's header shows the collapsed chevron and the full session count")
     func groupHeaderReflectsCollapseState() throws {
         let harness = Self.makeHarness()
-        let workamoRow = harness.controller.row(forGroup: harness.store.state.orderedGroups[4].id)
+        let playgroundRow = harness.controller.row(forGroup: harness.store.state.orderedGroups[4].id)
         let view = try #require(
-            harness.outline.view(atColumn: 0, row: workamoRow, makeIfNecessary: true) as? GroupRowView)
+            harness.outline.view(atColumn: 0, row: playgroundRow, makeIfNecessary: true) as? GroupRowView)
         #expect((view.chevronTextLayer.string as? String) == "▸")
-        #expect((view.nameTextLayer.string as? String) == "WORKAMO")
+        #expect((view.nameTextLayer.string as? String) == "PLAYGROUND")
     }
 
     @Test("Collapsing and re-expanding hands the selection back to the outline")
@@ -501,7 +501,7 @@ struct SidebarViewControllerTests {
         #expect(received == [groupID])
 
         // `prepareForReuse()` clears `onAdd`; a reload must put it back.
-        harness.mutate { $0.renameGroup(groupID, name: "Almi FrontInvest") }
+        harness.mutate { $0.renameGroup(groupID, name: "Northwind Trading") }
         harness.mutate { $0.setGroupColor(groupID, color: RGB(hex: 0x41c6a8)) }
         let reused = try #require(
             harness.outline.view(atColumn: 0, row: harness.controller.row(forGroup: groupID),
@@ -634,8 +634,8 @@ struct SidebarViewControllerTests {
 
         // A second account the store has never heard of still gets a chip, derived from its key.
         var unknown = alt
-        unknown.accountKey = "claude-work"
-        #expect(SidebarRowAdapter.accountLabel(for: unknown, in: state) == "CW")
+        unknown.accountKey = "claude-review"
+        #expect(SidebarRowAdapter.accountLabel(for: unknown, in: state) == "CR")
 
         // The chip colour is the documented, process-independent derivation.
         #expect(

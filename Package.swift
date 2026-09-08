@@ -98,7 +98,8 @@ let package = Package(
         // MARK: Executables
         .executableTarget(
             name: "tkzmux",
-            dependencies: ["TkzApp"],
+            // TkzCore for AppVersion: `--version` is answered before NSApplication exists (M6.1).
+            dependencies: ["TkzApp", "TkzCore"],
             path: "Sources/tkzmux"
         ),
         .executableTarget(

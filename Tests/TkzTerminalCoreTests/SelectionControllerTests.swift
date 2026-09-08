@@ -235,15 +235,15 @@ private func makeController(
     /// OSC 8 marks a run of cells; the lookup returns the URI and the run's columns.
     @Test func findsTheUriAndItsRun() throws {
         let terminal = try GhosttyTerminalHandle(cols: 40, rows: 4)
-        terminal.write("see \u{1b}]8;;https://tkz.se/x\u{1b}\\link text\u{1b}]8;;\u{1b}\\ end")
+        terminal.write("see \u{1b}]8;;https://example.com/x\u{1b}\\link text\u{1b}]8;;\u{1b}\\ end")
 
         // "see " is columns 0-3, "link text" is columns 4-12.
-        #expect(HyperlinkLookup.uri(at: TerminalGridPoint(x: 6, y: 0), in: terminal) == "https://tkz.se/x")
+        #expect(HyperlinkLookup.uri(at: TerminalGridPoint(x: 6, y: 0), in: terminal) == "https://example.com/x")
         #expect(HyperlinkLookup.uri(at: TerminalGridPoint(x: 1, y: 0), in: terminal) == nil)
         #expect(HyperlinkLookup.uri(at: TerminalGridPoint(x: 20, y: 0), in: terminal) == nil)
 
         let run = HyperlinkLookup.run(at: TerminalGridPoint(x: 6, y: 0), in: terminal, columns: 40)
-        #expect(run?.uri == "https://tkz.se/x")
+        #expect(run?.uri == "https://example.com/x")
         #expect(run?.columns == 4...12)
     }
 
@@ -258,7 +258,7 @@ private func makeController(
     @Test func lookupCostWhileScrolledBack() throws {
         let terminal = try GhosttyTerminalHandle(cols: 80, rows: 24)
         for line in 0..<2_000 {
-            terminal.write("row \(line) \u{1b}]8;;https://tkz.se/\(line)\u{1b}\\link\u{1b}]8;;\u{1b}\\\r\n")
+            terminal.write("row \(line) \u{1b}]8;;https://example.com/\(line)\u{1b}\\link\u{1b}]8;;\u{1b}\\\r\n")
         }
         // Scroll ~1000 rows into history.
         let encoder = try MouseEncoder(geometry: geometry)

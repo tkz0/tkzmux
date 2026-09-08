@@ -220,4 +220,55 @@ struct MainMenuTests {
         #expect(harness.store.state.sidebarVisible == false)
         #expect(harness.controller.splitViewController.splitViewItems[0].isCollapsed)
     }
+
+    // MARK: About panel (M6.1 / TKZ-37)
+    //
+    // The panel itself cannot be asserted headlessly, so these check the two things that actually
+    // broke: the item must reach the dispatcher (an `NSMenuItem.target` is *weak*, so a target
+    // that nothing else retains leaves the item dead), and the options must be populated from
+    // `AppVersion` rather than from `Info.plist`, which does not exist under `swift run`.
+
+    @Test("About targets the dispatcher and is always enabled")
+    func aboutItemIsWired() {
+        let (menu, dispatcher) = Self.makeMenu()
+        let appMenu = menu.items[0].submenu!
+        let about = appMenu.items.first { $0.title == "About tkzmux" }
+
+        #expect(about != nil)
+        #expect(about?.action == #selector(MenuDispatcher.orderFrontAboutPanel(_:)))
+        // Identity, not just non-nil: the weak target must be the dispatcher the menu retains.
+        #expect(about?.target as? MenuDispatcher === dispatcher)
+        // Not a ShortcutAction, so validation must leave it enabled rather than disable it for
+        // having no handler.
+        #expect(dispatcher.validateMenuItem(about!) == true)
+    }
+
+    @Test("About panel options come from AppVersion, not Info.plist")
+    func aboutPanelOptionsArePopulated() {
+        let version = AppVersion(infoDictionary: [
+            "CFBundleShortVersionString": "1.2.3",
+            "CFBundleVersion": "287",
+            "TkzGhosttyCommit": "82232ecde55405559dec29c5466cb9e39938cb41",
+        ])
+        let options = MainMenu.aboutPanelOptions(appName: "tkzmux", version: version)
+
+        #expect(options[.applicationName] as? String == "tkzmux")
+        #expect(options[.applicationVersion] as? String == "1.2.3")
+        #expect(options[.version] as? String == "287")
+
+        let credits = options[.credits] as? NSAttributedString
+        #expect(credits != nil)
+        // The commit is the whole reason we don't use the stock panel: a bug report has to say
+        // which libghostty-vt is inside.
+        #expect(credits?.string.contains("82232ecde554") == true)
+        #expect(credits?.string.contains("MIT") == true)
+    }
+
+    @Test("Building the menu installs the About options on the dispatcher")
+    func buildPopulatesDispatcherOptions() {
+        let (_, dispatcher) = Self.makeMenu()
+        // Empty here would mean the panel silently falls back to Info.plist.
+        #expect(dispatcher.aboutPanelOptions.isEmpty == false)
+        #expect(dispatcher.aboutPanelOptions[.applicationName] as? String == "tkzmux")
+    }
 }

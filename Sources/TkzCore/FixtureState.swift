@@ -27,9 +27,9 @@ public enum Fixture {
     /// 2026-09-09 09:00:00 UTC — the fixture's "now".
     public static let now = Date(timeIntervalSince1970: 1_788_944_400)
 
-    /// The two account keys: the basenames of `~/.claude` and `~/.claude-alt`. Labels here are
+    /// The two account keys: the basenames of `~/.claude` and `~/.claude-work`. Labels here are
     /// generic on purpose — real ones come from `dash-accounts.json` at runtime.
-    public static let accountKeys = ["claude", "claude-alt"]
+    public static let accountKeys = ["claude", "claude-work"]
 
     private struct Spec {
         var group: Int
@@ -49,59 +49,59 @@ public enum Fixture {
     }
 
     private static let groupSpecs: [(name: String, repo: String?, color: RGB?, collapsed: Bool, account: String)] = [
-        ("Almi FrontInvest", "~/dev/frontinvest", RGB(hex: 0x8b93f8), false, "claude-alt"),
-        ("Core Invest", "~/dev/core-invest", RGB(hex: 0x41c6a8), false, "claude-alt"),
+        ("Northwind Trading", "~/dev/northwind", RGB(hex: 0x8b93f8), false, "claude-work"),
+        ("Acme Ledger", "~/dev/acme-ledger", RGB(hex: 0x41c6a8), false, "claude-work"),
         ("Scheduled", nil, RGB(hex: 0xfbbf54), false, "claude"),
-        ("Aira", "~/dev/aira", RGB(hex: 0xc084fc), false, "claude"),
-        ("Workamo", "~/dev/workamo", RGB(hex: 0xf28b8b), true, "claude"),
+        ("Toolbox", "~/dev/toolbox", RGB(hex: 0xc084fc), false, "claude"),
+        ("Playground", "~/dev/playground", RGB(hex: 0xf28b8b), true, "claude"),
     ]
 
     private static let specs: [Spec] = [
-        // Almi FrontInvest — the busy group, and the one the selection lands in.
-        .init(group: 0, title: nil, branch: "main", worktree: nil, account: "claude-alt",
+        // Northwind Trading — the busy group, and the one the selection lands in.
+        .init(group: 0, title: nil, branch: "main", worktree: nil, account: "claude-work",
               status: .working, ports: [5173], changed: 7, insertions: 142, deletions: 38, context: 62),
         .init(group: 0, title: "deal pipeline: replace the valuation service with the new pricing engine",
-              branch: "feat/pricing-engine", worktree: "pricing-engine", account: "claude-alt",
+              branch: "feat/pricing-engine", worktree: "pricing-engine", account: "claude-work",
               status: .waiting(.doneUnattended), attention: true, changed: 12, insertions: 486,
               deletions: 121, context: 74),
         .init(group: 0, title: "permission prompt", branch: "fix/csv-import", worktree: "csv-import",
-              account: "claude-alt", status: .waiting(.permission), attention: true, changed: 3,
+              account: "claude-work", status: .waiting(.permission), attention: true, changed: 3,
               insertions: 61, deletions: 12, context: 41),
         .init(group: 0, title: nil, branch: "feat/reporting", worktree: "reporting",
-              account: "claude-alt", status: .idle, changed: 1, insertions: 9, deletions: 2),
+              account: "claude-work", status: .idle, changed: 1, insertions: 9, deletions: 2),
         .init(group: 0, title: "flaky integration tests", branch: "main", worktree: nil,
-              account: "claude-alt", status: .idle, restored: true),
+              account: "claude-work", status: .idle, restored: true),
         .init(group: 0, title: nil, branch: "chore/deps", worktree: "deps", account: "claude",
               status: .working, ports: [3000, 9229], changed: 2, insertions: 18, deletions: 340),
         .init(group: 0, title: "elicitation", branch: "feat/audit-log", worktree: "audit-log",
-              account: "claude-alt", status: .waiting(.elicitation), attention: true),
-        .init(group: 0, title: nil, branch: "main", worktree: nil, account: "claude-alt", status: .idle),
+              account: "claude-work", status: .waiting(.elicitation), attention: true),
+        .init(group: 0, title: nil, branch: "main", worktree: nil, account: "claude-work", status: .idle),
         .init(group: 0, title: "agent needs input", branch: "spike/graphql", worktree: "graphql",
               account: "claude", status: .waiting(.agentInput), attention: true),
-        .init(group: 0, title: nil, branch: "fix/rounding", worktree: nil, account: "claude-alt",
+        .init(group: 0, title: nil, branch: "fix/rounding", worktree: nil, account: "claude-work",
               status: .working, changed: 4, insertions: 33, deletions: 7, context: 28),
-        .init(group: 0, title: nil, branch: "main", worktree: nil, account: "claude-alt", status: .idle, restored: true),
+        .init(group: 0, title: nil, branch: "main", worktree: nil, account: "claude-work", status: .idle, restored: true),
         .init(group: 0, title: "release 4.2", branch: "release/4.2", worktree: "release-4-2",
-              account: "claude-alt", status: .idle, changed: 22, insertions: 901, deletions: 455),
+              account: "claude-work", status: .idle, changed: 22, insertions: 901, deletions: 455),
 
-        // Core Invest — Azure DevOps origin, so never a PR badge.
-        .init(group: 1, title: nil, branch: "develop", worktree: nil, account: "claude-alt",
+        // Acme Ledger — Azure DevOps origin, so never a PR badge.
+        .init(group: 1, title: nil, branch: "develop", worktree: nil, account: "claude-work",
               status: .working, ports: [5000], changed: 9, insertions: 210, deletions: 64, context: 55),
         .init(group: 1, title: "migrate the reporting module off the legacy scheduler and onto hangfire",
-              branch: "feat/hangfire", worktree: "hangfire", account: "claude-alt",
+              branch: "feat/hangfire", worktree: "hangfire", account: "claude-work",
               status: .waiting(.doneUnattended), attention: true, changed: 15, insertions: 640, deletions: 288),
-        .init(group: 1, title: nil, branch: "develop", worktree: nil, account: "claude-alt", status: .idle),
-        .init(group: 1, title: nil, branch: "fix/nullref", worktree: "nullref", account: "claude-alt",
+        .init(group: 1, title: nil, branch: "develop", worktree: nil, account: "claude-work", status: .idle),
+        .init(group: 1, title: nil, branch: "fix/nullref", worktree: "nullref", account: "claude-work",
               status: .working, changed: 1, insertions: 4, deletions: 1),
         .init(group: 1, title: "db migration", branch: "feat/migrations", worktree: "migrations",
-              account: "claude-alt", status: .idle, changed: 6, insertions: 120, deletions: 30),
+              account: "claude-work", status: .idle, changed: 6, insertions: 120, deletions: 30),
         .init(group: 1, title: nil, branch: "develop", worktree: nil, account: "claude", status: .idle, restored: true),
-        .init(group: 1, title: nil, branch: "spike/perf", worktree: "perf", account: "claude-alt",
+        .init(group: 1, title: nil, branch: "spike/perf", worktree: "perf", account: "claude-work",
               status: .working, ports: [5001, 5432], changed: 3, insertions: 77, deletions: 12, context: 88),
         .init(group: 1, title: "permission: write outside repo", branch: "develop", worktree: nil,
-              account: "claude-alt", status: .waiting(.permission), attention: true),
-        .init(group: 1, title: nil, branch: "chore/ci", worktree: "ci", account: "claude-alt", status: .idle),
-        .init(group: 1, title: nil, branch: "develop", worktree: nil, account: "claude-alt", status: .idle, restored: true),
+              account: "claude-work", status: .waiting(.permission), attention: true),
+        .init(group: 1, title: nil, branch: "chore/ci", worktree: "ci", account: "claude-work", status: .idle),
+        .init(group: 1, title: nil, branch: "develop", worktree: nil, account: "claude-work", status: .idle, restored: true),
 
         // Scheduled — a bucket with no repo; short-lived jobs.
         .init(group: 2, title: "nightly dependency audit", branch: "main", worktree: nil,
@@ -112,10 +112,10 @@ public enum Fixture {
               status: .waiting(.doneUnattended), attention: true),
         .init(group: 2, title: "docs sweep", branch: "main", worktree: nil, account: "claude", status: .idle, restored: true),
         .init(group: 2, title: "link checker", branch: "main", worktree: nil, account: "claude", status: .idle),
-        .init(group: 2, title: "release notes draft", branch: "main", worktree: nil, account: "claude-alt",
+        .init(group: 2, title: "release notes draft", branch: "main", worktree: nil, account: "claude-work",
               status: .idle, restored: true),
 
-        // Aira
+        // Toolbox
         .init(group: 3, title: nil, branch: "main", worktree: nil, account: "claude", status: .working,
               ports: [8080], changed: 5, insertions: 88, deletions: 19, context: 34),
         .init(group: 3, title: "onboarding flow", branch: "feat/onboarding", worktree: "onboarding",
@@ -126,15 +126,15 @@ public enum Fixture {
         .init(group: 3, title: "prompt tuning for the classifier that keeps mislabelling refunds",
               branch: "spike/classifier", worktree: "classifier", account: "claude", status: .working,
               context: 91),
-        .init(group: 3, title: nil, branch: "main", worktree: nil, account: "claude-alt", status: .idle),
+        .init(group: 3, title: nil, branch: "main", worktree: nil, account: "claude-work", status: .idle),
         .init(group: 3, title: nil, branch: "chore/lint", worktree: nil, account: "claude", status: .idle),
 
-        // Workamo — collapsed group.
+        // Playground — collapsed group.
         .init(group: 4, title: nil, branch: "main", worktree: nil, account: "claude", status: .idle),
         .init(group: 4, title: "scheduling bug", branch: "fix/shifts", worktree: "shifts",
               account: "claude", status: .working, changed: 3, insertions: 41, deletions: 11),
         .init(group: 4, title: nil, branch: "main", worktree: nil, account: "claude", status: .idle, restored: true),
-        .init(group: 4, title: nil, branch: "feat/payroll", worktree: "payroll", account: "claude-alt",
+        .init(group: 4, title: nil, branch: "feat/payroll", worktree: "payroll", account: "claude-work",
               status: .waiting(.agentInput), attention: true),
         .init(group: 4, title: nil, branch: "main", worktree: nil, account: "claude", status: .idle),
     ]
@@ -175,8 +175,8 @@ public enum Fixture {
             fiveHour: UsageWindow(usedPercentage: 5, resetsAt: now.addingTimeInterval(2 * 3600)),
             sevenDay: UsageWindow(usedPercentage: 18, resetsAt: now.addingTimeInterval(4 * 86_400 + 12 * 3600))
         )
-        state.usage["claude-alt"] = UsageSnapshot(
-            accountKey: "claude-alt",
+        state.usage["claude-work"] = UsageSnapshot(
+            accountKey: "claude-work",
             updatedAt: now,
             label: "Claude (alt)",
             plan: "Team 5x",
@@ -195,7 +195,7 @@ public enum Fixture {
         state.presets = [
             Preset(
                 id: uuid(2001), name: "Worktree from ticket", command: "claude -w",
-                cwdMode: .worktree(name: nil), accountKey: "claude-alt"),
+                cwdMode: .worktree(name: nil), accountKey: "claude-work"),
             Preset(
                 id: uuid(2002), name: "Repo root", command: "claude", cwdMode: .repoRoot),
             Preset(

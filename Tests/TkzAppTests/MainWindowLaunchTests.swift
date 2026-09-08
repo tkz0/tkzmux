@@ -150,13 +150,13 @@ struct MainWindowLaunchTests {
     func accountConfigDirectory() {
         var state = AppState()
         let group = state.addGroup(name: "Scratch", repoRoot: NSTemporaryDirectory())
-        state.setAccount(Account(key: "claude-alt", configDir: "/tmp/alt", label: "Alt"))
+        state.setAccount(Account(key: "claude-work", configDir: "/tmp/alt", label: "Alt"))
         state.setAccount(Account(key: Account.defaultKey, configDir: "/tmp/primary", label: "Main"))
         let harness = MainWindowControllerTests.makeHarness(state)
         defer { harness.tearDown() }
 
         harness.controller.launch(
-            Self.launch(cwd: NSTemporaryDirectory(), accountKey: "claude-alt", group: group.id))
+            Self.launch(cwd: NSTemporaryDirectory(), accountKey: "claude-work", group: group.id))
         harness.controller.launch(
             Self.launch(cwd: NSTemporaryDirectory(), accountKey: Account.defaultKey, group: group.id))
         harness.controller.launch(
@@ -204,20 +204,20 @@ struct MainWindowLaunchTests {
         harness.store.flush()
         let id = try #require(harness.host.opened.first?.id)
 
-        harness.host.emit(.pwd("file://localhost/Users/someone/dev/aira%20two"), for: id)
+        harness.host.emit(.pwd("file://localhost/Users/someone/dev/toolbox%20two"), for: id)
         let deadline = ContinuousClock.now + .seconds(5)
         while ContinuousClock.now < deadline {
             harness.store.flush()
             if harness.store.state.sessions[id]?.live?.shellCwd != nil { break }
             try await Task.sleep(for: .milliseconds(10))
         }
-        #expect(harness.store.state.sessions[id]?.live?.shellCwd == "/Users/someone/dev/aira two")
-        #expect(harness.store.state.sessions[id]?.displayTitle == "aira two")
+        #expect(harness.store.state.sessions[id]?.live?.shellCwd == "/Users/someone/dev/toolbox two")
+        #expect(harness.store.state.sessions[id]?.displayTitle == "toolbox two")
 
         harness.host.emit(.pwd("file://elsewhere.example/nope"), for: id)
         try await Task.sleep(for: .milliseconds(50))
         harness.store.flush()
-        #expect(harness.store.state.sessions[id]?.displayTitle == "aira two", "another host's path is not ours")
+        #expect(harness.store.state.sessions[id]?.displayTitle == "toolbox two", "another host's path is not ours")
     }
 
     @Test("⌘W with nothing selected does nothing")

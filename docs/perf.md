@@ -587,7 +587,7 @@ failure mode.
 
 ## 10. On-screen acceptance run (2026-09-08, real GUI login)
 
-The run §9 describes, executed by Thomas at a real display — the one thing every earlier
+The run §9 describes, executed by hand at a real display — the one thing every earlier
 measurement could not do, because an automated session's window never becomes key and therefore
 never presents a frame.
 
@@ -674,4 +674,4 @@ recorded as `accountKey`.
 
 | Date | Sessions | Launches logged | Wrong-account launches | Lost rows | Notes |
 |---|---:|---:|---:|---:|---|
-| 2026-09-08 | 10 (restored) | 1 (`reopen` of the selected row, headless autoquit) | 0 | 0 | Smoke run only; housekeeping removed 14 orphaned `.ghsnap` files from earlier harness runs. The day-of-use row is Thomas's to fill in. |
+| 2026-09-08 | 10 (restored) | 1 (`reopen` of the selected row, headless autoquit) | 0 | 0 | Smoke run only; housekeeping removed 14 orphaned `.ghsnap` files from earlier harness runs. The day-of-use row is still to be filled in by hand. |

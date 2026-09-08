@@ -516,7 +516,7 @@ public final class SidebarViewController: NSViewController {
 
         // A group whose rows came or went shows a different count in its header, but the group
         // *value* did not change, so `change.groups` never names it. Reload those headers here
-        // (GUI pass 2026-09-08: "COREINVEST 0" over a freshly launched row).
+        // (GUI pass 2026-09-08: "ACME LEDGER 0" over a freshly launched row).
         var countChanged = IndexSet()
         for groupID in newGroups where (shadowSessions[groupID] ?? []).count != (newSessions[groupID] ?? []).count {
             let row = row(forGroup: groupID)

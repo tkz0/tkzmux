@@ -330,7 +330,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         return item
     }
 
-    /// `New worktree  claude -w  ~/dev/frontinvest` — the command hint in the mono face, the target
+    /// `New worktree  claude -w  ~/dev/northwind` — the command hint in the mono face, the target
     /// directory dim behind it.
     private func attributed(title: String, hint: String?, detail: String?, enabled: Bool) -> NSAttributedString {
         let out = NSMutableAttributedString(
