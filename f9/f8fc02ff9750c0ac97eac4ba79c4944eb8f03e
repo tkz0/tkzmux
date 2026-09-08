@@ -1,0 +1,19 @@
+Sources/TkzTerminalView/TerminalMetalView.swift
+  s_36289bebec70b4::t_1305e0289853ef 312-315,356-357
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "f9f8fc02ff9750c0ac97eac4ba79c4944eb8f03e",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
