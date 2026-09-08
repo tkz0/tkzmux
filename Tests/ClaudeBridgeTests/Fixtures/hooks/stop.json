@@ -1,0 +1,8 @@
+{
+  "session_id": "11111111-2222-3333-4444-555555555555",
+  "hook_event_name": "Stop",
+  "cwd": "/Users/thomas/dev/tkzmux",
+  "transcript_path": "/Users/thomas/.claude/projects/tkzmux/transcript.jsonl",
+  "permission_mode": "default",
+  "last_assistant_message": "All done, the build is green."
+}
