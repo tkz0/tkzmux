@@ -1,0 +1,21 @@
+# tkzmux ZDOTDIR wrapper (installed as ~/Library/Application Support/tkzmux/zsh/.zshenv).
+#
+# zsh reads /etc/zshenv, then $ZDOTDIR/.zshenv, unconditionally, before .zprofile/.zshrc/.zlogin.
+# We point ZDOTDIR here so libghostty-vt's login zsh sources *our* files first, then borrow the
+# user's own ZDOTDIR just long enough to source their counterpart, then restore ours -- so the
+# next wrapper in the chain runs the same way. See docs/design.md -> Claude integration.
+#
+# Guarded: with no TKZMUX_ZDOTDIR/TKZMUX_USER_ZDOTDIR (a plain zsh outside a tkzmux session that
+# happens to have this ZDOTDIR set some other way) this file does nothing.
+if [[ -n "${TKZMUX_ZDOTDIR:-}" && -n "${TKZMUX_USER_ZDOTDIR:-}" ]]; then
+    if [[ -r "$TKZMUX_USER_ZDOTDIR/.zshenv" ]]; then
+        ZDOTDIR="$TKZMUX_USER_ZDOTDIR"
+        source "$TKZMUX_USER_ZDOTDIR/.zshenv"
+        # The user's file may itself relocate ZDOTDIR (e.g. ~/.config/zsh); follow it so later
+        # wrappers source the right counterpart too.
+        if [[ "$ZDOTDIR" != "$TKZMUX_USER_ZDOTDIR" ]]; then
+            export TKZMUX_USER_ZDOTDIR="$ZDOTDIR"
+        fi
+    fi
+    export ZDOTDIR="$TKZMUX_ZDOTDIR"
+fi

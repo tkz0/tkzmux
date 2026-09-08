@@ -22,12 +22,17 @@ CONTENTS="$APP/Contents"
 
 echo "==> swift build -c release"
 swift build -c release --product tkzmux
+swift build -c release --product tkzmux-hook
 BIN="$(swift build -c release --product tkzmux --show-bin-path)"
 
 echo "==> assembling $APP"
 rm -rf "$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BIN/tkzmux" "$CONTENTS/MacOS/tkzmux"
+# tkzmux-hook (TKZ-23): ShimInstaller.standardHookBinary() looks for it next to `tkzmux` in both
+# the .app and `swift run`, and ShimInstaller copies it on into ~/Library/Application
+# Support/tkzmux/bin at install time -- this is only the source copy.
+cp "$BIN/tkzmux-hook" "$CONTENTS/MacOS/tkzmux-hook"
 cp Resources/Info.plist "$CONTENTS/Info.plist"
 printf 'APPL????' > "$CONTENTS/PkgInfo"
 
@@ -89,6 +94,7 @@ fail=0
 check() { if eval "$2" >/dev/null 2>&1; then echo "    ok   $1"; else echo "    FAIL $1"; fail=1; fi; }
 check "codesign --verify --deep --strict"   "codesign --verify --deep --strict '$APP'"
 check "Contents/MacOS/tkzmux is executable" "[[ -x '$CONTENTS/MacOS/tkzmux' ]]"
+check "Contents/MacOS/tkzmux-hook is executable" "[[ -x '$CONTENTS/MacOS/tkzmux-hook' ]]"
 check "ATSApplicationFontsPath = Fonts" \
   "[[ \"\$(/usr/libexec/PlistBuddy -c 'Print :ATSApplicationFontsPath' '$CONTENTS/Info.plist')\" == Fonts ]]"
 check "4 dereferenced .ttf + OFL.txt in Resources/Fonts" \

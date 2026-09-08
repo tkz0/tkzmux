@@ -76,7 +76,8 @@ let package = Package(
         .target(
             name: "ClaudeBridge",
             dependencies: ["TkzCore"],
-            path: "Sources/ClaudeBridge"
+            path: "Sources/ClaudeBridge",
+            resources: [.copy("Resources/shim"), .copy("Resources/zsh")]
         ),
         .target(
             name: "GitStatus",
@@ -115,7 +116,7 @@ let package = Package(
         .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "GhosttyVt"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
         .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
         .testTarget(name: "TkzCoreTests", dependencies: ["TkzCore"], path: "Tests/TkzCoreTests"),
-        .testTarget(name: "ClaudeBridgeTests", dependencies: ["ClaudeBridge"], path: "Tests/ClaudeBridgeTests"),
+        .testTarget(name: "ClaudeBridgeTests", dependencies: ["ClaudeBridge"], path: "Tests/ClaudeBridgeTests", resources: [.copy("Fixtures")]),
         .testTarget(name: "GitStatusTests", dependencies: ["GitStatus"], path: "Tests/GitStatusTests"),
         .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzTerminalCore", "GhosttyVt"], path: "Tests/PersistenceTests"),
         .testTarget(name: "TkzAppTests", dependencies: ["TkzApp"], path: "Tests/TkzAppTests"),

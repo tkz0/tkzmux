@@ -1,0 +1,19 @@
+# tkzmux ZDOTDIR wrapper (installed as .zlogin). Read last, for a login shell. Restores the
+# user's own ZDOTDIR (or unsets it, if they never had one) so anything spawned from inside a
+# tkzmux session -- `zsh` run by hand, a nested shell -- behaves like a normal shell rather than
+# picking up tkzmux's rc files. The TKZMUX_* variables stay exported: the claude shim needs them.
+if [[ -n "${TKZMUX_ZDOTDIR:-}" && -n "${TKZMUX_USER_ZDOTDIR:-}" ]]; then
+    if [[ -r "$TKZMUX_USER_ZDOTDIR/.zlogin" ]]; then
+        ZDOTDIR="$TKZMUX_USER_ZDOTDIR"
+        source "$TKZMUX_USER_ZDOTDIR/.zlogin"
+        if [[ "$ZDOTDIR" != "$TKZMUX_USER_ZDOTDIR" ]]; then
+            export TKZMUX_USER_ZDOTDIR="$ZDOTDIR"
+        fi
+    fi
+
+    if [[ "$TKZMUX_USER_ZDOTDIR" == "$HOME" ]]; then
+        unset ZDOTDIR
+    else
+        export ZDOTDIR="$TKZMUX_USER_ZDOTDIR"
+    fi
+fi

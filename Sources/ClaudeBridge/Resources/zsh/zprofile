@@ -1,0 +1,12 @@
+# tkzmux ZDOTDIR wrapper (installed as .zprofile). Read for a login shell, after /etc/zprofile
+# (which runs path_helper) and before /etc/zshrc. See .zshenv for the mechanism; same shape here.
+if [[ -n "${TKZMUX_ZDOTDIR:-}" && -n "${TKZMUX_USER_ZDOTDIR:-}" ]]; then
+    if [[ -r "$TKZMUX_USER_ZDOTDIR/.zprofile" ]]; then
+        ZDOTDIR="$TKZMUX_USER_ZDOTDIR"
+        source "$TKZMUX_USER_ZDOTDIR/.zprofile"
+        if [[ "$ZDOTDIR" != "$TKZMUX_USER_ZDOTDIR" ]]; then
+            export TKZMUX_USER_ZDOTDIR="$ZDOTDIR"
+        fi
+    fi
+    export ZDOTDIR="$TKZMUX_ZDOTDIR"
+fi

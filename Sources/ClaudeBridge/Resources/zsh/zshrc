@@ -1,0 +1,27 @@
+# tkzmux ZDOTDIR wrapper (installed as .zshrc). Read for an interactive shell, after /etc/zshrc
+# (which sets HISTFILE=${ZDOTDIR:-$HOME}/.zsh_history -- into *our* dir, since ZDOTDIR is ours at
+# that point) and before /etc/zlogin. See .zshenv for the mechanism.
+#
+# This file also puts $TKZMUX_BIN first on PATH -- deliberately last in the whole chain, so it
+# wins over anything the user's own rc files (brew shellenv, ~/.local/bin/env, etc.) put there.
+if [[ -n "${TKZMUX_ZDOTDIR:-}" && -n "${TKZMUX_USER_ZDOTDIR:-}" ]]; then
+    if [[ -r "$TKZMUX_USER_ZDOTDIR/.zshrc" ]]; then
+        ZDOTDIR="$TKZMUX_USER_ZDOTDIR"
+        source "$TKZMUX_USER_ZDOTDIR/.zshrc"
+        if [[ "$ZDOTDIR" != "$TKZMUX_USER_ZDOTDIR" ]]; then
+            export TKZMUX_USER_ZDOTDIR="$ZDOTDIR"
+        fi
+    fi
+    export ZDOTDIR="$TKZMUX_ZDOTDIR"
+
+    # macOS's /etc/zshrc pointed HISTFILE into our ZDOTDIR before the user's rc ran. If the user's
+    # file didn't set its own HISTFILE, redirect it back to their history so tkzmux shells share
+    # it; if they set one themselves, leave it alone.
+    if [[ "${HISTFILE:-}" == "$TKZMUX_ZDOTDIR/.zsh_history" ]]; then
+        export HISTFILE="$TKZMUX_USER_ZDOTDIR/.zsh_history"
+    fi
+
+    # $TKZMUX_BIN first on PATH, exactly once.
+    path=("$TKZMUX_BIN" ${path:#$TKZMUX_BIN})
+    export PATH
+fi
