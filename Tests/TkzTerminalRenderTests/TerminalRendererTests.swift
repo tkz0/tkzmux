@@ -317,6 +317,46 @@ struct TerminalRendererIdleTests {
         #expect(fixture.renderer.stats.instanceBytesWritten == 0)
     }
 
+    /// Regression: reported from real use — the window would not resize while dragging, only on
+    /// mouse-up. `presentsWithTransaction` is a promise to Core Animation that the transaction will
+    /// be completed by an explicit `present()`; the idle guarantee was breaking that promise on
+    /// every layout pass where the size had not changed, so the transaction never completed and the
+    /// resize stalled. While the flag is set, every frame must be encoded and presented.
+    @Test("presentsWithTransaction suspends the idle guarantee, because a skipped frame stalls the resize")
+    func transactionalPresentNeverSkips() throws {
+        guard let fixture = try RendererFixture() else { return }
+        let layer = CAMetalLayer()
+        layer.device = fixture.device
+        layer.pixelFormat = .bgra8Unorm
+        layer.framebufferOnly = false
+        let size = fixture.renderer.drawableSize(columns: Int(GoldenScreen.columns),
+                                                 rows: Int(GoldenScreen.rows))
+        layer.drawableSize = CGSize(width: size.width, height: size.height)
+
+        // Draw once so the surface is clean, exactly as it is between two layout passes in a drag.
+        let first = try fixture.renderer.render(surface: fixture.surface, layer: layer)
+        first.commandBuffer?.waitUntilCompleted()
+        #expect(first.didEncode)
+        #expect(!fixture.surface.needsDisplay)
+
+        // Off: a clean surface still skips, so the idle guarantee is intact where it matters.
+        fixture.renderer.resetStats()
+        let idle = try fixture.renderer.render(surface: fixture.surface, layer: layer)
+        #expect(!idle.didEncode)
+        #expect(fixture.renderer.stats.drawableRequests == 0)
+
+        // On: the same clean surface must still produce a presented frame.
+        layer.presentsWithTransaction = true
+        defer { layer.presentsWithTransaction = false }
+        fixture.renderer.resetStats()
+        let forced = try fixture.renderer.render(surface: fixture.surface, layer: layer)
+        forced.commandBuffer?.waitUntilCompleted()
+        #expect(forced.didEncode, "a clean surface must still be drawn while presentsWithTransaction is set")
+        #expect(forced.commandBuffer?.error == nil)
+        #expect(fixture.renderer.stats.drawablesAcquired == 1)
+        #expect(fixture.renderer.stats.framesSkipped == 0)
+    }
+
     @Test("a detached surface renders nothing and touches no buffer")
     func detachedSurfaceIsSkipped() throws {
         guard let fixture = try RendererFixture() else { return }

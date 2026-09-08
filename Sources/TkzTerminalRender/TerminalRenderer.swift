@@ -222,6 +222,7 @@ public final class TerminalRenderer {
             width: texture.width,
             height: texture.height,
             presentViaCommandBuffer: true,
+            forceEncode: false,
             acquire: { (texture, nil) })
     }
 
@@ -247,6 +248,12 @@ public final class TerminalRenderer {
             width: Int(size.width),
             height: Int(size.height),
             presentViaCommandBuffer: !synchronous,
+            // `presentsWithTransaction` is a promise to Core Animation that this transaction will
+            // be completed by an explicit `present()`. Skipping the frame breaks that promise: the
+            // transaction never completes, and a live resize visibly stalls until the flag goes
+            // back off on mouse-up. So while it is set, the idle guarantee is suspended and every
+            // frame is encoded. It is only ever set during a live resize, so idle cost is unchanged.
+            forceEncode: synchronous,
             acquire: { [weak self] in
                 guard let drawable = layer.nextDrawable() else { return (nil, nil) }
                 self?.stats.drawablesAcquired += 1
@@ -281,6 +288,7 @@ public final class TerminalRenderer {
         width: Int,
         height: Int,
         presentViaCommandBuffer: Bool,
+        forceEncode: Bool,
         acquire: () -> (MTLTexture?, CAMetalDrawable?)
     ) throws -> RenderOutcome {
         // ---- The idle guarantee. Everything below this point is skipped when nothing changed. ---
@@ -292,7 +300,7 @@ public final class TerminalRenderer {
                                  glyphCount: 0, rectCount: 0)
         }
         let update = try frameBuilder.update(surface)
-        guard surface.needsDisplay, width > 0, height > 0 else {
+        guard surface.needsDisplay || forceEncode, width > 0, height > 0 else {
             stats.framesSkipped += 1
             return RenderOutcome(didEncode: false, commandBuffer: nil, update: update,
                                  glyphCount: surface.glyphCount, rectCount: surface.rectCount)
@@ -316,10 +324,20 @@ public final class TerminalRenderer {
         let belowBuffer = upload(rectsBelow, into: &slot.rectsBelow)
         let aboveBuffer = upload(rectsAbove, into: &slot.rectsAbove)
 
+        // The command buffer is created *before* the drawable is acquired. A drawable that is
+        // acquired and never presented is only returned to the layer's pool when it deallocates,
+        // and with `maximumDrawableCount = 2` a couple of those make `nextDrawable()` block for
+        // about a second each — which looks exactly like a frozen window.
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            inflight.signal()
+            stats.framesSkipped += 1
+            return RenderOutcome(didEncode: false, commandBuffer: nil, update: update,
+                                 glyphCount: glyphs.count,
+                                 rectCount: rectsBelow.count + rectsAbove.count)
+        }
         stats.drawableRequests += 1
         let (target, drawable) = acquire()
-        guard let target,
-              let commandBuffer = commandQueue.makeCommandBuffer() else {
+        guard let target else {
             inflight.signal()
             stats.framesSkipped += 1
             return RenderOutcome(didEncode: false, commandBuffer: nil, update: update,

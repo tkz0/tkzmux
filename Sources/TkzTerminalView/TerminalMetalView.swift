@@ -296,7 +296,14 @@ public final class TerminalMetalView: NSView {
         if inLiveResize {
             // Live resize must be synchronous: the frame has to reach the screen inside the same
             // Core Animation transaction that resized the layer, or the window tears.
+            //
+            // AppKit calls this many times per drag, including with a size that has not changed, so
+            // `updateDrawableSize` will not always mark the surface dirty. Under
+            // `presentsWithTransaction` a skipped frame presents nothing, the transaction never
+            // completes, and the whole window stops resizing until mouse-up. Mark it explicitly:
+            // while dragging, every layout pass owes Core Animation a presented frame.
             applyPendingGridResize()
+            surface.markNeedsDisplay()
             renderNow(transactional: true)
         } else {
             frameDriver.requestFrame()
