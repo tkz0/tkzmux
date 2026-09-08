@@ -1,0 +1,46 @@
+Sources/TkzCore/AppStore.swift
+  s_36289bebec70b4::t_ecd226bf6090b9 1-25,27-41,46-51,54-59,61-66,68-75,77-124,130-186,191-250
+  s_36289bebec70b4::t_056b608032116d 26,42-45,52-53,60,67,76,125-129,187-190
+Tests/TkzCoreTests/ModelsTests.swift
+  s_36289bebec70b4::t_02b5929104c6cd 1-90,92-155,167-264
+  s_36289bebec70b4::t_167eab68984d47 91,156-166
+Sources/TkzCore/Reducers.swift
+  s_36289bebec70b4::t_ca1ed974df6400 1-327
+Sources/TkzCore/AppState.swift
+  s_36289bebec70b4::t_dd8a398279f2ce 1-100
+Sources/TkzCore/FixtureState.swift
+  s_36289bebec70b4::t_7599c5220c7f53 1-26,28-308
+  s_36289bebec70b4::t_155070ae1f50c2 27
+Tests/TkzCoreTests/AppStoreTests.swift
+  s_36289bebec70b4::t_d794e488dd43f1 177,194,215,228,254
+  s_36289bebec70b4::t_5329b284f1be5d 1-19,22-23,25-32,35-40,42-47,50-51,53-58,61-62,64-68,70-74,77-78,80-83,86-87,89-94,97-98,100-102,104-106,109-110,112-119,121-153,156-168,171-176,178-189,192-193,195-205,208-214,216-223,226-227,229-253,255-269,271,282
+  s_36289bebec70b4::t_06a4ad9f618877 20-21,24,33-34,41,48-49,52,59-60,63,69,75-76,79,84-85,88,95-96,99,103,107-108,111,120,154-155,169-170,190-191,206-207,224-225,270,272-281
+Sources/TkzCore/Models.swift
+  s_36289bebec70b4::t_0b82283e8b9aeb 1-79,106-346,349-361,363-375,377-410,419-498,500-502,505-550,557-579,581-644,648,650-753,769-859,861-1016
+  s_36289bebec70b4::t_3c7c00ab39b7f0 80-105
+  s_36289bebec70b4::t_95e725e9c0028f 499,503-504,580,645-647,649,860
+  s_36289bebec70b4::t_92620ec134aa12 754-768
+  s_36289bebec70b4::t_3d15ba3fc73b92 347-348,362,376,411-418,551-556
+Tests/TkzCoreTests/ReducersTests.swift
+  s_36289bebec70b4::t_0a14aa78de410a 1-314
+Tests/TkzCoreTests/SourceHygieneTests.swift
+  s_36289bebec70b4::t_23397ec09710bb 1-64
+docs/design.md
+  s_36289bebec70b4::t_846b2d83a924d1 144-145,171,225,249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "eb1267667adbb35ca17189a492876d685b280756",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
