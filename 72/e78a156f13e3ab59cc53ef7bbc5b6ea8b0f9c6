@@ -1,0 +1,133 @@
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_c0480202dc3867::t_27c59dbbba8570 219-220,222-223
+Tests/ClaudeBridgeTests/ZshWrapperTests.swift
+  s_c0480202dc3867::t_600f950480def1 207-231,234,236-243
+  s_c0480202dc3867::t_fe77584c92e110 232-233,235
+  s_c0480202dc3867::t_386ef6bfe691ae 178-183,185-202,204-206
+  s_c0480202dc3867::t_77ad65110227c0 184,203
+Sources/TkzApp/TerminalHost.swift
+  s_c0480202dc3867::t_bbad1602f71cb4 323-326
+Tests/TkzAppTests/ClaudeIntegrationTests.swift
+  s_c0480202dc3867::t_be70cba6acb59e 143-151,154-181,183,187-193,195-198
+  s_c0480202dc3867::t_5d44c2b269bc6a 194
+  s_c0480202dc3867::t_77ad65110227c0 182,184-186
+  s_c0480202dc3867::t_edbb9c7bd7481b 152-153
+  s_c0480202dc3867::t_4ed7b0ad096cea 202
+docs/manual-checks.md
+  s_c0480202dc3867::t_56b9eba4ec9c0d 348-352
+  s_c0480202dc3867::t_702902a89f8f26 375-379
+Sources/TkzCore/Models.swift
+  s_c0480202dc3867::t_bbad1602f71cb4 229,246-253,683
+  s_c0480202dc3867::t_2fd47f84cefdab 663-665,668-673,675,678-682
+  s_c0480202dc3867::t_412bd76b3f929a 147-148
+  s_c0480202dc3867::t_39dc74f95210c9 211-214
+  s_c0480202dc3867::t_80206d63653cbd 228,231-245,345-347,366-367,386
+Sources/TkzApp/Sidebar/StatusDotView.swift
+  s_c0480202dc3867::t_b755b905a11472 26,110,113
+Tests/TkzCoreTests/StatusDerivationTests.swift
+  s_c0480202dc3867::t_69dc4752c18cf8 22-23,25,27,30,41
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_c0480202dc3867::t_69dc4752c18cf8 91-92,96-97,99,103-108,110-111,115,117-118,123-124,127-128,131-137,139-141,146,154,159,161
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_c0480202dc3867::t_80206d63653cbd 53
+  s_c0480202dc3867::t_1db1bfad207c2f 88-94,96
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_c0480202dc3867::t_c9925f0e338b78 517-528
+  s_c0480202dc3867::t_db2672aa8a8caf 152-156
+  s_c0480202dc3867::t_bbad1602f71cb4 209-212,767
+  s_c0480202dc3867::t_560c03547d2430 176-177,179-180
+Tests/TkzAppTests/MainMenuTests.swift
+  s_c0480202dc3867::t_4ed7b0ad096cea 65-66,192
+Tests/TkzCoreTests/ModelsTests.swift
+  s_c0480202dc3867::t_69dc4752c18cf8 181
+Sources/TkzApp/SessionLauncher.swift
+  s_c0480202dc3867::t_bbad1602f71cb4 17-18,112,254-255
+  s_c0480202dc3867::t_d2671f16e88e59 309-316,321,328
+Tests/TkzCoreTests/StartupStateTests.swift
+  s_c0480202dc3867::t_69dc4752c18cf8 34
+Sources/TkzApp/ClaudeIntegration.swift
+  s_c0480202dc3867::t_4ce301069c171d 80-89,91-95,109-164
+  s_c0480202dc3867::t_42c11cf4de06dc 314-316
+  s_c0480202dc3867::t_f84b3a1dff18ff 255,258
+  s_c0480202dc3867::t_43d4dba5fe3132 263
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_c0480202dc3867::t_7f332048a1e62f 515,523-524,527-533
+  s_c0480202dc3867::t_3e6c21b2e667de 206-209
+  s_c0480202dc3867::t_d2686269986412 210-212
+  s_c0480202dc3867::t_0f00099a16ca6c 626-627,631,633,635-638
+Tests/PersistenceTests/StateFileTests.swift
+  s_c0480202dc3867::t_69dc4752c18cf8 138-139
+Sources/TkzCore/StatusDerivation.swift
+  s_c0480202dc3867::t_50189289cca1d4 77-79,81
+  s_c0480202dc3867::t_b755b905a11472 9
+docs/design.md
+  s_c0480202dc3867::t_702902a89f8f26 182,263-264
+  s_c0480202dc3867::t_f0a4e6dabe63b9 234
+  s_c0480202dc3867::t_600f950480def1 179
+  s_c0480202dc3867::t_72777fcb03d9ba 259
+  s_c0480202dc3867::t_cf547ad58100c5 85
+  s_c0480202dc3867::t_3809d0d29177c3 181
+Sources/TkzCore/Reducers.swift
+  s_c0480202dc3867::t_80206d63653cbd 142-147,439-446
+  s_c0480202dc3867::t_4443090a8efbc1 134-141
+  s_c0480202dc3867::t_b755b905a11472 163-166
+Tests/TkzTerminalRenderTests/FrameBuilderTests.swift
+  s_c0480202dc3867::t_721bcedb7785a9 158-159,163-181
+  s_c0480202dc3867::t_cf547ad58100c5 160-162
+  s_c0480202dc3867::t_e4779e9aa5e84b 182-207
+Sources/ClaudeBridge/Resources/zsh/zshrc
+  s_c0480202dc3867::t_e87e416386c7ea 27,53-58
+  s_c0480202dc3867::t_600f950480def1 34-36
+  s_c0480202dc3867::t_80206d63653cbd 28-33,37-52
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_c0480202dc3867::t_e823243882053e 149
+  s_c0480202dc3867::t_058107865471ce 162-163,166,169-175
+  s_c0480202dc3867::t_600f950480def1 199-200,203,205,207-215,217-218,220
+  s_c0480202dc3867::t_69dc4752c18cf8 180-181,187,192-196,231,234-235,249,253-254
+Sources/TkzTerminalRender/FrameBuilder.swift
+  s_c0480202dc3867::t_20608b26d07363 112-126
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_c0480202dc3867::t_69dc4752c18cf8 333-334,341,343-344,350
+  s_c0480202dc3867::t_ceb483f373c294 103,112-113,115-127
+  s_c0480202dc3867::t_4ed7b0ad096cea 187-189
+Tests/TkzCoreTests/ReducersTests.swift
+  s_c0480202dc3867::t_69dc4752c18cf8 21,33,123-124,171-186,439,575-577,580-581
+  s_c0480202dc3867::t_93717be262f1b8 187,279-281,286-299
+  s_c0480202dc3867::t_600f950480def1 189-226
+  s_c0480202dc3867::t_0895794efa0d5f 188
+Sources/TkzApp/MainWindowController.swift
+  s_c0480202dc3867::t_80206d63653cbd 1399-1404,1406-1407
+  s_c0480202dc3867::t_bbad1602f71cb4 1180-1181,1184-1189,1191,1194,1202,1205-1206,1225-1226,1394-1396,1398,1419
+  s_c0480202dc3867::t_702902a89f8f26 501-502
+Sources/TkzApp/Sidebar/SummaryStripView.swift
+  s_c0480202dc3867::t_c31c0b22978cbb 75-79,87-88,92,95-96
+  s_c0480202dc3867::t_5c87d846045246 1-3,7,19-20,22-24,26
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_c0480202dc3867::t_bbad1602f71cb4 71-87,114,118-139,172-173,180-185,230-242,256,332-339,341,343,360,362
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_c0480202dc3867::t_69dc4752c18cf8 518,562-611
+  s_c0480202dc3867::t_c9a5384720b425 612
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_c0480202dc3867::t_bbad1602f71cb4 34-35,121,158
+Sources/TkzCore/AppState.swift
+  s_c0480202dc3867::t_176950738535e1 96-98,107
+Sources/TkzCore/FixtureState.swift
+  s_c0480202dc3867::t_702902a89f8f26 207
+  s_c0480202dc3867::t_b755b905a11472 41-42,73,83,98,104,113,116,125,136,243
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "72e78a156f13e3ab59cc53ef7bbc5b6ea8b0f9c6",
+  "prompts": {},
+  "sessions": {
+    "s_c0480202dc3867": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1193585-8ac0-49fb-887f-8b71ac6907f0",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
