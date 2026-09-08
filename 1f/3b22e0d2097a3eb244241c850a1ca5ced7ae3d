@@ -1,0 +1,60 @@
+Tests/ClaudeBridgeTests/AccountDiscoveryTests.swift
+  s_093857b3ed8828::t_58bb2d90d89431 1-36,42-153
+  s_093857b3ed8828::t_7d85b8f96eed4d 37-41
+Sources/ClaudeBridge/UsageReconciler.swift
+  s_093857b3ed8828::t_9033ddc1d8f7c0 1-11,13-117,119-141,177-179,181-183
+  s_093857b3ed8828::t_8409a5969f81a5 142-176,180
+  s_093857b3ed8828::t_05c33be9d62936 118
+  s_093857b3ed8828::t_376fb352536fd7 12
+Tests/ClaudeBridgeTests/UsageReconcilerTests.swift
+  s_093857b3ed8828::t_804bda37a5ecfd 1-306
+Sources/TkzApp/StatusBar/StatusBarModel.swift
+  s_093857b3ed8828::t_a2fea6ccb1ff40 131-157,159-161
+  s_093857b3ed8828::t_3dd2aee3314294 18
+  s_093857b3ed8828::t_0237a8e020db07 69-73
+  s_093857b3ed8828::t_df2977fa3ad657 93-94,109
+  s_093857b3ed8828::t_54e001406e254f 158
+Sources/ClaudeBridge/AccountDiscovery.swift
+  s_093857b3ed8828::t_c97311ce77afdd 1-10,12-126
+  s_093857b3ed8828::t_a34d5b967be380 11
+Tests/ClaudeBridgeTests/UsageReaderTests.swift
+  s_093857b3ed8828::t_eb8aa6141bab8c 1-4,6-29,31-149,151-161,167,170-171
+  s_093857b3ed8828::t_2615d56b06b04a 5
+  s_093857b3ed8828::t_0c592aea39a6b2 162-163,165-166,168-169
+  s_093857b3ed8828::t_7f9003caafdcf1 164
+  s_093857b3ed8828::t_3d623474073369 30,150
+Tests/TkzAppTests/StatusBarViewTests.swift
+  s_093857b3ed8828::t_532657e5a7d841 231-283
+Tests/ClaudeBridgeTests/SessionSidecarReaderTests.swift
+  s_093857b3ed8828::t_ca35f1074e447c 1-127
+Sources/TkzApp/StatusBar/StatusBarView.swift
+  s_093857b3ed8828::t_020ade6e42986f 80-86
+  s_093857b3ed8828::t_fe448fe62d3b9d 116
+  s_093857b3ed8828::t_f9bf531498d04b 98
+Sources/ClaudeBridge/UsageReader.swift
+  s_093857b3ed8828::t_b8980796798996 1-11,13-171,180,190-212,216-219,224-266,268-273,277,286-287
+  s_093857b3ed8828::t_258f66d9017ddf 172-179,181-189
+  s_093857b3ed8828::t_72c9dd6894ed9f 12
+  s_093857b3ed8828::t_02693cbfa42b9f 267,274-276,278-285
+  s_093857b3ed8828::t_98cdb6149d7cfc 213-215
+  s_093857b3ed8828::t_fc19534b5f4ff0 220-223
+Sources/ClaudeBridge/SessionSidecarReader.swift
+  s_093857b3ed8828::t_66c26e63834714 1-6,8-143
+  s_093857b3ed8828::t_31ab529714267d 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "1f3b22e0d2097a3eb244241c850a1ca5ced7ae3d",
+  "prompts": {},
+  "sessions": {
+    "s_093857b3ed8828": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5e7fafd-1256-4bd3-bd40-2906accdec3f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
