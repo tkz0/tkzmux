@@ -1,0 +1,23 @@
+Tests/TkzTerminalViewTests/DisplayLinkPolicyTests.swift
+  s_36289bebec70b4::t_f63a18b499eb43 28-47
+Sources/TkzTerminalView/DisplayLinkDriver.swift
+  s_36289bebec70b4::t_4ffaeecad758cd 59-66
+Sources/TkzTerminalView/TerminalMetalView.swift
+  s_36289bebec70b4::t_4ffaeecad758cd 157-161,306-309,312-314
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "67ed9838925a6acd958d735cc461b7322f1a28ff",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
