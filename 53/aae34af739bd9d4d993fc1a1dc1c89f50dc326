@@ -1,0 +1,36 @@
+Tests/TkzTerminalRenderTests/BoxSpritesTests.swift
+  s_b1fabbdf055770::t_e4d46415ffe891 1-177
+Sources/TkzTerminalRender/GlyphAtlas.swift
+  s_b1fabbdf055770::t_7b48cef462c533 295-296
+  s_b1fabbdf055770::t_e499e4f5c783b0 313-314,316,318
+  s_b1fabbdf055770::t_255ec00423c06a 333-340,342,344
+  s_b1fabbdf055770::t_7fc378740cad76 319
+  s_b1fabbdf055770::t_3e2fbf23258cdf 347,352-369,380
+  s_b1fabbdf055770::t_30bd428511611c 345-346
+Sources/TkzTerminalRender/BoxSprites.swift
+  s_b1fabbdf055770::t_e667632cdf5ead 1-64,70-153,158-256,266,274-279,282-285,288-291,294-297,300-411,414-459
+  s_b1fabbdf055770::t_c3aaac21ffdaa4 65-69
+  s_b1fabbdf055770::t_e3a0cb28459597 257-259
+  s_b1fabbdf055770::t_1988267e3b1644 267-273
+  s_b1fabbdf055770::t_5b40d7e7f8ae46 154-157
+  s_b1fabbdf055770::t_97ef9f0d3be775 260-265,280-281,286-287,292-293,298-299
+  s_b1fabbdf055770::t_09a8a26cfc4048 412-413
+docs/design.md
+  s_b1fabbdf055770::t_33e10e4e48a1c1 87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "53aae34af739bd9d4d993fc1a1dc1c89f50dc326",
+  "prompts": {},
+  "sessions": {
+    "s_b1fabbdf055770": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3585eaf-e58c-47c4-924c-e8285e7d67ed",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
