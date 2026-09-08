@@ -1,0 +1,47 @@
+Sources/TkzTerminalView/TerminalInputController.swift
+  s_36289bebec70b4::t_dbbf35c29ac259 10-12,17-19
+  s_36289bebec70b4::t_8a8d17995996c0 55-64,157
+  s_36289bebec70b4::t_aac4a510fe1898 73,75-80,87-91,122-126,137,156,215,225-226,239,284,302-315,481-489,491-498
+  s_36289bebec70b4::t_97449c15cfb03f 81,85,92,97,101
+  s_36289bebec70b4::t_2f89a205cdd93c 20
+Sources/TkzTerminalView/MouseController.swift
+  s_36289bebec70b4::t_123ff3316176e9 171,320-321
+  s_36289bebec70b4::t_2ed3c1e6897124 1-31,34-170,172-174,178-185,187-193,195-319,322-335,342-535,540-541,543-547,549-552,554-656,661-704,708-752
+  s_36289bebec70b4::t_40ed92a30d622e 336-341,536-539,542,548,553,657-660,705-707
+  s_36289bebec70b4::t_f8c21e0b19ec69 186,194
+  s_36289bebec70b4::t_81551371cf7add 32-33,175-177,753-759
+Tests/TkzTerminalCoreTests/SessionInputSeamTests.swift
+  s_36289bebec70b4::t_6fb646af48c44a 1-75,78-85,88-92,97-98,107,110-155,160-163,169-296
+  s_36289bebec70b4::t_0095fe234cef10 76-77
+  s_36289bebec70b4::t_9c1f6850fe4683 86-87,93-96,99-106,108-109,156-159,164-168
+Sources/TkzTerminalCore/TerminalSession.swift
+  s_36289bebec70b4::t_c1ff38b090d63c 346-351,360-381,386-390
+  s_36289bebec70b4::t_72cd02f4e9487a 838-1043
+  s_36289bebec70b4::t_1fcdbbd142e9d9 782-798,801-802,804-806
+  s_36289bebec70b4::t_16d7429ac2891f 467-478
+  s_36289bebec70b4::t_8a833334a5aa9d 427-441
+Sources/TkzApp/DevWindowController.swift
+  s_36289bebec70b4::t_2a5096f1f1f801 54-55,108-113,115,119-124
+  s_36289bebec70b4::t_1f3725487ced32 8-16,53,56-62,114,116-118,125-142,145-151,157-166,185-189,235-237,328-330
+  s_36289bebec70b4::t_5c9e695f5b6a78 152-156,292-295
+  s_36289bebec70b4::t_71bf5f6b7d8cd6 143-144
+  s_36289bebec70b4::t_66a5831b5d39a5 238
+docs/design.md
+  s_36289bebec70b4::t_a80c228656fbf7 72-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "de13b96cbfff0fec939d2ef7bc5d4a71d33ae226",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
