@@ -37,6 +37,7 @@ docs/design.md
   s_a6b77fdfad3885::t_ef5581392d9412 53,62
   s_a6b77fdfad3885::t_438183186c3d40 61
   s_a6b77fdfad3885::t_9c2347fd4bb17a 59-60
+  s_a6b77fdfad3885::t_48c0d1734c998b 31
 Tests/ClaudeBridgeTests/HookBinaryTests.swift
   s_a6b77fdfad3885::t_c58af1bea80b2e 194,318-319,346
 docs/manual-checks.md
@@ -44,6 +45,8 @@ docs/manual-checks.md
   s_a6b77fdfad3885::t_93c3e2f82ca95a 345,350
   s_a6b77fdfad3885::t_f5f0b987ed1a04 556-559
   s_a6b77fdfad3885::t_0e738fe883ebe9 570-572
+  s_a6b77fdfad3885::t_e46b12da642b76 55
+  s_a6b77fdfad3885::t_6f362f8eb1790a 464,472-473,476,488,506,514,519,521,535,547,549,565,575
 Sources/TkzApp/Sidebar/SidebarViewController.swift
   s_a6b77fdfad3885::t_c58af1bea80b2e 519
 Tests/TkzAppTests/NewSessionMenuTests.swift
