@@ -48,34 +48,6 @@ import TkzTerminalRender
 import TkzTerminalView
 import os
 
-// MARK: - SessionID
-
-/// A session's identity.
-///
-/// **Temporary home.** M2 owns the real `Session` model in `TkzCore`; this is the minimum the
-/// `TerminalHost` protocol needs until then, and moving it is an M2 task. The validation rule is
-/// deliberately `SnapshotStore`'s, because a session id is also a file basename
-/// (`<id>.ghsnap`) and an environment value (`TKZMUX_SESSION_ID`).
-public struct SessionID: Hashable, Sendable, CustomStringConvertible, Comparable {
-    public let rawValue: String
-
-    /// Fails for anything that could not be a `.ghsnap` basename: empty, `.`, `..`, or containing
-    /// `/` or NUL.
-    public init?(_ rawValue: String) {
-        guard SnapshotStore.isValidSessionID(rawValue) else { return nil }
-        self.rawValue = rawValue
-    }
-
-    /// A fresh id. Uppercase UUID, so it is always a legal file basename.
-    public static func generate() -> SessionID {
-        SessionID(UUID().uuidString)!
-    }
-
-    public var description: String { rawValue }
-
-    public static func < (lhs: SessionID, rhs: SessionID) -> Bool { lhs.rawValue < rhs.rawValue }
-}
-
 // MARK: - TerminalHost
 
 /// What the app half may ask of the terminal half. Nothing above this line knows about libghostty,

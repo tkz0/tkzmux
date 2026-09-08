@@ -26,6 +26,7 @@ import Metal
 import Persistence
 import Synchronization
 import Testing
+import TkzCore
 import TkzTerminalCore
 import TkzTerminalRender
 import TkzTerminalView
@@ -88,9 +89,18 @@ private func makeSession(cols: UInt16 = 80, rows: UInt16 = 24) throws -> Termina
 
 @Suite("SessionID")
 struct SessionIDTests {
-    @Test("a session id must be usable as a .ghsnap basename")
+    // M2.1 replaced TerminalHost's temporary SessionID with the real `TkzCore.SessionID`, which is
+    // a UUID wrapper. That is *stricter* than the old rule (any string that could be a `.ghsnap`
+    // basename), so ids like "abc" are now rejected. Nothing is lost: every id ever written was
+    // produced by `generate()`, i.e. an uppercase UUID string, so existing snapshots still parse.
+    @Test("a session id is a UUID, and its rawValue is always a legal .ghsnap basename")
     func validation() {
-        #expect(SessionID("abc") != nil)
+        let uuid = UUID().uuidString
+        #expect(SessionID(uuid) != nil)
+        #expect(SessionID(uuid)?.rawValue == uuid)
+        #expect(SnapshotStore.isValidSessionID(uuid))
+
+        #expect(SessionID("abc") == nil)
         #expect(SessionID("") == nil)
         #expect(SessionID(".") == nil)
         #expect(SessionID("..") == nil)
