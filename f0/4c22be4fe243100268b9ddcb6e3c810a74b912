@@ -1,0 +1,52 @@
+Sources/TkzApp/Sidebar/NewGroupFooterView.swift
+  s_3ece93cb5b29fc::t_ec36ee1bb56227 1-97,100-132
+  s_3ece93cb5b29fc::t_695628607ad091 98-99
+Sources/TkzApp/MainWindowController.swift
+  s_3ece93cb5b29fc::t_7a7515f6fa7ddf 736-742
+  s_3ece93cb5b29fc::t_4bb9dda6576734 550-569,573-587
+  s_3ece93cb5b29fc::t_b7bdf1b99778b9 511-516,518
+  s_3ece93cb5b29fc::t_3836b7ea863d07 97-102
+  s_3ece93cb5b29fc::t_a12a26f740148f 322-323,399,517
+  s_3ece93cb5b29fc::t_6cb9fd8480dd79 446-452
+  s_3ece93cb5b29fc::t_ec9e97270e1d37 570-572
+  s_3ece93cb5b29fc::t_11045ae221ef14 502-505
+  s_3ece93cb5b29fc::t_cfe36a4057220c 402
+  s_3ece93cb5b29fc::t_a67a53ad659728 490-496
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_3ece93cb5b29fc::t_b79c3bfcc21a58 508-530
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_3ece93cb5b29fc::t_4360e16f1ddbe6 177-178
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_3ece93cb5b29fc::t_8f801353d1ae22 141-144,149,160,162-165,167-168
+  s_3ece93cb5b29fc::t_04bd86f1248785 271-273,276
+  s_3ece93cb5b29fc::t_c05f8847c31a4b 296
+  s_3ece93cb5b29fc::t_f67711de73bb36 182-189
+  s_3ece93cb5b29fc::t_dcf2e479b65e2c 206
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_3ece93cb5b29fc::t_9dc05f10eb0843 233,238-242,244-245
+  s_3ece93cb5b29fc::t_1dfdc55d679e80 561-566
+  s_3ece93cb5b29fc::t_e3d11ef0c31a2f 146-149,151
+  s_3ece93cb5b29fc::t_959536abe44be7 208-215
+  s_3ece93cb5b29fc::t_1546cd3246744f 401-428
+  s_3ece93cb5b29fc::t_73335ba05f7035 169-178
+  s_3ece93cb5b29fc::t_8120c4af566f66 152-158
+docs/design.md
+  s_3ece93cb5b29fc::t_4298e0b8ced94a 179
+  s_3ece93cb5b29fc::t_8b9b5d7a9b57e0 177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "f04c22be4fe243100268b9ddcb6e3c810a74b912",
+  "prompts": {},
+  "sessions": {
+    "s_3ece93cb5b29fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc193ddb-afc9-475b-b6a5-6f36410fc646",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
