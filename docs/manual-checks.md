@@ -468,10 +468,15 @@ headless session can do: it needs an Apple Developer account, a keychain, a GitH
 Mac that has never seen the app. The order is a **gate chain** — each step's artefact is the next
 step's input, so do not skip ahead. `docs/release.md` is the runbook; this is the checklist.
 
-**Status 2026-09-08:** `security find-identity -v -p codesigning` reports *0 valid identities* and
-there is no `tkzmux-notary` keychain profile on this machine, so **8a is the blocker for
-everything below it**. The scripts for 8b–8e are written and their guard paths are tested, but the
-signed path has never executed.
+**Status 2026-09-08 (evening):** enrolled, and the certificate half is **done** —
+`security find-identity -v -p codesigning` reports *1 valid identity*,
+`Developer ID Application: … (38GVG7CCC4)`, and **8b is verified**: `make app` with a real
+identity passes all 15 checks, hardened runtime and secure timestamp included. Still blocked at
+**8a step 3**: `notarytool store-credentials` returns *403 — Invalid or inaccessible developer
+team ID for the provided Apple ID*, and App Store Connect says *"Your Apple Account isn't enabled
+for App Store Connect"*. Both are the same cause: enrolment provisions across Apple's services at
+different speeds, and certificate issuance lit up first. Nothing to fix locally — retry after a
+few hours. So 8d onward (notarize, staple, spctl) is still unexecuted.
 
 **8a. Apple Developer prerequisites** (one-off, ~30 min plus Apple's enrolment wait).
 
@@ -480,12 +485,28 @@ signed path has never executed.
    login keychain.
    **Pass**: `security find-identity -v -p codesigning` lists a line containing
    `Developer ID Application: … (TEAMID)`. Copy that full string — it is `SIGN_IDENTITY`.
-3. Create an App Store Connect API key (Issuer ID, Key ID, `.p8`) and store it:
-   `xcrun notarytool store-credentials tkzmux-notary --key … --key-id … --issuer …`
+   **Fail**: `1 identities found` / `0 valid identities found` means the certificate and the
+   private key paired fine but the chain does not reach a root — the *Developer ID Certification
+   Authority (G2)* intermediate is missing. Get it from
+   <https://www.apple.com/certificateauthority/> and import it into the login keychain. (Hit on
+   2026-09-08. The same gap in CI looks different: a `.p12` that imports without error and then
+   signs nothing — which is why `docs/release.md` says to export it *with its chain*.)
+3. Store notarization credentials under the profile name **`tkzmux-notary`** — the Makefile's
+   `NOTARY_PROFILE` default, so `make notarize` then needs no arguments. Either form works:
+   `xcrun notarytool store-credentials tkzmux-notary --key … --key-id … --issuer …` (App Store
+   Connect API key — the one `release.yml` expects, and a team credential rather than a personal
+   one), or `… --apple-id … --team-id … --password …` with an app-specific password from
+   <https://appleid.apple.com>, which needs no App Store Connect access at all.
    **Pass**: `xcrun notarytool history --keychain-profile tkzmux-notary` returns without an error.
    **Fail**: *No Keychain password item found for profile* — the profile was not stored.
+   **Fail**: *403 — Invalid or inaccessible developer team ID for the provided Apple ID*, with a
+   team ID that demonstrably matches the certificate's own `OU`/`UID`. This is **not** a wrong
+   value: it is a freshly enrolled account whose membership has not propagated to the notary
+   service yet. Confirm the Apple ID signed in at developer.apple.com owns that Team ID, then
+   wait — re-running the command changes nothing, the state is server-side. Apple allows up to
+   ~48 h for an enrolment to activate everywhere.
 
-**8b. Signed, hardened build** (TKZ-38). With `SIGN_IDENTITY` from 7a:
+**8b. Signed, hardened build** (TKZ-38). With `SIGN_IDENTITY` from 8a:
 
 ```sh
 make app SIGN_IDENTITY="Developer ID Application: … (TEAMID)"
