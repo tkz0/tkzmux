@@ -1,0 +1,213 @@
+// GroupRowView — the 28 pt sidebar group header (M2.3 / TKZ-19).
+//
+//     ┌────────────────────────────────────────────────────┐
+//     ║ ▾  TKZMUX                                    3  ＋  │   28 pt
+//     └────────────────────────────────────────────────────┘
+//      ↑ 2.5 pt colour edge (CALayer; fully transparent when the group has no colour)
+//
+// The `＋` glyph is a `CATextLayer` (so it appears in a headless bitmap — a subview's backing layer
+// is not in its superview's tree until the hierarchy reaches a window), with a *transparent*
+// `NSButton` sitting on top of it purely for hit-testing, tooltip and cursor. The button's action is
+// a closure wired by the controller in M2.4. Everything drawn is a layer; see `StatusDotView.swift`
+// for the full reason.
+//
+// **Token gap.** The design's group name colour is `#ccd1e8`, which no `Theme` token carries. It is
+// not hardcoded here — a literal would be light-on-light in the `.light` preset. It is derived as
+// `foreground` mixed 38 % toward `foregroundMuted`, which reproduces the 2c value to within one
+// 8-bit unit per channel (#cdd2e7 vs #ccd1e8) and stays correct in every preset. See the
+// DESIGN.MD DELTA in the ticket report proposing a `groupTitle` token.
+
+import AppKit
+import TkzCore
+
+public final class GroupRowView: NSTableCellView {
+    /// Fixed row height. The outline view must return this from `heightOfRowByItem`.
+    public static let rowHeight: Double = SidebarMetrics.groupRowHeight
+
+    private static let chevronX: CGFloat = 11
+    private static let chevronWidth: CGFloat = 10
+    private static let nameLeft: CGFloat = 25
+    private static let rightInset: CGFloat = 8
+    private static let addButtonSize: CGFloat = 18
+    private static let countGap: CGFloat = 8
+    private static let minNameWidth: CGFloat = 24
+
+    // MARK: Fonts
+
+    private let nameFont = Theme.Fonts.ui(Theme.Fonts.ui.caption, weight: .semibold)
+    private let chevronFont = Theme.Fonts.ui(9, weight: .semibold)
+    private let countFont = Theme.Fonts.ui(Theme.Fonts.ui.caption)
+    private let addFont = Theme.Fonts.ui(12)
+
+    // MARK: Layers & subviews
+
+    /// The 2.5 pt colour edge. Always present so layout never shifts; `backgroundColor` is fully
+    /// transparent when the group has no colour.
+    private let edgeLayer = SidebarLayers.fill(cornerRadius: 0)
+    private lazy var chevronLayer = SidebarLayers.text(chevronFont, color: NSColor.clear.cgColor)
+    private lazy var nameLayer = SidebarLayers.text(nameFont, color: NSColor.clear.cgColor)
+    private lazy var countLayer = SidebarLayers.text(countFont, color: NSColor.clear.cgColor, alignment: .right)
+    private lazy var addLayer = SidebarLayers.text(addFont, color: NSColor.clear.cgColor, alignment: .center)
+
+    /// The transparent hit target over the `＋` glyph. Its target/action is this view; the work is
+    /// done by `onAdd`.
+    public let addButton = NSButton(frame: .zero)
+
+    /// Invoked when `＋` is clicked. Wired in M2.4 (new-session menu); `nil` here.
+    public var onAdd: (@MainActor () -> Void)?
+
+    // MARK: Cached layout inputs
+
+    private var model = SidebarGroupRowModel(name: "")
+    private var theme: Theme = .default
+    private var countWidth: CGFloat = 0
+
+    public override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        guard let root = layer else { return }
+        root.addSublayer(edgeLayer)
+        root.addSublayer(chevronLayer)
+        root.addSublayer(nameLayer)
+        root.addSublayer(countLayer)
+        root.addSublayer(addLayer)
+
+        addButton.isBordered = false
+        addButton.isTransparent = true
+        addButton.title = ""
+        addButton.setButtonType(.momentaryChange)
+        addButton.target = self
+        addButton.action = #selector(addClicked)
+        addButton.toolTip = "New session in this group"
+        addSubview(addButton)
+
+        apply()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used; tkzmux builds views in code") }
+
+    public override var isFlipped: Bool { false }
+
+    // MARK: Configuration
+
+    public func configure(_ model: SidebarGroupRowModel, theme: Theme) {
+        self.model = model
+        self.theme = theme
+        apply()
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
+    public override func prepareForReuse() {
+        super.prepareForReuse()
+        onAdd = nil
+        model = SidebarGroupRowModel(name: "")
+        nameLayer.string = nil
+        countLayer.string = nil
+        edgeLayer.backgroundColor = NSColor.clear.cgColor
+    }
+
+    /// Keeps the text layers crisp when the row moves between a retina and a 1x display. The view
+    /// owns its layers, so the controller never has to think about backing scale.
+    public override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        setContentsScale(window?.backingScaleFactor ?? 2)
+    }
+
+    public func setContentsScale(_ scale: CGFloat) {
+        if let layer { SidebarLayers.applyContentsScale(scale, to: layer) }
+    }
+
+    /// The edge layer's colour. `nil`/zero alpha means "this group has no colour"; a test asserts it.
+    public var edgeColor: CGColor? { edgeLayer.backgroundColor }
+
+    @objc private func addClicked() { onAdd?() }
+
+    private func apply() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+
+        // `nil` colour → transparent, never `theme.groupEdgeDefault`: that token is the picker's
+        // default, not a stand-in for an uncoloured group.
+        edgeLayer.backgroundColor = model.color?.cgColor ?? NSColor.clear.cgColor
+
+        chevronLayer.string = model.isCollapsed ? "▸" : "▾"
+        chevronLayer.foregroundColor = theme.foregroundDim.cgColor
+
+        nameLayer.string = model.name.uppercased()
+        nameLayer.foregroundColor = Self.groupTitleColor(theme).cgColor
+
+        let count = "\(model.sessionCount)"
+        countLayer.string = count
+        countLayer.foregroundColor = theme.foregroundDim.cgColor
+        countWidth = SidebarLayers.width(of: count, font: countFont) + 1
+
+        addLayer.string = "＋"
+        addLayer.foregroundColor = theme.foregroundDim.cgColor
+    }
+
+    /// The design's `#ccd1e8` group-name colour, expressed in tokens so all five presets work.
+    static func groupTitleColor(_ theme: Theme) -> RGB {
+        theme.foreground.mixed(with: theme.foregroundMuted, amount: 0.38)
+    }
+
+    // MARK: Test hooks (internal — see SessionRowView)
+
+    var nameTextLayer: CATextLayer { nameLayer }
+    var chevronTextLayer: CATextLayer { chevronLayer }
+    var colourEdgeLayer: CALayer { edgeLayer }
+    var addGlyphLayer: CATextLayer { addLayer }
+
+    // MARK: Layout
+
+    public override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+
+        let w = bounds.width
+        let h = bounds.height
+
+        edgeLayer.frame = CGRect(x: 0, y: 0, width: SidebarMetrics.groupEdgeWidth, height: h)
+
+        let chevronHeight = (chevronFont.ascender - chevronFont.descender).rounded(.up)
+        chevronLayer.frame = CGRect(
+            x: Self.chevronX,
+            y: ((h - chevronHeight) / 2).rounded(),
+            width: Self.chevronWidth,
+            height: chevronHeight
+        )
+
+        let btn = Self.addButtonSize
+        let buttonFrame = NSRect(
+            x: w - Self.rightInset - btn,
+            y: ((h - btn) / 2).rounded(),
+            width: btn,
+            height: btn
+        )
+        addButton.frame = buttonFrame
+        addLayer.frame = SidebarLayers.centredLine(
+            x: buttonFrame.minX, width: btn, in: h, font: addFont)
+
+        let countRight = addButton.frame.minX - 4
+        let countHeight = (countFont.ascender - countFont.descender).rounded(.up)
+        countLayer.frame = CGRect(
+            x: countRight - countWidth,
+            y: ((h - countHeight) / 2).rounded(),
+            width: countWidth,
+            height: countHeight
+        )
+
+        let nameHeight = (nameFont.ascender - nameFont.descender).rounded(.up)
+        nameLayer.frame = CGRect(
+            x: Self.nameLeft,
+            y: ((h - nameHeight) / 2).rounded(),
+            width: max(Self.minNameWidth, countLayer.frame.minX - Self.countGap - Self.nameLeft),
+            height: nameHeight
+        )
+    }
+}
