@@ -143,8 +143,12 @@ struct MainWindowControllerTests {
         #expect(sidebar.canCollapse)
         #expect(sidebar.minimumThickness == 240)
         #expect(sidebar.viewController === harness.controller.sidebar)
-        // The real, laid-out width — not the constant it was asked for.
-        #expect(abs(sidebar.viewController.view.frame.width - 300) < 1)
+        // The real, laid-out **divider position** — not the constant it was asked for, and not the
+        // sidebar view's own width: macOS 26 wraps a sidebar item in a glass container and insets
+        // it 8 pt, so a 300 pt sidebar holds 292 pt of content. The divider is the number the
+        // design names and the only one `setPosition` can set.
+        #expect(abs(harness.controller.sidebarWidthForRestore - 300) < 1)
+        #expect(abs(sidebar.viewController.view.frame.width - 292) < 1)
         #expect(harness.controller.splitViewController.splitViewItems[1].canCollapse == false)
     }
 
@@ -253,7 +257,7 @@ struct MainWindowControllerTests {
         harness.layout()
         #expect(harness.store.state.sidebarVisible)
         #expect(harness.sidebarItem.isCollapsed == false)
-        #expect(abs(harness.sidebarItem.viewController.view.frame.width - 300) < 1)
+        #expect(abs(harness.controller.sidebarWidthForRestore - 300) < 1)
     }
 
     @Test("A store-driven visibility change reaches the split item")
@@ -399,20 +403,52 @@ struct MainWindowControllerTests {
         defer { harness.tearDown() }
 
         #expect(harness.controller.restoredSidebarWidth == 380)
-        #expect(harness.controller.sidebarWidthConstraint?.constant == 380)
+        #expect(harness.controller.sidebarWidthForRestore == 380)
 
-        // The loop that must not oscillate: the constraint drives layout, layout is read back at
-        // quit, and the store drives the constraint on the next launch. Reading the settled width
-        // must therefore change nothing at all — any discrepancy here moves the sidebar a little
-        // on every launch until it hits a limit, which is what an earlier version of this did.
+        // The loop that must not oscillate: the store places the divider, layout is read back, and
+        // the store places it again on the next launch. Reading the settled width must therefore
+        // change nothing at all — any discrepancy moves the sidebar a little on every launch until
+        // it hits a limit, which is what recording the 8 pt-narrower inner view did.
         harness.controller.recordSidebarWidth()
         harness.store.flush()
         #expect(harness.store.state.sidebarWidth == 380)
-        #expect(harness.controller.sidebarWidthConstraint?.constant == 380)
+        #expect(harness.controller.sidebarWidthForRestore == 380)
 
-        // A store-driven change (what a restore from `state.json` is) reaches the constraint.
+        // A store-driven change (what a restore from `state.json` is) reaches the split view.
         harness.mutate { $0.sidebarWidth = 420 }
-        #expect(harness.controller.sidebarWidthConstraint?.constant == 420)
+        #expect(harness.controller.sidebarWidthForRestore == 420)
+    }
+
+    @Test("An unrelated store change never re-places the sidebar divider")
+    func unrelatedChromeChangeLeavesTheDividerAlone() {
+        // The reported bug: drag the sidebar wider, release, and it snaps back. Both
+        // `applySidebarVisible` and `applySidebarWidth` used to re-issue `setPosition` on *every*
+        // `chrome` delivery, so any unrelated mutation — a preset edit, a window move — threw away
+        // the width the user had just dragged to.
+        let harness = Self.makeHarness()
+        defer { harness.tearDown() }
+        let before = harness.controller.splitViewController.appliedWidthCount
+
+        harness.mutate { $0.windowFrame = NSRect(x: 30, y: 40, width: 1100, height: 720) }
+        harness.mutate { _ = $0.addPreset(Preset(name: "p", command: "claude")) }
+        harness.mutate { $0.shortcuts["x"] = "cmd+x" }
+
+        #expect(harness.controller.splitViewController.appliedWidthCount == before)
+    }
+
+    @Test("A width that came from the store is applied exactly once")
+    func storeDrivenWidthIsAppliedOnce() {
+        let harness = Self.makeHarness()
+        defer { harness.tearDown() }
+        let before = harness.controller.splitViewController.appliedWidthCount
+
+        harness.mutate { $0.sidebarWidth = 420 }
+        #expect(harness.controller.sidebarWidthForRestore == 420)
+        #expect(harness.controller.splitViewController.appliedWidthCount == before + 1)
+
+        // Re-delivering the same value must not touch the divider again.
+        harness.mutate { $0.shortcuts["y"] = "cmd+y" }
+        #expect(harness.controller.splitViewController.appliedWidthCount == before + 1)
     }
 
     @Test("A nonsense stored width degrades to the design default")
@@ -422,6 +458,27 @@ struct MainWindowControllerTests {
         let harness = Self.makeHarness(state)
         defer { harness.tearDown() }
         #expect(harness.controller.restoredSidebarWidth == MainWindowController.sidebarWidth)
+        #expect(harness.controller.sidebarWidthForRestore == MainWindowController.sidebarWidth)
+    }
+
+    @Test("A dragged width survives layout — the seeding constraint must not re-assert itself")
+    func draggedWidthSurvivesLayout() {
+        // The reported bug, as close as a headless test gets to a mouse: place the divider the way
+        // a drag does and lay out again. With the width constraint still active this read 300 no
+        // matter what was asked for, which on screen is "drag it, let go, it snaps back".
+        let harness = Self.makeHarness()
+        defer { harness.tearDown() }
+
+        harness.controller.splitViewController.splitView.setPosition(380, ofDividerAt: 0)
+        harness.layout()
+        #expect(harness.controller.sidebarWidthForRestore == 380)
+        harness.layout()
+        #expect(harness.controller.sidebarWidthForRestore == 380)
+
+        // …and the settled value is what gets recorded, so the next launch comes back to it.
+        harness.controller.recordSidebarWidth()
+        harness.store.flush()
+        #expect(harness.store.state.sidebarWidth == 380)
     }
 
     @Test("A notice takes over the status strip and then gives it back")

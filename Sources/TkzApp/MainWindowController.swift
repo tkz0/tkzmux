@@ -41,6 +41,9 @@ import os
 /// store-driven change so the report does not bounce back.
 final class MainSplitViewController: NSSplitViewController {
     var onSidebarCollapseChanged: (@MainActor (Bool) -> Void)?
+    /// The sidebar's geometry moved. Carries no width on purpose: this fires many times during a
+    /// drag and during assembly, always mid-layout. The listener waits for the movement to stop.
+    var onSidebarGeometryChanged: (@MainActor () -> Void)?
     var isApplyingStoreState = false
 
     private var lastReportedCollapse: Bool?
@@ -53,23 +56,32 @@ final class MainSplitViewController: NSSplitViewController {
             lastReportedCollapse = collapsed
             onSidebarCollapseChanged?(collapsed)
         }
+        if !collapsed { onSidebarGeometryChanged?() }
     }
+
+    /// How many times the controller has re-placed the divider. A drag snapping back is exactly
+    /// "this went up when nothing about the width changed", so the regression test counts it.
+    private(set) var appliedWidthCount = 0
 
     /// Applies a width decision that came from the store without reporting it back.
     func applyWidth(_ apply: () -> Void) {
+        appliedWidthCount += 1
         isApplyingStoreState = true
         apply()
         isApplyingStoreState = false
     }
 
-    /// Applies a collapse decision that came from the store without reporting it back.
-    func applyCollapsed(_ collapsed: Bool) {
-        guard let sidebar = splitViewItems.first else { return }
+    /// Applies a collapse decision that came from the store without reporting it back. Returns
+    /// whether it actually changed anything — the caller must not re-place the divider otherwise.
+    @discardableResult
+    func applyCollapsed(_ collapsed: Bool) -> Bool {
+        guard let sidebar = splitViewItems.first else { return false }
         lastReportedCollapse = collapsed
-        guard sidebar.isCollapsed != collapsed else { return }
+        guard sidebar.isCollapsed != collapsed else { return false }
         isApplyingStoreState = true
         sidebar.isCollapsed = collapsed
         isApplyingStoreState = false
+        return true
     }
 }
 
@@ -347,6 +359,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     private var eventPump: Task<Void, Never>?
     private var isApplyingStoreFrame = false
 
+    /// Debounces `recordSidebarWidth()` until the sidebar has stopped moving.
+    private var sidebarSettleTask: Task<Void, Never>?
+    /// The width this controller last pushed onto the split view, so a chrome delivery that changed
+    /// something else cannot re-place a divider the user has since dragged.
+    private var lastAppliedSidebarWidth: CGFloat?
+
     /// A launch-time message shown in the status strip; see ``showNotice(_:)``.
     private var transientNotice: String?
     private var noticeTimer: DispatchSourceTimer?
@@ -456,6 +474,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             guard let self, self.store.state.sidebarVisible == collapsed else { return }
             self.store.update { $0.setSidebarVisible(!collapsed) }
         }
+        splitViewController.onSidebarGeometryChanged = { [weak self] in
+            self?.recordSidebarWidthWhenSettled()
+        }
     }
 
     private func configureWindow() {
@@ -481,11 +502,23 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // The divider position is a *layout* decision, so it only sticks after the window has a
         // size; `minimumThickness` alone would leave the sidebar at whatever AppKit picked.
         window.contentView?.layoutSubtreeIfNeeded()
-        splitViewController.splitView.setPosition(restoredSidebarWidth, ofDividerAt: 0)
+        // …and now the seeding constraint has to go, or it wins every subsequent layout pass and
+        // the sidebar can never be anything but its constant. Reproduced headlessly: with the
+        // constraint active, `setPosition(380)` left the sidebar at 300, which is exactly the
+        // reported "drag it, let go, it snaps back" — the drag wins while the mouse is down and
+        // autolayout re-asserts the constant on mouse-up. From here on `setPosition` is the
+        // mechanism, and it works because the split view has now been laid out.
+        deactivateSidebarWidthSeed()
+        applySidebarWidth(force: true)
     }
 
-    /// The width the sidebar comes up at: what the user last left it at, clamped to what the split
-    /// view will actually allow, else the design's 300 pt.
+    /// Retires the width constraint after it has done its one job. Idempotent.
+    private func deactivateSidebarWidthSeed() {
+        sidebarWidthConstraint?.isActive = false
+    }
+
+    /// The divider position the sidebar comes up at: what the user last left it at, clamped to what
+    /// the split view will actually allow, else the design's 300 pt.
     var restoredSidebarWidth: CGFloat {
         guard let width = store.state.sidebarWidth, width >= Self.sidebarMinWidth else {
             return Self.sidebarWidth
@@ -588,6 +621,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Hangs up every session. `AppDelegate` calls this on terminate, and flushes the state file
     /// afterwards — `StateAutosaver` owns persistence now, not this class.
     public func shutdown() {
+        sidebarSettleTask?.cancel()
+        sidebarSettleTask = nil
         recordSidebarWidth()
         noticeTimer?.cancel()
         noticeTimer = nil
@@ -639,49 +674,65 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// The width to record and restore: the sidebar view's own, which is exactly what
-    /// `sidebarWidthConstraint` sets and what `setPosition` resolves to.
+    /// The divider position — the width of whichever child of the split view contains the sidebar.
     ///
-    /// Measured, because two plausible alternatives are both wrong. The split view's wrapper around
-    /// the sidebar is 8 pt wider (the macOS 26 glass-container inset), so recording *it* and
-    /// restoring through the constraint grew the sidebar by 8 pt per read until it clamped at the
-    /// 520 pt maximum. And neither `subviews.first` nor `arrangedSubviews.first` is the sidebar at
-    /// all — the detail wrapper comes first, which recorded 852 pt.
+    /// This is the quantity `setPosition` takes, and once the seeding constraint is retired
+    /// `setPosition` is the only thing that places the sidebar, so recording and restoring it is a
+    /// fixed point. Measured, because the near-misses all drift: `sidebar.view.frame.width` is
+    /// 8 pt smaller (the macOS 26 glass-container inset), so mixing the two loses or gains 8 pt on
+    /// every launch, and neither `subviews.first` nor `arrangedSubviews.first` is the sidebar at
+    /// all — the split view's children are not in visual order and the *detail* wrapper comes
+    /// first, which recorded 852 pt.
     var sidebarWidthForRestore: CGFloat {
-        sidebar.view.frame.width
+        let splitView = splitViewController.splitView
+        var view: NSView? = sidebar.view
+        while let current = view, current.superview !== splitView { view = current.superview }
+        return view?.frame.width ?? sidebar.view.frame.width
     }
 
-    /// Reads the sidebar's width into the store. Called once, from ``shutdown()``.
+    /// Records the sidebar's width once it has stopped moving.
     ///
-    /// **Not** from `splitViewDidResizeSubviews`. That fires throughout assembly and throughout
-    /// every window resize, and the sidebar measurably passes through its 240 pt minimum on the way
-    /// to 300 — including one pass *after* `init` has returned, so neither an assembly flag nor a
-    /// deferred read escapes it. Recording a transient would be self-inflicted: the store drives
-    /// the width constraint, so a 240 written once pins the sidebar at its minimum for good, which
-    /// is exactly what a first launch produced. Reading once at quit, when layout has long settled,
-    /// records what the user actually left behind and cannot latch onto anything else. The cost is
-    /// that a width change is lost if the app is killed rather than quit — a preference, not state.
+    /// The quiet period is the whole trick. `splitViewDidResizeSubviews` fires continuously during
+    /// a drag and repeatedly during assembly, always mid-layout, and the sidebar measurably passes
+    /// through its 240 pt minimum on the way to 300 — so reading on the notification, or one
+    /// run-loop turn later, records a number nobody chose. Because the store then drives the width,
+    /// one such transient pinned the sidebar at its minimum on every launch. Waiting for the
+    /// movement to *stop* reads the settled value in both cases: 300 at launch, and whatever the
+    /// user let go of at the end of a drag.
+    private func recordSidebarWidthWhenSettled() {
+        sidebarSettleTask?.cancel()
+        sidebarSettleTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled, let self else { return }
+            self.sidebarSettleTask = nil
+            self.recordSidebarWidth()
+        }
+    }
+
+    /// Reads the sidebar's width into the store. Debounced by `recordSidebarWidthWhenSettled()`,
+    /// and called directly from ``shutdown()`` so a quit never races the settle.
     func recordSidebarWidth() {
         let width = sidebarWidthForRestore
         guard width > 0, abs((store.state.sidebarWidth ?? -1) - width) > 0.5 else { return }
         store.update { $0.sidebarWidth = width }
     }
 
-    /// Keeps the sidebar in step with the store's width — the path a restore from `state.json`
-    /// takes. Without it the constraint holds its build-time constant and a collapse/re-expand
-    /// snaps the sidebar back to it.
-    private func applySidebarWidth() {
+    /// Applies a width that came from the *store* — a restore from `state.json`, or the settled
+    /// read after a drag.
+    ///
+    /// It fires only when that value actually changed since the last time this controller placed
+    /// the divider. Re-placing it on every `chrome` delivery is what made a drag snap back the
+    /// moment anything else in the store moved: the user had dragged to 380, the store still said
+    /// 300, and the next unrelated delivery pushed the divider back. `lastAppliedSidebarWidth` is
+    /// the guard, and it is why the store must learn about a drag promptly rather than at quit.
+    private func applySidebarWidth(force: Bool = false) {
         // Never while collapsed: `setPosition` re-expands the sidebar, the split view reports the
         // re-expansion back, and ⌘B would immediately undo itself.
         guard store.state.sidebarVisible else { return }
         let width = restoredSidebarWidth
-        guard abs(sidebarWidthForRestore - width) > 0.5 || sidebarWidthConstraint?.constant != width
-        else { return }
-        // Both mechanisms, because they govern in different situations: the constraint is the only
-        // one that works before the split view has been laid out (headlessly it is the only one at
-        // all), and `setPosition` is the one that governs on screen.
+        guard force || lastAppliedSidebarWidth != width else { return }
+        lastAppliedSidebarWidth = width
         splitViewController.applyWidth {
-            sidebarWidthConstraint?.constant = width
             splitViewController.splitView.setPosition(width, ofDividerAt: 0)
         }
     }
@@ -801,9 +852,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     // MARK: Sidebar visibility
 
     func applySidebarVisible(_ visible: Bool) {
-        splitViewController.applyCollapsed(!visible)
-        if visible {
-            splitViewController.splitView.setPosition(restoredSidebarWidth, ofDividerAt: 0)
+        let changed = splitViewController.applyCollapsed(!visible)
+        // Only when the sidebar actually re-expanded. Unconditionally re-placing the divider on
+        // every `chrome` delivery threw away whatever width the user had dragged to, because this
+        // runs for a preset edit or a window move just as much as for ⌘B.
+        if visible, changed {
+            splitViewController.applyWidth {
+                splitViewController.splitView.setPosition(restoredSidebarWidth, ofDividerAt: 0)
+            }
         }
     }
 

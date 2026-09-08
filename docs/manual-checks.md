@@ -271,9 +271,11 @@ sidebar comes up at 300 pt on three consecutive launches with **no drift**.
 What still needs a real login, because it needs a screen and a mouse:
 
 1. Open two sessions, rename one, collapse a group, **drag the sidebar to ~380 pt**, move and resize
-   the window, select the second session, ⌘Q. **Pass**: `state.json` holds both rows, the collapsed
-   group, `sidebar.width` ≈ 380 and the frame you left. **Fail**: `sidebar.width` is 240 or 300 —
-   the drag was not recorded (it is read once in `shutdown()`).
+   the window, select the second session, ⌘Q. **Pass**: the sidebar stays where you dropped it, and
+   `state.json` holds both rows, the collapsed group, `sidebar.width` ≈ 380 and the frame you left.
+   **Fail**: the sidebar snaps back on mouse-up (reported and fixed 2026-09-08 — the seeding width
+   constraint was re-asserting itself on every layout pass after the drag ended), or
+   `sidebar.width` is 240 or 300. Confirmed working by hand on 2026-09-08.
 2. Relaunch. **Pass**: everything above is back; both rows read `exited`; the detail half shows
    *"Session not running · resume arrives in M5.2"*, **not** a blank black rectangle. **Fail**: an
    empty terminal grid under the exited scrim.
