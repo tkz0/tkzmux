@@ -1,0 +1,42 @@
+Sources/TkzCore/StatusDerivation.swift
+  s_093857b3ed8828::t_f3c8048795c9d6 9-11,77-79,81-88
+  s_093857b3ed8828::t_f9c5eb0eac2bd8 1-8,12,14-76,80,89-102,110-153
+  s_093857b3ed8828::t_e8775403ce6b57 13,103-109
+Tests/TkzAppTests/LastMessagePopoverTests.swift
+  s_093857b3ed8828::t_f9c5eb0eac2bd8 1-158
+Sources/TkzCore/Models.swift
+  s_093857b3ed8828::t_e8775403ce6b57 418-421,428
+  s_093857b3ed8828::t_f9c5eb0eac2bd8 272-286,299-305,318-335
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_093857b3ed8828::t_f9c5eb0eac2bd8 187-190,211-213,230,305-306,552-570,703-708
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_093857b3ed8828::t_f9c5eb0eac2bd8 67-77,134-150
+Sources/TkzCore/Reducers.swift
+  s_093857b3ed8828::t_f9c5eb0eac2bd8 155-156,161-162,164,333-453
+  s_093857b3ed8828::t_fcde7bcc9cecbe 454
+Tests/TkzCoreTests/ReducersTests.swift
+  s_093857b3ed8828::t_f9c5eb0eac2bd8 257-287,289-292,296-499
+  s_093857b3ed8828::t_f3c8048795c9d6 288,293-295
+Tests/TkzCoreTests/StatusDerivationTests.swift
+  s_093857b3ed8828::t_a02d69db5067f7 69-90
+  s_093857b3ed8828::t_f3c8048795c9d6 28-30,34,36,38-40,164-165
+  s_093857b3ed8828::t_f9c5eb0eac2bd8 1-27,31-33,35,37,41-68,91-163,166-223
+Sources/TkzApp/Sidebar/LastMessagePopover.swift
+  s_093857b3ed8828::t_f9c5eb0eac2bd8 1-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "11d7bfb1b1d18da646216e187c552c2f8ee7cab7",
+  "prompts": {},
+  "sessions": {
+    "s_093857b3ed8828": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5e7fafd-1256-4bd3-bd40-2906accdec3f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
