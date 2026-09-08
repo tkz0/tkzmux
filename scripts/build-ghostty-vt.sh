@@ -55,6 +55,19 @@ build_seconds=$((SECONDS - build_start))
 LIB="$GHOSTTY_SRC/zig-out/lib/libghostty-vt.a"
 [[ -f "$LIB" ]] || die "expected $LIB after zig build"
 
+# Strip debug info before vendoring (M6.5 / TKZ-40). Zig bakes absolute paths from its build
+# cache into the DWARF of every object — on this machine `/Users/<name>/.cache/zig/b/<hash>` —
+# and this archive is COMMITTED, so those paths would ship in a public repo. `strings` over the
+# archive is how they were found; `git grep` never sees them because it skips binaries.
+# `strip -S` removes only debug symbols, not the external symbols the linker resolves against,
+# and it takes the archive from ~10.5 MiB to ~2.6 MiB. scripts/scan-personal-data.sh has a
+# strings-based pass over vendor/ that fails the build if this ever regresses.
+echo "==> strip -S (debug info carries build-machine paths)"
+strip -S "$LIB"
+if strings -a "$LIB" | grep -q "$HOME"; then
+  die "libghostty-vt.a still contains build-machine paths after strip -S"
+fi
+
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/ghostty-vt-stage.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
 
