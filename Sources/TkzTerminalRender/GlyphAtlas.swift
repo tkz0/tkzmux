@@ -292,6 +292,8 @@ public final class GlyphCache {
     public let metrics: CellMetrics
     public let shaper: GraphemeShaper
     public let rasterizer: GlyphRasterizer
+    /// Box-drawing and block-element sprites, drawn instead of the font's own glyphs so they tile.
+    public let sprites: BoxSprites
     public let grayscale: GlyphAtlas
     public let color: GlyphAtlas
 
@@ -308,10 +310,13 @@ public final class GlyphCache {
                 grayscaleInitialSize: Int? = nil,
                 colorInitialSize: Int? = nil,
                 thicken: Bool = true) {
+        let metrics = CellMetrics(fontSet: fontSet)
+        let rasterizer = GlyphRasterizer(fontSet: fontSet, metrics: metrics, thicken: thicken)
         self.fontSet = fontSet
-        self.metrics = CellMetrics(fontSet: fontSet)
+        self.metrics = metrics
         self.shaper = GraphemeShaper(fontSet: fontSet)
-        self.rasterizer = GlyphRasterizer(fontSet: fontSet, metrics: metrics, thicken: thicken)
+        self.rasterizer = rasterizer
+        self.sprites = BoxSprites(metrics: metrics, padding: rasterizer.padding)
         self.grayscale = GlyphAtlas(kind: .grayscale, device: device, initialSize: grayscaleInitialSize)
         self.color = GlyphAtlas(kind: .color, device: device, initialSize: colorInitialSize)
     }
@@ -325,23 +330,43 @@ public final class GlyphCache {
     public func glyph(for scalars: [Unicode.Scalar],
                       style: FontStyle = .regular,
                       cellSpan: Int? = nil) -> CachedGlyph? {
+        // Box drawing and block elements are drawn, not shaped: same sprite for every style, and one
+        // cell wide by definition. Keyed as `.regular` so bold text does not cache a second copy.
+        let isSprite = BoxSprites.covers(scalars)
+        if isSprite {
+            let key = Key(scalars: scalars.map(\.value), style: .regular, span: 1)
+            if let entry = validated(key) { return entry }
+            if let raster = sprites.rasterize(scalars[0]) {
+                return pack(raster, cellSpan: 1, key: key)
+            }
+            // No sprite for this scalar after all: fall through to the font.
+        }
+
         let shaped = shaper.shape(scalars, style: style, cellSpan: cellSpan)
         let key = Key(scalars: scalars.map(\.value), style: style, span: shaped.cellSpan)
-        if let cached = entries[key] {
-            let target = atlas(for: cached.slot.kind)
-            if target.isValid(cached.slot) { return cached }
-            // A regrow moved the goalposts but kept the pixels: just re-stamp the slot.
-            if let refreshed = target.revalidate(cached.slot) {
-                let entry = CachedGlyph(slot: refreshed, bearingX: cached.bearingX,
-                                        bearingTop: cached.bearingTop, cellSpan: cached.cellSpan)
-                entries[key] = entry
-                return entry
-            }
-        }
+        if let entry = validated(key) { return entry }
         guard let raster = rasterizer.rasterize(shaped, style: style) else {
             entries[key] = nil
             return nil
         }
+        return pack(raster, cellSpan: shaped.cellSpan, key: key)
+    }
+
+    /// The cached placement for `key`, re-stamped after a regrow, or `nil` when it has to be redrawn.
+    private func validated(_ key: Key) -> CachedGlyph? {
+        guard let cached = entries[key] else { return nil }
+        let target = atlas(for: cached.slot.kind)
+        if target.isValid(cached.slot) { return cached }
+        // A regrow moved the goalposts but kept the pixels: just re-stamp the slot.
+        guard let refreshed = target.revalidate(cached.slot) else { return nil }
+        let entry = CachedGlyph(slot: refreshed, bearingX: cached.bearingX,
+                                bearingTop: cached.bearingTop, cellSpan: cached.cellSpan)
+        entries[key] = entry
+        return entry
+    }
+
+    /// Packs a freshly drawn bitmap into its atlas and records the placement.
+    private func pack(_ raster: RasterizedGlyph, cellSpan: Int, key: Key) -> CachedGlyph? {
         let target = atlas(for: raster.isColor ? .color : .grayscale)
         let generationBefore = target.generation
         guard let slot = target.insert(pixels: raster.pixels, width: raster.width,
@@ -352,7 +377,7 @@ public final class GlyphCache {
             dropEntries(in: target.kind, keeping: key)
         }
         let entry = CachedGlyph(slot: slot, bearingX: raster.bearingX,
-                                bearingTop: raster.bearingTop, cellSpan: shaped.cellSpan)
+                                bearingTop: raster.bearingTop, cellSpan: cellSpan)
         entries[key] = entry
         return entry
     }
