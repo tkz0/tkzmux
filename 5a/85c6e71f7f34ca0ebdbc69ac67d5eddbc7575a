@@ -1,0 +1,59 @@
+Sources/TkzApp/ClaudeIntegration.swift
+  s_093857b3ed8828::t_e1f77d5cd7b261 177,192-195,198,200,213,251
+  s_093857b3ed8828::t_87e1f7a5fb0d93 160,163,178,181,230-232
+  s_093857b3ed8828::t_56a27c39e87ea2 1-2,6-51,59-73,80-89,91-95,100-148,150-159,161-162,164,171-176,179-180,182-183,187-191,196-197,199,201-212,214-229,233-250,252-268
+  s_093857b3ed8828::t_39250bc7d0e023 184-186
+  s_093857b3ed8828::t_4ff34d713e411f 52-58,165-170
+  s_093857b3ed8828::t_ad3e6885237b53 96-99
+  s_093857b3ed8828::t_b52b82d89bab78 3-5,74-79,90,149
+docs/manual-checks.md
+  s_093857b3ed8828::t_d121481da493da 292-326
+.gitignore
+  s_093857b3ed8828::t_788cd3ef675d1f 7-9
+docs/design.md
+  s_093857b3ed8828::t_44c81b74a85b99 232
+  s_093857b3ed8828::t_2d0ef95ff5d7b7 236,238-239
+  s_093857b3ed8828::t_fe8dbfeb1357c5 234
+  s_093857b3ed8828::t_f3c8048795c9d6 235
+  s_093857b3ed8828::t_383aa0e0aef40e 240
+  s_093857b3ed8828::t_23ff8f4511ce7f 241
+  s_093857b3ed8828::t_39250bc7d0e023 115,176,231
+Sources/TkzApp/MainMenu.swift
+  s_093857b3ed8828::t_5a6ef3aaf45ab3 122,178
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_093857b3ed8828::t_5a6ef3aaf45ab3 44-47,113-114,133,156-157
+Sources/TkzApp/AppDelegate.swift
+  s_093857b3ed8828::t_ffd6c9a04f52a8 16,33,77-87,102,126-142
+  s_093857b3ed8828::t_f399ca512e61f8 143
+Sources/TkzApp/MainWindowController.swift
+  s_093857b3ed8828::t_39250bc7d0e023 740,1174-1175
+  s_093857b3ed8828::t_4ff34d713e411f 720,722-728
+  s_093857b3ed8828::t_ffd6c9a04f52a8 706-719,721,729-739,741-775,1194-1195
+Tests/PersistenceTests/StateAutosaverTests.swift
+  s_093857b3ed8828::t_5dcb6c30f08d61 42-47
+Tests/TkzAppTests/ClaudeIntegrationTests.swift
+  s_093857b3ed8828::t_78d0f7e4ddb56e 1-58,60-63,65-73,75-76,78-80,82-86,88,90-95,97,99-100,102-111,113-115,117-124,126-142,155-156,158,160-162,164-168,170,172,174-180,183,186,188,193-200,202-237,239-266
+  s_093857b3ed8828::t_529c47a14625f4 181,184-185,190-192,201,238
+  s_093857b3ed8828::t_e1f77d5cd7b261 143-154
+  s_093857b3ed8828::t_fdb6f0523a716e 59,64,74,77,81,87,89,96,98,101,112,116,125,157,159,163,169,171,173,182,187,189
+Sources/TkzApp/TerminalHost.swift
+  s_093857b3ed8828::t_39250bc7d0e023 191,195-196
+docs/shortcuts.md
+  s_093857b3ed8828::t_39250bc7d0e023 28-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "5a85c6e71f7f34ca0ebdbc69ac67d5eddbc7575a",
+  "prompts": {},
+  "sessions": {
+    "s_093857b3ed8828": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5e7fafd-1256-4bd3-bd40-2906accdec3f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
