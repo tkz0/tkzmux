@@ -1,0 +1,42 @@
+Sources/ClaudeBridge/Resources/zsh/zlogin
+  s_093857b3ed8828::t_0d25b043608fef 1-19
+Sources/ClaudeBridge/Resources/zsh/zshenv
+  s_093857b3ed8828::t_0d25b043608fef 1-21
+scripts/make-app.sh
+  s_093857b3ed8828::t_0d25b043608fef 25,32-35,97
+Tests/ClaudeBridgeTests/ZshWrapperTests.swift
+  s_093857b3ed8828::t_0d25b043608fef 1-177
+Sources/ClaudeBridge/Resources/zsh/zprofile
+  s_093857b3ed8828::t_0d25b043608fef 1-12
+Tests/ClaudeBridgeTests/ShimInstallerTests.swift
+  s_093857b3ed8828::t_0d25b043608fef 1-145
+Package.swift
+  s_093857b3ed8828::t_b52b82d89bab78 119
+  s_093857b3ed8828::t_0d25b043608fef 79-80
+Tests/ClaudeBridgeTests/ShimTests.swift
+  s_093857b3ed8828::t_0d25b043608fef 1-340
+Sources/ClaudeBridge/Resources/shim/claude.sh
+  s_093857b3ed8828::t_0d25b043608fef 1-150
+Sources/ClaudeBridge/Resources/zsh/zshrc
+  s_093857b3ed8828::t_0d25b043608fef 1-27
+Sources/ClaudeBridge/ModuleResources.swift
+  s_093857b3ed8828::t_0d25b043608fef 1-25
+Sources/ClaudeBridge/ShimInstaller.swift
+  s_093857b3ed8828::t_0d25b043608fef 1-224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "9593af4ce51d36a997927eafe2bb7f662f513ea9",
+  "prompts": {},
+  "sessions": {
+    "s_093857b3ed8828": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5e7fafd-1256-4bd3-bd40-2906accdec3f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
