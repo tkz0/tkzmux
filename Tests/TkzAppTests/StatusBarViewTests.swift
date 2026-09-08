@@ -129,7 +129,10 @@ struct StatusBarViewTests {
 
     @Test func portsAreSortedAndEmptyListCollapses() {
         #expect(Self.texts(StatusBarModel(ports: [])).isEmpty)
-        #expect(Self.texts(StatusBarModel(ports: [5173, 3000])) == [":3000 :5173"])
+        // Since M4.2 each port is its own item so it can carry its own tooltip and URL; they are
+        // still drawn as one group (`:3000 :5173`, no ` · ` between them) — see
+        // `StatusBarInteractionTests.eachPortIsItsOwnClickableItemButOneVisualGroup`.
+        #expect(Self.texts(StatusBarModel(ports: [5173, 3000])) == [":3000", ":5173"])
     }
 
     @Test func contextAndUsageSegments() {
@@ -147,7 +150,8 @@ struct StatusBarViewTests {
             "+142 \u{2212}38",
             "12 files",
             "\u{2191}0 \u{2193}2",
-            ":3000 :5173",
+            ":3000",
+            ":5173",
             "Context 62%",
             "Usage 5%",
             "resets 4d 12h",

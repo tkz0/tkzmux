@@ -31,6 +31,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: AppStore?
     private var autosaver: StateAutosaver?
     private var claude: ClaudeIntegration?
+    private var git: GitIntegration?
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "app")
 
     /// Milliseconds after launch to print engine diagnostics and quit. Development only: it is how
@@ -88,6 +89,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                     integration.start()
                     claude = integration
                 }
+                // M4: git status, PR lookup and port scanning for the rows the window shows.
+                // After `claude`, so the Stop hook it installs reaches a coordinator that exists.
+                let gitIntegration = GitIntegration(store: store)
+                controller.git = gitIntegration
+                git = gitIntegration
                 // After the integration: every `claude --resume` must run through the shim the
                 // installer just wrote, so the launch frame binds its pid.
                 if restored.loaded != nil { controller.autoResumeIfEnabled() }
@@ -106,6 +112,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     public func applicationWillTerminate(_ notification: Notification) {
         claude?.stop()
+        git?.stop()
         devWindow?.shutdown()
         mainWindow?.shutdown()
         // After `shutdown`, and synchronously: the debounced write for the last mutation before ⌘Q

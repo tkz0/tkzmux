@@ -388,6 +388,77 @@ selection alone.
 crash, and in Console every `launch` line's `CLAUDE_CONFIG_DIR` matches the row's account chip.
 Paste the `log show` extract into docs/perf.md → *Launch audit* → run notes.
 
+### 7. M4 — git status, ports and the PR badge (TKZ-26 / TKZ-27 / TKZ-28)
+
+The parsers, the tracking rules and the Azure-DevOps gate are covered by tests. What is left here
+needs a real repo, a real login and, in two cases, a system trace.
+
+**7a. Git updates within a second.** Select a session in a repo. In its terminal:
+```sh
+echo x >> README.md          # +1 in the strip
+git add -A && git commit -m wip   # counts reset to 0, ↑ goes up by one
+git push                     # ↑0
+```
+**Pass**: each step is reflected in the strip within ~1 s of the command finishing, without touching
+the mouse. **Fail**: a change that only appears when you re-select the row — that means FSEvents is
+not reaching the repo and only the selection refresh is working.
+
+**7b. Worktree sessions.** Start a `claude -w` session. **Pass**: `WT` pill present, its tooltip
+names the worktree directory, and the `⎇` branch is the *worktree's* branch, not the main
+checkout's.
+
+**7c. No upstream.** `git switch -c throwaway` in a session's repo.
+**Pass**: `↑– ↓–` dimmed, tooltip "No upstream"; the branch tooltip also says "No upstream".
+**Fail**: `↑0 ↓0` (claims a remote that does not exist) or nothing at all (reads as "not measured").
+
+**7d. tkzmux never takes `index.lock`.** With the app running and a session selected:
+```sh
+sudo fs_usage -w -f filesys | grep index.lock
+```
+Leave it for 10 minutes of ordinary use.
+**Pass**: no line whose process is `tkzmux` or a `git` it spawned. Lines from your own shell's git
+are expected. **Fail**: any tkzmux-owned `index.lock` create — that is the race that makes the
+user's own `git commit` fail, and it means a call escaped `GitProcess`.
+
+**7e. No network.** `nettop -p tkzmux` (or pull the ethernet) for a 10-minute session.
+**Pass**: no outbound connections beyond what `gh` makes when you deliberately select a
+github.com-origin session. **Fail**: anything periodic — there is no auto-fetch by design.
+
+**7f. `gh` is never invoked for a non-GitHub origin.** Select a session in a repo whose `origin` is
+Azure DevOps and leave it selected for 10 minutes.
+```sh
+sudo fs_usage -w -f exec | grep -w gh
+```
+**Pass**: nothing. **Fail**: any exec of `gh` — the origin gate is broken. (The automatic half of
+this is `PRLookupTests`, which points the lookup at a stub `gh` and asserts it is never run.)
+
+**7g. A GitHub PR appears.** Select a session on a branch with an open PR on github.com.
+**Pass**: `#<number>` with `✓` / `●` / `draft` within ~5 s of selection; hovering shows the state
+and the URL; clicking opens the PR in the browser.
+
+**7h. Ports.** In a session's shell:
+```sh
+python3 -m http.server 5101
+```
+**Pass**: `:5101` appears within 10 s, its tooltip names `python3` and its pid, and clicking it
+opens `http://localhost:5101`. Ctrl-C: the badge is gone within 10 s. Repeat with a `dotnet run`
+Kestrel server — **pass** is both of its ports.
+
+**7i. Idle cost with many repos.** Open sessions across ~20 different repos and leave the app idle
+and unfocused for 10 minutes. Activity Monitor → `tkzmux`.
+**Pass**: no measurable increase over the §1c idle figure (0.0–0.1 %). **Fail**: sustained CPU that
+scales with the number of watched repos — the FSEvents streams or the debounce are wrong.
+
+**7j. Pixel comparison.** Screenshot the status strip with every badge populated and compare
+against artboard 2c in `docs/screenshots/`. **Pass**: same 30 pt band, same background, same muted
+text colour, badges in the design's order.
+
+**7k. Switching sessions.** Arrow through ten rows quickly.
+**Pass**: every badge swaps in one pass with no flicker and no stale value from the previous row —
+in particular the ports and the PR badge must not linger.
+
+---
+
 ## Reporting back
 
 For anything that fails: which step, what you saw instead, and — for rendering issues — whether the

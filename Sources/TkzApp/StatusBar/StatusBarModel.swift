@@ -11,10 +11,13 @@
 // it never renders as `0`, `—` or an empty gap.
 //
 // The model carries *already-derived* values only: no dates, no rates, no formatting decisions
-// that depend on the current time, so a given model always renders to the same pixels. Wave M4.2
-// fills it from the real services; this wave renders it.
+// that depend on the current time, so a given model always renders to the same pixels. M4.2
+// (TKZ-27) fills it from the real services — `GitStatusService`, `PortScanner`, `PRLookup` — and
+// adds the interactive half: every field that can carry a tooltip carries the *text*, not a date
+// or a rule, for the same reason.
 
 import Foundation
+import TkzCore
 
 /// Everything the status bar shows for the selected session.
 ///
@@ -53,6 +56,27 @@ public struct StatusBarModel: Hashable, Sendable {
     /// An empty array draws nothing, exactly like `nil`.
     public var ports: [UInt16]?
 
+    /// Owning process name per port (`PortScanner` reads `proc_name`), for the badge tooltip.
+    /// A port with no entry still renders; only its tooltip is shorter.
+    public var portOwners: [UInt16: String]
+
+    /// The pull request for the current branch, from the session sidecar or `gh pr view`.
+    /// Renders the clickable `#123 ✓ / ● / draft` pill.
+    public var pullRequest: PRInfo?
+
+    /// The upstream ref (`origin/develop`), for the branch tooltip. `nil` with
+    /// ``upstreamMissing`` `== false` only means "not known yet".
+    public var upstream: String?
+
+    /// The branch is known to have **no** upstream. Renders `\u{2191}\u{2013} \u{2193}\u{2013}`
+    /// dimmed with a "no upstream" tooltip, which is different from drawing nothing (that would
+    /// read as "not measured yet") and different from `\u{2191}0 \u{2193}0` (that would read as
+    /// "in sync with a remote", which there isn't one of).
+    public var upstreamMissing: Bool
+
+    /// The worktree's directory name, for the `WT` pill's tooltip.
+    public var worktreeName: String?
+
     /// Percentage of the model's context window used, 0…100, already rounded.
     /// Rendered `Context 62%`.
     public var contextPercent: Int?
@@ -65,6 +89,16 @@ public struct StatusBarModel: Hashable, Sendable {
     /// ``StatusBarModel/formatResetsIn(_:)``. Its own segment: `Usage 5%` can appear without it.
     public var usageResetsIn: Duration?
 
+    /// The exact reset instant as already-formatted text (`2026-09-12 08:00`), for the tooltip.
+    /// Formatted by the caller, not here: a model that formats a `Date` would render differently
+    /// in a different locale, and the strip's whole contract is that a model renders to fixed
+    /// pixels.
+    public var usageResetsAtText: String?
+
+    /// The usage badge's tooltip — every account's window, one per line, because the quota the
+    /// number describes belongs to one account and the user runs more than one.
+    public var usageTooltip: String?
+
     /// A transient message that replaces the whole strip: "Restored sidebar from backup" after a
     /// `state.json` recovery (M5.1). Deliberately *not* part of `AppState` — it describes something
     /// that happened once at launch, not something the app persists, and `statusModel(for:)` stays
@@ -75,30 +109,44 @@ public struct StatusBarModel: Hashable, Sendable {
         notice: String? = nil,
         branch: String? = nil,
         isWorktree: Bool? = nil,
+        worktreeName: String? = nil,
         modelName: String? = nil,
         diffAdded: Int? = nil,
         diffRemoved: Int? = nil,
         diffFiles: Int? = nil,
         ahead: Int? = nil,
         behind: Int? = nil,
+        upstream: String? = nil,
+        upstreamMissing: Bool = false,
+        pullRequest: PRInfo? = nil,
         ports: [UInt16]? = nil,
+        portOwners: [UInt16: String] = [:],
         contextPercent: Int? = nil,
         usagePercent: Int? = nil,
-        usageResetsIn: Duration? = nil
+        usageResetsIn: Duration? = nil,
+        usageResetsAtText: String? = nil,
+        usageTooltip: String? = nil
     ) {
         self.notice = notice
         self.branch = branch
         self.isWorktree = isWorktree
+        self.worktreeName = worktreeName
         self.modelName = modelName
         self.diffAdded = diffAdded
         self.diffRemoved = diffRemoved
         self.diffFiles = diffFiles
         self.ahead = ahead
         self.behind = behind
+        self.upstream = upstream
+        self.upstreamMissing = upstreamMissing
+        self.pullRequest = pullRequest
         self.ports = ports
+        self.portOwners = portOwners
         self.contextPercent = contextPercent
         self.usagePercent = usagePercent
         self.usageResetsIn = usageResetsIn
+        self.usageResetsAtText = usageResetsAtText
+        self.usageTooltip = usageTooltip
     }
 
     /// The empty strip — every service silent. Renders as bare background, no separators.

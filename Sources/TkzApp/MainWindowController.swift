@@ -305,6 +305,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     private var noticeTimer: DispatchSourceTimer?
     /// Snapshots every live session periodically (M5.2), so a crash loses at most this much screen.
     private var snapshotTimer: DispatchSourceTimer?
+    /// Re-renders the status strip once a minute so `resets 4d 12h` counts down (M4.2). Nothing
+    /// else in the app is time-dependent enough to need a clock, and `StatusBarView` only redraws
+    /// when the model actually differs, so a minute in which nothing changed costs one comparison.
+    private var statusTickTimer: DispatchSourceTimer?
+    public static let statusTickInterval: TimeInterval = 60
     /// design.md → *Session flows*: "on a 5-min timer for live sessions".
     public static let snapshotInterval: TimeInterval = 300
     /// What the last lazy reopen of the selected row said, for the empty-state caption.
@@ -362,6 +367,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         observeStore()
         startEventPump()
         startSnapshotTimer()
+        startStatusTickTimer()
 
         applySidebarVisible(store.state.sidebarVisible)
         applySelection(focusTerminal: false)
@@ -668,6 +674,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         noticeTimer = nil
         snapshotTimer?.cancel()
         snapshotTimer = nil
+        statusTickTimer?.cancel()
+        statusTickTimer = nil
+        git?.stop()
         eventPump?.cancel()
         eventPump = nil
         if let host = host as? TerminalViewHost {
@@ -701,6 +710,17 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // `claude -w` removes its worktree when the conversation ends, which is before the
             // shell exits — so the worktree list is re-read on Claude's exit, not only the shell's.
             claude.onClaudeExited = { [weak self] id in self?.launcher.noteExit(id) }
+            claude.onStop = { [weak self] id in self?.git?.sessionDidStop(id) }
+        }
+    }
+
+    /// The M4 coordinator, once `AppDelegate` has built it. Every delivered change set is forwarded
+    /// to it so it can re-target watchers and refresh the selected row.
+    public var git: GitIntegration? {
+        didSet {
+            guard let git else { return }
+            git.start()
+            claude?.onStop = { [weak git] id in git?.sessionDidStop(id) }
         }
     }
 
@@ -821,6 +841,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             updateStatusBar()
             updateToolbarTitle()
         }
+        git?.apply(change)
     }
 
     /// The divider position — the width of whichever child of the split view contains the sidebar.
@@ -994,7 +1015,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     /// `Session` → `StatusBarModel`. Pure, so the mapping is a test rather than a screenshot.
     /// Every field is `nil` when it is unknown; the strip drops a `nil` segment *and* its
-    /// separator (see `StatusBarView.segments`).
+    /// separator (see `StatusBarView.items`).
     static func statusModel(for state: AppState, now: Date = Date()) -> StatusBarModel {
         guard let session = state.selectedSession else { return .empty }
         let git = session.live?.git
@@ -1004,20 +1025,60 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         var model = StatusBarModel()
         model.branch = git?.branch
         model.isWorktree = (session.isWorktree || git?.isWorktree == true) ? true : nil
+        if model.isWorktree == true, let path = session.worktreePath, !path.isEmpty {
+            model.worktreeName = Session.title(forPath: path)
+        }
         model.modelName = sidecar?.model?.displayName
         model.diffAdded = git.map(\.insertions)
         model.diffRemoved = git.map(\.deletions)
         model.diffFiles = git.map(\.changedFiles)
-        model.ahead = git.map(\.ahead)
-        model.behind = git.map(\.behind)
+        // No upstream is a *state*, not an absence: the strip draws `↑– ↓–` dimmed instead of the
+        // `↑0 ↓0` that would claim the branch is in sync with a remote it does not have.
+        model.upstream = git?.upstream
+        model.upstreamMissing = git != nil && git?.upstream == nil
+        if git?.upstream != nil {
+            model.ahead = git.map(\.ahead)
+            model.behind = git.map(\.behind)
+        }
+        // Sidecar first, `gh` second — design.md → *Git integration → PR*. `GitStatusService` owns
+        // `GitSummary.pr` and has already merged whatever `PRLookup` found, so the sidecar only
+        // wins where nothing was looked up.
+        model.pullRequest = git?.pr ?? sidecar?.pr
         let ports = session.live?.ports ?? []
         model.ports = ports.isEmpty ? nil : ports
+        model.portOwners = session.live?.portOwners ?? [:]
         model.contextPercent = sidecar?.contextUsedPercentage.map { Int($0.rounded()) }
         model.usagePercent = usage.map { Int($0.usedPercentage.rounded()) }
         if let resetsAt = usage?.resetsAt, resetsAt > now {
             model.usageResetsIn = .seconds(Int(resetsAt.timeIntervalSince(now)))
+            model.usageResetsAtText = Self.resetsAtFormatter.string(from: resetsAt)
         }
+        model.usageTooltip = usageTooltip(for: state)
         return model
+    }
+
+    /// `2026-09-12 08:00`, fixed and locale-independent: the tooltip must read the same on any
+    /// machine, and the model's contract is that it renders to fixed pixels.
+    static let resetsAtFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter
+    }()
+
+    /// One line per account with a seven-day window — the ticket asks the usage badge's tooltip to
+    /// show *both* accounts' windows, because the percentage on the strip belongs to whichever
+    /// account the selected row runs under and the user runs more than one.
+    static func usageTooltip(for state: AppState) -> String? {
+        let lines = state.usage.values
+            .sorted { $0.accountKey < $1.accountKey }
+            .compactMap { snapshot -> String? in
+                guard let window = snapshot.sevenDay else { return nil }
+                let name = snapshot.label ?? state.accounts[snapshot.accountKey]?.label
+                    ?? snapshot.accountKey
+                return "\(name): \(Int(window.usedPercentage.rounded()))% of the seven-day quota"
+            }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
     // MARK: Sidebar visibility
@@ -1337,6 +1398,20 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     // MARK: - Periodic snapshots
+
+    /// Ticks the status strip so the `resets` countdown stays true without any service reporting.
+    private func startStatusTickTimer() {
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(
+            deadline: .now() + Self.statusTickInterval,
+            repeating: Self.statusTickInterval,
+            leeway: .seconds(5))
+        timer.setEventHandler { [weak self] in
+            MainActor.assumeIsolated { self?.updateStatusBar() }
+        }
+        statusTickTimer = timer
+        timer.resume()
+    }
 
     /// Every `snapshotInterval`, write the `.ghsnap` of every session that changed. Sessions the
     /// idle compressor already saved are skipped inside `snapshotAll` (their activity token has

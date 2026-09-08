@@ -145,6 +145,31 @@ extension AppState {
         updateLive(id) { $0.shellCwd = path?.isEmpty == true ? nil : path }
     }
 
+    /// What `GitStatusService` (M4.1) learned for this row's directory. `nil` = not a repo.
+    ///
+    /// Only rows with live state take a summary: a restored row has no shell, no cwd being watched
+    /// and nothing to show a branch for, and giving it one would make the status bar describe a
+    /// directory nobody is standing in.
+    public mutating func setGitSummary(_ summary: GitSummary?, for id: SessionID) {
+        guard sessions[id]?.live != nil else { return }
+        updateLive(id) { $0.git = summary }
+    }
+
+    /// The listening TCP ports of the row's process tree (M4.3), ascending, with the owning
+    /// process name per port for the badge tooltip. The scanner sorts and dedupes; this stores what
+    /// it is given, so an unchanged scan diffs as unchanged and costs no re-render.
+    public mutating func setPorts(
+        _ ports: [UInt16],
+        owners: [UInt16: String] = [:],
+        for id: SessionID
+    ) {
+        guard sessions[id]?.live != nil else { return }
+        updateLive(id) {
+            $0.ports = ports
+            $0.portOwners = owners
+        }
+    }
+
     /// Records where a session's worktree is (or that it has none). `isWorktree` drives the `WT`
     /// badge; the path is kept even when the badge is cleared, for the error message.
     public mutating func setWorktree(_ id: SessionID, path: String?, isWorktree: Bool) {

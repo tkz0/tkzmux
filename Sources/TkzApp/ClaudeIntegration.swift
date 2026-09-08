@@ -62,6 +62,11 @@ public final class ClaudeIntegration {
     /// shell's exit.
     public var onClaudeExited: ((SessionID) -> Void)?
 
+    /// A `Stop` hook landed for this row — Claude has finished a turn, and whatever it did to the
+    /// working tree is on disk now. `GitIntegration` (M4) refreshes git and re-scans ports on it;
+    /// it is the one moment a refresh is worth making unconditionally, for any row.
+    public var onStop: ((SessionID) -> Void)?
+
     /// How often the 60 s NEEDS-YOU rule is re-evaluated. Five seconds keeps the amber badge within
     /// a few seconds of the rule without waking the process for nothing.
     public static let tickInterval: TimeInterval = 5
@@ -239,6 +244,7 @@ public final class ClaudeIntegration {
                 state.applyHook(event, to: id, now: now)
                 if attended { state.markAttended(id, now: now) }
             }
+            if event.kind == .stop { onStop?(id) }
             if event.kind == .sessionEnd, store.state.sessions[id]?.live?.ended == true {
                 onClaudeExited?(id)
             }

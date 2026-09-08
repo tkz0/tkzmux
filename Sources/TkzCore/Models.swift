@@ -325,6 +325,10 @@ public struct LiveSessionState: Hashable, Sendable {
     public var git: GitSummary?
     /// Listening TCP ports found under the shell pid, ascending.
     public var ports: [UInt16]
+    /// Owning process name per port (`proc_name`), for the status bar's badge tooltip. Kept beside
+    /// `ports` rather than inside it so `ports` stays the plain, `Codable`-shaped list every other
+    /// reader wants; the scanner fills both in one pass.
+    public var portOwners: [UInt16: String]
     /// The per-session statusline sidecar (context %, model, PR).
     public var context: SessionSidecar?
     /// The `claude` process (when a descriptor is bound) or the shell is running. `false` only once
@@ -357,6 +361,7 @@ public struct LiveSessionState: Hashable, Sendable {
         lastHook: HookEvent? = nil,
         git: GitSummary? = nil,
         ports: [UInt16] = [],
+        portOwners: [UInt16: String] = [:],
         context: SessionSidecar? = nil,
         alive: Bool = true,
         ended: Bool = false,
@@ -376,6 +381,7 @@ public struct LiveSessionState: Hashable, Sendable {
         self.lastHook = lastHook
         self.git = git
         self.ports = ports
+        self.portOwners = portOwners
         self.context = context
         self.alive = alive
         self.ended = ended

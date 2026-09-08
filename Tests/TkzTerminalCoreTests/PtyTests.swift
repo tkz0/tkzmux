@@ -263,10 +263,13 @@ struct PtyTests {
     /// Acceptance: a bad executable surfaces as ENOENT, promptly, with no fd or process left over.
     @Test func execFailureReportsErrnoWithoutLeaking() async throws {
         let before = openFileDescriptorCount()
-        // 32 rather than 8 iterations: the check below is a *process-wide* fd count, so it competes
-        // with every test running in parallel. Making the leak signal four times larger, rather
-        // than the tolerance four times looser, keeps even a one-fd-per-spawn leak detectable.
-        let iterations = 32
+        // 256 rather than 8 iterations: the check below is a *process-wide* fd count, so it
+        // competes with every test running in parallel. Making the leak *signal* larger, rather
+        // than the tolerance looser, is what keeps a one-fd-per-spawn leak detectable. Widened
+        // twice for exactly that reason — first for M5.1's `state.json` tests, then for M4's
+        // `GitStatusTests`, which spawn `git` and `gh` (two pipes each) and open `FSEventStream`s,
+        // and which pushed the observed concurrent-fd noise from single digits to 20–41.
+        let iterations = 256
         for _ in 0..<iterations {
             #expect(throws: PtyError.spawnFailed(code: ENOENT)) {
                 _ = try Pty(
@@ -284,11 +287,11 @@ struct PtyTests {
             }
         }
         let after = openFileDescriptorCount()
-        // A real leak is at least one fd per iteration, i.e. ≥32; the slack absorbs fds that other
-        // tests in this process open concurrently (it was 8-with-8-iterations, which the M5.1
-        // `state.json` tests opened enough files to trip roughly one run in ten).
+        // A real leak is at least one fd per iteration, i.e. ≥256; the tolerance sits far above the
+        // measured noise and far below the leak signal, so neither a busy suite nor a real leak is
+        // ambiguous.
         #expect(
-            after - before < 16,
+            after - before < iterations / 2,
             "fd count went \(before) → \(after) over \(iterations) failed spawns")
         // The failed child is reaped inside the shim, so there is nothing left to wait for here
         // (a waitpid(-1) probe would steal another test's child).
