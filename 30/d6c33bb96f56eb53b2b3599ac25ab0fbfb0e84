@@ -1,0 +1,19 @@
+scripts/build-ghostty-vt.sh
+  s_a6b77fdfad3885::t_ac53bae9754262 58-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "30d6c33bb96f56eb53b2b3599ac25ab0fbfb0e84",
+  "prompts": {},
+  "sessions": {
+    "s_a6b77fdfad3885": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "713d9700-82a5-4f9a-a5df-6678fe809238",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
