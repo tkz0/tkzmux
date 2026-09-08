@@ -288,6 +288,43 @@ struct SidebarRowViewTests {
         #expect(Self.components(plain.selectionBackgroundLayer.backgroundColor).last == 0)
     }
 
+    // MARK: Hierarchy
+
+    /// Regression: reported from real use — "the sidebar does not have enough indentation for the
+    /// group items". A session title sat at x=30 against a group name at x=25, five points apart,
+    /// which reads as no hierarchy at all. `NSOutlineView.indentationPerLevel` is 0 because the rows
+    /// lay themselves out, so the indent has to come from `SidebarMetrics.sessionIndent`.
+    @Test("a session row's content is indented under its group header")
+    func sessionRowsIndentUnderTheirGroup() {
+        let group = GroupRowView()
+        group.configure(SidebarGroupRowModel(name: "Almi FrontInvest", color: nil,
+                                             isCollapsed: false, sessionCount: 12),
+                        theme: .midnightIndigo)
+        group.frame = CGRect(x: 0, y: 0, width: SidebarMetrics.sidebarWidth,
+                             height: SidebarMetrics.groupRowHeight)
+        group.layoutSubtreeIfNeeded()
+
+        let session = SessionRowView()
+        session.configure(SidebarSessionRowModel(title: "frontinvest", branch: "main",
+                                                 isWorktree: false, status: .working,
+                                                 accountLabel: nil, accountColor: nil,
+                                                 needsAttention: false, isSelected: false),
+                          theme: .midnightIndigo)
+        session.frame = CGRect(x: 0, y: 0, width: SidebarMetrics.sidebarWidth,
+                               height: SidebarMetrics.sessionRowHeight)
+        session.layoutSubtreeIfNeeded()
+
+        let groupNameX = group.nameTextLayer.frame.minX
+        let sessionTitleX = session.titleTextLayer.frame.minX
+
+        // The indent is real, not a rounding difference.
+        // `Comment` is only expressible by a literal, so the message is one interpolation.
+        #expect(sessionTitleX > groupNameX + 8,
+                "session title \(sessionTitleX) is not indented under group name \(groupNameX)")
+        // And it tracks the metric rather than a second magic number.
+        #expect(sessionTitleX - groupNameX == CGFloat(SidebarMetrics.sessionIndent) + 5)
+    }
+
     // MARK: Truncation
 
     @Test("A long title truncates with an ellipsis instead of overflowing the row")

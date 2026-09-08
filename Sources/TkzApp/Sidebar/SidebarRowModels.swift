@@ -174,6 +174,14 @@ public enum SidebarMetrics {
     public static let sessionRowHeight: Double = 44
     /// Summary strip height, in points.
     public static let summaryStripHeight: Double = 26
+    /// How far a session row's content sits inside its group header's.
+    ///
+    /// `NSOutlineView.indentationPerLevel` is 0 because the rows lay themselves out, so the
+    /// hierarchy has to come from here. Without it a session title sat at x=30 against a group name
+    /// at x=25 — five points, which reads as no hierarchy at all (reported 2026-09-08).
+    /// 16 pt matches AppKit's own default indentation per level. Raising it costs title width in a
+    /// 300 pt sidebar, where long session titles already truncate, so it is a real trade.
+    public static let sessionIndent: Double = 16
     /// Width of the group colour edge (design says 2–3 pt).
     public static let groupEdgeWidth: Double = 2.5
     /// Nominal sidebar width and its minimum — titles must truncate at the minimum.

@@ -28,8 +28,11 @@ public final class SessionRowView: NSTableCellView {
     /// Fixed row height. The outline view must return this from `heightOfRowByItem`.
     public static let rowHeight: Double = SidebarMetrics.sessionRowHeight
 
-    private static let dotCenterX: CGFloat = 17.5
-    private static let textLeft: CGFloat = 30
+    /// Both are measured from the group header's own leading edge and then indented, so the
+    /// hierarchy is one constant (`SidebarMetrics.sessionIndent`) rather than two magic numbers
+    /// that have to be kept in step with `GroupRowView`.
+    private static let dotCenterX: CGFloat = 17.5 + CGFloat(SidebarMetrics.sessionIndent)
+    private static let textLeft: CGFloat = 30 + CGFloat(SidebarMetrics.sessionIndent)
     private static let rightInset: CGFloat = 12
     private static let selectionInset: CGFloat = 5
     private static let titleLineHeight: CGFloat = 16
