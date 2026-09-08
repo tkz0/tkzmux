@@ -343,6 +343,12 @@ private func cbClipboardRead(
 // MARK: - Locked state
 
 /// The terminal handle plus everything that must move under the lock with it.
+///
+/// The three input objects (`keyEncoder`, `mouseEncoder`, `selection`) live here, not in the view
+/// layer, for two reasons: none of them is `Sendable`, and `SelectionController` binds to a
+/// *specific* `GhosttyTerminalHandle` for its lifetime. `restore(from:)` swaps that handle, so all
+/// three are rebuilt there — a controller held anywhere else would silently keep driving the
+/// discarded terminal.
 final class SessionState {
     var terminal: GhosttyTerminalHandle
     let context: IOContext
@@ -351,11 +357,37 @@ final class SessionState {
     var onWritePty: (@Sendable (Data) -> Void)?
     var renderSignal: (@Sendable () -> Void)?
 
-    init(terminal: GhosttyTerminalHandle, context: IOContext, options: TerminalSessionOptions) {
+    /// Key press → pty bytes. Rebuilt on restore only for symmetry; it holds no terminal.
+    var keyEncoder: KeyEncoder
+    /// Pointer event → mouse report. Holds no terminal, but does hold `geometry`.
+    var mouseEncoder: MouseEncoder
+    /// The selection gesture machine. **Holds `terminal` strongly** — must be rebuilt on restore.
+    var selection: SelectionController
+    /// The last geometry the view pushed, kept so the rebuilt objects start where the old ones
+    /// left off rather than at the option-derived guess.
+    var mouseGeometry: TerminalPixelGeometry
+    /// `NSEvent.doubleClickInterval`, pushed down by the app (this module cannot read AppKit).
+    var doubleClickInterval: Double
+
+    init(
+        terminal: GhosttyTerminalHandle,
+        context: IOContext,
+        options: TerminalSessionOptions,
+        keyEncoder: KeyEncoder,
+        mouseEncoder: MouseEncoder,
+        selection: SelectionController,
+        mouseGeometry: TerminalPixelGeometry,
+        doubleClickInterval: Double
+    ) {
         self.terminal = terminal
         self.context = context
         self.options = options
         self.watchdog = SyncOutputWatchdog()
+        self.keyEncoder = keyEncoder
+        self.mouseEncoder = mouseEncoder
+        self.selection = selection
+        self.mouseGeometry = mouseGeometry
+        self.doubleClickInterval = doubleClickInterval
     }
 
     /// Takes everything the callbacks accumulated. Called under the lock, right after `vt_write`.
@@ -392,7 +424,21 @@ public final class TerminalSession: Sendable {
             ),
             colorScheme: options.darkColorScheme ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT
         )
-        let sessionState = SessionState(terminal: handle, context: context, options: options)
+        // A guess until the view pushes real geometry: options carry cell pixels only when the
+        // host already measured a font. Cells are clamped to 1 because `SelectionController`
+        // refuses to map a pointer at all with a zero cell size.
+        let geometry = TerminalSession.geometry(for: options)
+        let sessionState = SessionState(
+            terminal: handle,
+            context: context,
+            options: options,
+            keyEncoder: try KeyEncoder(),
+            mouseEncoder: try MouseEncoder(geometry: geometry),
+            selection: try SelectionController(
+                terminal: handle, geometry: geometry, doubleClickInterval: 0.5),
+            mouseGeometry: geometry,
+            doubleClickInterval: 0.5
+        )
         try TerminalSession.applyOptions(to: sessionState)
 
         self.state = Mutex(sessionState)
@@ -416,6 +462,18 @@ public final class TerminalSession: Sendable {
     /// Called outside the lock after every non-empty ingestion.
     public func setRenderSignal(_ signal: (@Sendable () -> Void)?) {
         state.withLock { $0.renderSignal = signal }
+    }
+
+    /// The geometry implied by the session options, for use before the view has measured one.
+    private static func geometry(for options: TerminalSessionOptions) -> TerminalPixelGeometry {
+        let cellWidth = max(options.cellWidthPx, 1)
+        let cellHeight = max(options.cellHeightPx, 1)
+        return TerminalPixelGeometry(
+            screenWidth: UInt32(options.cols) * cellWidth,
+            screenHeight: UInt32(options.rows) * cellHeight,
+            cellWidth: cellWidth,
+            cellHeight: cellHeight
+        )
     }
 
     /// Applies every option in `state.options` to `state.terminal`. Re-run after `restore(from:)`,
@@ -721,9 +779,31 @@ public final class TerminalSession: Sendable {
                 try TerminalSession.applyOptions(
                     terminal: restored.raw, context: state.context, options: state.options
                 )
+
+                // The input objects are rebuilt *before* the commit, for the same reason:
+                // `SelectionController` retains the handle it was built with and frees its tracked
+                // grid refs against it in `deinit`, so one built for the old terminal would keep
+                // driving a terminal nothing renders any more. Building them here means a throw
+                // leaves the session entirely on its old, consistent state.
+                let selection = try SelectionController(
+                    terminal: restored,
+                    geometry: state.mouseGeometry,
+                    doubleClickInterval: state.doubleClickInterval
+                )
+                selection.behaviors = state.selection.behaviors
+                selection.repeatDistance = state.selection.repeatDistance
+                selection.autoscrollPolicy = state.selection.autoscrollPolicy
+                let keyEncoder = try KeyEncoder()
+                let mouseEncoder = try MouseEncoder(geometry: state.mouseGeometry)
+
                 while ghostty_snapshot_decoder_next(decoder) == GHOSTTY_SUCCESS {}
 
+                // Commit all four together; the outgoing controllers are released here and their
+                // `deinit` still sees the old handle they each retain, so nothing dangles.
                 state.terminal = restored
+                state.selection = selection
+                state.keyEncoder = keyEncoder
+                state.mouseEncoder = mouseEncoder
             }
 
             var cols: UInt16 = 0, rows: UInt16 = 0
@@ -753,6 +833,212 @@ public final class TerminalSession: Sendable {
             guard ghostty_terminal_compress(state.terminal.raw, mode, &result) == GHOSTTY_SUCCESS else { return false }
             return result == GHOSTTY_TERMINAL_COMPRESSION_RESULT_PENDING
         }
+    }
+
+    // MARK: Input seam
+    //
+    // The view layer has no way to reach a `GhosttyTerminalHandle` — `withTerminal` yields the raw
+    // `GhosttyTerminal`, and adopting one would double-free — so every encoder call goes through
+    // one of the methods below. They all follow the same shape as `write(ptyBytes:)`: take the
+    // lock, do the libghostty work, release the lock, and only *then* run any consumer closure.
+    //
+    // ## Where the bytes come out — the one distinction that matters
+    //
+    //   * **Key and mouse bytes are returned to the caller.** Nothing is written anywhere: the
+    //     view layer sends them itself (`TerminalInputController.writeInput` /
+    //     `MouseController.sendBytes`). The encoders never touch the terminal's WRITE_PTY sink.
+    //   * **Paste bytes leave through the session's own pty sink.** `ghostty_terminal_paste`
+    //     frames, chunks and escapes the text *inside* libghostty and pushes the result out
+    //     through WRITE_PTY, so `pasteText` harvests and delivers exactly like `write(ptyBytes:)`
+    //     and returns only an outcome. A caller that also wrote something would paste twice.
+
+    /// Encode one key press against this terminal's current mode state.
+    ///
+    /// Takes the lock (the encoder re-reads DECCKM / kitty flags / `modifyOtherKeys` from the
+    /// terminal on every call) and returns the bytes for the caller to write. **Nothing is sent**:
+    /// an empty array is the normal result for a bare modifier, a release in legacy mode, or a
+    /// composing key.
+    public func encodeKey(_ press: KeyPress, optionAsAlt: OptionAsAlt = .never) throws -> [UInt8] {
+        try state.withLock { state in
+            try state.keyEncoder.encode(press, terminal: state.terminal, optionAsAlt: optionAsAlt)
+        }
+    }
+
+    /// Paste `text` into the terminal.
+    ///
+    /// Unlike `encodeKey`, this **writes**: bracketing (mode 2004), newline conversion, unsafe-byte
+    /// stripping and chunking all happen inside libghostty, and the encoded bytes reach the
+    /// WRITE_PTY callback while the paste is in flight. They are harvested under the lock and
+    /// handed to `onWritePty` after it drops, exactly as an ingested VT sequence would be. The
+    /// caller must not write the text itself as well.
+    ///
+    /// - Returns: `.rejectedUnsafe` means **nothing was written** — confirm with the user and call
+    ///   again with `allowUnsafe: true`.
+    @discardableResult
+    public func pasteText(
+        _ text: String, source: PasteSource, allowUnsafe: Bool
+    ) throws -> PasteOutcome {
+        let (outcome, pty, events, sink, signal) = try state.withLock {
+            (state: inout SessionState) -> (PasteOutcome, Data, [TerminalEvent], (@Sendable (Data) -> Void)?, (@Sendable () -> Void)?) in
+            let outcome = try PasteSupport.paste(
+                text: text, into: state.terminal, source: source, allowUnsafe: allowUnsafe)
+            let harvest = state.harvest()
+            return (outcome, harvest.pty, harvest.events, state.onWritePty, state.renderSignal)
+        }
+        deliver(pty: pty, events: events, sink: sink, signal: signal)
+        return outcome
+    }
+
+    /// `pasteText(_:source:allowUnsafe:)` for a real clipboard paste. A separate method rather than
+    /// a defaulted argument so it can witness the view layer's `MouseControllerTerminal`.
+    @discardableResult
+    public func pasteText(_ text: String, allowUnsafe: Bool) throws -> PasteOutcome {
+        try pasteText(text, source: .clipboard, allowUnsafe: allowUnsafe)
+    }
+
+    // MARK: Mouse
+
+    /// `GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING`. Spelled to witness `MouseControllerTerminal`;
+    /// ``mouseTrackingEnabled`` is the same value under the older name.
+    public var isMouseTrackingEnabled: Bool { mouseTrackingEnabled }
+
+    /// Push rendered geometry to the mouse encoder *and* the selection controller, and remember it
+    /// so `restore(from:)` can rebuild both where they left off. Takes the lock; sends nothing.
+    public func setMousePixelGeometry(_ geometry: TerminalPixelGeometry) {
+        state.withLock { state in
+            state.mouseGeometry = geometry
+            state.mouseEncoder.geometry = geometry
+            state.selection.geometry = geometry
+        }
+    }
+
+    /// Encode one pointer event. Takes the lock; **returns** the report for the caller to write,
+    /// and `nil` when the terminal wants none (tracking off, or a motion inside the same cell).
+    public func encodeMouse(_ press: MousePress) throws -> [UInt8]? {
+        try state.withLock { state in
+            try state.mouseEncoder.encode(press, terminal: state.terminal)
+        }
+    }
+
+    /// Whole rows of wheel scrolling. With tracking on the reports are **returned** in
+    /// `.report(_:)`; with tracking off the viewport is scrolled under the lock and the render
+    /// signal fires after it drops, because what is on screen changed.
+    public func mouseWheel(
+        rows: Int, at position: SurfacePoint, mods: TerminalModifiers = []
+    ) throws -> WheelOutcome {
+        let (outcome, signal) = try state.withLock {
+            (state: inout SessionState) -> (WheelOutcome, (@Sendable () -> Void)?) in
+            let outcome = try state.mouseEncoder.wheel(
+                rows: rows, at: position, mods: mods, terminal: state.terminal)
+            if case .scrolledViewport = outcome { return (outcome, state.renderSignal) }
+            return (outcome, nil)
+        }
+        signal?()
+        return outcome
+    }
+
+    /// Forget held buttons and motion de-duplication. Call on focus loss.
+    public func resetMouseEncoder() {
+        state.withLock { $0.mouseEncoder.reset() }
+    }
+
+    // MARK: Selection
+    //
+    // Every gesture method installs (or clears) the terminal's selection, which the renderer reads,
+    // so each one signals a frame after the lock drops. None of them writes to the pty.
+
+    @discardableResult
+    public func selectionPress(at position: SurfacePoint, timestamp: Double) throws -> Bool {
+        try selectionChange { try $0.selection.press(at: position, timestamp: timestamp) }
+    }
+
+    @discardableResult
+    public func selectionDrag(to position: SurfacePoint, rectangle: Bool = false) throws -> Bool {
+        try selectionChange { try $0.selection.drag(to: position, rectangle: rectangle) }
+    }
+
+    public func selectionRelease(at position: SurfacePoint?) throws {
+        _ = try selectionChange { state -> Bool in
+            try state.selection.release(at: position)
+            return false
+        }
+    }
+
+    /// One tick of the view layer's autoscroll timer. Returns the rows scrolled (0 = none due).
+    @discardableResult
+    public func selectionAutoscrollTick(at position: SurfacePoint, rectangle: Bool = false) throws -> Int {
+        try selectionChange { try $0.selection.autoscrollTick(at: position, rectangle: rectangle) }
+    }
+
+    /// What the last drag is asking the view to autoscroll. Read-only; takes the lock.
+    public var selectionAutoscrollDirection: SelectionAutoscroll {
+        state.withLock { $0.selection.autoscrollDirection }
+    }
+
+    /// Click count of the active gesture sequence (1 single, 2 double, 3 triple, 0 idle).
+    public var selectionClickCount: Int {
+        state.withLock { $0.selection.clickCount }
+    }
+
+    /// The click-granularity table (single = cell, double = word, triple = line by default).
+    public var selectionBehaviors: SelectionBehaviors {
+        get { state.withLock { $0.selection.behaviors } }
+        set { state.withLock { $0.selection.behaviors = newValue } }
+    }
+
+    /// `NSEvent.doubleClickInterval`, in seconds. Without it libghostty only ever sees single
+    /// clicks; the app pushes the real value because this module cannot read AppKit.
+    public var selectionDoubleClickInterval: Double {
+        get { state.withLock { $0.doubleClickInterval } }
+        set {
+            state.withLock { state in
+                state.doubleClickInterval = newValue
+                state.selection.doubleClickInterval = newValue
+            }
+        }
+    }
+
+    /// Drop the terminal's active selection and end the click sequence.
+    public func clearSelection() {
+        let signal = state.withLock { (state: inout SessionState) -> (@Sendable () -> Void)? in
+            state.selection.reset()
+            state.selection.clearSelection()
+            return state.renderSignal
+        }
+        signal?()
+    }
+
+    /// The selected text, formatted the way a terminal copy does it. `nil` with no selection.
+    public func copySelectionText() -> String? {
+        state.withLock { $0.selection.copySelection() }
+    }
+
+    /// The OSC 8 URI under `position` plus the run of cells sharing it, for the hover underline.
+    ///
+    /// Grid refs are only valid until the next mutating terminal call, so the whole lookup — and
+    /// the row-walk that widens it — happens inside one lock hold.
+    public func hyperlinkRun(
+        at position: SurfacePoint
+    ) -> (uri: String, columns: ClosedRange<UInt16>, row: UInt32)? {
+        state.withLock { state -> (uri: String, columns: ClosedRange<UInt16>, row: UInt32)? in
+            guard let point = state.selection.gridPoint(at: position) else { return nil }
+            guard let run = HyperlinkLookup.run(
+                at: point, in: state.terminal, columns: state.options.cols
+            ) else { return nil }
+            return (run.uri, run.columns, point.y)
+        }
+    }
+
+    /// Shared shape for the gesture methods: mutate under the lock, signal a frame after it drops.
+    private func selectionChange<T: Sendable>(
+        _ body: (inout SessionState) throws -> T
+    ) throws -> T {
+        let (value, signal) = try state.withLock {
+            (state: inout SessionState) -> (T, (@Sendable () -> Void)?) in
+            (try body(&state), state.renderSignal)
+        }
+        signal?()
+        return value
     }
 
     // MARK: Render seam

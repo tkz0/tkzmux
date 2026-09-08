@@ -7,11 +7,16 @@
 // ## What lives here and what deliberately does not
 //
 // Nothing here encodes anything. The controller builds a `KeyPress` — plain data, no AppKit — and
-// hands it to the injected `encodeKey` closure, which is where the libghostty call happens (inside
-// `TerminalSession`'s lock; see the "required seam" note below). That keeps every C call inside the
+// hands it to `TerminalSession.encodeKey(_:optionAsAlt:)` on the view's visible session, which is
+// where the libghostty call happens, under the session lock. (The `encodeKey` property overrides
+// that for tests and for a host with no `TerminalSession`.) That keeps every C call inside the
 // files docs/design.md lists, and makes the whole `NSEvent` → `KeyPress` translation — the part that
 // is actually subtle — unit-testable with a synthesized `NSEvent` and no window, no pty and no
 // terminal.
+//
+// Key bytes come *back* from the session and go out through `writeInput`. Pasted and IME-inserted
+// text is the opposite: `ghostty_terminal_paste` writes it through the session's own pty sink, so
+// this file must never also write it — that would send every paste twice.
 //
 // The one exception is `encodeFocus`, which calls `ghostty_focus_encode` (`focus.h`). That function
 // is pure: it takes an enum and a buffer, touches no terminal and needs no lock, so keeping it here
@@ -47,6 +52,16 @@ import os
 @MainActor public protocol TerminalMouseHandling: AnyObject {
     /// Returns true if the event was consumed.
     func handle(_ event: NSEvent, in view: TerminalMetalView) -> Bool
+
+    /// Focus changed. `TerminalInputController` is the *only* `TerminalViewInputDelegate`, so this
+    /// is the mouse handler's only route to a focus change — a handler that tracks held buttons has
+    /// to drop them when the window loses focus, or the next drag reports a phantom button.
+    /// Defaulted to a no-op so a handler that does not care need not implement it.
+    func focusDidChange(_ isFocused: Bool, in view: TerminalMetalView?)
+}
+
+extension TerminalMouseHandling {
+    public func focusDidChange(_ isFocused: Bool, in view: TerminalMetalView?) {}
 }
 
 // MARK: - TerminalInputController
@@ -55,33 +70,35 @@ import os
 public final class TerminalInputController: TerminalViewInputDelegate {
     // MARK: Seams
 
-    /// Encode one key press against the visible session's terminal.
+    /// Override for how a key press becomes bytes.
     ///
-    /// **Required seam, not yet available**: `KeyEncoder.encode` needs a `GhosttyTerminalHandle`,
-    /// and `TerminalSession` exposes neither the handle nor an encode entry point outside
-    /// `TkzTerminalCore`. Until `TerminalSession` grows
-    /// `public func encode(_ press: KeyPress, optionAsAlt: OptionAsAlt) throws -> [UInt8]`, this
-    /// stays nil and no key produces bytes. Deliberately *not* faked with a text pass-through:
-    /// Enter, the cursor keys and every Ctrl combination would be silently wrong.
-    public var encodeKey: ((KeyPress) throws -> [UInt8])?
+    /// **Normally nil, and nil is now the working case**: with no override the controller calls
+    /// `TerminalSession.encodeKey(_:optionAsAlt:)` on the view's own visible session, which runs
+    /// `KeyEncoder` under the session lock against the live terminal — the seam that did not exist
+    /// while TKZ-13 was written. The closure stays as a test hook (and as the seam a host with no
+    /// `TerminalSession` would fill in); it is never a text pass-through fallback, because Enter,
+    /// the cursor keys and every Ctrl combination would be silently wrong.
+    public var encodeKey: (@MainActor (KeyPress) throws -> [UInt8])?
 
     /// Where encoded bytes go. `DevWindowController.writeInput` does the `ioQueue` hop, so this is
     /// safe to call from the main actor and `Pty.write` is never called from main.
-    public var writeInput: ((Data) -> Void)?
+    public var writeInput: (@MainActor (Data) -> Void)?
 
-    /// Text that arrived outside a `keyDown` — the emoji picker, dictation, a drag & drop.
-    /// Goes to `ghostty_terminal_paste(source: TEXT)` (see `PasteSupport`), which never becomes a
-    /// bracketed-paste event. Same missing seam as `encodeKey`.
-    public var insertPastedText: ((String) -> Void)?
+    /// Override for text that arrived outside a `keyDown` — the emoji picker, dictation, a drag &
+    /// drop. With no override the controller calls `TerminalSession.pasteText(_:source:allowUnsafe:)`
+    /// with `source: .text`, which is `ghostty_terminal_paste(source: TEXT)`: never a bracketed
+    /// paste event, and the bytes leave through the session's **own** pty sink, so nothing here
+    /// writes them a second time.
+    public var insertPastedText: (@MainActor (String) -> Void)?
 
     /// Whether the visible terminal has DEC mode 1004 (focus reporting) set —
     /// `session.mode(1004)`. Focus reports are only sent when it does; the recorded `claude-boot`
     /// fixture shows Claude Code sets it.
-    public var isFocusReportingEnabled: (() -> Bool)?
+    public var isFocusReportingEnabled: (@MainActor () -> Bool)?
 
     /// The preedit string changed. The renderer has no preedit overlay yet (required delta, see the
     /// final report), so this is the hook the overlay will hang off.
-    public var onPreeditChange: ((String) -> Void)?
+    public var onPreeditChange: (@MainActor (String) -> Void)?
 
     /// TKZ-14's `MouseController`. Weak: the app owns it, exactly as it owns this controller.
     public weak var mouseHandler: (any TerminalMouseHandling)?
@@ -102,6 +119,11 @@ public final class TerminalInputController: TerminalViewInputDelegate {
     /// pasting, which is how a committed IME composition becomes a key press rather than a paste.
     var keyTextAccumulator: [String]?
 
+    /// The view the last event came from. `insertText` from the input context (dictation, the
+    /// emoji picker) arrives with no view of its own, so this is how that text finds a session.
+    /// Weak because the app owns the view; a stale one simply makes the insert inert.
+    private weak var lastView: TerminalMetalView?
+
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "input")
 
     public init() {}
@@ -112,6 +134,7 @@ public final class TerminalInputController: TerminalViewInputDelegate {
     // MARK: - TerminalViewInputDelegate
 
     public func terminalView(_ view: TerminalMetalView, handle event: NSEvent) -> Bool {
+        lastView = view
         switch event.type {
         case .keyDown:
             return handleKeyDown(event, in: view)
@@ -130,6 +153,8 @@ public final class TerminalInputController: TerminalViewInputDelegate {
     }
 
     public func terminalView(_ view: TerminalMetalView, didChangeFocus isFocused: Bool) {
+        if isFocused { lastView = view }
+        mouseHandler?.focusDidChange(isFocused, in: view)
         guard isFocusReportingEnabled?() ?? false else { return }
         let bytes = Self.encodeFocus(gained: isFocused)
         guard !bytes.isEmpty else { return }
@@ -187,7 +212,7 @@ public final class TerminalInputController: TerminalViewInputDelegate {
             for text in accumulated where !Self.isBareControl(text, composing: composing) {
                 send(Self.keyPress(
                     event: event, translationEvent: translation, action: action,
-                    optionAsAlt: optionAsAlt, text: text, composing: false))
+                    optionAsAlt: optionAsAlt, text: text, composing: false), in: view)
             }
             return true
         }
@@ -197,7 +222,8 @@ public final class TerminalInputController: TerminalViewInputDelegate {
 
         send(Self.keyPress(
             event: event, translationEvent: translation, action: action,
-            optionAsAlt: optionAsAlt, text: Self.filteredText(of: translation), composing: composing))
+            optionAsAlt: optionAsAlt, text: Self.filteredText(of: translation), composing: composing),
+            in: view)
         return true
     }
 
@@ -210,7 +236,7 @@ public final class TerminalInputController: TerminalViewInputDelegate {
         guard !hasMarkedText else { return true }
         send(Self.keyPress(
             event: event, translationEvent: event, action: .release,
-            optionAsAlt: optionAsAlt, text: "", composing: false))
+            optionAsAlt: optionAsAlt, text: "", composing: false), in: view)
         return true
     }
 
@@ -255,7 +281,7 @@ public final class TerminalInputController: TerminalViewInputDelegate {
             consumedMods: [],
             text: "",
             unshiftedCodepoint: 0,
-            composing: false))
+            composing: false), in: view)
         return true
     }
 
@@ -273,7 +299,20 @@ public final class TerminalInputController: TerminalViewInputDelegate {
             keyTextAccumulator?.append(text)
             return
         }
-        insertPastedText?(text)
+        if let insertPastedText {
+            insertPastedText(text)
+            return
+        }
+        // `source: .text` is what makes this an insert rather than a paste: libghostty never turns
+        // it into a bracketed-paste or Kitty paste event, and the bytes leave through the session's
+        // own pty sink. `allowUnsafe` is true because the user produced this text here and now —
+        // the safety prompt exists for the *clipboard*, whose contents came from somewhere else.
+        guard let session = lastView?.session else { return }
+        do {
+            _ = try session.pasteText(text, source: .text, allowUnsafe: true)
+        } catch {
+            logger.error("text insert failed: \(String(describing: error), privacy: .public)")
+        }
     }
 
     func setPreedit(_ text: String, selectedRange: NSRange) {
@@ -439,10 +478,24 @@ public final class TerminalInputController: TerminalViewInputDelegate {
 
     // MARK: - Output
 
-    private func send(_ press: KeyPress) {
-        guard let encodeKey else { return }
+    /// Encode one press and write it.
+    ///
+    /// The encoder lives inside `TerminalSession` (it needs the terminal handle *and* the session
+    /// lock), so the default path is `view.session`. `encodeKey` overrides it for tests and for a
+    /// host that drives something other than a `TerminalSession`.
+    ///
+    /// Key bytes are **returned** by the session, never written by it — `writeInput` is the only
+    /// thing that puts them on the pty. (Paste is the opposite; see `insertPastedText`.)
+    private func send(_ press: KeyPress, in view: TerminalMetalView) {
         do {
-            let bytes = try encodeKey(press)
+            let bytes: [UInt8]
+            if let encodeKey {
+                bytes = try encodeKey(press)
+            } else if let session = view.session {
+                bytes = try session.encodeKey(press, optionAsAlt: optionAsAlt)
+            } else {
+                return
+            }
             guard !bytes.isEmpty else { return }
             writeInput?(Data(bytes))
         } catch {
