@@ -19,6 +19,9 @@ public struct AppState: Hashable, Sendable {
     /// The selected session, i.e. the one attached to the terminal surface.
     public var selection: SessionID?
     public var sidebarVisible: Bool
+    /// The sidebar's width in points, as the user last left it; `nil` = the built-in default.
+    /// Recorded from a divider drag, restored onto the sidebar's width constraint.
+    public var sidebarWidth: CGFloat?
     /// Restored on launch; `nil` = let AppKit place the window.
     public var windowFrame: CGRect?
     public var presets: [Preset]
@@ -33,6 +36,7 @@ public struct AppState: Hashable, Sendable {
         usage: [String: UsageSnapshot] = [:],
         selection: SessionID? = nil,
         sidebarVisible: Bool = true,
+        sidebarWidth: CGFloat? = nil,
         windowFrame: CGRect? = nil,
         presets: [Preset] = [],
         shortcuts: [String: String] = [:]
@@ -43,6 +47,7 @@ public struct AppState: Hashable, Sendable {
         self.usage = usage
         self.selection = selection
         self.sidebarVisible = sidebarVisible
+        self.sidebarWidth = sidebarWidth
         self.windowFrame = windowFrame
         self.presets = presets
         self.shortcuts = shortcuts

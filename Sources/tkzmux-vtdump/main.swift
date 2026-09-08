@@ -46,6 +46,11 @@ usage: tkzmux-vtdump <command> [options]
     plus the full tkzmux contract, so recordings are reproducible and cannot carry the recording
     user's environment. --inherit-env keeps the current process environment instead.
 
+  state-churn <dir> [--iterations n] [--seed n]
+                            mutate and save <dir>/state.json in a tight loop until killed. The
+                            crash-safety harness for M5.1: scripts/state-crash-test.sh SIGKILLs it
+                            at random moments and asserts the survivor still parses.
+
   render  --out <file.png> [--cols n] [--rows n] <file.tkzrec>
                             replay a recording and rasterise the screen offscreen (M1.5)
   atlas   --out <prefix> [--point-size n] [--scale n] [--sample <text>]
@@ -614,6 +619,10 @@ do {
             + " optimize=\(GhosttyVtInfo.optimizeName)"
         if let commit = vendoredCommit() { line += "  commit=\(commit)" }
         print(line)
+
+    case "state-churn":
+        // M5.1 / TKZ-29 — the SIGKILL harness for state.json; see scripts/state-crash-test.sh.
+        try StateChurnCommand.run(Array(argv.dropFirst()))
 
     case "replay":
         try runReplay(Array(argv.dropFirst()))

@@ -14,6 +14,7 @@
 
 import AppKit
 import Foundation
+import Persistence
 import TkzCore
 import TkzTerminalRender
 import TkzTerminalView
@@ -27,6 +28,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var devWindow: DevWindowController?
     private var fallbackWindow: NSWindow?
     private var store: AppStore?
+    private var autosaver: StateAutosaver?
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "app")
 
     /// Milliseconds after launch to print engine diagnostics and quit. Development only: it is how
@@ -49,10 +51,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 devWindow = controller
                 controller.showWindow()
             } else {
-                let store = AppStore(state: Self.initialState())
+                let restored = Self.restoreState()
+                let store = AppStore(state: restored.state)
                 self.store = store
                 let controller = MainWindowController(store: store, renderContext: context)
                 mainWindow = controller
+                if let loaded = restored.loaded {
+                    // The saver is created *after* the window so the window's own first mutations
+                    // (a frame nudge from `setFrame`, say) are compared against the file we just
+                    // read rather than written back to it.
+                    let saver = StateAutosaver(
+                        store: store, file: Self.stateFile, loaded: loaded)
+                    saver.start()
+                    autosaver = saver
+                    if let notice = loaded.notice { controller.showNotice(notice) }
+                    for warning in restored.warnings {
+                        logger.warning("state.json: \(warning, privacy: .public)")
+                    }
+                }
                 // After the window: the menu's handlers capture the controller.
                 controller.installMainMenu()
                 controller.showWindow()
@@ -72,6 +88,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationWillTerminate(_ notification: Notification) {
         devWindow?.shutdown()
         mainWindow?.shutdown()
+        // After `shutdown`, and synchronously: the debounced write for the last mutation before ⌘Q
+        // has not fired yet, and `flush` re-projects from the store rather than trusting a change
+        // set that was never delivered.
+        autosaver?.flush()
     }
 
     /// `TKZMUX_DEV_WINDOW=1` (or `true`/`yes`).
@@ -87,16 +107,28 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         return ["1", "true", "yes", "on"].contains(raw)
     }
 
-    /// The state the main window starts from: one group for the home directory and no sessions,
-    /// with the persisted window frame and sidebar visibility applied on top.
+    static var stateFile: StateFile { .standard() }
+
+    struct RestoredState {
+        var state: AppState
+        /// `nil` under `TKZMUX_FIXTURE`, where nothing is loaded and nothing may be saved.
+        var loaded: LoadResult?
+        var warnings: [String] = []
+    }
+
+    /// The state the main window starts from: `state.json` merged over one group for the home
+    /// directory (M5.1 / TKZ-29). A missing or empty file leaves the startup group in place, so a
+    /// first run and a run after a wiped state file look the same.
     ///
-    /// Real sessions arrive by launching one (M2.5) and, from M5.1, by restoring `state.json`.
-    static func initialState() -> AppState {
-        var state = wantsFixture
-            ? AppState.fixture
-            : AppState.startup(homeDirectory: NSHomeDirectory())
-        MainWindowController.restoreChrome(into: &state, from: .standard)
-        return state
+    /// `TKZMUX_FIXTURE` neither loads nor saves. Merging 40 fabricated, deliberately unlaunchable
+    /// rows into the user's real groups — and then persisting them — would be worse than having no
+    /// persistence at all in that mode.
+    static func restoreState() -> RestoredState {
+        guard !wantsFixture else { return RestoredState(state: .fixture, loaded: nil) }
+        var state = AppState.startup(homeDirectory: NSHomeDirectory())
+        let loaded = stateFile.load()
+        let warnings = loaded.document?.state.apply(to: &state) ?? []
+        return RestoredState(state: state, loaded: loaded, warnings: warnings)
     }
 
     /// No GPU (or no shaders): still show *something* rather than launching invisibly.

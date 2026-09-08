@@ -1,5 +1,6 @@
-// Persistence — see docs/design.md. `state.json` (M5) arrives with its own ticket; what is here
-// today is the snapshot store (Snapshots.swift) and the background-session idle policy below.
+// Persistence — see docs/design.md. The module holds `state.json` (StateFile, PersistedState,
+// Migrations, StateAutosaver, JSONValue — M5.1), the snapshot store (Snapshots.swift) and the
+// background-session idle policy below.
 
 import Foundation
 

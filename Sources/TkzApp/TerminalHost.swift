@@ -68,6 +68,10 @@ public protocol TerminalHost: AnyObject {
     func runWhenReady(_ id: SessionID, command: String)
     /// Attaches the single renderer to `id`; `nil` shows nothing.
     func show(_ id: SessionID?)
+    /// The session the surface is actually attached to. Not the same as the store's selection: a
+    /// row restored from `state.json` (M5.1) is selectable long before it has a terminal, and the
+    /// window shows its empty state rather than a blank grid for exactly this reason.
+    var visibleSessionID: SessionID? { get }
     func resize(_ id: SessionID, _ size: TerminalSize)
     /// Signals the child (SIGHUP by default). The row stays resumable.
     func close(_ id: SessionID, signal: Int32)
@@ -380,6 +384,8 @@ public final class TerminalViewHost: TerminalHost {
     /// The whole call is one `os_signpost` interval (`show`), and its wall time is also recorded in
     /// `showDurations` so the distribution can be printed without Instruments. The budget is one
     /// frame at 120 Hz: 8.3 ms.
+    public var visibleSessionID: SessionID? { visibleID }
+
     public func show(_ id: SessionID?) {
         let signpostID = signposter.makeSignpostID()
         let interval = signposter.beginInterval("show", id: signpostID)

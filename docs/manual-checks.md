@@ -249,6 +249,39 @@ covered. **Not measured yet** — do not quote a number until it is.
 ⌘P → same panel, sessions only, empty query lists everything in sidebar order.
 Then every row of `docs/shortcuts.md`.
 
+**4d. `state.json` survives quit, corruption and `kill -9` (M5.1 / TKZ-29)**
+
+The scripted half is automated and was run on 2026-09-08:
+
+```sh
+scripts/state-crash-test.sh          # 50 SIGKILL rounds
+```
+**Result: 50 rounds, every survivor parsed, no round lost its state.** A quarter of the rounds start
+from "primary missing, `.bak` present" on purpose — the state a naive rotation loses. The run also
+caught a `state.json.bak.new` stranded by a kill between the `link` and the final `rename` in
+roughly one round in seven; that is now swept at load, and the script asserts the sweep.
+
+Also verified headlessly on 2026-09-08, at `~/Library/Application Support/tkzmux/state.json`:
+quit writes a pretty-printed v1 file with no `live` keys; a relaunch restores the window frame,
+sidebar width and visibility, groups, session rows and the selection (`sessions=1
+selection=2222…`); a corrupt primary starts from `.bak` and leaves a `state.json.corrupt-<ts>`;
+both corrupt starts empty and keeps both copies; an unknown top-level key survives a rewrite; the
+sidebar comes up at 300 pt on three consecutive launches with **no drift**.
+
+What still needs a real login, because it needs a screen and a mouse:
+
+1. Open two sessions, rename one, collapse a group, **drag the sidebar to ~380 pt**, move and resize
+   the window, select the second session, ⌘Q. **Pass**: `state.json` holds both rows, the collapsed
+   group, `sidebar.width` ≈ 380 and the frame you left. **Fail**: `sidebar.width` is 240 or 300 —
+   the drag was not recorded (it is read once in `shutdown()`).
+2. Relaunch. **Pass**: everything above is back; both rows read `exited`; the detail half shows
+   *"Session not running · resume arrives in M5.2"*, **not** a blank black rectangle. **Fail**: an
+   empty terminal grid under the exited scrim.
+3. `printf 'x' > "$HOME/Library/Application Support/tkzmux/state.json"`, relaunch. **Pass**: the
+   sidebar is back and the status strip reads *"Restored sidebar from backup"* for ~10 s.
+4. `kill -9` the app while working, relaunch. **Pass**: the sidebar is back (the last ≤500 ms of
+   changes may be missing, and the sidebar width will be whatever the previous quit recorded).
+
 Known gap: the palette has no `didResignKey` observer, so clicking the main window hides it without
 firing `onDismiss`. If "click outside dismisses" is wanted, say so.
 

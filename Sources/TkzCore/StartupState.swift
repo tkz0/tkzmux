@@ -9,8 +9,10 @@
 import Foundation
 
 extension AppState {
-    /// The state a window with no persisted `state.json` (M5.1) comes up in: one group for the
-    /// user's home directory and nothing else.
+    /// The state a window with no persisted `state.json` comes up in: one group for the user's
+    /// home directory and nothing else. From M5.1 it is also the *base* a loaded `state.json` is
+    /// merged over, so an empty or absent file leaves exactly this — a first run and a run after
+    /// the file was wiped look the same.
     ///
     /// The group carries `repoRoot = homeDirectory` rather than the `nil` of a plain bucket, and
     /// that is load-bearing: `NewSessionMenu` disables every launch row when `group.repoRoot` is

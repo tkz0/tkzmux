@@ -65,7 +65,14 @@ public struct StatusBarModel: Hashable, Sendable {
     /// ``StatusBarModel/formatResetsIn(_:)``. Its own segment: `Usage 5%` can appear without it.
     public var usageResetsIn: Duration?
 
+    /// A transient message that replaces the whole strip: "Restored sidebar from backup" after a
+    /// `state.json` recovery (M5.1). Deliberately *not* part of `AppState` — it describes something
+    /// that happened once at launch, not something the app persists, and `statusModel(for:)` stays
+    /// a pure function of persisted state.
+    public var notice: String?
+
     public init(
+        notice: String? = nil,
         branch: String? = nil,
         isWorktree: Bool? = nil,
         modelName: String? = nil,
@@ -79,6 +86,7 @@ public struct StatusBarModel: Hashable, Sendable {
         usagePercent: Int? = nil,
         usageResetsIn: Duration? = nil
     ) {
+        self.notice = notice
         self.branch = branch
         self.isWorktree = isWorktree
         self.modelName = modelName

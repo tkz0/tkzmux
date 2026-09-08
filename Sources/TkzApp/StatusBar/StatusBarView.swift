@@ -124,6 +124,13 @@ public final class StatusBarView: NSView {
     static func segments(for model: StatusBarModel, theme: Theme) -> [StatusSegment] {
         var out: [StatusSegment] = []
 
+        // A notice owns the whole strip. It is rare, it is about the app rather than the session,
+        // and mixing it in among `⎇ develop · WT · …` would make it easy to miss — which defeats
+        // the point of telling the user their sidebar came back from a backup.
+        if let notice = model.notice, !notice.isEmpty {
+            return [.runs([StatusRun(text: notice, color: theme.foreground)])]
+        }
+
         if let branch = model.branch, !branch.isEmpty {
             out.append(.runs([
                 StatusRun(text: "\u{2387} ", color: theme.foregroundDim),   // ⎇

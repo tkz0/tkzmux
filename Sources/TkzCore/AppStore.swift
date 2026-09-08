@@ -23,7 +23,7 @@ import Foundation
 /// | a session's `groupID` or `order`, a group's `order` | `structure`, plus the id |
 /// | selection | `selection` |
 /// | usage / accounts | `usage` |
-/// | sidebar visibility, window frame, presets, shortcuts | `chrome` |
+/// | sidebar visibility, sidebar width, window frame, presets, shortcuts | `chrome` |
 ///
 /// `structure` therefore means exactly "the outline view's rows or their parents moved" — the only
 /// case that needs `insert/remove/moveItem` or a full `reloadData`. Collapsing a group is *not*
@@ -39,9 +39,11 @@ public struct ChangeSet: Hashable, Sendable {
     public var selection: Bool
     /// `AppState.usage` or `AppState.accounts` differ.
     public var usage: Bool
-    /// Window chrome and settings that belong to no row: `sidebarVisible`, `windowFrame`,
-    /// `presets`, `shortcuts`. The new-session menu ("From preset… (n saved)") and M5's debounced
-    /// `state.json` writer listen to this; the outline view ignores it.
+    /// Window chrome and settings that belong to no row: `sidebarVisible`, `sidebarWidth`,
+    /// `windowFrame`, `presets`, `shortcuts`. The new-session menu ("From preset… (n saved)")
+    /// listens to this; the outline view ignores it. `StateAutosaver` deliberately does *not*:
+    /// a durable change can arrive in any bucket, and `sessions` carries mostly non-durable ones,
+    /// so it compares projections on every delivery rather than trusting a bit here (M5.1).
     public var chrome: Bool
 
     public init(
@@ -122,7 +124,8 @@ public struct ChangeSet: Hashable, Sendable {
 
         if old.selection != new.selection { change.selection = true }
         if old.usage != new.usage || old.accounts != new.accounts { change.usage = true }
-        if old.sidebarVisible != new.sidebarVisible || old.windowFrame != new.windowFrame
+        if old.sidebarVisible != new.sidebarVisible || old.sidebarWidth != new.sidebarWidth
+            || old.windowFrame != new.windowFrame
             || old.presets != new.presets || old.shortcuts != new.shortcuts
         {
             change.chrome = true

@@ -263,7 +263,11 @@ struct PtyTests {
     /// Acceptance: a bad executable surfaces as ENOENT, promptly, with no fd or process left over.
     @Test func execFailureReportsErrnoWithoutLeaking() async throws {
         let before = openFileDescriptorCount()
-        for _ in 0..<8 {
+        // 32 rather than 8 iterations: the check below is a *process-wide* fd count, so it competes
+        // with every test running in parallel. Making the leak signal four times larger, rather
+        // than the tolerance four times looser, keeps even a one-fd-per-spawn leak detectable.
+        let iterations = 32
+        for _ in 0..<iterations {
             #expect(throws: PtyError.spawnFailed(code: ENOENT)) {
                 _ = try Pty(
                     spawn: PtySpawn(
@@ -280,9 +284,12 @@ struct PtyTests {
             }
         }
         let after = openFileDescriptorCount()
-        // A real leak would be at least one master + one pipe end per iteration; the small slack
-        // absorbs fds that other tests in this process open concurrently.
-        #expect(after - before < 8, "fd count went \(before) → \(after) over 8 failed spawns")
+        // A real leak is at least one fd per iteration, i.e. ≥32; the slack absorbs fds that other
+        // tests in this process open concurrently (it was 8-with-8-iterations, which the M5.1
+        // `state.json` tests opened enough files to trip roughly one run in ten).
+        #expect(
+            after - before < 16,
+            "fd count went \(before) → \(after) over \(iterations) failed spawns")
         // The failed child is reaped inside the shim, so there is nothing left to wait for here
         // (a waitpid(-1) probe would steal another test's child).
     }

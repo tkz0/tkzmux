@@ -61,7 +61,16 @@ struct MainWindowControllerTests {
         /// only in a protocol extension would be statically dispatched on `any TerminalHost` and
         /// never reach a conformer's override).
         func runWhenReady(_ id: SessionID, command: String) { run(id, command: command) }
-        func show(_ id: SessionID?) { shown.append(id) }
+        private(set) var visibleSessionID: SessionID?
+        func show(_ id: SessionID?) {
+            shown.append(id)
+            // The real host attaches nothing for an id it has never opened, which is what a row
+            // restored from `state.json` looks like. The spy has to model that, or the window's
+            // empty-state logic would be tested against a host that can show anything.
+            visibleSessionID = id.flatMap { candidate in
+                opened.contains { $0.id == candidate } ? candidate : nil
+            }
+        }
         func resize(_ id: SessionID, _ size: TerminalSize) {}
         func close(_ id: SessionID, signal: Int32) { closed.append((id, signal)) }
         func snapshot(_ id: SessionID) throws -> Data { Data() }
@@ -87,8 +96,6 @@ struct MainWindowControllerTests {
         let controller: MainWindowController
         let host: SpyTerminalHost
         let terminalView: FakeTerminalView
-        let defaults: UserDefaults
-        let suiteName: String
 
         var window: NSWindow { controller.window }
         var sidebarItem: NSSplitViewItem { controller.splitViewController.splitViewItems[0] }
@@ -107,23 +114,19 @@ struct MainWindowControllerTests {
 
         func tearDown() {
             controller.shutdown()
-            defaults.removePersistentDomain(forName: suiteName)
             window.orderOut(nil)
         }
     }
 
     static func makeHarness(_ state: AppState = .fixture) -> Harness {
         _ = NSApplication.shared
-        let suiteName = "tkzmux.tests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
         let store = AppStore(state: state)
         let host = SpyTerminalHost()
         let view = FakeTerminalView(frame: NSRect(x: 0, y: 0, width: 900, height: 700))
         let controller = MainWindowController(
-            store: store, host: host, terminalView: view, theme: .default, defaults: defaults)
+            store: store, host: host, terminalView: view, theme: .default)
         let harness = Harness(
-            store: store, controller: controller, host: host, terminalView: view,
-            defaults: defaults, suiteName: suiteName)
+            store: store, controller: controller, host: host, terminalView: view)
         harness.layout()
         return harness
     }
@@ -286,6 +289,11 @@ struct MainWindowControllerTests {
         defer { harness.tearDown() }
 
         let target = try #require(harness.store.state.orderedSessions.last?.id)
+        // The row has to have a terminal behind it: from M5.1 a row can exist in the store with no
+        // surface (that is what a restored `state.json` row is), and the window shows the empty
+        // state for those rather than focusing a grid that is not there.
+        _ = try harness.host.open(
+            target, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
         harness.mutate { $0.select(target) }
 
         #expect(harness.host.lastShown == .some(target))
@@ -301,6 +309,8 @@ struct MainWindowControllerTests {
         // Start from nothing selected, so the ⌘1 below is a real change and not a no-op.
         harness.mutate { $0.select(nil) }
         let expected = try #require(SidebarRowAdapter.session(atVisibleIndex: 1, in: harness.store.state))
+        _ = try harness.host.open(
+            expected, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
 
         // ⌘1 — the sidebar's own command, exactly what the menu dispatches.
         harness.controller.dispatcher.perform(.selectSession(1))
@@ -312,20 +322,28 @@ struct MainWindowControllerTests {
         #expect(harness.window.firstResponder === harness.terminalView)
     }
 
-    @Test("Empty state appears when nothing is selected and disappears when something is")
+    @Test("The empty state follows the host's surface, not the selection")
     func emptyState() throws {
         let harness = Self.makeHarness()
         defer { harness.tearDown() }
 
-        #expect(harness.controller.detail.emptyState.isHidden)
+        // Every fixture row is selectable but has never been opened on the host — exactly the shape
+        // of a row restored from `state.json` (M5.1). The detail half must say so rather than show
+        // a blank grid.
+        #expect(harness.controller.detail.emptyState.isHidden == false)
+        #expect(harness.terminalView.isHidden)
+        #expect(harness.controller.detail.emptyStateMessage == EmptyStateView.notRunningMessage)
 
         harness.mutate { $0.select(nil) }
         #expect(harness.controller.detail.emptyState.isHidden == false)
         #expect(harness.terminalView.isHidden)
         #expect(harness.host.lastShown == .some(nil))
-        #expect(EmptyStateView.message == "No session selected \u{00B7} \u{2318}N")
+        #expect(harness.controller.detail.emptyStateMessage == EmptyStateView.noSelectionMessage)
+        #expect(EmptyStateView.noSelectionMessage == "No session selected \u{00B7} \u{2318}N")
 
+        // A row the host has actually opened shows the terminal.
         let target = try #require(harness.store.state.orderedSessions.first?.id)
+        _ = try harness.host.open(target, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
         harness.mutate { $0.select(target) }
         #expect(harness.controller.detail.emptyState.isHidden)
         #expect(harness.terminalView.isHidden == false)
@@ -363,52 +381,6 @@ struct MainWindowControllerTests {
 
     // MARK: - Chrome persistence
 
-    @Test("Window frame and sidebar visibility survive a save/restore round-trip")
-    func chromeRoundTrip() throws {
-        let harness = Self.makeHarness()
-        defer { harness.tearDown() }
-
-        harness.mutate { state in
-            state.windowFrame = NSRect(x: 120, y: 90, width: 1000, height: 700)
-            state.setSidebarVisible(false)
-        }
-        harness.controller.saveChrome()
-
-        // What the store ended up with is the truth: AppKit constrains a window to the screen it
-        // lands on, and `windowDidResize` writes the constrained frame back. The round trip is
-        // "whatever the window really has comes back", not "whatever we asked for".
-        var restored = AppState.fixture
-        MainWindowController.restoreChrome(into: &restored, from: harness.defaults)
-        #expect(restored.windowFrame != nil)
-        #expect(restored.windowFrame == harness.store.state.windowFrame)
-        #expect(restored.windowFrame == harness.window.frame)
-        #expect(restored.sidebarVisible == false)
-    }
-
-    @Test("ChromeDefaults round-trips an arbitrary frame with no window involved")
-    func chromeDefaultsRoundTrip() {
-        let suiteName = "tkzmux.tests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        var saved = AppState()
-        saved.windowFrame = NSRect(x: 120, y: 90, width: 1100, height: 760)
-        saved.setSidebarVisible(false)
-        ChromeDefaults.save(saved, to: defaults)
-
-        var restored = AppState()
-        ChromeDefaults.load(into: &restored, from: defaults)
-        #expect(restored.windowFrame == saved.windowFrame)
-        #expect(restored.sidebarVisible == false)
-
-        // A nil frame clears the key rather than writing a zero rect.
-        saved.windowFrame = nil
-        ChromeDefaults.save(saved, to: defaults)
-        var cleared = AppState()
-        ChromeDefaults.load(into: &cleared, from: defaults)
-        #expect(cleared.windowFrame == nil)
-    }
-
     @Test("A stored frame places the window at launch")
     func frameAppliedAtLaunch() {
         var state = AppState.fixture
@@ -419,17 +391,49 @@ struct MainWindowControllerTests {
         #expect(harness.window.frame.size == NSSize(width: 1000, height: 700))
     }
 
-    @Test("Unparsable defaults leave the state alone")
-    func chromeGarbage() {
-        let suiteName = "tkzmux.tests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set("not a rect", forKey: ChromeDefaults.frameKey)
+    @Test("A stored sidebar width is applied at launch and reading it back is a fixed point")
+    func sidebarWidthRestored() {
+        var state = AppState.fixture
+        state.sidebarWidth = 380
+        let harness = Self.makeHarness(state)
+        defer { harness.tearDown() }
 
-        var state = AppState()
-        MainWindowController.restoreChrome(into: &state, from: defaults)
-        #expect(state.windowFrame == nil)
-        #expect(state.sidebarVisible)
+        #expect(harness.controller.restoredSidebarWidth == 380)
+        #expect(harness.controller.sidebarWidthConstraint?.constant == 380)
+
+        // The loop that must not oscillate: the constraint drives layout, layout is read back at
+        // quit, and the store drives the constraint on the next launch. Reading the settled width
+        // must therefore change nothing at all — any discrepancy here moves the sidebar a little
+        // on every launch until it hits a limit, which is what an earlier version of this did.
+        harness.controller.recordSidebarWidth()
+        harness.store.flush()
+        #expect(harness.store.state.sidebarWidth == 380)
+        #expect(harness.controller.sidebarWidthConstraint?.constant == 380)
+
+        // A store-driven change (what a restore from `state.json` is) reaches the constraint.
+        harness.mutate { $0.sidebarWidth = 420 }
+        #expect(harness.controller.sidebarWidthConstraint?.constant == 420)
+    }
+
+    @Test("A nonsense stored width degrades to the design default")
+    func sidebarWidthGarbage() {
+        var state = AppState.fixture
+        state.sidebarWidth = 4
+        let harness = Self.makeHarness(state)
+        defer { harness.tearDown() }
+        #expect(harness.controller.restoredSidebarWidth == MainWindowController.sidebarWidth)
+    }
+
+    @Test("A notice takes over the status strip and then gives it back")
+    func statusNotice() {
+        let harness = Self.makeHarness()
+        defer { harness.tearDown() }
+
+        harness.controller.showNotice("Restored sidebar from backup", for: .seconds(60))
+        #expect(harness.controller.statusBar.model.notice == "Restored sidebar from backup")
+        #expect(harness.controller.statusBar.currentSegments.count == 1)
+        #expect(harness.controller.statusBar.currentSegments.first?.plainText
+            == "Restored sidebar from backup")
     }
 
     // MARK: - Rendering

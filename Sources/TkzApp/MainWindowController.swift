@@ -15,15 +15,15 @@
 //     `AppState.sidebarVisible`; the `chrome` observer applies it to the split item. A *drag* of
 //     the divider that collapses the sidebar has to travel the other way, so the split view
 //     controller reports resizes back into the store behind a re-entrancy guard — otherwise the
-//     window and `state.json` (M5.1) drift apart the first time the user drags.
+//     window and `state.json` drift apart the first time the user drags.
 //  3. **Nothing here may touch the real application-support directory.** The window controller
-//     never builds a `TerminalViewHost` itself: the host and the `UserDefaults` are injected, so a
-//     test gets a spy host and a throwaway defaults suite (shared agent brief, hard rule 8). The
-//     `init(store:renderContext:)` convenience is the only place that builds the real thing, and
-//     `AppDelegate` is its only caller.
+//     never builds a `TerminalViewHost` itself: the host is injected, so a test gets a spy (shared
+//     agent brief, hard rule 8). The `init(store:renderContext:)` convenience is the only place
+//     that builds the real thing, and `AppDelegate` is its only caller.
 //
-// Window frame and sidebar visibility are persisted through the store's `chrome` change set and
-// mirrored into `UserDefaults` — a stand-in until M5.1 writes `state.json`.
+// Window frame, sidebar width and sidebar visibility live in the store and are persisted by
+// `Persistence.StateAutosaver` (M5.1 / TKZ-29). This class writes no file of its own; it only
+// reports what the window is doing back into the store, and applies what the store says.
 
 import AppKit
 import Foundation
@@ -32,38 +32,6 @@ import TkzTerminalCore
 import TkzTerminalRender
 import TkzTerminalView
 import os
-
-// MARK: - Chrome persistence
-
-/// Window frame + sidebar visibility in `UserDefaults`. M5.1 replaces this with `state.json`;
-/// until then the two keys below are the whole of the app's persistence.
-public enum ChromeDefaults {
-    public static let frameKey = "tkzmux.main.windowFrame"
-    public static let sidebarVisibleKey = "tkzmux.main.sidebarVisible"
-
-    /// Writes the chrome half of `state`. A `nil` frame removes the key rather than writing a
-    /// zero rect, so "never placed" and "placed at the origin" stay distinguishable.
-    public static func save(_ state: AppState, to defaults: UserDefaults) {
-        if let frame = state.windowFrame {
-            defaults.set(NSStringFromRect(frame), forKey: frameKey)
-        } else {
-            defaults.removeObject(forKey: frameKey)
-        }
-        defaults.set(state.sidebarVisible, forKey: sidebarVisibleKey)
-    }
-
-    /// Applies whatever was stored. Missing or unparsable values leave `state` untouched, so a
-    /// corrupt default degrades to the built-in placement instead of a zero-sized window.
-    public static func load(into state: inout AppState, from defaults: UserDefaults) {
-        if let raw = defaults.string(forKey: frameKey) {
-            let rect = NSRectFromString(raw)
-            if rect.width > 0, rect.height > 0 { state.windowFrame = rect }
-        }
-        if defaults.object(forKey: sidebarVisibleKey) != nil {
-            state.sidebarVisible = defaults.bool(forKey: sidebarVisibleKey)
-        }
-    }
-}
 
 // MARK: - Split view controller
 
@@ -81,9 +49,17 @@ final class MainSplitViewController: NSSplitViewController {
         super.splitViewDidResizeSubviews(notification)
         guard !isApplyingStoreState, let sidebar = splitViewItems.first else { return }
         let collapsed = sidebar.isCollapsed
-        guard collapsed != lastReportedCollapse else { return }
-        lastReportedCollapse = collapsed
-        onSidebarCollapseChanged?(collapsed)
+        if collapsed != lastReportedCollapse {
+            lastReportedCollapse = collapsed
+            onSidebarCollapseChanged?(collapsed)
+        }
+    }
+
+    /// Applies a width decision that came from the store without reporting it back.
+    func applyWidth(_ apply: () -> Void) {
+        isApplyingStoreState = true
+        apply()
+        isApplyingStoreState = false
     }
 
     /// Applies a collapse decision that came from the store without reporting it back.
@@ -119,6 +95,12 @@ final class DetailViewController: NSViewController {
     let terminalView: NSView
     let statusBar: StatusBarView
     let emptyState: NSView
+
+    /// The empty state's caption. A no-op when the view is the plain `NSView` a test injected.
+    var emptyStateMessage: String {
+        get { (emptyState as? EmptyStateView)?.message ?? "" }
+        set { (emptyState as? EmptyStateView)?.message = newValue }
+    }
     /// Dims the last screen of a session whose shell has exited. See ``ExitedScrimView``.
     let exitedScrim = ExitedScrimView()
 
@@ -269,9 +251,19 @@ final class ExitedScrimView: NSView {
 /// "No session selected · ⌘N". Drawn rather than stacked so it rasterises headlessly (design.md →
 /// *Testing without UI*: a windowless `NSView` subtree does not render, a layer does).
 final class EmptyStateView: NSView {
-    /// What the label says. Public-in-module so the test asserts the string, not a screenshot.
-    static let message = "No session selected \u{00B7} \u{2318}N"
+    /// Nothing is selected at all.
+    static let noSelectionMessage = "No session selected \u{00B7} \u{2318}N"
+    /// A row *is* selected but has no terminal behind it — the shape of every row restored from
+    /// `state.json` until M5.2 wires Resume. Saying "no session selected" under a highlighted
+    /// sidebar row would simply be untrue.
+    static let notRunningMessage = "Session not running \u{00B7} resume arrives in M5.2"
 
+    /// What the label says.
+    var message: String = EmptyStateView.noSelectionMessage {
+        didSet { if message != oldValue, let theme = lastTheme { apply(theme: theme) } }
+    }
+
+    private var lastTheme: Theme?
     private let textLayer = CATextLayer()
 
     override init(frame frameRect: NSRect) {
@@ -289,9 +281,10 @@ final class EmptyStateView: NSView {
     override var isFlipped: Bool { false }
 
     func apply(theme: Theme) {
+        lastTheme = theme
         layer?.backgroundColor = theme.terminalBackground.cgColor
         let font = Theme.Fonts.ui(theme.fontUI.title)
-        textLayer.string = NSAttributedString(string: Self.message, attributes: [
+        textLayer.string = NSAttributedString(string: message, attributes: [
             .font: font,
             .foregroundColor: theme.foregroundMuted.nsColor,
         ])
@@ -348,13 +341,17 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public let mouseController = MouseController()
     private var commandKeyMonitor: Any?
 
-    private let defaults: UserDefaults
     private var theme: Theme
     private var storeToken: AppStore.ObserverToken?
     /// Drains `host.events` for the lifetime of the window.
     private var eventPump: Task<Void, Never>?
     private var isApplyingStoreFrame = false
-    private var sidebarWidthConstraint: NSLayoutConstraint?
+
+    /// A launch-time message shown in the status strip; see ``showNotice(_:)``.
+    private var transientNotice: String?
+    private var noticeTimer: DispatchSourceTimer?
+    /// Internal rather than private so the width tests can read what layout actually got.
+    var sidebarWidthConstraint: NSLayoutConstraint?
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "mainwindow")
 
     // MARK: Init
@@ -364,14 +361,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         store: AppStore,
         host: any TerminalHost,
         terminalView: NSView,
-        theme: Theme = .default,
-        defaults: UserDefaults = .standard
+        theme: Theme = .default
     ) {
         self.store = store
         self.host = host
         self.terminalView = terminalView
         self.theme = theme
-        self.defaults = defaults
 
         self.sidebar = SidebarViewController(store: store, theme: theme)
         self.toolbarController = MainToolbarController(theme: theme)
@@ -414,14 +409,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public convenience init(
         store: AppStore,
         renderContext: TerminalRenderContext,
-        theme: Theme = .default,
-        defaults: UserDefaults = .standard
+        theme: Theme = .default
     ) {
         let view = TerminalMetalView(
             renderContext: renderContext,
             frame: NSRect(x: 0, y: 0, width: 940, height: 760))
         let host = TerminalViewHost(view: view)
-        self.init(store: store, host: host, terminalView: view, theme: theme, defaults: defaults)
+        self.init(store: store, host: host, terminalView: view, theme: theme)
         self.metalView = view
         wireInput(view: view, host: host)
     }
@@ -438,7 +432,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // assembly would otherwise come up with an 8 pt sidebar. The priority sits just above the
         // item's holding priority so the constraint wins the initial layout, and a divider drag —
         // which the split view expresses at a far higher priority — still wins over it.
-        sidebarWidthConstraint = sidebar.view.widthAnchor.constraint(equalToConstant: Self.sidebarWidth)
+        sidebarWidthConstraint = sidebar.view.widthAnchor.constraint(
+            equalToConstant: restoredSidebarWidth)
         sidebarWidthConstraint?.priority = NSLayoutConstraint.Priority(
             NSLayoutConstraint.Priority.defaultLow.rawValue + 1)
         sidebarWidthConstraint?.isActive = true
@@ -486,7 +481,16 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // The divider position is a *layout* decision, so it only sticks after the window has a
         // size; `minimumThickness` alone would leave the sidebar at whatever AppKit picked.
         window.contentView?.layoutSubtreeIfNeeded()
-        splitViewController.splitView.setPosition(Self.sidebarWidth, ofDividerAt: 0)
+        splitViewController.splitView.setPosition(restoredSidebarWidth, ofDividerAt: 0)
+    }
+
+    /// The width the sidebar comes up at: what the user last left it at, clamped to what the split
+    /// view will actually allow, else the design's 300 pt.
+    var restoredSidebarWidth: CGFloat {
+        guard let width = store.state.sidebarWidth, width >= Self.sidebarMinWidth else {
+            return Self.sidebarWidth
+        }
+        return min(width, 520)
     }
 
     private func wireSidebar() {
@@ -581,9 +585,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         focusTerminalIfSessionShown()
     }
 
-    /// Saves the chrome and hangs up every session. `AppDelegate` calls this on terminate.
+    /// Hangs up every session. `AppDelegate` calls this on terminate, and flushes the state file
+    /// afterwards — `StateAutosaver` owns persistence now, not this class.
     public func shutdown() {
-        saveChrome()
+        recordSidebarWidth()
+        noticeTimer?.cancel()
+        noticeTimer = nil
         eventPump?.cancel()
         eventPump = nil
         if let host = host as? TerminalViewHost {
@@ -594,16 +601,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             NSEvent.removeMonitor(commandKeyMonitor)
             self.commandKeyMonitor = nil
         }
-    }
-
-    /// Mirrors the store's chrome into `UserDefaults` (M5.1 replaces this with `state.json`).
-    public func saveChrome() {
-        ChromeDefaults.save(store.state, to: defaults)
-    }
-
-    /// Reads the persisted chrome back into a state value. The inverse of ``saveChrome()``.
-    public static func restoreChrome(into state: inout AppState, from defaults: UserDefaults) {
-        ChromeDefaults.load(into: &state, from: defaults)
     }
 
     public func windowDidResize(_ notification: Notification) { recordWindowFrame() }
@@ -625,9 +622,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         if change.chrome {
             applySidebarVisible(store.state.sidebarVisible)
+            applySidebarWidth()
             applyWindowFrame()
             newSessionMenu.presets = store.state.presets
-            saveChrome()
         }
         if change.structure || change.selection {
             newSessionMenu.configureForSelection(state: store.state)
@@ -639,6 +636,53 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // selection change, so the scrim has to follow this branch too.
             updateExitedScrim()
             updateToolbarTitle()
+        }
+    }
+
+    /// The width to record and restore: the sidebar view's own, which is exactly what
+    /// `sidebarWidthConstraint` sets and what `setPosition` resolves to.
+    ///
+    /// Measured, because two plausible alternatives are both wrong. The split view's wrapper around
+    /// the sidebar is 8 pt wider (the macOS 26 glass-container inset), so recording *it* and
+    /// restoring through the constraint grew the sidebar by 8 pt per read until it clamped at the
+    /// 520 pt maximum. And neither `subviews.first` nor `arrangedSubviews.first` is the sidebar at
+    /// all — the detail wrapper comes first, which recorded 852 pt.
+    var sidebarWidthForRestore: CGFloat {
+        sidebar.view.frame.width
+    }
+
+    /// Reads the sidebar's width into the store. Called once, from ``shutdown()``.
+    ///
+    /// **Not** from `splitViewDidResizeSubviews`. That fires throughout assembly and throughout
+    /// every window resize, and the sidebar measurably passes through its 240 pt minimum on the way
+    /// to 300 — including one pass *after* `init` has returned, so neither an assembly flag nor a
+    /// deferred read escapes it. Recording a transient would be self-inflicted: the store drives
+    /// the width constraint, so a 240 written once pins the sidebar at its minimum for good, which
+    /// is exactly what a first launch produced. Reading once at quit, when layout has long settled,
+    /// records what the user actually left behind and cannot latch onto anything else. The cost is
+    /// that a width change is lost if the app is killed rather than quit — a preference, not state.
+    func recordSidebarWidth() {
+        let width = sidebarWidthForRestore
+        guard width > 0, abs((store.state.sidebarWidth ?? -1) - width) > 0.5 else { return }
+        store.update { $0.sidebarWidth = width }
+    }
+
+    /// Keeps the sidebar in step with the store's width — the path a restore from `state.json`
+    /// takes. Without it the constraint holds its build-time constant and a collapse/re-expand
+    /// snaps the sidebar back to it.
+    private func applySidebarWidth() {
+        // Never while collapsed: `setPosition` re-expands the sidebar, the split view reports the
+        // re-expansion back, and ⌘B would immediately undo itself.
+        guard store.state.sidebarVisible else { return }
+        let width = restoredSidebarWidth
+        guard abs(sidebarWidthForRestore - width) > 0.5 || sidebarWidthConstraint?.constant != width
+        else { return }
+        // Both mechanisms, because they govern in different situations: the constraint is the only
+        // one that works before the split view has been laid out (headlessly it is the only one at
+        // all), and `setPosition` is the one that governs on screen.
+        splitViewController.applyWidth {
+            sidebarWidthConstraint?.constant = width
+            splitViewController.splitView.setPosition(width, ofDividerAt: 0)
         }
     }
 
@@ -658,22 +702,30 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     func applySelection(focusTerminal: Bool) {
         let id = store.state.selection
         host.show(id)
-        detail.emptyState.isHidden = id != nil
-        terminalView.isHidden = id == nil
+        // Visibility follows the *host*, not the selection. From M5.1 a restored row exists in the
+        // store with no terminal behind it, and showing the surface for one draws an empty black
+        // rectangle where the empty state belongs.
+        let hasSurface = host.visibleSessionID != nil
+        detail.emptyState.isHidden = hasSurface
+        detail.emptyStateMessage = id == nil
+            ? EmptyStateView.noSelectionMessage
+            : EmptyStateView.notRunningMessage
+        terminalView.isHidden = !hasSurface
         updateExitedScrim()
-        if id != nil, focusTerminal { focusTerminalIfSessionShown() }
+        if hasSurface, focusTerminal { focusTerminalIfSessionShown() }
     }
 
-    /// Shows the dim over a selected session whose shell has exited.
+    /// Shows the dim over a selected session whose shell has exited. A row with no surface at all
+    /// shows the empty state instead, so there is nothing to scrim.
     func updateExitedScrim() {
         let isExited = store.state.selectedSession.map { $0.status == .exited } ?? false
-        detail.exitedScrim.isHidden = !isExited
+        detail.exitedScrim.isHidden = !(isExited && host.visibleSessionID != nil)
     }
 
     /// The one place that decides the terminal has the keyboard. Without it a selected session
     /// renders and swallows nothing.
     func focusTerminalIfSessionShown() {
-        guard store.state.selection != nil else { return }
+        guard host.visibleSessionID != nil else { return }
         window.makeFirstResponder(terminalView)
     }
 
@@ -690,7 +742,32 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     func updateStatusBar() {
-        statusBar.model = Self.statusModel(for: store.state)
+        var model = Self.statusModel(for: store.state)
+        model.notice = transientNotice
+        statusBar.model = model
+    }
+
+    /// Shows a message in the status strip for a while, then puts the session's data back.
+    /// `AppDelegate` uses it for the `state.json` recovery notices (M5.1); design.md asks for a
+    /// non-modal notice and the 30 pt strip is the only one the app has.
+    public func showNotice(_ message: String, for duration: Duration = .seconds(10)) {
+        transientNotice = message
+        updateStatusBar()
+        noticeTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        let seconds = Double(duration.components.seconds)
+            + Double(duration.components.attoseconds) / 1e18
+        timer.schedule(deadline: .now() + seconds)
+        timer.setEventHandler { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.transientNotice = nil
+                self.noticeTimer = nil
+                self.updateStatusBar()
+            }
+        }
+        noticeTimer = timer
+        timer.resume()
     }
 
     /// `Session` → `StatusBarModel`. Pure, so the mapping is a test rather than a screenshot.
@@ -726,7 +803,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     func applySidebarVisible(_ visible: Bool) {
         splitViewController.applyCollapsed(!visible)
         if visible {
-            splitViewController.splitView.setPosition(Self.sidebarWidth, ofDividerAt: 0)
+            splitViewController.splitView.setPosition(restoredSidebarWidth, ofDividerAt: 0)
         }
     }
 
@@ -952,7 +1029,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// One line for `TKZMUX_DEV_AUTOQUIT_MS`, so the default window can be smoke-tested headlessly.
     public func diagnosticsLine() -> String {
         let frame = window.frame
-        let sidebarWidth = splitViewController.splitViewItems.first?.viewController.view.frame.width ?? 0
+        // The same quantity `state.json` records — see `sidebarWidthForRestore`.
+        let sidebarWidth = sidebarWidthForRestore
         return String(
             format: "main window: frame=%.0fx%.0f sidebar=%@ (%.0f pt) sessions=%d selection=%@",
             frame.width, frame.height,

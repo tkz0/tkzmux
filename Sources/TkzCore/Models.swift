@@ -1001,7 +1001,7 @@ public struct Preset: Hashable, Sendable, Codable, Identifiable {
 
 /// Where a preset starts. `claude -w` must run from the main checkout, hence `worktree` still
 /// resolves its cwd to the repo root — the *name* is what it passes to `-w`.
-public enum CwdMode: Hashable, Sendable, Codable {
+public enum CwdMode: Hashable, Sendable {
     case repoRoot
     case worktree(name: String?)
     case fixed(path: String)
@@ -1011,6 +1011,37 @@ public enum CwdMode: Hashable, Sendable, Codable {
         switch self {
         case .repoRoot, .worktree: repoRoot ?? fallback
         case .fixed(let path): path
+        }
+    }
+}
+
+/// Hand-written rather than synthesized: this lands in `state.json` (M5.1), and the compiler's
+/// enum-with-payload wire form is an implementation detail of the Swift version that built the app,
+/// not a contract. The shape below is the contract — `{"mode": "worktree", "name": "review"}`.
+extension CwdMode: Codable {
+    private enum CodingKeys: String, CodingKey { case mode, name, path }
+    private enum Mode: String, Codable { case repoRoot, worktree, fixed }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        switch try c.decode(Mode.self, forKey: .mode) {
+        case .repoRoot: self = .repoRoot
+        case .worktree: self = .worktree(name: try c.decodeIfPresent(String.self, forKey: .name))
+        case .fixed: self = .fixed(path: try c.decode(String.self, forKey: .path))
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .repoRoot:
+            try c.encode(Mode.repoRoot, forKey: .mode)
+        case .worktree(let name):
+            try c.encode(Mode.worktree, forKey: .mode)
+            try c.encodeIfPresent(name, forKey: .name)
+        case .fixed(let path):
+            try c.encode(Mode.fixed, forKey: .mode)
+            try c.encode(path, forKey: .path)
         }
     }
 }
