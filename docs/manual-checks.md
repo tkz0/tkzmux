@@ -52,6 +52,7 @@ Kept for the record so they are not re-tested by mistake.
 | **vttest menu 1 "failure"** | **NOT A BUG.** The border framed only ~24 rows of a taller window. `vttest --help` says it all: `Usage: vttest [options] [24x80.132]`, and the man page lists "24 lines, 80 minimum columns". **vttest defaults to 24 lines**; columns come from the terminal, rows do not. That matches the original screenshot exactly — full-width border, 24 rows. Pass the geometry (all three parts) to use the whole window — see §2d. (An earlier guess that this was a stale size from the resize bug was wrong; `stty size` and `\e[18t` both verified correct.) |
 | **TKZ-16 on-screen run** | **PASS** (2026-09-08). `drawablesAcquired=886`, `key=true`, 0/600 switches over 8.3 ms, 0.24 % sustained CPU. Also resolved the open "does the compressor stall the visible session" caveat: 9.88 ms worst overshoot on an 8 ms heartbeat across 13 498 samples. Full record in `docs/perf.md` §10. |
 | **TKZ-12 §1a–1e** | **PASS** (2026-09-08). Interactive terminal, resize, idle CPU, occlusion, scale change. |
+| **M4 §7a–7k** | **PASS** (2026-09-08). Git updates, worktree branch, no-upstream dimming, the `index.lock` and `nettop` traces, the `gh`-never-runs check on the Azure DevOps repo, a real PR badge, ports appearing and going, idle CPU with many repos watched, the artboard comparison and the badge swap on selection — run by hand by Thomas; every item that applied passed. |
 
 ---
 
@@ -388,7 +389,9 @@ selection alone.
 crash, and in Console every `launch` line's `CLAUDE_CONFIG_DIR` matches the row's account chip.
 Paste the `log show` extract into docs/perf.md → *Launch audit* → run notes.
 
-### 7. M4 — git status, ports and the PR badge (TKZ-26 / TKZ-27 / TKZ-28)
+### 7. M4 — git status, ports and the PR badge (TKZ-26 / TKZ-27 / TKZ-28) — PASSED
+
+**Verified 2026-09-08 — all passed.** Kept below as the procedure to re-run after a change to `GitStatusService`, `PRLookup`, `PortScanner` or the status strip.
 
 The parsers, the tracking rules and the Azure-DevOps gate are covered by tests. What is left here
 needs a real repo, a real login and, in two cases, a system trace.
