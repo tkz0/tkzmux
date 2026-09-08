@@ -1,0 +1,21 @@
+Sources/TkzApp/AppDelegate.swift
+  s_36289bebec70b4::t_2c2444a42a36e4 24-26
+Sources/TkzApp/MainMenu.swift
+  s_36289bebec70b4::t_0d5a7a44da0a8d 1-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4a14f53fbc8cc2c577191e8c96202aa1f928348b",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
