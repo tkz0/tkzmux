@@ -1,0 +1,23 @@
+Tests/TkzCoreTests/ThemeTests.swift
+  s_b1fabbdf055770::t_eabe0c9154ae94 100
+docs/design.md
+  s_b1fabbdf055770::t_eabe0c9154ae94 86
+Sources/TkzCore/Theme.swift
+  s_b1fabbdf055770::t_c3a4c4473aa980 85-86,90-91,100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "8a72060e370e35d890cb46898a1b2978908332ea",
+  "prompts": {},
+  "sessions": {
+    "s_b1fabbdf055770": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3585eaf-e58c-47c4-924c-e8285e7d67ed",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
