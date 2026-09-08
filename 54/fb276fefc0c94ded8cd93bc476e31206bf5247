@@ -1,0 +1,32 @@
+Sources/TkzApp/MainWindowController.swift
+  s_e141c64829a825::t_e9c73d3e8fe01a 44-46,59,74-78,80,84,362-367,477-478
+  s_e141c64829a825::t_03c2b6abe86bc1 505-517,520-521,677,679-685,687-690,728,733
+  s_e141c64829a825::t_5a65dd2b20dea4 479,624-625,693,695-713,720-727,734,855-862
+  s_e141c64829a825::t_186a5029fe9e92 62-65,68
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_e141c64829a825::t_f87ebdba59251c 146-151,260
+  s_e141c64829a825::t_4f3a9d89ada137 406,408-411,415,417,419-420,446,461-481
+  s_e141c64829a825::t_186a5029fe9e92 422-445,447-451
+  s_e141c64829a825::t_023460c6aefc16 421
+docs/manual-checks.md
+  s_e141c64829a825::t_cb1d1d839d241a 274-275
+  s_e141c64829a825::t_65bf59cd457d35 276-278
+docs/design.md
+  s_e141c64829a825::t_c5161aaa38cb32 177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "54fb276fefc0c94ded8cd93bc476e31206bf5247",
+  "prompts": {},
+  "sessions": {
+    "s_e141c64829a825": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "db2858df-0916-40d2-afa7-c323ce687f32",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
