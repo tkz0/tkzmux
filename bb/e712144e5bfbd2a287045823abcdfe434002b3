@@ -1,0 +1,42 @@
+Sources/TkzCore/Models.swift
+  s_093857b3ed8828::t_cdd65df0d24d9e 218-220,229-230
+  s_093857b3ed8828::t_5d5cb44339fd75 231
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_093857b3ed8828::t_fed70cf6824b00 401-404
+Sources/TkzApp/MainWindowController.swift
+  s_093857b3ed8828::t_cdd65df0d24d9e 751-782,1226
+Tests/TkzAppTests/RenameAndDoneTests.swift
+  s_093857b3ed8828::t_0fe6b8c3bc0a3c 17,52
+  s_093857b3ed8828::t_8cf1b50cc80b55 53
+  s_093857b3ed8828::t_cdd65df0d24d9e 1-16,18-51,54-56
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_093857b3ed8828::t_cdd65df0d24d9e 34-37
+Tests/TkzAppTests/MainMenuTests.swift
+  s_093857b3ed8828::t_e6f9c5634fec51 189-190,198
+Tests/TkzCoreTests/ReducersTests.swift
+  s_093857b3ed8828::t_cdd65df0d24d9e 82-88
+Sources/TkzApp/Sidebar/StatusDotView.swift
+  s_093857b3ed8828::t_cdd65df0d24d9e 134-138
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_093857b3ed8828::t_cdd65df0d24d9e 30,40-46,55
+docs/design.md
+  s_093857b3ed8828::t_ef25032ed83d68 235,237
+docs/manual-checks.md
+  s_093857b3ed8828::t_ef4dcc4b0c050f 301-302,307-308
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "bbe712144e5bfbd2a287045823abcdfe434002b3",
+  "prompts": {},
+  "sessions": {
+    "s_093857b3ed8828": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5e7fafd-1256-4bd3-bd40-2906accdec3f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
