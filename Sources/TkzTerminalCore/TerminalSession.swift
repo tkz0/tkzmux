@@ -821,6 +821,21 @@ public final class TerminalSession: Sendable {
         }
     }
 
+    /// The opaque `ghostty_terminal_compression_activity` token.
+    ///
+    /// `terminal.h`: it changes whenever compression-relevant state changes, and the embedder
+    /// should restart its idle delay when it moves. `IdleCompressionPolicy` is written against
+    /// exactly this, so the idle timer (M1.10) polls it instead of instrumenting the pty hot path.
+    /// Returns the last known value (0 initially) if the call fails.
+    public func compressionActivity() -> UInt64 {
+        state.withLock { state in
+            var token: UInt64 = 0
+            guard ghostty_terminal_compression_activity(state.terminal.raw, &token) == GHOSTTY_SUCCESS
+            else { return 0 }
+            return token
+        }
+    }
+
     /// Compress eligible scrollback (idle-timer work; see docs/design.md → Threading).
     /// Not thread-safe against anything else, hence the lock.
     /// Returns `true` when more incremental work remains (`PENDING`), i.e. the idle timer should

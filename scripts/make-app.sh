@@ -8,7 +8,7 @@
 #
 #   B=.build/arm64-apple-macosx/release
 #   for b in "$B"/*.bundle; do mv "$b" "$b.hidden"; done        # hide SwiftPM's absolute fallback
-#   TKZMUX_DEV_AUTOQUIT_MS=2500 build/tkzmux.app/Contents/MacOS/tkzmux
+#   TKZMUX_DEV_SNAPSHOT_DIR=$(mktemp -d) TKZMUX_DEV_AUTOQUIT_MS=2500 build/tkzmux.app/Contents/MacOS/tkzmux
 #   for b in "$B"/*.bundle.hidden; do mv "$b" "${b%.hidden}"; done
 #
 # A `TKZMUX_DEV sessions=1 …` line means the bundle is self-contained; a
