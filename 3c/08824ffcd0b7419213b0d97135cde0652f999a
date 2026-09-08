@@ -1,0 +1,61 @@
+Sources/TkzApp/Sidebar/SummaryStripView.swift
+  s_36289bebec70b4::t_056b608032116d 51-57
+  s_36289bebec70b4::t_be0c56f2cea9c5 1-50,58-105
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_36289bebec70b4::t_60589c6fe9b5c2 10-12,59,82,138-144,234-235,237
+  s_36289bebec70b4::t_ca1ed974df6400 202-214
+  s_36289bebec70b4::t_60e176b01eceb2 1-9,13-58,60-81,83-126,134-137,145-201,215-233,236,238-282
+  s_36289bebec70b4::t_056b608032116d 127-133
+Tests/TkzAppTests/MainToolbarTests.swift
+  s_36289bebec70b4::t_a6e164a8a54478 48,60-61
+  s_36289bebec70b4::t_a92c44a66b5f1c 92-93,95,141-144,148,151-154
+  s_36289bebec70b4::t_b32bfe7d216555 1-47,49-59,62-91,94,96-140,145-147,149-150,155-163
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_36289bebec70b4::t_b866d81b34faca 1-182
+Sources/TkzApp/Toolbar/MainToolbarController.swift
+  s_36289bebec70b4::t_a92c44a66b5f1c 153-163,165-166
+  s_36289bebec70b4::t_d1e93385d6c50f 1-152,164,167-238,240-277,295
+  s_36289bebec70b4::t_1b2ab1f5d1d352 239,278-294
+Sources/TkzApp/Sidebar/StatusDotView.swift
+  s_36289bebec70b4::t_fadfd9bdacf970 1,7-8,11-12,16-21,28-29,40-47,51-58,61-63,79-92,104,108,110-111,114,116-117,126-127,129-130,132-133,137-139,144-145,148-149,151,166-187,189-206,225,243-248,299
+  s_36289bebec70b4::t_a3b9de273752d1 2-6,9-10,13-15,22-27,30-39,48-50,59-60,64-78,93-103,105-107,109,112-113,115,118-125,128,131,134-136,140-143,146-147,150,152-165,188,207-224,226-242,249-298,300-301
+Tests/TkzAppTests/StatusBarViewTests.swift
+  s_36289bebec70b4::t_f495f868ceb1a9 246
+  s_36289bebec70b4::t_1d00997e711436 238-239
+  s_36289bebec70b4::t_92620ec134aa12 234-236,241
+  s_36289bebec70b4::t_790a24fd3b4379 1-233,237,240,242-245,248-259
+  s_36289bebec70b4::t_dd69caf027ab1d 247
+Sources/TkzApp/ThemeAppKit.swift
+  s_36289bebec70b4::t_7e77587e113ff8 1-42
+Sources/TkzApp/StatusBar/StatusBarModel.swift
+  s_36289bebec70b4::t_ad87b611c4883e 1-115
+Sources/TkzApp/StatusBar/StatusBarView.swift
+  s_36289bebec70b4::t_2049492b13d7ba 138,141,297
+  s_36289bebec70b4::t_7aad33afd9edbe 1-137,139-140,142-296,298-319
+Sources/TkzApp/Sidebar/GroupRowView.swift
+  s_36289bebec70b4::t_056b608032116d 112-118
+  s_36289bebec70b4::t_aaf6f4006cab49 1-111,119-156,164-213
+  s_36289bebec70b4::t_ca1ed974df6400 157-163
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_36289bebec70b4::t_6d96321e3881c5 171-172
+  s_36289bebec70b4::t_597acf20129617 185,198,211,213-215
+  s_36289bebec70b4::t_056b608032116d 454,517-524
+  s_36289bebec70b4::t_b1de35e3c5a597 1-170,173-184,187-197,199-210,212,216-453,455-516,525-526
+  s_36289bebec70b4::t_55e7361b7acdb7 186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "3c08824ffcd0b7419213b0d97135cde0652f999a",
+  "prompts": {},
+  "sessions": {
+    "s_36289bebec70b4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01e1e3f8-17dc-4038-bc9a-c393f8c06aaa",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
