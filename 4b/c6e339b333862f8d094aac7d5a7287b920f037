@@ -1,0 +1,92 @@
+Tests/TkzAppTests/NewSessionMenuTests.swift
+  s_c5e9d97c3059e3::t_7811e9a8f1efe0 213-233
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_c5e9d97c3059e3::t_24d79ede8f99e4 148-152,154,162-165
+  s_c5e9d97c3059e3::t_b8116b3d1fb3bd 153,155-161
+  s_c5e9d97c3059e3::t_b118c431d21f4b 32-37,39-43,53-63,66,70-72,74
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_c5e9d97c3059e3::t_ade196227f1303 178-181
+  s_c5e9d97c3059e3::t_24ccca5f4a91d4 48-50,168-172
+  s_c5e9d97c3059e3::t_b0d00ca6939c6d 173
+Tests/TkzTerminalCoreTests/PtyTests.swift
+  s_c5e9d97c3059e3::t_59309f9af60818 113,129-150,155-179
+  s_c5e9d97c3059e3::t_644cefbb5561a1 111-112,114-116,128,153-154
+  s_c5e9d97c3059e3::t_4edc054f96537e 117-127,151-152
+Sources/TkzApp/MainWindowController.swift
+  s_c5e9d97c3059e3::t_637e2b091aa12a 122-123,150-151,158,177-181,201,211-247,251-265,663,667-670
+  s_c5e9d97c3059e3::t_4cffc49e45f73c 248-250
+  s_c5e9d97c3059e3::t_4507c19bc30efc 638-640
+  s_c5e9d97c3059e3::t_99ecd79e5e960f 354-355
+  s_c5e9d97c3059e3::t_fb8301dbdb5284 858-861,863-867
+  s_c5e9d97c3059e3::t_0f4c5a91f4d231 155-157,160
+  s_c5e9d97c3059e3::t_8afda23d91488e 152-154
+  s_c5e9d97c3059e3::t_c66fa06545a11e 108-116,167
+  s_c5e9d97c3059e3::t_4e843d4c4e2986 266,404,500,502-503,505-509,587-588,671,789-857,862,868-912,920
+  s_c5e9d97c3059e3::t_510ed58a587c58 267-268,672
+Sources/TkzCore/StartupState.swift
+  s_c5e9d97c3059e3::t_f5c04dc11375af 1-46
+Sources/TkzApp/TerminalHost.swift
+  s_c5e9d97c3059e3::t_d92e849124b340 63-68,82-91,335-346
+  s_c5e9d97c3059e3::t_663ea00524bae4 176,184-197,348
+  s_c5e9d97c3059e3::t_a1c07a91504ce5 392-394
+  s_c5e9d97c3059e3::t_424a2e5dc6142f 307-308
+  s_c5e9d97c3059e3::t_2873cccb8d2f72 92-93,198,347,349
+Tests/TkzAppTests/MainMenuTests.swift
+  s_c5e9d97c3059e3::t_6cb81f37e251ca 189,195-197
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_c5e9d97c3059e3::t_c92dffa366d112 1-191,225-245,256-259
+  s_c5e9d97c3059e3::t_19ebae0d8008ff 192-209,216-224
+  s_c5e9d97c3059e3::t_051911720d32d3 210-215
+  s_c5e9d97c3059e3::t_bbe5f27f2121d0 246-255
+Tests/TkzCoreTests/StartupStateTests.swift
+  s_c5e9d97c3059e3::t_f9a3d076619a4d 1-51
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_c5e9d97c3059e3::t_6e4d3d1b7fc0b1 240-259
+Sources/TkzTerminalView/TerminalMetalView.swift
+  s_c5e9d97c3059e3::t_424a2e5dc6142f 215,229-242
+  s_c5e9d97c3059e3::t_32929d8346c98c 243-244
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_c5e9d97c3059e3::t_10ec240d3e3c90 670
+  s_c5e9d97c3059e3::t_94942e9943d499 657-669,671-690
+Tests/TkzAppTests/TerminalHostTests.swift
+  s_c5e9d97c3059e3::t_051911720d32d3 154-166,203-223
+  s_c5e9d97c3059e3::t_ac0a930da2d6c5 226-247
+  s_c5e9d97c3059e3::t_91defe16895026 224,248-268,270-278
+  s_c5e9d97c3059e3::t_1e9782289a8e26 269
+  s_c5e9d97c3059e3::t_b2e4d42e10f694 225
+Sources/TkzTerminalRender/TerminalSurface.swift
+  s_c5e9d97c3059e3::t_424a2e5dc6142f 337-345,348
+Sources/TkzApp/AppDelegate.swift
+  s_c5e9d97c3059e3::t_b3f7959b9d0279 38,78-86,90,92-93,95-97
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_c5e9d97c3059e3::t_7ffa981db2d775 297-302,315
+Sources/TkzTerminalCore/Pty.swift
+  s_c5e9d97c3059e3::t_a21a9cfebc05ab 134-140,254-330,348
+Sources/TkzApp/Menus/NewSessionMenu.swift
+  s_c5e9d97c3059e3::t_b47276a41fdc98 34-36,41,71,354-365
+  s_c5e9d97c3059e3::t_2e1e49de23e586 366-367
+docs/design.md
+  s_c5e9d97c3059e3::t_10efa96502daa3 103,119,174,176
+  s_c5e9d97c3059e3::t_e9cc51163c2ef8 115
+  s_c5e9d97c3059e3::t_f6b56c055259e9 117
+  s_c5e9d97c3059e3::t_335d0892b9662f 268
+  s_c5e9d97c3059e3::t_93c467c5424846 177
+  s_c5e9d97c3059e3::t_0f4c5a91f4d231 178
+  s_c5e9d97c3059e3::t_dbf9f3e84ea3cb 118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4bc6e339b333862f8d094aac7d5a7287b920f037",
+  "prompts": {},
+  "sessions": {
+    "s_c5e9d97c3059e3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21a68a39-f326-423d-848f-f1d414db1fd2",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
