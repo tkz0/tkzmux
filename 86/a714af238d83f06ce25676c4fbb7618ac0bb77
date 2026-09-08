@@ -1,0 +1,68 @@
+Sources/tkzmux-hook/HookFrameBuilder.swift
+  s_093857b3ed8828::t_b8fa1c37227aa7 1-100
+Sources/tkzmux-hook/Debug.swift
+  s_093857b3ed8828::t_66adeecead9d9a 1-19
+Tests/ClaudeBridgeTests/Fixtures/hooks/stop.json
+  s_093857b3ed8828::t_2577d6bf1cbbad 1-8
+Tests/ClaudeBridgeTests/HookHygieneTests.swift
+  s_093857b3ed8828::t_fb627d40be96ac 1-85
+Tests/ClaudeBridgeTests/HookBinaryTests.swift
+  s_093857b3ed8828::t_2fa7bc92d16135 450-456,461-475
+  s_093857b3ed8828::t_6cfa882a3465d6 35-52
+  s_093857b3ed8828::t_c74d193d182af3 213-216,227-261,274-285
+  s_093857b3ed8828::t_4ca7fab6eb98b0 458-459
+  s_093857b3ed8828::t_bf500f3ada0b4b 1-19,21-34,53-212,217-226,262-273,286-300,302-303,309-321,323,358-376,384-449,476-500
+  s_093857b3ed8828::t_20654908656d3e 377-383
+  s_093857b3ed8828::t_cc9b38358da856 460
+  s_093857b3ed8828::t_a3947451f8d8e3 20
+  s_093857b3ed8828::t_cf474db1a03a99 301,304-308,322,324-357
+  s_093857b3ed8828::t_d80d99dad0d1d7 457
+Sources/tkzmux-hook/main.swift
+  s_093857b3ed8828::t_17558316f007b9 2-4,7-38
+Tests/ClaudeBridgeTests/Fixtures/hooks/user_settings.json
+  s_093857b3ed8828::t_e346fe4a2773d7 1-25
+Sources/tkzmux-hook/SettingsMerge.swift
+  s_093857b3ed8828::t_5fc59b905aad8f 28-30,33,35,37,39,81-83,93-94,101-102,104,108-109,111
+  s_093857b3ed8828::t_2557bf223848e9 1-27,31-32,34,36,38,40-80,84-92,95-100,103,105-107,110,112-116
+Sources/tkzmux-hook/Json.swift
+  s_093857b3ed8828::t_e571ec4f5d8f27 24,35
+  s_093857b3ed8828::t_9d8fa695ca7fed 243
+  s_093857b3ed8828::t_6a8c5bba46d895 1-8,16-23,25-34,36-115,117-125,127-242,244-289
+  s_093857b3ed8828::t_0d1871c74a74bb 14
+  s_093857b3ed8828::t_d4e0dd143b9536 116,126
+  s_093857b3ed8828::t_b98474b876b001 9-13,15
+Sources/tkzmux-hook/LaunchCommand.swift
+  s_093857b3ed8828::t_3dc9e17a5fad68 1-46
+Tests/ClaudeBridgeTests/Fixtures/hooks/invalid_settings.json
+  s_093857b3ed8828::t_9ebe19921184e1 1
+Sources/ClaudeBridge/HookServer.swift
+  s_093857b3ed8828::t_4b54425be82b3f 30-34,42
+  s_093857b3ed8828::t_fade68f10dc1e1 1-29,35-41,43-128,131-135,137,140-182,184-202,217,220-221,223-228,235-342
+  s_093857b3ed8828::t_80ad6ae175acc6 183,203-216,218-219,222,229-234
+  s_093857b3ed8828::t_2187f9596a6798 129-130,136,138-139
+Tests/ClaudeBridgeTests/HookServerTests.swift
+  s_093857b3ed8828::t_e143b5e6f12da5 1-268
+Sources/tkzmux-hook/StdinReader.swift
+  s_093857b3ed8828::t_33ecbe3cb46242 1-3,10-21,23-31
+  s_093857b3ed8828::t_f3c64dd47bdc4d 4-9,22
+Sources/tkzmux-hook/Socket.swift
+  s_093857b3ed8828::t_1cde0cd46dfd5f 1-96
+Sources/ClaudeBridge/HookFrame.swift
+  s_093857b3ed8828::t_9d8c2f49289d8f 1-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "86a714af238d83f06ce25676c4fbb7618ac0bb77",
+  "prompts": {},
+  "sessions": {
+    "s_093857b3ed8828": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5e7fafd-1256-4bd3-bd40-2906accdec3f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
