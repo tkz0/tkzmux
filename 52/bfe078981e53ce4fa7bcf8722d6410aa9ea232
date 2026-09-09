@@ -1,0 +1,57 @@
+Tests/TkzAppTests/SessionKillTests.swift
+  s_868c3303b1432f::t_c05179118cc1f0 109,128,178
+  s_868c3303b1432f::t_f291c29b2c8b22 57,69,79-80,83-84,87
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_868c3303b1432f::t_82135040cb4b1e 69-70,79-80
+Tests/TkzAppTests/TerminalHostTests.swift
+  s_868c3303b1432f::t_82135040cb4b1e 26,349-350,352-357,362-369,371,373-374,382-384,388
+  s_868c3303b1432f::t_60a58675615734 592,594
+  s_868c3303b1432f::t_cfc1b0ba3c2b0c 372
+Tests/TkzAppTests/PerSessionCacheEvictionTests.swift
+  s_868c3303b1432f::t_cb7dde85fd4f0f 120-138
+Tests/TkzCoreTests/PaneTests.swift
+  s_868c3303b1432f::t_fc7df220aebd5b 180-183,185-186,188
+Sources/TkzApp/MainWindowController.swift
+  s_868c3303b1432f::t_36fed63882b784 2007
+  s_868c3303b1432f::t_c0ee9e278aa81d 2282-2303,2308-2309
+  s_868c3303b1432f::t_069f4c458fae7f 2433-2438,2440,2442-2443
+  s_868c3303b1432f::t_82135040cb4b1e 1167,1271-1282,1284-1298,1300-1306
+  s_868c3303b1432f::t_ccf6c6a062b605 2333-2334
+Tests/ClaudeBridgeTests/ZshWrapperTests.swift
+  s_868c3303b1432f::t_82135040cb4b1e 244-304
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_868c3303b1432f::t_82135040cb4b1e 108-118
+Tests/TkzAppTests/CheatSheetTests.swift
+  s_868c3303b1432f::t_b13661200f432b 143
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_868c3303b1432f::t_82135040cb4b1e 97,253,265-267,281-282,284,331
+Sources/TkzApp/TerminalHost.swift
+  s_868c3303b1432f::t_b5fd3446d5d8d7 294
+docs/perf.md
+  s_868c3303b1432f::t_82135040cb4b1e 347-353
+Sources/ClaudeBridge/Resources/zsh/zlogin
+  s_868c3303b1432f::t_82135040cb4b1e 20-42
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_868c3303b1432f::t_82135040cb4b1e 181,204-206,496,506,511
+Sources/TkzApp/SessionLauncher.swift
+  s_868c3303b1432f::t_1da6deb1e84ab7 365-366,368
+  s_868c3303b1432f::t_cc1af5a406150e 421-423
+  s_868c3303b1432f::t_7565c379dd759f 179-183,189
+  s_868c3303b1432f::t_82135040cb4b1e 107-108,131-132,161-163,351-354,356-358,362-364,486-488,495-498
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "52bfe078981e53ce4fa7bcf8722d6410aa9ea232",
+  "prompts": {},
+  "sessions": {
+    "s_868c3303b1432f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9aebc8fa-b090-413f-9d3a-3c8f43114e8a",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
