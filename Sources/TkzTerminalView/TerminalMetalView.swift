@@ -364,9 +364,9 @@ public final class TerminalMetalView: NSView {
                 + "pwt=\(metalLayer?.presentsWithTransaction ?? false) "
                 + "needsDisplay=\(surface.needsDisplay) attached=\(surface.isAttached)")
         }
-        if inLiveResize {
-            // Live resize must be synchronous: the frame has to reach the screen inside the same
-            // Core Animation transaction that resized the layer, or the window tears.
+        if inLiveResize || isSynchronousResizing {
+            // A synchronous resize must present inside the same Core Animation transaction that
+            // resized the layer, or the window tears.
             //
             // AppKit calls this many times per drag, including with a size that has not changed, so
             // `updateDrawableSize` will not always mark the surface dirty. Under
@@ -387,6 +387,49 @@ public final class TerminalMetalView: NSView {
         } else {
             frameDriver.requestFrame()
         }
+    }
+
+    /// True while something other than a *window* drag is resizing this view synchronously —
+    /// in practice, a split-view divider drag (see `beginSynchronousResize`).
+    public private(set) var isSynchronousResizing = false
+    /// What `isLiveResizing` was before `beginSynchronousResize`, so ending restores it instead of
+    /// clearing it. A divider drag can happen inside a window drag, and `inLiveResize` is not a
+    /// reliable way to tell: AppKit only sets it during a real window drag, so a headless test —
+    /// and any other synthetic path — would read false and stamp on the outer state.
+    private var liveResizingBeforeSynchronous = false
+
+    /// Enters the synchronous path for a resize AppKit does not call a live resize.
+    ///
+    /// `inLiveResize` is only true during a **window** resize. An `NSSplitView` divider drag runs
+    /// its own modal tracking loop with that flag false, so the asynchronous branch of
+    /// `setFrameSize` runs and Core Animation stretches the previous texture across the new bounds
+    /// for the length of the drag — exactly the shimmer the transactional path exists to avoid.
+    ///
+    /// This does what `viewWillStartLiveResize` does, including parking the display link through
+    /// the **existing** `isLiveResizing` demand rather than a new one: two paths calling
+    /// `nextDrawable()` against a 3-drawable pool is the deadlock `DisplayLinkPolicy` documents.
+    public func beginSynchronousResize() {
+        guard !isSynchronousResizing else { return }
+        isSynchronousResizing = true
+        liveResizingBeforeSynchronous = frameDriver.demand.isLiveResizing
+        ResizeDiagnostics.log("beginSynchronousResize")
+        metalLayer?.presentsWithTransaction = ResizeDiagnostics.useTransaction
+        frameDriver.update { $0.isLiveResizing = true }
+    }
+
+    /// Leaves it, applying whatever grid the drag settled on.
+    public func endSynchronousResize() {
+        guard isSynchronousResizing else { return }
+        isSynchronousResizing = false
+        ResizeDiagnostics.log("endSynchronousResize")
+        // A window drag may be in progress *around* a divider drag; restore what was there rather
+        // than clearing it, or the outer drag loses its transaction mid-flight.
+        if !liveResizingBeforeSynchronous {
+            metalLayer?.presentsWithTransaction = false
+            frameDriver.update { $0.isLiveResizing = false }
+        }
+        applyPendingGridResize()
+        frameDriver.requestFrame()
     }
 
     public override func viewWillStartLiveResize() {
@@ -699,6 +742,12 @@ public final class TerminalMetalView: NSView {
         forward(event) || super.performKeyEquivalent(with: event)
     }
     public override func mouseDown(with event: NSEvent) {
+        // Click-to-focus. With one terminal in the window this was invisible — the view was made
+        // first responder when the session was shown and nothing ever took it away. With several
+        // panes it is the whole mechanism: `TerminalInputController.acceptsKeyDown` declines every
+        // event whose view is not the first responder, so a pane that cannot take focus by being
+        // clicked cannot be typed into at all.
+        if let window, window.firstResponder !== self { window.makeFirstResponder(self) }
         if !forward(event) { super.mouseDown(with: event) }
     }
     public override func mouseUp(with event: NSEvent) {
