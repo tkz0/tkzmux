@@ -2285,10 +2285,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         guard let host = host as? TerminalViewHost else { return nil }
         let pids = (store.state.sessions[id]?.terminalIDs ?? []).compactMap { host.pid(of: $0) }
         guard !pids.isEmpty else { return nil }
-        return pids.map(SessionMemory.sample(rootPid:)).reduce(.empty) { combined, sample in
-            var result = combined
+        // Each pane's own shell is its own root, so N panes must collapse to a single virtual
+        // root: summing `processCount` across panes would count every pane's shell as a
+        // "descendant", making an all-idle split row (N shells, 0 real descendants) look killable.
+        var combined = pids.map(SessionMemory.sample(rootPid:)).reduce(SessionMemorySample.empty) {
+            accumulated, sample in
+            var result = accumulated
             result.footprintBytes += sample.footprintBytes
-            result.processCount += sample.processCount
+            result.processCount += sample.descendantCount
             result.rootBytes += sample.rootBytes
             result.truncated = result.truncated || sample.truncated
             if sample.largestBytes > result.largestBytes {
@@ -2298,6 +2302,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             }
             return result
         }
+        combined.processCount += 1
+        return combined
     }
 
     /// SIGKILLs everything under every pane's pty child, sparing the shells themselves.

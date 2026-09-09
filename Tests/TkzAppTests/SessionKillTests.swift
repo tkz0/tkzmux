@@ -119,6 +119,25 @@ struct SessionKillTests {
         #expect(item.title.contains("sleep"), "got \(item.title)")
     }
 
+    /// A split row is two idle shells, not one process with a phantom descendant: summing
+    /// `processCount` across panes without collapsing each pane's own root would have counted
+    /// every sibling shell as something to kill.
+    @Test("a split row of two bare shells offers nothing to kill")
+    func splitRowOfBareShellsOffersNothing() throws {
+        let temp = try Temp()
+        guard let harness = try Self.makeHarness(temp) else { return }
+        defer { harness.controller.shutdown() }
+
+        let second = try #require(
+            harness.controller.store.updating { $0.splitPane(harness.terminalID, axis: .vertical) })
+        _ = try harness.host.open(
+            second, session: harness.sessionID, cwd: NSHomeDirectory(), env: [:],
+            size: TerminalSize(rows: 24, cols: 80))
+
+        let menu = try #require(harness.controller.sessionContextMenu(for: harness.sessionID))
+        #expect(menu.items.allSatisfy { $0.identifier != MainWindowController.ContextItemID.killProcessTree })
+    }
+
     @Test("killing the tree signals the children and leaves the session's shell alive")
     func killSparesTheShell() throws {
         let temp = try Temp()
