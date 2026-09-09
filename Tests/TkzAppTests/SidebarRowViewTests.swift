@@ -510,13 +510,20 @@ struct SidebarRowViewTests {
     }
 
     @Test("The group name is uppercased and the chevron follows isCollapsed")
-    func groupNameAndChevron() {
+    func groupNameAndChevron() throws {
         let expanded = Self.groupRow(SidebarGroupRowModel(name: "tkzmux", isCollapsed: false, sessionCount: 3))
         #expect(expanded.nameTextLayer.string as? String == "TKZMUX")
-        #expect(expanded.chevronTextLayer.string as? String == "▾")
+        #expect(expanded.chevronPointsRight == false)
 
         let collapsed = Self.groupRow(SidebarGroupRowModel(name: "tkzmux", isCollapsed: true, sessionCount: 3))
-        #expect(collapsed.chevronTextLayer.string as? String == "▸")
+        #expect(collapsed.chevronPointsRight)
+
+        // The reason it is a stroked path and not a `▾` glyph: it has to be *visible*. The old
+        // 9 pt U+25BE drew about 5 pt of ink; anything much under this reads as a dot again.
+        let path = try #require(expanded.chevronShapeLayer.path).boundingBox
+        #expect(path.width >= 6)
+        #expect(expanded.chevronShapeLayer.lineWidth >= 1.5)
+        #expect(expanded.chevronShapeLayer.fillColor == nil, "a stroked chevron, not a filled wedge")
 
         // A long group name truncates rather than running under the ＋ button.
         let long = Self.groupRow(

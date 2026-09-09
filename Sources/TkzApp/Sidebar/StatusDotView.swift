@@ -218,8 +218,8 @@ public final class StatusDotView: NSView {
 
 // MARK: - Shared layer helpers
 
-/// Small factory helpers shared by the sidebar row views, so every text run is configured the same
-/// way. `CATextLayer` has two traps worth naming: `font` does **not** carry the point size (that is
+/// Small factory helpers shared by the sidebar row views, so every text run and every drawn glyph is
+/// configured the same way. `CATextLayer` has two traps worth naming: `font` does **not** carry the point size (that is
 /// `fontSize`, separately), and a layer with the default `contentsScale` of 1 renders blurry on a
 /// retina backing.
 enum SidebarLayers {
@@ -233,6 +233,35 @@ enum SidebarLayers {
         layer.truncationMode = .end
         layer.contentsScale = 2
         layer.actions = ["contents": NSNull(), "position": NSNull(), "bounds": NSNull(), "hidden": NSNull()]
+        return layer
+    }
+
+    /// A stroked chevron pointing **down**, drawn inside a `side`×`side` box. A collapsed row
+    /// rotates it a quarter turn rather than swapping the path.
+    ///
+    /// Stroked rather than typed: `▾`/`▸` are U+25BE/U+25B8, the *small* triangle codepoints, whose
+    /// ink fills barely half the em box — at sidebar sizes they read as a dot, and no point size
+    /// fixes that without dwarfing the group name next to them.
+    static func chevron(side: CGFloat, lineWidth: CGFloat) -> CAShapeLayer {
+        let layer = CAShapeLayer()
+        // Layer space is y-up (the row views are not flipped), so the apex sits *below* the arms.
+        let half = side / 2
+        let arm = side * 0.35
+        let depth = side * 0.175
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: half - arm, y: half + depth))
+        path.addLine(to: CGPoint(x: half, y: half - depth))
+        path.addLine(to: CGPoint(x: half + arm, y: half + depth))
+        layer.path = path
+        layer.fillColor = nil
+        layer.lineWidth = lineWidth
+        layer.lineCap = .round
+        layer.lineJoin = .round
+        layer.contentsScale = 2
+        layer.actions = [
+            "path": NSNull(), "strokeColor": NSNull(), "transform": NSNull(),
+            "position": NSNull(), "bounds": NSNull(), "hidden": NSNull(),
+        ]
         return layer
     }
 

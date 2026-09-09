@@ -11,6 +11,11 @@
 // a closure wired by the controller in M2.4. Everything drawn is a layer; see `StatusDotView.swift`
 // for the full reason.
 //
+// The chevron is a stroked `CAShapeLayer` (`SidebarLayers.chevron`), rotated a quarter turn when the
+// group is collapsed. It used to be a `CATextLayer` holding `▾`/`▸` — U+25BE/U+25B8, the *small*
+// triangles, whose ink fills roughly half the em box — and at 9 pt that read as a dot rather than a
+// direction.
+//
 // **Token gap.** The design's group name colour is `#ccd1e8`, which no `Theme` token carries. It is
 // not hardcoded here — a literal would be light-on-light in the `.light` preset. It is derived as
 // `foreground` mixed 38 % toward `foregroundMuted`, which reproduces the 2c value to within one
@@ -25,7 +30,8 @@ public final class GroupRowView: NSTableCellView {
     public static let rowHeight: Double = SidebarMetrics.groupRowHeight
 
     private static let chevronX: CGFloat = 11
-    private static let chevronWidth: CGFloat = 10
+    private static let chevronSide: CGFloat = 10
+    private static let chevronLineWidth: CGFloat = 1.6
     private static let nameLeft: CGFloat = 25
     private static let rightInset: CGFloat = 8
     private static let addButtonSize: CGFloat = 18
@@ -35,7 +41,6 @@ public final class GroupRowView: NSTableCellView {
     // MARK: Fonts
 
     private let nameFont = Theme.Fonts.ui(Theme.Fonts.ui.caption, weight: .semibold)
-    private let chevronFont = Theme.Fonts.ui(9, weight: .semibold)
     private let countFont = Theme.Fonts.ui(Theme.Fonts.ui.caption)
     private let addFont = Theme.Fonts.ui(12)
 
@@ -44,7 +49,8 @@ public final class GroupRowView: NSTableCellView {
     /// The 2.5 pt colour edge. Always present so layout never shifts; `backgroundColor` is fully
     /// transparent when the group has no colour.
     private let edgeLayer = SidebarLayers.fill(cornerRadius: 0)
-    private lazy var chevronLayer = SidebarLayers.text(chevronFont, color: NSColor.clear.cgColor)
+    private lazy var chevronLayer = SidebarLayers.chevron(
+        side: Self.chevronSide, lineWidth: Self.chevronLineWidth)
     private lazy var nameLayer = SidebarLayers.text(nameFont, color: NSColor.clear.cgColor)
     private lazy var countLayer = SidebarLayers.text(countFont, color: NSColor.clear.cgColor, alignment: .right)
     private lazy var addLayer = SidebarLayers.text(addFont, color: NSColor.clear.cgColor, alignment: .center)
@@ -134,8 +140,10 @@ public final class GroupRowView: NSTableCellView {
         // default, not a stand-in for an uncoloured group.
         edgeLayer.backgroundColor = model.color?.cgColor ?? NSColor.clear.cgColor
 
-        chevronLayer.string = model.isCollapsed ? "▸" : "▾"
-        chevronLayer.foregroundColor = theme.foregroundDim.cgColor
+        // Rotating CCW in a y-up layer takes "down" to "right".
+        chevronLayer.setAffineTransform(
+            model.isCollapsed ? CGAffineTransform(rotationAngle: .pi / 2) : .identity)
+        chevronLayer.strokeColor = theme.foregroundDim.cgColor
 
         nameLayer.string = model.name.uppercased()
         nameLayer.foregroundColor = Self.groupTitleColor(theme).cgColor
@@ -157,7 +165,9 @@ public final class GroupRowView: NSTableCellView {
     // MARK: Test hooks (internal — see SessionRowView)
 
     var nameTextLayer: CATextLayer { nameLayer }
-    var chevronTextLayer: CATextLayer { chevronLayer }
+    var chevronShapeLayer: CAShapeLayer { chevronLayer }
+    /// `true` while the chevron is rotated a quarter turn — i.e. the group is collapsed.
+    var chevronPointsRight: Bool { chevronLayer.affineTransform().b > 0.5 }
     var colourEdgeLayer: CALayer { edgeLayer }
     var addGlyphLayer: CATextLayer { addLayer }
 
@@ -174,13 +184,11 @@ public final class GroupRowView: NSTableCellView {
 
         edgeLayer.frame = CGRect(x: 0, y: 0, width: SidebarMetrics.groupEdgeWidth, height: h)
 
-        let chevronHeight = (chevronFont.ascender - chevronFont.descender).rounded(.up)
-        chevronLayer.frame = CGRect(
-            x: Self.chevronX,
-            y: ((h - chevronHeight) / 2).rounded(),
-            width: Self.chevronWidth,
-            height: chevronHeight
-        )
+        // `bounds`/`position` rather than `frame`: the collapsed state carries a rotation, and
+        // `frame` is derived from the transform.
+        let side = Self.chevronSide
+        chevronLayer.bounds = CGRect(x: 0, y: 0, width: side, height: side)
+        chevronLayer.position = CGPoint(x: Self.chevronX + side / 2, y: (h / 2).rounded())
 
         let btn = Self.addButtonSize
         let buttonFrame = NSRect(
