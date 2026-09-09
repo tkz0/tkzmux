@@ -684,6 +684,15 @@ public final class TerminalSession: Sendable {
         }
     }
 
+    /// Where the viewport sits in the scrollable area, right now.
+    ///
+    /// The frame path does **not** read this — `FrameBuilder.update` folds the same read into the
+    /// one lock it already takes, rather than acquiring a second one per frame. This is for
+    /// tooling and tests.
+    public var scrollMetrics: TerminalScrollMetrics {
+        state.withLock { TerminalScrollMetrics.read($0.terminal.raw) }
+    }
+
     /// The active screen through libghostty's formatter. `PLAIN` is the golden-screen format.
     public func formatted(
         _ format: GhosttyFormatterFormat = GHOSTTY_FORMATTER_FORMAT_PLAIN,

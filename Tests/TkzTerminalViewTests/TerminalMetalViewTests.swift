@@ -237,4 +237,87 @@ struct TerminalMetalViewTests {
         #expect(context.renderer.stats.drawableRequests == 0)
         #expect(view.framesRendered == 0)
     }
+
+    // MARK: The scroll indicator (TKZ-45)
+
+    /// Renders one offscreen frame, which is what refreshes `surface.scrollMetrics`, then hands it
+    /// to the overlay. `renderNow` bails without a window, so the wiring is driven directly — the
+    /// same two calls, in the same order, that `renderNow` makes.
+    private func drawAndApplyIndicator(_ context: TerminalRenderContext, _ view: TerminalMetalView) throws {
+        guard let texture = context.renderer.makeOffscreenTexture(width: 400, height: 200) else { return }
+        _ = try context.renderer.render(surface: view.surface, to: texture)
+        view.updateScrollIndicator()
+    }
+
+    @Test("a scrolled session shows a thumb; one with nothing to scroll shows none")
+    func thumbFollowsTheScrollback() throws {
+        guard let (context, view) = try makeView() else { return }
+        let session = try makeSession()
+        view.show(session)
+
+        try drawAndApplyIndicator(context, view)
+        #expect(view.scrollIndicator.thumbLayer?.isHidden ?? true,
+                "a fresh session fits on screen: nothing to indicate")
+
+        for line in 0..<500 { session.write(ptyText: "line \(line)\r\n") }
+        try drawAndApplyIndicator(context, view)
+
+        let thumb = try #require(view.scrollIndicator.thumbLayer)
+        #expect(thumb.isHidden == false)
+        #expect(thumb.superlayer === view.metalLayer, "the thumb is a sublayer of the Metal layer")
+        #expect(thumb.frame.maxX == view.bounds.maxX - view.scrollIndicator.geometry.edgeInset)
+        #expect(view.surface.scrollMetrics.isScrollable)
+    }
+
+    /// The M1.6 assertion, applied to the overlay: the thumb and its fade are Core Animation, not
+    /// frames. Neither showing it nor fading it may move the display link's counters.
+    @Test("the thumb and its fade schedule no frames")
+    func thumbCostsNoFrames() throws {
+        guard let (context, view) = try makeView() else { return }
+        let session = try makeSession()
+        view.show(session)
+        for line in 0..<500 { session.write(ptyText: "line \(line)\r\n") }
+        try drawAndApplyIndicator(context, view)
+        #expect(view.scrollIndicator.thumbLayer?.isHidden == false, "precondition: a thumb is shown")
+
+        // Settle, then take the baseline: from here nothing in the terminal changes, only the thumb.
+        view.renderTick()
+        let resumes = view.frameDriver.resumeCount
+        let pauses = view.frameDriver.pauseCount
+        let transitions = view.frameDriver.transitions.count
+        #expect(view.frameDriver.isPaused, "precondition: an idle session parks the link")
+
+        view.scrollIndicator.beginFade()
+        view.renderTick()
+        view.updateScrollIndicator()
+
+        #expect(view.frameDriver.resumeCount == resumes, "the fade must not wake the link")
+        #expect(view.frameDriver.pauseCount == pauses)
+        #expect(view.frameDriver.transitions.count == transitions)
+        #expect(view.frameDriver.isPaused)
+    }
+
+    @Test("switching sessions shows the incoming position, never the outgoing one's")
+    func sessionSwitchResetsTheThumb() throws {
+        guard let (context, view) = try makeView() else { return }
+        let scrolled = try makeSession()
+        for line in 0..<500 { scrolled.write(ptyText: "line \(line)\r\n") }
+        let fresh = try makeSession()
+
+        view.show(scrolled)
+        try drawAndApplyIndicator(context, view)
+        #expect(view.scrollIndicator.thumbLayer?.isHidden == false)
+        #expect(view.scrollIndicator.lastApplied != nil)
+
+        // The swap itself must drop the thumb, before the incoming session renders anything —
+        // otherwise the old position is on screen for a frame.
+        view.show(fresh)
+        #expect(view.scrollIndicator.thumbLayer == nil, "no thumb may survive the swap")
+        #expect(view.scrollIndicator.lastApplied == nil, "and no diff state, or the first frame is skipped")
+        #expect(view.metalLayer?.sublayers?.isEmpty ?? true)
+
+        // The incoming session has nothing to scroll, and gets no thumb of its own.
+        try drawAndApplyIndicator(context, view)
+        #expect(view.scrollIndicator.thumbLayer?.isHidden ?? true)
+    }
 }

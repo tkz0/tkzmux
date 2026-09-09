@@ -87,12 +87,22 @@ public final class FrameBuilder {
         }
         let rs = state.raw
 
-        // (1) The lock closure is exactly one call. Everything after this runs unlocked.
+        // (1) The lock closure is `begin_update` plus the scroll poll — two amortized-O(1) calls.
+        // The poll rides along here rather than through `session.scrollMetrics` because that would
+        // take the same lock a second time, once per frame, for 24 bytes.
         var beginResult = GHOSTTY_SUCCESS
+        var scroll = TerminalScrollMetrics.empty
         session.withTerminal { terminal in
             beginResult = ghostty_render_state_begin_update(rs, terminal)
+            scroll = TerminalScrollMetrics.read(terminal)
         }
         try renderCheck(beginResult, "ghostty_render_state_begin_update")
+
+        // Stored before the dirty check below, not after. Scrolled into history, new child output
+        // grows `total` and moves the thumb while every *visible* cell stays clean — a read behind
+        // the `dirty == .none` guard would freeze the thumb exactly when it is carrying the most
+        // information. Same argument as the cursor read further down, different state.
+        surface.setScrollMetrics(scroll)
 
         // (2) Deferred work; touches render-state memory only.
         try renderCheck(ghostty_render_state_end_update(rs), "ghostty_render_state_end_update")

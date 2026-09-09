@@ -129,6 +129,13 @@ public final class TerminalSurface {
     public private(set) var colors = SurfaceColors()
     public private(set) var cursor = SurfaceCursorState()
 
+    /// Where the viewport sits in the scrollable area, as of the last `FrameBuilder.update`.
+    ///
+    /// Polled every tick because libghostty offers no change notification for scroll state
+    /// (`vt/terminal.h` → `DATA_SCROLLBAR`). Consumed by the view's scroll indicator, which diffs
+    /// it — see `setScrollMetrics` for why nothing here marks the surface dirty.
+    public private(set) var scrollMetrics: TerminalScrollMetrics = .empty
+
     /// Cell geometry the caches were built at. The builder stamps it; the renderer reads it.
     public private(set) var metrics: CellMetrics?
 
@@ -210,6 +217,7 @@ public final class TerminalSurface {
         rowRects.removeAll(keepingCapacity: false)
         colors = SurfaceColors()
         cursor = SurfaceCursorState()
+        scrollMetrics = .empty
         metrics = nil
         atlasRebuildStamp = SIMD2<UInt64>(repeating: .max)
         needsDisplay = false
@@ -240,6 +248,15 @@ public final class TerminalSurface {
 
     /// Called by the renderer after a frame has been successfully encoded.
     public func clearNeedsDisplay() { needsDisplay = false }
+
+    /// Stores the scroll position read by the builder.
+    ///
+    /// Deliberately **not** `markNeedsDisplay()`. The scroll indicator is a `CALayer` over the
+    /// surface, not GPU content, so a moved thumb needs no frame — and marking dirty here would
+    /// leave `renderNow`'s `needsUpdate = surface.needsDisplay` handoff permanently true and hold
+    /// the display link at 120 Hz forever. That is the same trap `DisplayLinkDriver` documents for
+    /// the cursor blink, arrived at from the other side.
+    func setScrollMetrics(_ value: TerminalScrollMetrics) { scrollMetrics = value }
 
     func resize(columns newColumns: Int, rows newRows: Int) {
         guard newColumns != columns || newRows != rowCount else { return }

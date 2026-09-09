@@ -95,6 +95,11 @@ public final class TerminalMetalView: NSView {
     /// The one surface this view draws. Only the *visible* session is attached to it.
     public let surface = TerminalSurface()
     public let frameDriver = DisplayLinkDriver()
+    /// The overlay scrollbar thumb. Fed once per frame from `renderNow`; owns its own layer and
+    /// fade timer and never asks for a frame — see `ScrollIndicator.swift`.
+    public let scrollIndicator = ScrollIndicatorOverlay()
+    private var cachedThumbColor: CGColor?
+    private var cachedThumbColorTheme: Theme?
 
     /// TKZ-13 / TKZ-14 install themselves here. Weak: the controller owns them.
     public weak var inputDelegate: TerminalViewInputDelegate?
@@ -190,6 +195,9 @@ public final class TerminalMetalView: NSView {
         }
         relay = nil
         surface.detach()
+        // Before the incoming session gets a chance to render: the thumb must not survive the
+        // swap, or the new session flashes the old one's scroll position on its first frame.
+        scrollIndicator.reset()
         self.session = session
 
         guard let session else {
@@ -570,7 +578,44 @@ public final class TerminalMetalView: NSView {
         } catch {
             logger.error("render failed: \(String(describing: error), privacy: .public)")
         }
+        updateScrollIndicator()
         frameDriver.update { $0.needsUpdate = surface.needsDisplay }
+    }
+
+    /// Hands the frame's scroll position to the overlay.
+    ///
+    /// `FrameBuilder.update` refreshes `surface.scrollMetrics` on every tick — including skipped
+    /// ones — so this runs after every render, and the overlay's own diff makes the unchanged case
+    /// free. Internal rather than private because `renderNow` bails without a window: the headless
+    /// tests render offscreen and call this directly.
+    func updateScrollIndicator() {
+        guard let host = metalLayer else { return }
+        scrollIndicator.apply(
+            surface.scrollMetrics,
+            bounds: bounds,
+            scale: backingScale,
+            color: scrollThumbColor(),
+            host: host)
+    }
+
+    /// The thumb colour, memoised on the theme it was derived from — this runs once per frame, and
+    /// the theme changes about once a year.
+    private func scrollThumbColor() -> CGColor {
+        let theme = renderContext.theme
+        if let cached = cachedThumbColor, cachedThumbColorTheme == theme { return cached }
+        let color = TerminalMetalView.scrollThumbColor(theme)
+        cachedThumbColor = color
+        cachedThumbColorTheme = theme
+        return color
+    }
+
+    /// The thumb colour, derived from the theme rather than added to it: `foregroundDim` is already
+    /// the token for chevrons and other faint chrome, and a new token would mean touching all five
+    /// presets for one overlay.
+    static func scrollThumbColor(_ theme: Theme) -> CGColor {
+        let (r, g, b) = theme.foregroundDim.bytes
+        return CGColor(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255,
+                       alpha: 0.55)
     }
 
     // MARK: - Cursor blink
