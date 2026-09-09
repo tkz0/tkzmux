@@ -333,6 +333,43 @@ struct MainWindowControllerTests {
         #expect(before === after)
     }
 
+    /// The regression this guards: `launchSize(for:)` used to measure the *first* pane's view for
+    /// every terminal, so every ⌘D opened a full-width shell that reflowed on its first frame.
+    ///
+    /// Asserted through the projection rather than a laid-out view on purpose — that is the order
+    /// `SessionLauncher.addTerminal` runs in. The store delivers change sets on the next turn of
+    /// the run loop, so the tree has the new leaf and the container has not rebuilt yet.
+    @Test("A split pane opens at its own grid, not the window's")
+    func aSplitPaneOpensAtItsOwnGrid() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        // A test has no renderer, so it supplies the cell metrics the render context would.
+        harness.controller.launchCellMetrics = { (width: 8, height: 16) }
+        let (_, first) = try Self.selectedRowWithAShell(harness)
+
+        let whole = try #require(harness.controller.projectedLaunchSize(for: first))
+        #expect(whole.cols > 2 && whole.rows > 2, "the container must have real bounds")
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        let other = try #require(second)
+
+        let sideBySide = try #require(harness.controller.projectedLaunchSize(for: other))
+        #expect(sideBySide.rows == whole.rows, "a side-by-side split does not change the height")
+        #expect(abs(Int(sideBySide.cols) - Int(whole.cols) / 2) <= 1)
+        #expect(sideBySide.cellWidthPx == 8 && sideBySide.cellHeightPx == 16)
+
+        // ⇧⌘D halves the rows instead, and only within the pane it split.
+        harness.store.flush()
+        harness.layout()
+        var third: TerminalID?
+        harness.store.updating { third = $0.splitPane(other, axis: .vertical) }
+        let stacked = try #require(third)
+        let below = try #require(harness.controller.projectedLaunchSize(for: stacked))
+        #expect(abs(Int(below.rows) - Int(whole.rows) / 2) <= 1)
+        #expect(below.cols == sideBySide.cols)
+    }
+
     @Test("Both panes of a split are attached, and closing one detaches only that one")
     func bothPanesAreAttached() throws {
         let harness = Self.makeSplitHarness()

@@ -364,6 +364,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     /// The real Metal view, when there is one (`init(store:renderContext:)`). `nil` in tests.
     public private(set) var metalView: TerminalMetalView?
+    /// Cell size in device pixels, from the shared render context. `nil` when there is no renderer
+    /// (the injected-host initialiser), which is what makes `projectedLaunchSize` decline rather
+    /// than invent a grid. Set by tests that want to assert the projection.
+    var launchCellMetrics: (() -> (width: Int, height: Int))?
     /// Keyboard/IME (TKZ-13). Held strongly — the view's `inputDelegate` is weak.
     public let inputController = TerminalInputController()
     /// Mouse reporting, selection and the clipboard (TKZ-14). Held strongly for the same reason.
@@ -567,6 +571,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             },
             theme: theme)
         self.metalView = view
+        self.launchCellMetrics = { (renderContext.metrics.width, renderContext.metrics.height) }
         wireWindowInput(host: host)
         // The timer source comes back suspended; nothing compresses until this runs.
         compressor.start()
@@ -1755,12 +1760,58 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     /// The grid a terminal opens at — the *pane's*, not the window's.
     ///
-    /// With one pane per row those are the same number, which is why this took no argument before.
-    /// A split pane is a fraction of the window, and spawning it at the window's grid would make
-    /// every new pane reflow on its first frame. `metalView` is nil only on the injected-host path
-    /// (tests).
+    /// With one pane per row those were the same number, which is why this took no argument
+    /// before. A split pane is a fraction of the window, and opening it at the window's grid means
+    /// the shell writes its first prompt at the wrong width and the pane reflows on its first
+    /// frame — visible on every ⌘D.
+    ///
+    /// Three sources, in order:
+    ///
+    /// 1. the pane's own view, once it exists and has been laid out — the reopen path, where
+    ///    `applyPaneTree` has already run;
+    /// 2. the tree, projected onto the container's bounds — the *split* path, which is the one
+    ///    that matters. `AppStore` delivers change sets on the next turn of the run loop
+    ///    (`signal.add`), so `SessionLauncher.addTerminal` mutates the tree and opens the shell
+    ///    inside one turn: there is no laid-out view for the new pane yet, and waiting for one
+    ///    would mean opening the shell a turn later than the split;
+    /// 3. the first pane's view, then a plain default — the paths with no geometry at all.
     private func launchSize(for terminal: TerminalID) -> TerminalSize {
-        metalView?.gridSizeForBounds() ?? TerminalSize(rows: 40, cols: 120)
+        if let view = panes[terminal]?.metalView, view.bounds.width > 1, view.bounds.height > 1 {
+            return view.gridSizeForBounds()
+        }
+        if let projected = projectedLaunchSize(for: terminal) { return projected }
+        return metalView?.gridSizeForBounds() ?? TerminalSize(rows: 40, cols: 120)
+    }
+
+    /// The grid a pane *will* have, from the tree alone: its share of the container, converted with
+    /// the shared render context's cell metrics. `nil` when there is no geometry to project onto —
+    /// no cell metrics (a test with no renderer) or a container with no bounds yet.
+    func projectedLaunchSize(for terminal: TerminalID) -> TerminalSize? {
+        guard let cell = launchCellMetrics?(), cell.width > 0, cell.height > 0,
+            let session = store.state.session(owning: terminal),
+            let tab = session.tab(containing: terminal)
+        else { return nil }
+
+        var area = detail.paneContainer.bounds
+        // ⌘T on a single-tab row makes the strip appear, so the pane area is about to lose
+        // `stripHeight` that the container's current bounds still include.
+        if session.tabs.count > 1, detail.tabStrip.isHidden {
+            area.size.height -= TabStripMetrics.stripHeight
+        }
+        guard area.width > 1, area.height > 1,
+            let rect = tab.root.frames(in: area, divider: SplitMetrics.dividerThickness)[terminal]
+        else { return nil }
+
+        // Same arithmetic as `TerminalMetalView.gridSizeForBounds`, on a rectangle rather than a
+        // view: points → device pixels → whole cells, leftovers cleared at the right/bottom edge.
+        let scale = window.backingScaleFactor
+        let cols = max(1, Int((rect.width * scale).rounded(.down)) / cell.width)
+        let rows = max(1, Int((rect.height * scale).rounded(.down)) / cell.height)
+        return TerminalSize(
+            rows: UInt16(min(rows, Int(UInt16.max))),
+            cols: UInt16(min(cols, Int(UInt16.max))),
+            cellWidthPx: UInt16(min(cell.width, Int(UInt16.max))),
+            cellHeightPx: UInt16(min(cell.height, Int(UInt16.max))))
     }
 
     // MARK: - Resume

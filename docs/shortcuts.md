@@ -58,6 +58,12 @@ could be introduced without any menu being built.
 > what they were reserved *for*, so they are bound now, and `nextSession`/`previousSession` remain
 > the two known actions with no default.
 
+> **⇧⌘[ / ⇧⌘] need checking on a real keyboard.** They are the one pair of bindings a headless
+> test cannot prove: a shifted punctuation key equivalent depends on the active layout, and the
+> menu item carries the *unshifted* character with `.shift` in its mask. `reloadConfig` (⇧⌘,) is
+> the precedent that this shape works, but it was verified by hand and so must these be. Every
+> other binding in the table above is asserted by `MainMenuTests`.
+
 Modifiers: `cmd`/`command`/`meta`, `shift`, `alt`/`opt`/`option`, `ctrl`/`control` (any order,
 case-insensitive). Keys: a single character, `up`/`down`/`left`/`right`, `home`/`end`,
 `pageup`/`pagedown`, `return`, `tab`, `space`, `escape`, `delete`, `comma`, `period`, `slash`, or
