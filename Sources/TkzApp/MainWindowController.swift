@@ -668,6 +668,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         newSessionMenu.onLaunch = { [weak self] launch in self?.launch(launch) }
         newSessionMenu.onChooseAnotherRepo = { [weak self] in self?.presentAnotherRepoPanel() }
         newSessionMenu.onManagePresets = { [weak self] in self?.presentPresetsSheet() }
+        newSessionMenu.onSelectAccount = { [weak self] groupID, key in
+            self?.setGroupDefaultAccount(groupID, key: key)
+        }
         toolbarController.newSessionMenu = newSessionMenu.menu
         // `>_` is "new terminal" in the design: a bare shell in the selected group's directory,
         // not another way to open the `＋` menu.
@@ -1303,13 +1306,19 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// One line per account with a seven-day window — the ticket asks the usage badge's tooltip to
     /// show *both* accounts' windows, because the percentage on the strip belongs to whichever
     /// account the selected row runs under and the user runs more than one.
+    ///
+    /// Naming follows the same precedence as everywhere else: the name a human configured in
+    /// `dash-accounts.json` first, then the one the usage file generated, then the bare key. The
+    /// sidebar chip is derived from `Account.label`, so preferring the usage file's name here
+    /// would let the strip and the chip call one account two things.
     static func usageTooltip(for state: AppState) -> String? {
         let lines = state.usage.values
             .sorted { $0.accountKey < $1.accountKey }
             .compactMap { snapshot -> String? in
                 guard let window = snapshot.sevenDay else { return nil }
-                let name = snapshot.label ?? state.accounts[snapshot.accountKey]?.label
-                    ?? snapshot.accountKey
+                let account = state.accounts[snapshot.accountKey]
+                let configured = account.flatMap { $0.label == $0.key ? nil : $0.label }
+                let name = configured ?? snapshot.label ?? account?.label ?? snapshot.accountKey
                 return "\(name): \(Int(window.usedPercentage.rounded()))% of the seven-day quota"
             }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
@@ -1597,15 +1606,17 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             }
         }
 
-        // The colour belongs to the group, not the row — but the row is what you are pointing at
-        // when you decide the whole group needs a colour, so the picker is on both menus (TKZ-48).
+        // The colour and the default account belong to the group, not the row — but the row is what
+        // you are pointing at when you decide the whole group needs one, so both pickers are on
+        // both menus (TKZ-48).
         menu.addItem(.separator())
         menu.addItem(groupColorMenuItem(for: session.groupID))
+        menu.addItem(groupDefaultAccountMenuItem(for: session.groupID))
         return menu
     }
 
-    /// Right-click on a group header: New session… / Resume all / Set Repo… / Remove group, plus
-    /// the colour picker.
+    /// Right-click on a group header: New session… / Resume all in group / Set Repo… / Remove
+    /// group, plus the colour and default-account pickers.
     func groupContextMenu(for id: GroupID) -> NSMenu? {
         guard let group = store.state.groups[id] else { return nil }
         let menu = NSMenu()
@@ -1634,6 +1645,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
         menu.addItem(.separator())
         menu.addItem(groupColorMenuItem(for: id))
+        menu.addItem(groupDefaultAccountMenuItem(for: id))
         return menu
     }
 
@@ -1708,6 +1720,85 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         store.update { $0.setGroupColor(choice.groupID, color: choice.color) }
     }
 
+    // MARK: Group default account
+
+    /// The one place `Group.defaultAccountKey` is written — the ＋ menu's submenu and the two
+    /// context menus all land here.
+    ///
+    /// The re-``configure`` afterwards is load-bearing: `NewSessionMenu.group` is a value copy that
+    /// `menuNeedsUpdate` rebuilds from, and a `defaultAccountKey` edit sets only `change.groups`
+    /// (not `structure`), which `apply(_:)` deliberately does not re-scope the menu on.
+    private func setGroupDefaultAccount(_ id: GroupID, key: String?) {
+        store.update { $0.setGroupDefaultAccount(id, accountKey: key) }
+        newSessionMenu.configure(state: store.state, groupID: id)
+    }
+
+    /// "Default account ▸": which account new sessions in this group get. Built like
+    /// ``groupColorMenuItem(for:)`` — one row per known account, the current one checked, then
+    /// **None**, which clears the default and leaves `CLAUDE_CONFIG_DIR` unset.
+    ///
+    /// A default naming an account that is no longer in `state.accounts` (a deleted `~/.claude-…`)
+    /// gets a disabled, checked row saying `not found`, rather than a list with nothing marked.
+    private func groupDefaultAccountMenuItem(for id: GroupID) -> NSMenuItem {
+        let parent = NSMenuItem(title: "Default account", action: nil, keyEquivalent: "")
+        parent.identifier = ContextItemID.groupAccount
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+
+        let current = store.state.groups[id]?.defaultAccountKey
+        let accounts = store.state.accounts
+
+        for key in accounts.keys.sorted() {
+            let item = accountItem(accounts[key]?.label ?? key, groupID: id, key: key)
+            item.identifier = ContextItemID.groupAccountRow(key)
+            item.state = key == current ? .on : .off
+            item.toolTip = accounts[key]?.configDir
+            submenu.addItem(item)
+        }
+        if accounts.isEmpty {
+            let empty = NSMenuItem(title: "No accounts configured", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            submenu.addItem(empty)
+        }
+        if let current, accounts[current] == nil {
+            let missing = NSMenuItem(title: "\(current) \u{2014} not found", action: nil, keyEquivalent: "")
+            missing.isEnabled = false
+            missing.state = .on
+            missing.identifier = ContextItemID.groupAccountMissing
+            submenu.addItem(missing)
+        }
+
+        submenu.addItem(.separator())
+        let none = accountItem("None", groupID: id, key: nil)
+        none.identifier = ContextItemID.groupAccountNone
+        none.state = current == nil ? .on : .off
+        none.toolTip = "CLAUDE_CONFIG_DIR is left unset \u{2014} your shell decides"
+        submenu.addItem(none)
+
+        parent.submenu = submenu
+        return parent
+    }
+
+    /// Which group, and which account key (`nil` = clear) — the account twin of
+    /// ``GroupColorChoice``, for the same reason: `contextItem(_:action:id:)` carries one `String`.
+    private struct GroupAccountChoice {
+        let groupID: GroupID
+        let key: String?
+    }
+
+    private func accountItem(_ title: String, groupID: GroupID, key: String?) -> NSMenuItem {
+        let item = NSMenuItem(
+            title: title, action: #selector(contextSetGroupDefaultAccount(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = GroupAccountChoice(groupID: groupID, key: key)
+        return item
+    }
+
+    @objc private func contextSetGroupDefaultAccount(_ sender: Any?) {
+        guard let choice = (sender as? NSMenuItem)?.representedObject as? GroupAccountChoice else { return }
+        setGroupDefaultAccount(choice.groupID, key: choice.key)
+    }
+
     /// Identifiers for the context-menu rows, so tests can find them.
     public enum ContextItemID {
         public static let resume = NSUserInterfaceItemIdentifier("tkzmux.context.resume")
@@ -1724,6 +1815,16 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         /// One swatch, addressed by `GroupSwatch.slug`.
         public static func groupColorSwatch(_ slug: String) -> NSUserInterfaceItemIdentifier {
             NSUserInterfaceItemIdentifier("tkzmux.context.groupColor.\(slug)")
+        }
+        /// The "Default account" parent item; its `submenu` holds one row per account.
+        public static let groupAccount = NSUserInterfaceItemIdentifier("tkzmux.context.groupAccount")
+        public static let groupAccountNone = NSUserInterfaceItemIdentifier("tkzmux.context.groupAccount.none")
+        /// The group's default names an account `state.accounts` no longer has.
+        public static let groupAccountMissing =
+            NSUserInterfaceItemIdentifier("tkzmux.context.groupAccount.missing")
+        /// One account row, addressed by `Account.key`.
+        public static func groupAccountRow(_ key: String) -> NSUserInterfaceItemIdentifier {
+            NSUserInterfaceItemIdentifier("tkzmux.context.groupAccount.row.\(key)")
         }
     }
 

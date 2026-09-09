@@ -302,6 +302,15 @@ public final class SidebarViewController: NSViewController {
     /// hide a colour change that arrived in the same change set as a structural one.
     private var shadowGroupColors: [GroupID: RGB?] = [:]
 
+    /// Account key → the label last rendered on a chip, so a *relabel* repaints the rows and a
+    /// usage percentage does not.
+    ///
+    /// `AppStore.diff` folds `accounts` into the same `change.usage` flag as the quota readings
+    /// (`AppStore.swift`), and those tick on a timer — reloading the whole list on every one of
+    /// them would be a scroll-visible waste. Only `Account.label` reaches a session row (through
+    /// `SidebarRowAdapter.accountLabel`), so that is all this shadows.
+    private var shadowAccountLabels: [String: String] = [:]
+
     private var isApplyingStoreSelection = false
     private var isApplyingStoreCollapse = false
     private var appliedSelection: SessionID?
@@ -407,6 +416,7 @@ public final class SidebarViewController: NSViewController {
         shadowGroups = store.state.orderedGroups.map(\.id)
         shadowSessions = [:]
         shadowGroupColors = [:]
+        shadowAccountLabels = store.state.accounts.mapValues(\.label)
         for id in shadowGroups {
             shadowSessions[id] = store.state.sessions(in: id).map(\.id)
             shadowGroupColors[id] = store.state.groups[id]?.color
@@ -446,8 +456,25 @@ public final class SidebarViewController: NSViewController {
             outline.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
         }
 
+        if change.usage { applyAccountLabels() }
         if change.selection { syncSelectionToOutline() }
         if change.structure || !change.sessions.isEmpty { updateSummary() }
+    }
+
+    /// An account picked up a new label (a usage file naming it, a newly discovered account), so
+    /// every chip has to be re-derived. Cheap no-op on the usage ticks that share the same flag.
+    private func applyAccountLabels() {
+        let labels = store.state.accounts.mapValues(\.label)
+        guard labels != shadowAccountLabels else { return }
+        shadowAccountLabels = labels
+        var rows = IndexSet()
+        for session in SidebarRowAdapter.visibleSessions(in: store.state) {
+            let row = self.row(forSession: session.id)
+            if row >= 0 { rows.insert(row) }
+        }
+        if !rows.isEmpty {
+            outline.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
+        }
     }
 
     /// `groups` without `structure`: a rename, a colour, or a collapse. Never a row move.

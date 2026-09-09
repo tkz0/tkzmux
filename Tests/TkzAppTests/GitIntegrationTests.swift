@@ -205,6 +205,22 @@ struct StatusModelMappingTests {
             Private: 5% of the seven-day quota
             Work: 61% of the seven-day quota
             """)
+
+        // The configured name wins over the one the usage file generated, so the strip and the
+        // sidebar chip (which reads `Account.label`) never call one account two things.
+        state.setUsage(UsageSnapshot(
+            accountKey: "claude-work", label: "Work Inc AB",
+            sevenDay: UsageWindow(usedPercentage: 61)))
+        #expect(state.accounts["claude-work"]?.label == "Work")
+        #expect(try #require(MainWindowController.statusModel(for: state).usageTooltip).contains(
+            "Work: 61%"))
+
+        // An account nobody has named falls back to whatever the usage file offers.
+        state.setAccount(Account(key: "claude-spare", configDir: "/h/.claude-spare", label: "claude-spare"))
+        state.setUsage(UsageSnapshot(
+            accountKey: "claude-spare", label: "Spare", sevenDay: UsageWindow(usedPercentage: 2)))
+        #expect(try #require(MainWindowController.statusModel(for: state).usageTooltip).contains(
+            "Spare: 2%"))
     }
 
     @Test func theResetsTooltipIsLocaleIndependent() {

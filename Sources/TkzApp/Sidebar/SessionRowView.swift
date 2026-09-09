@@ -15,9 +15,12 @@
 //
 //     ┌────────────────────────────────────────────────────────────┐
 //     │  ●   Session title…                          NEEDS YOU     │  title line,  y 22…38
-//     │      ⎇ branch   WT                                 [AC]    │  detail line, y  6…19
+//     │      ⎇ branch   WT                                [ALT]    │  detail line, y  6…19
 //     └────────────────────────────────────────────────────────────┘
 //        ↑14                                                    12↑
+//
+// The account chip is the one element with a tooltip; since there are no subviews to hang one on,
+// the row registers a tooltip rect and owns it — see `refreshAccountTooltip()`.
 
 import AppKit
 import TkzCore
@@ -106,6 +109,9 @@ public final class SessionRowView: NSTableCellView {
     private var memoryBadgeWidth: CGFloat = 0
     private var needsYouBadgeWidth: CGFloat = 0
     private var accountChipWidth: CGFloat = 0
+    /// What ``refreshAccountTooltip()`` last registered, so it can skip the churn.
+    private var registeredTooltipRect: NSRect?
+    private var registeredTooltipText: String?
 
     // MARK: Init
 
@@ -180,6 +186,9 @@ public final class SessionRowView: NSTableCellView {
         memoryBadge.isHidden = true
         needsYouBadge.isHidden = true
         accountChip.isHidden = true
+        removeAllToolTips()
+        registeredTooltipRect = nil
+        registeredTooltipText = nil
         selectionLayer.backgroundColor = NSColor.clear.cgColor
         edgeLayer.backgroundColor = NSColor.clear.cgColor
         onStatusDotClick = nil
@@ -417,5 +426,47 @@ public final class SessionRowView: NSTableCellView {
             let x = min(detailLeft, max(Self.textLeft, detailRight - wtBadgeWidth))
             wtBadge.frame = CGRect(x: x, y: Self.detailLineY, width: wtBadgeWidth, height: badgeH)
         }
+
+        refreshAccountTooltip()
+    }
+
+    /// One tooltip rect over the **whole row**, resolved per point in
+    /// ``view(_:stringForToolTip:point:userData:)``.
+    ///
+    /// The chip is a `CALayer` in a row that deliberately has no subviews at all (see the file
+    /// header), so the transparent-`NSButton` trick `GroupRowView` uses for its `＋` is not
+    /// available. This is the `StatusBarView` pattern instead: register rects, own them as an
+    /// `NSViewToolTipOwner`, and answer against the frames that were actually painted.
+    /// `addToolTip` installs a tracking rect, not a view, so the headless render is untouched.
+    ///
+    /// Covering the whole row rather than the chip is what keeps the 24 pt hover shift of
+    /// `closeReserve` from needing a re-registration of its own.
+    ///
+    /// **Only re-registered when it actually changes.** `layout()` runs on every scroll tick and
+    /// again whenever `isHovered` flips, and tearing the rect down while the pointer is already
+    /// inside it is how a tooltip goes missing until the pointer moves again: AppKit does not
+    /// reliably re-enter a tracking rect that appeared under a stationary cursor. `StatusBarView`
+    /// re-registers on `invalidatePlacement()` rather than on every layout for the same reason.
+    private func refreshAccountTooltip() {
+        let wanted = accountChip.isHidden ? nil : model.accountTooltip
+        let rect = wanted == nil ? nil : bounds
+        guard rect != registeredTooltipRect || wanted != registeredTooltipText else { return }
+        registeredTooltipRect = rect
+        registeredTooltipText = wanted
+        removeAllToolTips()
+        if let rect { addToolTip(rect, owner: self, userData: nil) }
+    }
+}
+
+extension SessionRowView: NSViewToolTipOwner {
+    /// The account line, but only over the chip itself — `""` everywhere else, so the rest of the
+    /// row shows no tooltip. The view is unflipped (``isFlipped``), so `point` and the layer frames
+    /// already share one coordinate space.
+    public func view(
+        _ view: NSView, stringForToolTip tag: NSView.ToolTipTag,
+        point: NSPoint, userData: UnsafeMutableRawPointer?
+    ) -> String {
+        guard !accountChip.isHidden, accountChip.frame.contains(point) else { return "" }
+        return model.accountTooltip ?? ""
     }
 }

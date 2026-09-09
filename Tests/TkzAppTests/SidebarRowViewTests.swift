@@ -330,6 +330,54 @@ struct SidebarRowViewTests {
                                  Self.components(expected.cgColor)))
     }
 
+    /// The chip is a `CALayer` in a row with no subviews, so its tooltip is a registered rect the
+    /// row answers for itself. What matters is that it answers *only over the chip*: one rect covers
+    /// the whole row, so a naive owner would put an account tooltip on the title too.
+    @Test("The account chip's tooltip answers over the chip and nowhere else")
+    func accountChipCarriesItsTooltip() {
+        let row = Self.sessionRow(
+            SidebarSessionRowModel(
+                title: "session", accountLabel: "ALT",
+                accountTooltip: "claude-alt \u{2014} ~/.claude-alt"))
+        #expect(!row.accountChipLayer.isHidden)
+
+        let chip = row.accountChipLayer.frame
+        let inside = NSPoint(x: chip.midX, y: chip.midY)
+        #expect(row.view(row, stringForToolTip: 0, point: inside, userData: nil)
+            == "claude-alt \u{2014} ~/.claude-alt")
+
+        // The title line, and the empty left half of the detail line, say nothing.
+        for outside in [NSPoint(x: chip.midX, y: row.bounds.height - 4), NSPoint(x: 20, y: chip.midY)] {
+            #expect(row.view(row, stringForToolTip: 0, point: outside, userData: nil) == "")
+        }
+
+        // No chip, no tooltip — and a chip with no tooltip text answers empty rather than crashing.
+        let bare = Self.sessionRow(SidebarSessionRowModel(title: "session"))
+        #expect(bare.view(bare, stringForToolTip: 0, point: inside, userData: nil) == "")
+        let unexplained = Self.sessionRow(SidebarSessionRowModel(title: "session", accountLabel: "ALT"))
+        #expect(unexplained.view(unexplained, stringForToolTip: 0, point: inside, userData: nil) == "")
+
+        // Re-laying the row out — which happens on every scroll tick and on every hover — must not
+        // disturb a tooltip that has not changed, and must follow one that has.
+        row.setHovered(true)
+        row.layoutSubtreeIfNeeded()
+        // Hovering slides the chip left to make room for the `×`, so ask where it actually is.
+        let hovered = row.accountChipLayer.frame
+        #expect(hovered.minX < chip.minX, "the chip moved, and the tooltip followed it")
+        #expect(row.view(row, stringForToolTip: 0, point: NSPoint(x: hovered.midX, y: hovered.midY),
+                         userData: nil) == "claude-alt \u{2014} ~/.claude-alt")
+        row.configure(
+            SidebarSessionRowModel(title: "session", accountLabel: "WORK", accountTooltip: "day job"),
+            theme: .default)
+        let moved = row.accountChipLayer.frame
+        #expect(row.view(row, stringForToolTip: 0, point: NSPoint(x: moved.midX, y: moved.midY),
+                         userData: nil) == "day job")
+
+        // A recycled row keeps nothing: the next session in this view is a different account.
+        row.prepareForReuse()
+        #expect(row.view(row, stringForToolTip: 0, point: inside, userData: nil) == "")
+    }
+
     @Test("Selection paints the theme's selection token; an unselected row paints nothing")
     func selectionUsesTheToken() {
         let selected = Self.sessionRow(SidebarSessionRowModel(title: "s", isSelected: true))

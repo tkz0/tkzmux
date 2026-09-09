@@ -382,6 +382,51 @@ import Testing
     }
 }
 
+@Suite struct AccountReducerTests {
+
+    /// A group default naming an account nothing knows about is still stamped on the session: the
+    /// account may only be discovered once the process announces itself, and until then the row has
+    /// to remember which one was asked for so a resume lands on it.
+    @Test func aGroupDefaultIsHonouredEvenWhenTheAccountIsUnknown() {
+        var state = AppState.fixture
+        let group = Fixture.groupID(0)
+        state.setGroupDefaultAccount(group, accountKey: "claude-gone")
+        #expect(state.accounts["claude-gone"] == nil)
+        let created = state.createSession(groupID: group, cwd: "~/dev/northwind")
+        #expect(created.accountKey == "claude-gone")
+
+        // No default at all falls through to `~/.claude`.
+        state.setGroupDefaultAccount(group, accountKey: nil)
+        #expect(state.createSession(groupID: group, cwd: "~/dev/northwind").accountKey == Account.defaultKey)
+    }
+
+    /// `setUsage` takes the plan, and the usage file's name only for an account nobody has named:
+    /// a generated name must never overwrite the one a human wrote in `dash-accounts.json`.
+    @Test func usageNamesOnlyTheAccountsNobodyHasNamed() {
+        var state = AppState.fixture
+
+        // `claude-work` carries a configured name, so the usage file's is ignored — but the plan,
+        // which nothing else knows, is taken.
+        #expect(state.accounts["claude-work"]?.label == "Claude (alt)")
+        state.setUsage(UsageSnapshot(accountKey: "claude-work", label: "Generated", plan: "Team 5x"))
+        #expect(state.accounts["claude-work"]?.label == "Claude (alt)")
+        #expect(state.accounts["claude-work"]?.plan == "Team 5x")
+
+        // An account still standing in for itself takes the better name on offer.
+        state.setAccount(Account(key: "claude-spare", configDir: "~/.claude-spare", label: "claude-spare"))
+        state.setUsage(UsageSnapshot(accountKey: "claude-spare", label: "Spare"))
+        #expect(state.accounts["claude-spare"]?.label == "Spare")
+        // …and a snapshot with no name of its own leaves it alone.
+        state.setUsage(UsageSnapshot(accountKey: "claude-spare"))
+        #expect(state.accounts["claude-spare"]?.label == "Spare")
+
+        // A usage file for a config dir nobody has discovered is not evidence that it exists.
+        state.setUsage(UsageSnapshot(accountKey: "claude-ghost", label: "Ghost"))
+        #expect(state.accounts["claude-ghost"] == nil)
+        #expect(state.usage["claude-ghost"]?.label == "Ghost")
+    }
+}
+
 @Suite struct SelectionReducerTests {
     @Test func selectingMarksAttendedAndClearsTheBadge() {
         var state = AppState.fixture

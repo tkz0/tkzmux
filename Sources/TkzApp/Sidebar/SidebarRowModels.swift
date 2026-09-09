@@ -61,6 +61,11 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
     /// single-account setup should pass, so the row does not carry a meaningless chip.
     public var accountLabel: String?
 
+    /// What hovering the chip says: the account's full name and its config dir. `nil` alongside a
+    /// non-nil ``accountLabel`` simply means no tooltip — five characters is not much to go on, so
+    /// the adapter always supplies one in practice.
+    public var accountTooltip: String?
+
     /// Chip tint. Passed in rather than derived inside the view so the mapping stays testable and
     /// so a user-configured account colour can override the default. When the adapter has no
     /// configured colour it should call `SidebarSessionRowModel.accountChipColor(forKey:)`.
@@ -95,6 +100,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         isWorktree: Bool = false,
         status: SidebarStatus = .idle,
         accountLabel: String? = nil,
+        accountTooltip: String? = nil,
         accountColor: RGB? = nil,
         needsAttention: Bool = false,
         isSelected: Bool = false,
@@ -106,6 +112,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         self.isWorktree = isWorktree
         self.status = status
         self.accountLabel = accountLabel
+        self.accountTooltip = accountTooltip
         self.accountColor = accountColor
         self.needsAttention = needsAttention
         self.isSelected = isSelected

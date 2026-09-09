@@ -57,6 +57,7 @@ public enum SidebarRowAdapter {
             isWorktree: session.showsWorktreeBadge,
             status: status(of: session),
             accountLabel: accountLabel(for: session, in: state),
+            accountTooltip: accountTooltip(for: session, in: state),
             accountColor: SidebarSessionRowModel.accountChipColor(forKey: session.accountKey),
             needsAttention: session.needsAttention,
             isSelected: state.selection == session.id,
@@ -114,25 +115,48 @@ public enum SidebarRowAdapter {
     /// **The default account (`~/.claude`) never shows a chip** (decision 2026-09-08): almost
     /// nobody runs more than one Claude plan, and for the one plan everybody has the chip says
     /// nothing. A chip appears only on a row that runs on some *other* config dir, and reads as
-    /// "this one is different". The label is derived from the account's *configured* `label`
-    /// (never hardcoded — see CLAUDE.md): initials for a multi-word label ("Claude (work)" → `CW`),
-    /// the first two characters for a single word ("work" → `WO`). An account the state has never
-    /// heard of falls back to the same derivation over its key.
+    /// "this one is different". The text is derived from the account's *configured* `label` when it
+    /// has one, else from its key — never hardcoded, see CLAUDE.md. See ``shortLabel(_:)`` for the
+    /// rule.
     public static func accountLabel(for session: Session, in state: AppState) -> String? {
         guard session.accountKey != Account.defaultKey else { return nil }
         let source = state.accounts[session.accountKey]?.label ?? session.accountKey
         return shortLabel(source) ?? shortLabel(session.accountKey)
     }
 
+    /// The chip's tooltip: the account as a human would name it, and the config dir it stands for.
+    ///
+    /// The chip has room for five characters, so the full name lives here — an account the state
+    /// has never heard of has nothing but its key to offer.
+    public static func accountTooltip(for session: Session, in state: AppState) -> String? {
+        guard session.accountKey != Account.defaultKey else { return nil }
+        guard let account = state.accounts[session.accountKey] else { return session.accountKey }
+        let name = account.label == account.key ? account.key : "\(account.label) (\(account.key))"
+        return "\(name) \u{2014} \(account.configDir)"
+    }
+
+    /// **Drop a leading `claude`, then take the first word**, uppercased and cut to
+    /// ``chipMaxLength``.
+    ///
+    /// Every account tkzmux discovers is `~/.claude` or `~/.claude-*`
+    /// (`ClaudeIntegration.discoverAccounts`), and a configured name usually leads with the product
+    /// too, so that first word carries no information: dropping it is what turns `CA` into `ALT`,
+    /// `CW` into `WORK`, and "Claude (work)" into `WORK`.
+    ///
+    /// What is left is *truncated*, not reduced to initials. The identifying part of a real name is
+    /// its first word — "Ada Industries" reads far better as `ADA` than as `AI` — and initials were
+    /// the whole reason every chip used to start with `C`. The cost is that two accounts whose
+    /// names differ only after the first word share a chip; they still differ in tint
+    /// (`accountChipColor(forKey:)`) and in the tooltip, which is what the tooltip is for.
+    static let chipMaxLength = 5
+
     static func shortLabel(_ source: String) -> String? {
-        let words = source
+        var words = source
             .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
             .filter { !$0.isEmpty }
+        if words.count > 1, words[0].lowercased() == Account.defaultKey { words.removeFirst() }
         guard let first = words.first else { return nil }
-        if words.count > 1 {
-            return String(words.prefix(3).compactMap(\.first)).uppercased()
-        }
-        return String(first.prefix(2)).uppercased()
+        return String(first.prefix(chipMaxLength)).uppercased()
     }
 
     // MARK: - Visible rows & the keyboard commands
