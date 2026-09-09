@@ -1,0 +1,40 @@
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_440d1f48f681fc::t_6a4b351707b428 475-516
+docs/design.md
+  s_440d1f48f681fc::t_f5c9ac803d1593 182
+Tests/TkzCoreTests/ReducersTests.swift
+  s_440d1f48f681fc::t_7ad828bc39afbf 335-342
+Sources/TkzCore/Reducers.swift
+  s_440d1f48f681fc::t_3d7a17524d6a06 265-269
+docs/manual-checks.md
+  s_440d1f48f681fc::t_f5c9ac803d1593 345
+Sources/TkzApp/MainWindowController.swift
+  s_440d1f48f681fc::t_7621cbe4c7ec00 599-601
+  s_440d1f48f681fc::t_5c9a63c4ca92c5 515,520,595-596,607
+  s_440d1f48f681fc::t_7e2f31952b2881 529
+  s_440d1f48f681fc::t_4d2f78afbdf98e 543,616,1364-1370,1381,1424-1437
+  s_440d1f48f681fc::t_312e7c1b5d97a8 516-519,522-528,530-539,586,597-598,602-606,608-615,618,1438
+  s_440d1f48f681fc::t_571a0745735622 617,619,1439
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_440d1f48f681fc::t_7e2f31952b2881 194
+Sources/TkzApp/Sidebar/NewGroupFooterView.swift
+  s_440d1f48f681fc::t_3f0ba829b24328 55
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_440d1f48f681fc::t_b32211a8e52ebf 207-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4a65f67d66d3b790d693b355477c978a755a697c",
+  "prompts": {},
+  "sessions": {
+    "s_440d1f48f681fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4a647e2f-1e25-41d5-9e61-9382ff3ff163",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
