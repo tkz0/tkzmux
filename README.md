@@ -183,7 +183,7 @@ signed.
 
 - **No usage or context readout.** The status bar's *Context*, model badge and *Usage* segments stay
   empty: reading Claude Code's quota requires a statusline shim that this repo does not ship yet
-  (Linear TKZ-32 / design.md *Claude integration → Usage*).
+  (Linear TKZ-32).
 - **The PR badge needs `gh`.** Branch, diff stats, ahead/behind and ports are live. The PR badge
   additionally needs the GitHub CLI installed and authenticated, and only appears for repos whose
   origin is on GitHub — on any other host the lookup is skipped by design, and the badge stays
