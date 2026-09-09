@@ -13,10 +13,95 @@ private func makeMinimalState() -> PersistedState {
     return PersistedState(state)
 }
 
-@Test func v1IsANoOp() throws {
+@Test func v2IsANoOp() throws {
     let object = try JSONDecoder().decode(
         [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
+    #expect(object["schemaVersion"]?.intValue == 2)
     #expect(try Migrations.migrate(object) == object)
+}
+
+/// The v1 → v2 lift, and the property the whole migration was shaped around: the migrated leaf's
+/// id **is** the session's, so the `<uuid>.ghsnap` written by a v1 build is still the right file.
+@Test func aV1SessionGainsOneTabWhoseIDsAreItsOwn() throws {
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
+    object["schemaVersion"] = .number(1)
+    object["sessions"] = .array(
+        try #require(object["sessions"]?.arrayValue).map { value in
+            guard case .object(var fields) = value else { return value }
+            fields["tabs"] = nil
+            fields["activeTab"] = nil
+            return .object(fields)
+        })
+
+    let lifted = try Migrations.migrate(object)
+    #expect(lifted["schemaVersion"]?.intValue == 2)
+
+    let session = try #require(lifted["sessions"]?.arrayValue?.first)
+    guard case .object(let fields) = session else { Issue.record("not an object"); return }
+    let id = try #require(fields["id"]?.stringValue)
+    let tabs = try #require(fields["tabs"]?.arrayValue)
+    #expect(tabs.count == 1)
+    #expect(fields["activeTab"]?.stringValue == id)
+    guard case .object(let tab) = tabs[0] else { Issue.record("not an object"); return }
+    #expect(tab["id"]?.stringValue == id)
+    #expect(tab["focusedLeaf"]?.stringValue == id)
+    guard case .object(let root) = try #require(tab["root"]) else {
+        Issue.record("not an object")
+        return
+    }
+    #expect(root["kind"]?.stringValue == "leaf")
+    #expect(root["id"]?.stringValue == id)
+}
+
+/// Re-running the lift on its own output must change nothing, or a chained migration would
+/// double-wrap every row.
+@Test func theV1LiftIsIdempotent() throws {
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
+    object["schemaVersion"] = .number(1)
+    let once = Migrations.liftV1ToV2(object)
+    #expect(Migrations.liftV1ToV2(once) == once)
+}
+
+/// Three rows in, three single-leaf trees out — the lift is per session, not per file.
+@Test func everyV1SessionIsLifted() throws {
+    var state = AppState()
+    let group = state.addGroup(name: "G", repoRoot: "/tmp")
+    for _ in 0..<3 { _ = state.createSession(groupID: group.id, cwd: "/tmp") }
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(state))))
+    object["schemaVersion"] = .number(1)
+    object["sessions"] = .array(
+        try #require(object["sessions"]?.arrayValue).map { value in
+            guard case .object(var fields) = value else { return value }
+            fields["tabs"] = nil
+            fields["activeTab"] = nil
+            return .object(fields)
+        })
+
+    let lifted = try Migrations.migrate(object)
+    let sessions = try #require(lifted["sessions"]?.arrayValue)
+    #expect(sessions.count == 3)
+    for value in sessions {
+        guard case .object(let fields) = value else { Issue.record("not an object"); return }
+        #expect(fields["tabs"]?.arrayValue?.count == 1)
+    }
+}
+
+/// A session object with no `id` cannot be given a tree; it is passed through and fails typed
+/// decoding exactly as it would have before the bump.
+@Test func aSessionWithNoIDIsPassedThroughUntouched() throws {
+    let object: [String: JSONValue] = [
+        "schemaVersion": .number(1),
+        "sessions": .array([.object(["cwd": .string("/tmp")])]),
+    ]
+    let lifted = try Migrations.migrate(object)
+    guard case .object(let fields)? = lifted["sessions"]?.arrayValue?.first else {
+        Issue.record("not an object")
+        return
+    }
+    #expect(fields["tabs"] == nil)
 }
 
 @Test func aFileWithNoSchemaVersionIsNotAStateFile() {
@@ -28,8 +113,8 @@ private func makeMinimalState() -> PersistedState {
 @Test func aFutureVersionIsRefusedRatherThanGuessedAt() throws {
     var object = try JSONDecoder().decode(
         [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
-    object["schemaVersion"] = .number(2)
-    #expect(throws: MigrationError.futureVersion(found: 2, supported: 1)) {
+    object["schemaVersion"] = .number(3)
+    #expect(throws: MigrationError.futureVersion(found: 3, supported: 2)) {
         try Migrations.migrate(object)
     }
 }
@@ -41,8 +126,8 @@ private func makeMinimalState() -> PersistedState {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let file = StateFile(url: directory.appending(path: "state.json", directoryHint: .notDirectory))
 
-    // A perfectly good v1 backup exists. It must *not* be used: the newer build wrote the primary,
-    // and loading the older backup would mean writing v1 straight over whatever v2 stored.
+    // A perfectly good current-version backup exists. It must *not* be used: the newer build wrote
+    // the primary, and loading the older backup would mean writing over whatever it stored.
     try file.save(StateDocument(state: makeMinimalState()))
     try file.save(StateDocument(state: makeMinimalState()))
     var object = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: file.url))
@@ -50,7 +135,7 @@ private func makeMinimalState() -> PersistedState {
     try StateFile.makeEncoder().encode(object).write(to: file.url)
 
     let loaded = file.load()
-    #expect(loaded.source == .futureVersion(found: 9, supported: 1))
+    #expect(loaded.source == .futureVersion(found: 9, supported: 2))
     #expect(loaded.document == nil)
     #expect(loaded.isWritable == false)
     #expect(loaded.quarantined.isEmpty)   // a newer build's file is not damaged; do not touch it

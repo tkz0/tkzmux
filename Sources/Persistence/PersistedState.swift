@@ -82,7 +82,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
 /// `state.json` v1.
 public struct PersistedState: Hashable, Sendable, Codable {
     /// The version this build writes. Bumping it needs a `Migrations` case.
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion: Int
     /// Display order, so the file reads top to bottom like the sidebar does.
@@ -188,11 +188,20 @@ public struct PersistedState: Hashable, Sendable, Codable {
         if !groups.isEmpty {
             state.groups = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
             var kept: [SessionID: Session] = [:]
+            // Threaded across every row, not reset per row: a terminal id is a `.ghsnap`
+            // basename, so it has to be unique file-wide. Iterating `sessions` in file order
+            // makes "the first occurrence keeps the id" deterministic.
+            var claimedTerminals: Set<TerminalID> = []
+            var claimedTabs: Set<TabID> = []
             for session in sessions {
                 guard state.groups[session.groupID] != nil else {
                     warnings.append("session \(session.id) names unknown group \(session.groupID)")
                     continue
                 }
+                var session = session
+                warnings.append(
+                    contentsOf: session.normalizeLayout(
+                        claimedTerminals: &claimedTerminals, claimedTabs: &claimedTabs))
                 kept[session.id] = session
             }
             state.sessions = kept

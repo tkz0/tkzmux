@@ -43,7 +43,10 @@ private func makeState() -> AppState {
     state.sidebarWidth = 372
     state.setSidebarVisible(false)
     state.setAutoResumeOnLaunch(true)
-    _ = two
+    // A split and a second tab, so every assertion built on this fixture covers the layout too.
+    _ = state.splitPane(two.focusedTerminalID, axis: .vertical, ratio: 0.3)
+    _ = state.addTab(to: two.id)
+    state.selectTab(two.activeTab)
     return state
 }
 
@@ -110,7 +113,7 @@ private func makeState() -> AppState {
     #expect(groups.first?.objectValue?["name"]?.stringValue == "Alpha")
     guard case .array(let sessions)? = object["sessions"] else { Issue.record("no sessions"); return }
     #expect(sessions.count == 2)
-    #expect(object["schemaVersion"]?.intValue == 1)
+    #expect(object["schemaVersion"]?.intValue == 2)
     // Explicit keys, not CGRect's `[[x,y],[w,h]]`.
     #expect(object["windowFrame"]?.objectValue?["width"] != nil)
 }
@@ -169,7 +172,7 @@ func cwdModeRoundTrips(_ mode: CwdMode) throws {
     var groupIDs = [group.id]
 
     for step in 0..<1000 {
-        switch Int.random(in: 0..<10, using: &generator) {
+        switch Int.random(in: 0..<14, using: &generator) {
         case 0:
             groupIDs.append(state.addGroup(name: "g\(step)", repoRoot: "/tmp/\(step)").id)
         case 1:
@@ -203,10 +206,43 @@ func cwdModeRoundTrips(_ mode: CwdMode) throws {
             state.setSidebarVisible(step % 2 == 0)
             state.sidebarWidth = CGFloat(240 + step % 200)
             state.setAutoResumeOnLaunch(step % 3 == 0)
-        default:
+        case 9:
             state.windowFrame = CGRect(
                 x: Double(step % 40), y: Double(step % 30),
                 width: 800 + Double(step % 400), height: 600 + Double(step % 200))
+        case 10:
+            // Splits and closes, so the property test walks trees rather than only single leaves.
+            if let session = state.orderedSessions.randomElement(using: &generator),
+                let leaf = session.terminalIDs.randomElement(using: &generator)
+            {
+                _ = state.splitPane(
+                    leaf, axis: step.isMultiple(of: 2) ? .horizontal : .vertical,
+                    ratio: 0.2 + Double(step % 6) * 0.1)
+            }
+        case 11:
+            if let session = state.orderedSessions.randomElement(using: &generator),
+                let leaf = session.terminalIDs.randomElement(using: &generator)
+            {
+                _ = state.closePane(leaf)
+            }
+        case 12:
+            if let session = state.orderedSessions.randomElement(using: &generator) {
+                if step.isMultiple(of: 3) {
+                    _ = state.addTab(to: session.id)
+                } else if let tab = session.tabs.randomElement(using: &generator) {
+                    _ = state.closeTab(tab.id)
+                }
+            }
+        default:
+            // Focus, zoom and a divider drag: durable, and all three must survive the file.
+            if let session = state.orderedSessions.randomElement(using: &generator),
+                let leaf = session.terminalIDs.randomElement(using: &generator)
+            {
+                state.focusPane(leaf)
+                state.setRatio(above: leaf, to: 0.15 + Double(step % 7) * 0.1)
+                if step.isMultiple(of: 5) { state.zoomPane(leaf, in: session.id) }
+                if step.isMultiple(of: 11) { state.equalizeSplits(in: session.id) }
+            }
         }
 
         let projected = PersistedState(state)
@@ -228,6 +264,109 @@ private struct SeededGenerator: RandomNumberGenerator {
         state ^= state << 17
         return state
     }
+}
+
+// MARK: - Layout (TKZ-36)
+
+/// An old file has no `tabs` key at all. It must still load, and every row must come back with
+/// exactly one pane whose id is the session's own — the property that lets a v1 `<uuid>.ghsnap`
+/// keep working with no rename.
+@Test func aV1SessionWithoutTabsStillLoads() throws {
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(makeState()))))
+    object["schemaVersion"] = .number(1)
+    object["sessions"] = .array(
+        try #require(object["sessions"]?.arrayValue).map { value in
+            guard case .object(var fields) = value else { return value }
+            fields["tabs"] = nil
+            fields["activeTab"] = nil
+            return .object(fields)
+        })
+
+    let decoded = try StateFile.decode(StateFile.makeEncoder().encode(object))
+    var state = AppState()
+    let warnings = decoded.state.apply(to: &state)
+    #expect(warnings.isEmpty)
+    for session in state.sessions.values {
+        #expect(session.terminalIDs == [TerminalID(uuid: session.id.uuid)])
+        #expect(session.activeTab == TabID(uuid: session.id.uuid))
+    }
+}
+
+@Test func splitsTabsAndRatiosSurviveTheFile() throws {
+    let projected = PersistedState(makeState())
+    let decoded = try StateFile.decode(StateFile.encode(StateDocument(state: projected))).state
+    #expect(decoded == projected)
+
+    let split = try #require(decoded.sessions.first { $0.terminalCount > 1 })
+    #expect(split.tabs.count == 2)
+    guard case .split(let node) = split.tabs[0].root else {
+        Issue.record("the split did not survive")
+        return
+    }
+    #expect(node.axis == .vertical)
+    #expect(node.ratio == 0.3)
+}
+
+/// The repairs in `Session.normalizeLayout`, each through the real load path.
+@Test func aTabFocusingAPaneItDoesNotHoldIsRepairedAndReported() throws {
+    var state = makeState()
+    let victim = try #require(state.sessions.values.first)
+    state.sessions[victim.id]?.tabs[0].focusedLeaf = .generate()
+
+    var restored = AppState()
+    let warnings = PersistedState(state).apply(to: &restored)
+    #expect(warnings.contains { $0.contains("focuses a pane it does not contain") })
+    let repaired = try #require(restored.sessions[victim.id])
+    #expect(repaired.tabs[0].root.contains(repaired.tabs[0].focusedLeaf))
+}
+
+@Test func anUnknownActiveTabIsRepairedAndReported() throws {
+    var state = makeState()
+    let victim = try #require(state.sessions.values.first)
+    state.sessions[victim.id]?.activeTab = .generate()
+
+    var restored = AppState()
+    let warnings = PersistedState(state).apply(to: &restored)
+    #expect(warnings.contains { $0.contains("unknown active tab") })
+    let repaired = try #require(restored.sessions[victim.id])
+    #expect(repaired.tabs.contains { $0.id == repaired.activeTab })
+}
+
+/// A terminal id is a `.ghsnap` basename, so uniqueness is file-wide, not per row.
+@Test func aTerminalIDReusedInTwoRowsIsRegeneratedAndReported() throws {
+    var state = makeState()
+    let ids = state.sessions.keys.sorted()
+    let shared = TerminalID.generate()
+    for id in ids.prefix(2) {
+        let tab = Tab.single(shared)
+        state.sessions[id]?.tabs = [tab]
+        state.sessions[id]?.activeTab = tab.id
+    }
+
+    var restored = AppState()
+    let warnings = PersistedState(state).apply(to: &restored)
+    #expect(warnings.contains { $0.contains("appears twice") })
+    let all = restored.sessions.values.flatMap(\.terminalIDs)
+    #expect(Set(all).count == all.count)
+}
+
+@Test func anOutOfRangeRatioIsClampedAndReported() throws {
+    var state = makeState()
+    let victim = try #require(state.sessions.values.first { $0.terminalCount > 1 })
+    guard case .split(var node) = victim.tabs[0].root else {
+        Issue.record("the fixture lost its split")
+        return
+    }
+    // Reach past `PaneSplit.init`'s own clamp, the way a hand-edited file would.
+    node.ratio = 40
+    state.sessions[victim.id]?.tabs[0].root = .split(node)
+
+    var restored = AppState()
+    let warnings = PersistedState(state).apply(to: &restored)
+    #expect(warnings.contains { $0.contains("out-of-range split ratio") })
+    guard case .split(let clamped)? = restored.sessions[victim.id]?.tabs[0].root else { return }
+    #expect(PaneSplit.ratioRange.contains(clamped.ratio))
 }
 
 // MARK: - Restore hygiene

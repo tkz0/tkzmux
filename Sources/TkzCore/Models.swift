@@ -18,8 +18,8 @@ import Foundation
 /// Shared behaviour for the UUID-backed identifiers below.
 ///
 /// The string form is `UUID.uuidString` (uppercase, hyphenated). That matters beyond aesthetics:
-/// a session id is also used as a **file basename** (`<id>.ghsnap`, `sessions/<id>.json`) and as the
-/// value of the **`TKZMUX_SESSION_ID`** environment variable handed to the shim, so it must never
+/// a `TerminalID` is used as a **file basename** (`<id>.ghsnap`) and a `SessionID` as the value of
+/// the **`TKZMUX_SESSION_ID`** environment variable handed to the shim, so neither may ever
 /// contain `/`, NUL, or be `.`/`..`. A UUID string satisfies all of that by construction, which is
 /// why `init?(_:)` rejects anything that is not a UUID rather than merely checking for slashes.
 public protocol UUIDIdentifier: Hashable, Sendable, Comparable, CustomStringConvertible, Codable {
@@ -176,6 +176,12 @@ public struct Session: Hashable, Sendable, Identifiable {
     public var createdAt: Date
     public var lastActiveAt: Date
 
+    /// The session's tabs, in strip order. Never empty: `closePane`/`closeTab` refuse to empty a
+    /// row, and `normalizeLayout` re-seeds a file that says otherwise.
+    public var tabs: [Tab]
+    /// Which tab is on screen. Always one of `tabs`.
+    public var activeTab: TabID
+
     /// Everything about the *running* process. `nil` = not running (never persisted).
     public var live: LiveSessionState?
 
@@ -193,6 +199,8 @@ public struct Session: Hashable, Sendable, Identifiable {
         presetID: UUID? = nil,
         createdAt: Date = Date(),
         lastActiveAt: Date = Date(),
+        tabs: [Tab]? = nil,
+        activeTab: TabID? = nil,
         live: LiveSessionState? = nil
     ) {
         self.id = id
@@ -208,11 +216,19 @@ public struct Session: Hashable, Sendable, Identifiable {
         self.presetID = presetID
         self.createdAt = createdAt
         self.lastActiveAt = lastActiveAt
+        // A default argument cannot reference another parameter, so the single-leaf seed is built
+        // here. Its terminal and tab ids are the session's own uuid — the same invariant
+        // `Migrations.liftV1ToV2` gives every row it lifts, which is what lets `restoreAll` map a
+        // `<uuid>.ghsnap` back to its row without a lookup table.
+        let seeded = tabs ?? [Tab.single(TerminalID(uuid: id.uuid), tab: TabID(uuid: id.uuid))]
+        self.tabs = seeded
+        self.activeTab = activeTab ?? seeded[0].id
         self.live = live
     }
 
     /// `.idle` whenever there is no live state. There is no "exited" status (decision 2026-09-08:
-    /// a terminal cannot be exited — when its shell ends, the row goes). A row with no `live` is
+    /// a terminal cannot be exited — when a pane's shell ends the *leaf* goes, and the row goes
+    /// with its last leaf; see `AppState.closePane`). A row with no `live` is
     /// one restored from `state.json` that has not been shown yet; it gets its shell on first show.
     public var status: SessionStatus { live?.status ?? .idle }
 
@@ -279,6 +295,51 @@ public struct Session: Hashable, Sendable, Identifiable {
         resumeDirectoryCandidates.first ?? cwd
     }
 
+    // MARK: Layout
+
+    /// The tab on screen. Falls back to the first tab rather than returning nil: `tabs` is never
+    /// empty, and every caller would otherwise have to invent the same fallback.
+    public var activeTabValue: Tab {
+        tabs.first { $0.id == activeTab } ?? tabs[0]
+    }
+
+    public var activeTabIndex: Int {
+        tabs.firstIndex { $0.id == activeTab } ?? 0
+    }
+
+    /// The pane that takes keystrokes.
+    public var focusedTerminalID: TerminalID { activeTabValue.focusedLeaf }
+
+    /// Every terminal of every tab, in tab order then reading order. This is the set that owns
+    /// `.ghsnap` files, so it is what snapshot housekeeping must keep.
+    public var terminalIDs: [TerminalID] { tabs.flatMap(\.terminalIDs) }
+
+    /// The sidebar's pane-count badge shows this when it is > 1.
+    public var terminalCount: Int { tabs.reduce(0) { $0 + $1.terminalCount } }
+
+    /// The terminals the active tab puts on screen — one while zoomed, otherwise all of them.
+    public var visibleTerminalIDs: [TerminalID] { activeTabValue.visibleTerminalIDs }
+
+    public func tab(containing terminal: TerminalID) -> Tab? {
+        tabs.first { $0.root.contains(terminal) }
+    }
+
+    /// True when the two sessions lay out identically — same tabs in the same order, same active
+    /// tab, focus and zoom, same tree shape, axes, ratios and leaf ids.
+    ///
+    /// `ChangeSet.diff` uses this to decide the `layout` bucket, so it runs once per changed
+    /// session per delivery and must not allocate. That is why it is a structural walk rather than
+    /// a comparison of two projections.
+    public func hasSameLayoutShape(as other: Session) -> Bool {
+        guard activeTab == other.activeTab, tabs.count == other.tabs.count else { return false }
+        for (a, b) in zip(tabs, other.tabs) {
+            guard a.id == b.id, a.focusedLeaf == b.focusedLeaf, a.zoomedLeaf == b.zoomedLeaf,
+                a.root == b.root
+            else { return false }
+        }
+        return true
+    }
+
     /// The `claude -w` worktree a path lies in, or `nil`.
     ///
     /// Claude Code creates its worktrees under `<repo>/.claude/worktrees/<name>` and starts the
@@ -300,6 +361,7 @@ extension Session: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, groupID, order, title, cwd, repoRoot, worktreePath, isWorktree
         case accountKey, claudeSessionId, presetID, createdAt, lastActiveAt
+        case tabs, activeTab
     }
 }
 
@@ -351,6 +413,7 @@ public struct LiveSessionState: Hashable, Sendable {
     public var isDone: Bool
     /// The shell's working directory as it last reported it (OSC 7 from the ZDOTDIR wrapper on
     /// every `cd`). Process state: the title follows it, nothing is persisted (2026-09-08).
+    /// This is the *focused* pane's directory; `paneCwds` holds one per pane.
     public var shellCwd: String?
     /// Summed `phys_footprint` of this session's pty child and its descendants, as last sampled.
     ///
@@ -358,6 +421,17 @@ public struct LiveSessionState: Hashable, Sendable {
     /// everything forked from a pty shares the app's process coalition. `nil` until first sampled.
     /// Process state, never persisted. See docs/perf.md → *Session process memory*.
     public var subtreeFootprintBytes: UInt64?
+    /// Login-shell pid per pane (TKZ-36). `shellPid` is still the focused pane's, because the
+    /// status derivation and the row's identity are session-level by design; this map exists so
+    /// that the things which walk the process tree — the port scanner and the hook relay's ppid
+    /// fallback — can see a shell started in *any* pane, not only the focused one.
+    /// Process state, like every other field here: rebuilt as panes are opened.
+    public var panePids: [TerminalID: pid_t]
+    /// Working directory per pane, from the same OSC 7 the row's `shellCwd` comes from. A split
+    /// starts in the source pane's directory by reading this. Not persisted — the 2026-09-08
+    /// decision that cwd is process state holds for panes too, so a reopened pane starts in the
+    /// row's resume directory.
+    public var paneCwds: [TerminalID: String]
 
     public init(
         pid: pid_t? = nil,
@@ -378,7 +452,9 @@ public struct LiveSessionState: Hashable, Sendable {
         attendedAt: Date? = nil,
         lastPromptAt: Date? = nil,
         isDone: Bool = false,
-        shellCwd: String? = nil
+        shellCwd: String? = nil,
+        panePids: [TerminalID: pid_t] = [:],
+        paneCwds: [TerminalID: String] = [:]
     ) {
         self.pid = pid
         self.shellPid = shellPid
@@ -399,6 +475,8 @@ public struct LiveSessionState: Hashable, Sendable {
         self.lastPromptAt = lastPromptAt
         self.isDone = isDone
         self.shellCwd = shellCwd
+        self.panePids = panePids
+        self.paneCwds = paneCwds
     }
 }
 

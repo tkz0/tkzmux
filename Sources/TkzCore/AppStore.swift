@@ -18,6 +18,8 @@ import Foundation
 /// | Mutation | Fields set |
 /// |---|---|
 /// | a session's `live.status`, title, git, ports … | `sessions = [id]` — **never** `structure` |
+/// | a session's tabs, splits, ratios, focused pane, active tab, zoom | `sessions = [id]` **and** `layout = [id]` — **never** `structure` |
+/// | a pane's live `cwd` (OSC 7) or pid | `sessions = [id]` — **never** `layout` |
 /// | a group's name, colour, `isCollapsed` | `groups = [id]` — **never** `structure` |
 /// | a session or group added / removed | `structure`, plus the id in `sessions` / `groups` |
 /// | a session's `groupID` or `order`, a group's `order` | `structure`, plus the id |
@@ -31,6 +33,12 @@ import Foundation
 ///
 /// One mutation legitimately sets both: `createSession` into a *collapsed* group expands it, so the
 /// change set carries `structure` (the new row) **and** `groups` (the group that reopened).
+/// `layout` means exactly "the split container's *shape* changed" — the only case that needs the
+/// detail view to build or destroy terminal views. It always co-fires with `sessions`, and it is a
+/// separate bucket because `sessions` fires on every status flip and port scan, while rebuilding an
+/// `NSSplitView` subtree is the one reaction that must not happen at that rate. A pane's `cwd`
+/// follows the shell on every `cd`, so it rides `sessions` alone: walking a directory tree must
+/// never re-attach a surface.
 public struct ChangeSet: Hashable, Sendable {
     /// Sessions whose value differs (including any part of `live`).
     public var sessions: Set<SessionID>
@@ -38,6 +46,8 @@ public struct ChangeSet: Hashable, Sendable {
     public var groups: Set<GroupID>
     /// Rows were added, removed, re-parented or reordered.
     public var structure: Bool
+    /// Sessions whose pane tree changed shape — see the note above `ChangeSet`.
+    public var layout: Set<SessionID>
     /// `AppState.selection` differs.
     public var selection: Bool
     /// `AppState.usage` or `AppState.accounts` differ.
@@ -52,6 +62,7 @@ public struct ChangeSet: Hashable, Sendable {
     public init(
         sessions: Set<SessionID> = [],
         groups: Set<GroupID> = [],
+        layout: Set<SessionID> = [],
         structure: Bool = false,
         selection: Bool = false,
         usage: Bool = false,
@@ -59,6 +70,7 @@ public struct ChangeSet: Hashable, Sendable {
     ) {
         self.sessions = sessions
         self.groups = groups
+        self.layout = layout
         self.structure = structure
         self.selection = selection
         self.usage = usage
@@ -69,12 +81,14 @@ public struct ChangeSet: Hashable, Sendable {
     public static let none = ChangeSet()
 
     public var isEmpty: Bool {
-        sessions.isEmpty && groups.isEmpty && !structure && !selection && !usage && !chrome
+        sessions.isEmpty && groups.isEmpty && layout.isEmpty && !structure && !selection
+            && !usage && !chrome
     }
 
     public mutating func formUnion(_ other: ChangeSet) {
         sessions.formUnion(other.sessions)
         groups.formUnion(other.groups)
+        layout.formUnion(other.layout)
         structure = structure || other.structure
         selection = selection || other.selection
         usage = usage || other.usage
@@ -94,11 +108,13 @@ public struct ChangeSet: Hashable, Sendable {
         for (id, newSession) in new.sessions {
             guard let oldSession = old.sessions[id] else {
                 change.sessions.insert(id)
+                change.layout.insert(id)
                 change.structure = true
                 continue
             }
             if oldSession != newSession {
                 change.sessions.insert(id)
+                if !oldSession.hasSameLayoutShape(as: newSession) { change.layout.insert(id) }
                 if oldSession.groupID != newSession.groupID || oldSession.order != newSession.order {
                     change.structure = true
                 }
@@ -106,6 +122,7 @@ public struct ChangeSet: Hashable, Sendable {
         }
         for id in old.sessions.keys where new.sessions[id] == nil {
             change.sessions.insert(id)
+            change.layout.insert(id)
             change.structure = true
         }
 

@@ -109,6 +109,34 @@ private func settle(until condition: @MainActor () -> Bool, timeout: Duration = 
     }
 }
 
+/// The two sides of the 2026-09-08 decision, now that panes exist: a pane's working directory is
+/// process state and must never reach the disk, while the tree it sits in is layout and must.
+@Test @MainActor func aPaneCwdIsNotDurableButItsTreeIs() async throws {
+    try await withSaver { store, file, saver in
+        saver.flush()
+        #expect(saver.writeCount == 1)
+
+        let id = try #require(store.state.orderedSessions.first?.id)
+        let leaf = try #require(store.state.sessions[id]?.focusedTerminalID)
+        store.update { $0.setLive(LiveSessionState(), for: id) }
+        saver.flush()
+        let baseline = saver.writeCount
+
+        for step in 0..<20 {
+            store.update { $0.setPaneCwd(leaf, path: "/repo/deep/\(step)") }
+            store.flush()
+        }
+        await settle(until: { saver.skippedCount >= 20 }, timeout: .seconds(1))
+        #expect(saver.writeCount == baseline)   // twenty `cd`s wrote nothing
+
+        store.update { _ = $0.splitPane(leaf, axis: .horizontal) }
+        saver.flush()
+        #expect(saver.writeCount > baseline)
+        let saved = try #require(file.load().document?.state.sessions.first { $0.id == id })
+        #expect(saved.terminalCount == 2)
+    }
+}
+
 @Test @MainActor func flushWritesAMutationThatWasNeverDelivered() async throws {
     try await withSaver(debounce: .seconds(30)) { store, file, saver in
         // `AppStore` coalesces deliveries to one per run-loop turn, so at ⌘Q there is normally a
