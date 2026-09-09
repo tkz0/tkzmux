@@ -79,6 +79,17 @@ public struct ShortcutModifiers: OptionSet, Hashable, Sendable {
         return flags
     }
 
+    /// The reverse of ``eventFlags``, for reading a binding back off an `NSMenuItem` — the cheat
+    /// sheet renders the menu the app already built rather than keeping a second table.
+    public init(eventFlags: NSEvent.ModifierFlags) {
+        var modifiers: ShortcutModifiers = []
+        if eventFlags.contains(.command) { modifiers.insert(.command) }
+        if eventFlags.contains(.shift) { modifiers.insert(.shift) }
+        if eventFlags.contains(.option) { modifiers.insert(.option) }
+        if eventFlags.contains(.control) { modifiers.insert(.control) }
+        self = modifiers
+    }
+
     /// `⇧⌘` in menu order (control, option, shift, command) — for palette subtitles.
     public var displayString: String {
         var out = ""
