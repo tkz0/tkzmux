@@ -35,5 +35,14 @@ jobs:
 
       # Swift Testing. No GUI session on a runner, so anything needing a window must be marked
       # .disabled/.enabled(if:) in the test target rather than skipped here.
+      #
+      # --no-parallel is required, not a preference. Several tests assert timing behaviour -- the
+      # autosaver's debounce, and that a background session's output never wakes the display link --
+      # and they wait on the main actor. Run in parallel, the process-spawning ClaudeBridge suites
+      # starve it; `StateAutosaverTests.settle` already carries a 10 s timeout and a comment about
+      # this, and on a 3-core runner even 10 s is not enough (observed: writeCount still 0 after the
+      # full timeout, the test failing after 14 s). Raising those timeouts further would only make a
+      # genuine regression take longer to report. Serial costs ~20 s here and makes them
+      # deterministic: 941 tests, 28 s serial vs 8 s parallel on the development Mac.
       - name: swift test
-        run: swift test
+        run: swift test --no-parallel
