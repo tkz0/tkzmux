@@ -468,15 +468,7 @@ headless session can do: it needs an Apple Developer account, a keychain, a GitH
 Mac that has never seen the app. The order is a **gate chain** — each step's artefact is the next
 step's input, so do not skip ahead. `docs/release.md` is the runbook; this is the checklist.
 
-**Status 2026-09-08 (evening):** enrolled, and the certificate half is **done** —
-`security find-identity -v -p codesigning` reports *1 valid identity*,
-`Developer ID Application: … (38GVG7CCC4)`, and **8b is verified**: `make app` with a real
-identity passes all 15 checks, hardened runtime and secure timestamp included. Still blocked at
-**8a step 3**: `notarytool store-credentials` returns *403 — Invalid or inaccessible developer
-team ID for the provided Apple ID*, and App Store Connect says *"Your Apple Account isn't enabled
-for App Store Connect"*. Both are the same cause: enrolment provisions across Apple's services at
-different speeds, and certificate issuance lit up first. Nothing to fix locally — retry after a
-few hours. So 8d onward (notarize, staple, spctl) is still unexecuted.
+**Status 2026-09-09:** **8a–8d are done and verified.** `security find-identity -v -p codesigning` reports *1 valid identity*; `make app` with a real identity passes all 15 checks; `make notarize` returned `Accepted`, stapled, and `spctl` says *accepted, source=Notarized Developer ID*; and a zipped, quarantined copy is accepted with no user interaction, which is the part that matters for a download. Remaining: **8c** (a real Claude session inside the hardened build — a headless launch with the SwiftPM resource bundles hidden exited 0 with no denials in the log, so no entitlements are expected, but that is not the same as real use), and **8e onward** (first release, public repo, tap, clean machine).
 
 **8a. Apple Developer prerequisites** (one-off, ~30 min plus Apple's enrolment wait).
 
