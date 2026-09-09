@@ -875,7 +875,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public var confirmRemoveShellIntegration: (() -> Bool)?
 
     /// Overrides the statusline consent sheet: gets the plan, returns true to install. Tests set
-    /// it — `runModal()` in a test process never returns.
+    /// it — a sheet needs a key window and a run loop.
     public var confirmInstallStatusline: ((StatuslineInstallPlan) -> Bool)?
     /// Overrides the confirmation for removing the statusline again.
     public var confirmRemoveStatusline: (() -> Bool)?
@@ -978,28 +978,43 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         guard let plan, plan.producer != .tkzmux else { return }
 
-        let confirmed: Bool
         if let confirmInstallStatusline {
-            confirmed = confirmInstallStatusline(plan)
-        } else {
-            let alert = NSAlert()
-            alert.messageText = "Show usage and context in the status bar?"
-            var body = "tkzmux needs its own status line command to read Claude Code's quota and "
-                + "context usage — they are handed to the status line and never written to disk.\n\n"
-                + "This changes statusLine in \(plan.settingsPath):\n\n"
-            if let before = plan.before {
-                body += "Now:\n\(before)\n\nAfter:\n\(plan.after)\n\n"
-                    + "Your current status line keeps running and its output is passed through "
-                    + "unchanged. Status Line Integration in the app menu puts it back exactly."
-            } else {
-                body += "After:\n\(plan.after)\n\n"
-                    + "Status Line Integration in the app menu removes it again."
-            }
-            alert.informativeText = body
-            alert.addButton(withTitle: "Install")
-            alert.addButton(withTitle: "Not Now")
-            confirmed = alert.runModal() == .alertFirstButtonReturn
+            finishStatuslineOffer(confirmed: confirmInstallStatusline(plan), accountKey: accountKey)
+            return
         }
+        let alert = NSAlert()
+        alert.messageText = "Show usage and context in the status bar?"
+        var body = "tkzmux needs its own status line command to read Claude Code's quota and "
+            + "context usage — they are handed to the status line and never written to disk.\n\n"
+            + "This changes statusLine in \(plan.settingsPath):\n\n"
+        if let before = plan.before {
+            body += "Now:\n\(before)\n\nAfter:\n\(plan.after)\n\n"
+                + "Your current status line keeps running and its output is passed through "
+                + "unchanged. Status Line Integration in the app menu puts it back exactly."
+        } else {
+            body += "After:\n\(plan.after)\n\n"
+                + "Status Line Integration in the app menu removes it again."
+        }
+        alert.informativeText = body
+        alert.addButton(withTitle: "Install")
+        alert.addButton(withTitle: "Not Now")
+        // A sheet, never `runModal()`. The automatic offer is made one run-loop turn after
+        // `applicationDidFinishLaunching`, and an app-modal loop *there* takes the run loop over
+        // into `NSModalPanelRunLoopMode` while the window is still assembling: the alert is a free
+        // -floating panel rather than something attached to the window, and every window behind it
+        // is inert until it is answered — on the one launch that shows it, the app reads as hung
+        // (reported 2026-09-09). A sheet is what this was always documented to be.
+        alert.beginSheetModal(for: window) { [weak self] response in
+            self?.finishStatuslineOffer(
+                confirmed: response == .alertFirstButtonReturn, accountKey: accountKey)
+        }
+    }
+
+    /// Records the answer and installs when it was yes. Split out so the sheet's completion and the
+    /// synchronous test hook share one tail; nothing here runs until the user has actually replied,
+    /// so quitting while the sheet is up leaves the offer un-made and it is put again next launch.
+    private func finishStatuslineOffer(confirmed: Bool, accountKey: String) {
+        guard let claude else { return }
         // Asked is asked: a decline is an answer, and the menu command stays available.
         store.update { $0.setStatuslineOffered(true) }
         guard confirmed else { return }
