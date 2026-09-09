@@ -220,6 +220,27 @@ struct MainWindowControllerTests {
         }
     }
 
+    /// A harness whose panes each get their own `FakeTerminalView`, so a split has two real
+    /// (GPU-free) surfaces rather than one view and a stand-in.
+    static func makeSplitHarness(_ state: AppState = .fixture) -> Harness {
+        _ = NSApplication.shared
+        let store = AppStore(state: state)
+        let host = SpyTerminalHost()
+        let first = FakeTerminalView(frame: NSRect(x: 0, y: 0, width: 900, height: 700))
+        var vended = false
+        let controller = MainWindowController(
+            store: store, host: host,
+            terminalViewFactory: { _ in
+                defer { vended = true }
+                return vended
+                    ? FakeTerminalView(frame: NSRect(x: 0, y: 0, width: 450, height: 700)) : first
+            },
+            theme: .default)
+        let harness = Harness(store: store, controller: controller, host: host, terminalView: first)
+        harness.layout()
+        return harness
+    }
+
     static func makeHarness(_ state: AppState = .fixture) -> Harness {
         _ = NSApplication.shared
         let store = AppStore(state: state)
@@ -231,6 +252,214 @@ struct MainWindowControllerTests {
             store: store, controller: controller, host: host, terminalView: view)
         harness.layout()
         return harness
+    }
+
+    // MARK: - Panes (TKZ-36)
+
+    /// Gives a row a terminal and selects it, which is the precondition for every split test.
+    @MainActor
+    private static func selectedRowWithAShell(_ harness: Harness) throws -> (SessionID, TerminalID) {
+        let id = try #require(harness.store.state.orderedSessions.first?.id)
+        let terminal = try #require(harness.store.state.sessions[id]?.focusedTerminalID)
+        _ = try harness.host.openRow(id)
+        harness.mutate {
+            // A row with a shell has live state; `setPanePid` below writes into it, and without it
+            // that mutation is a no-op that delivers nothing.
+            $0.setLive(LiveSessionState(shellPid: 1, status: .idle), for: id)
+            $0.select(id)
+        }
+        return (id, terminal)
+    }
+
+    @Test("A split builds an NSSplitView with both panes, on the right axis")
+    func splitBuildsASplitView() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (_, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        harness.layout()
+        let other = try #require(second)
+
+        let container = harness.controller.paneContainer
+        #expect(Set(container.terminalIDs) == [first, other])
+        let firstView = try #require(container.paneView(for: first))
+        let split = try #require(firstView.superview as? NSSplitView)
+        #expect(split.isVertical, "a horizontal PaneAxis is side-by-side, i.e. a vertical divider")
+        #expect(split.arrangedSubviews.count == 2)
+
+        // ⇧⌘D stacks instead.
+        var third: TerminalID?
+        harness.store.updating { third = $0.splitPane(other, axis: .vertical) }
+        harness.store.flush()
+        harness.layout()
+        let stacked = try #require(third)
+        let stackedView = try #require(container.paneView(for: stacked))
+        #expect((stackedView.superview as? NSSplitView)?.isVertical == false)
+    }
+
+    /// The anti-flash guard: splitting must not re-create the view of the pane that was already
+    /// there. A new view means a detached and re-attached surface, i.e. a full rebuild of a grid
+    /// the user did not touch.
+    @Test("Splitting reuses the existing pane's view rather than rebuilding it")
+    func splittingReusesTheExistingPaneView() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (_, first) = try Self.selectedRowWithAShell(harness)
+
+        let before = try #require(harness.controller.paneContainer.paneView(for: first))
+        harness.store.updating { _ = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        harness.layout()
+
+        let after = try #require(harness.controller.paneContainer.paneView(for: first))
+        #expect(before === after)
+    }
+
+    @Test("Both panes of a split are attached, and closing one detaches only that one")
+    func bothPanesAreAttached() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (_, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        let other = try #require(second)
+        // The launcher spawns a split pane's shell; the store-only mutation above did not, so
+        // stand in for it before asserting on what is attached.
+        _ = try harness.host.open(
+            other, session: try #require(harness.store.state.sessionID(owning: other)),
+            cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.mutate { $0.setPanePid(other, pid: 99) }   // what the launcher does after opening
+
+        #expect(harness.host.visibleTerminalIDs == [first, other])
+
+        harness.mutate { _ = $0.closePane(other) }
+        #expect(harness.host.visibleTerminalIDs == [first])
+        #expect(harness.controller.paneContainer.paneView(for: other) == nil)
+    }
+
+    /// A zoomed tab shows one pane; its siblings are detached and cost only IO.
+    @Test("Zooming shows one pane and detaches the rest")
+    func zoomShowsOnePane() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        let other = try #require(second)
+        _ = try harness.host.open(
+            other, session: id, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.mutate { $0.setPanePid(other, pid: 99) }
+        #expect(harness.host.visibleTerminalIDs.count == 2)
+
+        harness.mutate { $0.zoomPane(other, in: id) }
+        #expect(harness.host.visibleTerminalIDs == [other])
+        #expect(harness.controller.paneContainer.terminalIDs == [other])
+
+        harness.mutate { $0.zoomPane(other, in: id) }
+        #expect(harness.host.visibleTerminalIDs.count == 2)
+    }
+
+    /// The view→store half of focus: clicking a pane has to come back as `focusedTerminal`.
+    /// This is the assertion `TerminalMetalViewTests` deliberately does not make.
+    @Test("Making a pane first responder records it as the focused terminal")
+    func clickingAPaneRecordsFocus() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        let other = try #require(second)
+        _ = try harness.host.open(
+            other, session: id, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.mutate { $0.focusPane(first) }
+        #expect(harness.store.state.sessions[id]?.focusedTerminalID == first)
+
+        let otherView = try #require(harness.controller.paneContainer.paneView(for: other))
+        _ = harness.window.makeFirstResponder(otherView)
+        harness.store.flush()
+        #expect(harness.store.state.sessions[id]?.focusedTerminalID == other)
+    }
+
+    /// A store-driven focus change must move the keyboard too — the `layout` branch passes
+    /// `focusTerminal: false` so a click is not fought, which means a *command* has to say so.
+    @Test("focusPane moves the first responder")
+    func focusPaneMovesTheKeyboard() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        let other = try #require(second)
+        _ = try harness.host.open(
+            other, session: id, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.mutate { $0.focusPane(first) }
+
+        harness.controller.focusPane(other)
+        let otherView = try #require(harness.controller.paneContainer.paneView(for: other))
+        #expect(harness.window.firstResponder === otherView)
+    }
+
+    /// A pane whose shell exits closes that leaf; the row survives on the rest.
+    @Test("An exiting pane closes its leaf, and only the last one takes the row with it")
+    func exitClosesOneLeaf() async throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        let other = try #require(second)
+        _ = try harness.host.open(
+            other, session: id, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.layout()
+
+        harness.host.emit(.exited(.exited(code: 0)), forTerminal: other)
+        try await Task.sleep(for: .milliseconds(120))
+        harness.store.flush()
+
+        #expect(harness.store.state.sessions[id] != nil, "the row must survive its second pane")
+        #expect(harness.store.state.sessions[id]?.terminalIDs == [first])
+
+        harness.host.emit(.exited(.exited(code: 0)), forTerminal: first)
+        try await Task.sleep(for: .milliseconds(120))
+        harness.store.flush()
+        #expect(harness.store.state.sessions[id] == nil, "the last pane takes the row with it")
+    }
+
+    /// Store→view: the dividers follow the model's ratios, and an unrelated delivery does not
+    /// re-place one the user has since dragged. That is the snap-back bug `MainSplitViewController`
+    /// documents, in its pane-shaped form.
+    @Test("Ratios are applied once, and an unrelated change does not re-place a divider")
+    func ratiosAreAppliedOnce() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        harness.store.updating { _ = $0.splitPane(first, axis: .horizontal, ratio: 0.25) }
+        harness.store.flush()
+        harness.layout()
+        let placed = harness.controller.paneContainer.appliedRatioCount
+        #expect(placed > 0)
+
+        // Something else about the row changes: a status flip, not a layout change.
+        harness.mutate { $0.setStatus(.working, for: id) }
+        #expect(harness.controller.paneContainer.appliedRatioCount == placed)
+
+        // A real ratio change does place it again.
+        harness.mutate { $0.setRatio(above: first, to: 0.6) }
+        #expect(harness.controller.paneContainer.appliedRatioCount > placed)
     }
 
     // MARK: - Structure
@@ -437,7 +666,7 @@ struct MainWindowControllerTests {
 
         #expect(harness.host.lastShown == .some(target))
         #expect(harness.window.firstResponder === harness.terminalView)
-        #expect(harness.terminalView.isHidden == false)
+        #expect(harness.controller.paneContainer.isHidden == false)
     }
 
     @Test("Sidebar selection is the same path: it goes through the store to show()")
@@ -469,12 +698,12 @@ struct MainWindowControllerTests {
         // of a row restored from `state.json` (M5.1). The detail half must say so rather than show
         // a blank grid.
         #expect(harness.controller.detail.emptyState.isHidden == false)
-        #expect(harness.terminalView.isHidden)
+        #expect(harness.controller.paneContainer.isHidden)
         #expect(harness.controller.detail.emptyStateMessage == EmptyStateView.notRunningMessage)
 
         harness.mutate { $0.select(nil) }
         #expect(harness.controller.detail.emptyState.isHidden == false)
-        #expect(harness.terminalView.isHidden)
+        #expect(harness.controller.paneContainer.isHidden)
         #expect(harness.host.lastShown == .some(nil))
         #expect(harness.controller.detail.emptyStateMessage == EmptyStateView.noSelectionMessage)
         #expect(EmptyStateView.noSelectionMessage == "No session selected \u{00B7} \u{2318}N")
@@ -484,7 +713,7 @@ struct MainWindowControllerTests {
         _ = try harness.host.openRow(target)
         harness.mutate { $0.select(target) }
         #expect(harness.controller.detail.emptyState.isHidden)
-        #expect(harness.terminalView.isHidden == false)
+        #expect(harness.controller.paneContainer.isHidden == false)
     }
 
     // MARK: - Status bar contents
