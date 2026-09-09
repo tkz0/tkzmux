@@ -364,7 +364,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
         super.init()
 
-        launcher.gridSize = { [weak self] in self?.launchSize() ?? TerminalSize(rows: 40, cols: 120) }
+        launcher.gridSize = { [weak self] terminal in
+            self?.launchSize(for: terminal) ?? TerminalSize(rows: 40, cols: 120)
+        }
         // Removing a row must drop its per-session caches too. `fullMessages` in particular holds
         // a whole Stop message — arbitrarily long — and without this the app kept one per session
         // id it had *ever* seen, for as long as it ran. Wired here rather than in the `claude`/`git`
@@ -418,6 +420,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // `TerminalIdleCompressor`'s defaults *are* the production values (60 s idle, 5 s tick),
         // so only the snapshot hook is supplied here — the dev window overrides them from env
         // instead, which is the only reason it spells them out.
+        //
+        // The id the hook is handed is a `TerminalID` since stage 2, so each *pane* snapshots to
+        // its own `.ghsnap` — which is what the per-pane snapshot restore already expects.
         let compressor = TerminalIdleCompressor(
             saveSnapshot: { id, session in
                 // Snapshot *before* compressing (docs/perf.md → *rehydration is real*): reading a
@@ -428,7 +433,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
                 return report.byteCount
             })
         let host = TerminalViewHost(
-            view: view, snapshots: snapshots, tkzmuxDirectory: tkzmuxDirectory,
+            renderContext: renderContext,
+            defaultGrid: { [weak view] in
+                view?.gridSizeForBounds() ?? TerminalSize(rows: 40, cols: 120)
+            },
+            snapshots: snapshots,
+            tkzmuxDirectory: tkzmuxDirectory,
             compressor: compressor)
         self.init(store: store, host: host, terminalView: view, theme: theme)
         self.metalView = view
@@ -709,15 +719,26 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// wiring: only the *transport* is set, the encoders stay inside `TerminalSession`.
     private func wireInput(view: TerminalMetalView, host: TerminalViewHost) {
         view.inputDelegate = inputController
-        inputController.writeInput = { [weak host] data in host?.writeInput(data) }
-        inputController.isFocusReportingEnabled = { [weak host] in
-            guard let host, let id = host.visibleID else { return false }
+        // Both transports address a *terminal*, never "the visible one": with several panes on
+        // screen the latter names nothing, and would type the unfocused pane's keystrokes into the
+        // focused pane's shell (TKZ-36).
+        inputController.writeInput = { [weak self, weak host] data in
+            guard let host, let id = self?.focusedVisibleTerminalID else { return }
+            host.writeInput(id, data)
+        }
+        inputController.isFocusReportingEnabled = { [weak self, weak host] in
+            guard let host, let id = self?.focusedVisibleTerminalID else { return false }
             return host.session(for: id)?.mode(1004) ?? false
         }
         inputController.mouseHandler = mouseController
         mouseController.attach(to: view)
-        mouseController.sendBytes = { [weak host] bytes in host?.writeInput(Data(bytes)) }
-        view.onGridResize = { [weak host] size in host?.resizeVisible(size) }
+        mouseController.sendBytes = { [weak self, weak host] bytes in
+            guard let host, let id = self?.focusedVisibleTerminalID else { return }
+            host.writeInput(id, Data(bytes))
+        }
+        // `view.onGridResize` is deliberately *not* set here any more: `TerminalHost.show`
+        // installs it per pane on attach, which is the only place the view↔terminal pairing is
+        // known. `resizeVisible` is gone with it.
         host.onDidShow = { [weak self] _ in self?.updateToolbarTitle() }
 
     }
@@ -751,6 +772,17 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             }
             return event
         }
+    }
+
+    /// The terminal keystrokes belong to: the selected row's focused pane, but only once it is
+    /// actually attached to a surface. A row restored from `state.json` has a focused leaf in the
+    /// model long before it has a pty, and writing to that would be dropped anyway.
+    var focusedVisibleTerminalID: TerminalID? {
+        guard let id = store.state.selection,
+            let terminal = store.state.sessions[id]?.focusedTerminalID,
+            host.visibleTerminalIDs.contains(terminal)
+        else { return nil }
+        return terminal
     }
 
     private func handleCommandKey(_ event: NSEvent) -> Bool {
@@ -1073,6 +1105,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         if change.structure || change.selection {
             newSessionMenu.configureForSelection(state: store.state)
         }
+        // The pane tree changed shape: a split, a close, a tab switch, a zoom. In stage 2 that is
+        // a re-attach; once the split container lands it is the one place that rebuilds it.
+        // `focusTerminal: false` on purpose — a click that moved focus wrote it to the store, and
+        // re-asserting `makeFirstResponder` from here would fight the click that caused it.
+        if let selected = store.state.selection, change.layout.contains(selected) {
+            applySelection(focusTerminal: false)
+        }
         let selected = store.state.selection
         if change.selection || change.usage || (selected.map(change.touches) ?? false) {
             updateStatusBar()
@@ -1161,29 +1200,58 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// showing and hiding it costs a `hidden` flip and never rebuilds the surface.
     func applySelection(focusTerminal: Bool) {
         let id = store.state.selection
-        host.show(id)
+        showSelectedTerminals()
         // M5.2: a selected row the host has nothing for — restored from `state.json`, never shown
         // in this run — gets its old screen and a fresh prompt now, lazily, on first show. A row
         // hung up with ⌘W is *not* this case: the host still holds its grid, so it stays dead
         // under the scrim until the user resumes it.
-        if let id, host.visibleSessionID == nil, store.state.sessions[id]?.live == nil {
+        if let id, host.visibleTerminalIDs.isEmpty, store.state.sessions[id]?.live == nil {
             switch launcher.reopen(id) {
             case .success:
                 lastReopenFailure = nil
-                host.show(id)
+                showSelectedTerminals()
             case .failure(let failure):
                 lastReopenFailure = failure
                 showNotice(Self.reopenFailureNotice(failure))
             }
         }
+        // A row that *is* running but whose active tab was never opened this run — the user just
+        // switched to a background tab. `reopen` above deliberately only spawns the active tab's
+        // panes, and it will not run at all here because `live != nil`, so the lazy restore needs
+        // its own trigger. `selectTab` changes the tree's shape, so the `layout` bucket brings us
+        // back through here.
+        if let id, let session = store.state.sessions[id], session.live != nil {
+            let missing = session.activeTabValue.terminalIDs.filter { !host.contains($0) }
+            if !missing.isEmpty {
+                for terminal in missing { _ = launcher.reopenTerminal(terminal) }
+                showSelectedTerminals()
+            }
+        }
         // Visibility follows the *host*, not the selection. From M5.1 a restored row exists in the
         // store with no terminal behind it, and showing the surface for one draws an empty black
         // rectangle where the empty state belongs.
-        let hasSurface = host.visibleSessionID != nil
+        let hasSurface = !host.visibleTerminalIDs.isEmpty
         detail.emptyState.isHidden = hasSurface
         detail.emptyStateMessage = emptyStateMessage(selection: id)
         terminalView.isHidden = !hasSurface
         if hasSurface, focusTerminal { focusTerminalIfSessionShown() }
+    }
+
+    /// Attaches the selected row's focused pane to the one Metal view.
+    ///
+    /// Stage 2 of TKZ-36 deliberately keeps the visible set at one: the model, the host and the
+    /// launcher already speak N, so the split container is a pure view-layer addition on top of
+    /// this line rather than a change that reaches back into any of them.
+    private func showSelectedTerminals() {
+        guard let id = store.state.selection,
+            let terminal = store.state.sessions[id]?.focusedTerminalID,
+            host.contains(terminal),
+            let surface = metalView ?? terminalView as? any TerminalPaneSurface
+        else {
+            host.show([:])
+            return
+        }
+        host.show([terminal: surface])
     }
 
     private func emptyStateMessage(selection: SessionID?) -> String {
@@ -1205,7 +1273,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// The one place that decides the terminal has the keyboard. Without it a selected session
     /// renders and swallows nothing.
     func focusTerminalIfSessionShown() {
-        guard host.visibleSessionID != nil else { return }
+        guard !host.visibleTerminalIDs.isEmpty else { return }
         window.makeFirstResponder(terminalView)
     }
 
@@ -1411,8 +1479,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// The grid a new session opens at. `metalView` is nil only on the injected-host path (tests).
-    private func launchSize() -> TerminalSize {
+    /// The grid a terminal opens at — the *pane's*, not the window's.
+    ///
+    /// With one pane per row those are the same number, which is why this took no argument before.
+    /// A split pane is a fraction of the window, and spawning it at the window's grid would make
+    /// every new pane reflow on its first frame. `metalView` is nil only on the injected-host path
+    /// (tests).
+    private func launchSize(for terminal: TerminalID) -> TerminalSize {
         metalView?.gridSizeForBounds() ?? TerminalSize(rows: 40, cols: 120)
     }
 
@@ -2072,19 +2145,25 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func handle(_ event: TerminalEvent, for id: SessionID) {
+    private func handle(_ event: TerminalEvent, for id: TerminalID) {
         switch event {
         case .exited:
-            // The shell ended (`exit`, Ctrl-D, a hang-up): the row goes with it, as a terminal tab
-            // does. There is no "exited" row (decision 2026-09-08). The worktree may have gone too
-            // (design.md → *Session flows → New worktree*), so the list is re-read first.
-            launcher.noteExit(id)
-            launcher.remove(id)
+            // The shell ended (`exit`, Ctrl-D, a hang-up): the *pane* goes with it, and the row
+            // only when it was the row's last pane. There is no "exited" row (2026-09-08). The
+            // worktree may have gone too, so the list is re-read before the row is removed —
+            // `closeTerminal` does both, in that order.
+            launcher.closeTerminal(id)
         case .pwd(let raw):
-            // OSC 7 from the ZDOTDIR wrapper on every `cd`: the row's title follows the shell
-            // (2026-09-08). A `file://` URI for another host decodes to nil and is dropped.
+            // OSC 7 from the ZDOTDIR wrapper on every `cd`. The pane's directory is what a split
+            // starts in; the *row's* also follows it, but only from the focused pane — otherwise a
+            // `cd` in a background pane would rename the sidebar row (2026-09-08).
             if let path = SessionEventHandler.decodePwd(raw) {
-                store.update { $0.setShellCwd(id, path: path) }
+                store.update { state in
+                    state.setPaneCwd(id, path: path)
+                    if let session = state.session(owning: id), session.focusedTerminalID == id {
+                        state.setShellCwd(session.id, path: path)
+                    }
+                }
             }
         default:
             // `.title` deliberately does not land in the store: `Session.title` is the rename slot

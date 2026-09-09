@@ -57,8 +57,10 @@ public final class SessionLauncher {
     /// The user's home: tilde expansion and the derived `~/.<key>` config dirs.
     public let home: String
 
-    /// The grid a new session opens at. The window supplies the Metal view's real grid.
-    public var gridSize: () -> TerminalSize = { TerminalSize(rows: 40, cols: 120) }
+    /// The grid a terminal opens at. The window supplies the *pane's* real grid — a split pane
+    /// is half the size of the one it came from, and spawning at the whole window's grid would
+    /// make every new pane reflow on its first frame.
+    public var gridSize: (TerminalID) -> TerminalSize = { _ in TerminalSize(rows: 40, cols: 120) }
     /// `git worktree list --porcelain` for a repo root. Injected so tests never run git.
     public var worktreeLister: @Sendable (String) throws -> [String] = { try WorktreeList.list(repoRoot: $0) }
     /// How long after an exit the worktree list is re-read. Coalesces a burst of exits in one repo.
@@ -98,10 +100,15 @@ public final class SessionLauncher {
         guard isDirectory(cwd) else { return .failure(.missingDirectory(cwd)) }
 
         let id = SessionID.generate()
+        // `Session.init` seeds its first leaf with the row's own uuid; matching it here is what
+        // keeps "a `.ghsnap` basename maps back to its row" true for new rows as well as migrated
+        // ones (see `Migrations.liftV1ToV2`).
+        let terminal = TerminalID(uuid: id.uuid)
         let env = environment(accountKey: spec.accountKey, extra: spec.env)
         let pid: pid_t
         do {
-            pid = try host.open(id, cwd: cwd, env: env, size: gridSize())
+            pid = try host.open(
+                terminal, session: id, cwd: cwd, env: env, size: gridSize(terminal))
         } catch {
             logger.error("spawn failed: \(String(describing: error), privacy: .public)")
             return .failure(.spawnFailed(String(describing: error)))
@@ -114,14 +121,16 @@ public final class SessionLauncher {
                 id: id, groupID: spec.groupID, cwd: spec.cwd,
                 accountKey: spec.accountKey, presetID: spec.presetID)
             // `live` is what says the row has a shell; without it the reopen path would fire.
-            $0.setLive(LiveSessionState(shellPid: pid, status: .idle), for: id)
+            $0.setLive(
+                LiveSessionState(shellPid: pid, status: .idle, panePids: [terminal: pid]),
+                for: id)
             $0.select(id)
         }
 
         // `.shell` types nothing. Everything else waits for the shell to be ready first — a write
         // in the same turn as the spawn is discarded by zsh's `tcsetattr(TCSAFLUSH)` (M1.10).
         if !spec.command.isEmpty {
-            host.runWhenReady(id, command: spec.command)
+            host.runWhenReady(terminal, command: spec.command)
         }
         logLaunch(kind: spec.kind.rawValue, id: id, cwd: cwd, env: env, command: spec.command)
         return .success(id)
@@ -144,6 +153,12 @@ public final class SessionLauncher {
     /// The worktree/cwd/repo-root fallback is resolved here and the `WT` badge cleared when the
     /// worktree is what went missing — so a row whose worktree Claude removed reads correctly the
     /// moment it is reopened, resume or not.
+    ///
+    /// Only the **active tab's** panes are reopened. A background tab's terminals come back when
+    /// that tab is first selected (`MainWindowController.applySelection`), which mirrors the
+    /// existing lazy-on-first-show rule for rows and keeps a four-tab row from spawning eight
+    /// shells the moment it is clicked. Nothing is lost by waiting: their `.ghsnap` files stay on
+    /// disk, because snapshot housekeeping keeps every leaf of every tab.
     @discardableResult
     public func reopen(_ id: SessionID) -> Result<ReopenOutcome, Failure> {
         guard let session = store.state.sessions[id] else { return .failure(.unknownSession) }
@@ -160,33 +175,153 @@ public final class SessionLauncher {
         }
 
         let env = environment(accountKey: session.accountKey, extra: [:])
-        // The live grid first: after ⌘W the host still holds the screen exactly as the shell left
-        // it, which is fresher than anything on disk. Then the `.ghsnap` from the last quit.
-        let snapshot = (try? host.snapshot(id)) ?? host.savedSnapshot(id)
+        let focused = session.focusedTerminalID
+        var pids: [TerminalID: pid_t] = [:]
         var restoredContent = false
-        let pid: pid_t
+        var firstFailure: Failure?
+
+        for terminal in session.activeTabValue.terminalIDs {
+            switch spawnTerminal(terminal, in: id, cwd: cwd, env: env) {
+            case .success(let outcome):
+                pids[terminal] = outcome.pid
+                if outcome.restoredContent { restoredContent = true }
+            case .failure(let failure):
+                // One pane that will not come back must not cost the user the whole row: log it,
+                // drop that leaf, and carry on with the rest of the tab.
+                logger.error(
+                    "reopen \(terminal.rawValue, privacy: .public): \(String(describing: failure), privacy: .public)"
+                )
+                firstFailure = firstFailure ?? failure
+                store.update { _ = $0.closePane(terminal) }
+            }
+        }
+
+        guard !pids.isEmpty else { return .failure(firstFailure ?? .spawnFailed("no pane spawned")) }
+
+        // `live` stays row-level by design (TKZ-36): the row's `shellPid` is the focused pane's,
+        // and `panePids` carries the rest so the port scanner and the hook relay's ppid fallback
+        // can see a shell in any pane.
+        let shellPid = pids[focused] ?? pids.first?.value
+        store.update {
+            $0.setLive(
+                LiveSessionState(shellPid: shellPid, status: .idle, panePids: pids), for: id)
+        }
+        logLaunch(kind: "reopen", id: id, cwd: cwd, env: env, command: "")
+        return .success(.reopened(directory: cwd, restoredContent: restoredContent))
+    }
+
+    /// One pane's share of a reopen: its old screen from a snapshot if there is one, under a fresh
+    /// shell, else just the shell. Also the whole of `reopenTerminal`, below.
+    private func spawnTerminal(
+        _ terminal: TerminalID, in id: SessionID, cwd: String, env: [String: String]
+    ) -> Result<(pid: pid_t, restoredContent: Bool), Failure> {
+        // The live grid first: after a hang-up the host still holds the screen exactly as the shell
+        // left it, which is fresher than anything on disk. Then the `.ghsnap` from the last quit.
+        let snapshot = (try? host.snapshot(terminal)) ?? host.savedSnapshot(terminal)
         do {
             if let snapshot, !snapshot.isEmpty {
                 do {
-                    pid = try host.restore(id, from: snapshot, cwd: cwd, env: env)
-                    restoredContent = true
+                    let pid = try host.restore(
+                        terminal, session: id, from: snapshot, cwd: cwd, env: env)
+                    return .success((pid, true))
                 } catch {
                     // A snapshot that no longer decodes must not make the row unusable: the
                     // conversation is Claude's, the screen was only ever a convenience.
-                    logger.error("snapshot restore failed for \(id.rawValue, privacy: .public): \(String(describing: error), privacy: .public); opening a fresh shell")
-                    pid = try host.open(id, cwd: cwd, env: env, size: gridSize())
+                    logger.error("snapshot restore failed for \(terminal.rawValue, privacy: .public): \(String(describing: error), privacy: .public); opening a fresh shell")
                 }
-            } else {
-                pid = try host.open(id, cwd: cwd, env: env, size: gridSize())
             }
+            let pid = try host.open(
+                terminal, session: id, cwd: cwd, env: env, size: gridSize(terminal))
+            return .success((pid, false))
         } catch {
             logger.error("reopen spawn failed: \(String(describing: error), privacy: .public)")
             return .failure(.spawnFailed(String(describing: error)))
         }
+    }
 
-        store.update { $0.setLive(LiveSessionState(shellPid: pid, status: .idle), for: id) }
-        logLaunch(kind: "reopen", id: id, cwd: cwd, env: env, command: "")
-        return .success(.reopened(directory: cwd, restoredContent: restoredContent))
+    /// Puts a shell behind **one** pane that has none — how a background tab's terminals come back
+    /// when it is first selected. `reopen` handles a whole row; this is its per-pane half.
+    @discardableResult
+    public func reopenTerminal(_ terminal: TerminalID) -> Result<Bool, Failure> {
+        guard let session = store.state.session(owning: terminal) else {
+            return .failure(.unknownSession)
+        }
+        if host.contains(terminal) { return .success(false) }
+
+        let resolved = resolveDirectory(for: session)
+        guard let cwd = resolved.directory else {
+            return .failure(.missingDirectory(resolved.tried.first ?? session.cwd))
+        }
+        let env = environment(accountKey: session.accountKey, extra: [:])
+        switch spawnTerminal(terminal, in: session.id, cwd: cwd, env: env) {
+        case .success(let outcome):
+            store.update { $0.setPanePid(terminal, pid: outcome.pid) }
+            logLaunch(kind: "reopen-pane", id: session.id, cwd: cwd, env: env, command: "")
+            return .success(true)
+        case .failure(let failure):
+            store.update { _ = $0.closePane(terminal) }
+            return .failure(failure)
+        }
+    }
+
+    // MARK: - Extra terminals
+
+    /// ⌘T / ⌘D / ⇧⌘D: a bare shell in a new pane or a new tab. Types nothing, ever.
+    ///
+    /// The pane starts in the **source pane's** directory when the shell has told us one — "split
+    /// here" should land where the user is standing — falling back to the row's resume directory.
+    @discardableResult
+    public func addTerminal(
+        to id: SessionID, splitting axis: PaneAxis? = nil
+    ) -> Result<TerminalID, Failure> {
+        guard let session = store.state.sessions[id] else { return .failure(.unknownSession) }
+        let source = session.focusedTerminalID
+
+        let cwd = Paths.expandingTilde(
+            store.state.paneCwd(source) ?? resolveDirectory(for: session).directory ?? session.cwd,
+            home: home)
+        guard isDirectory(cwd) else { return .failure(.missingDirectory(cwd)) }
+
+        var created: TerminalID?
+        store.updating { state in
+            if let axis {
+                created = state.splitPane(source, axis: axis)
+            } else {
+                created = state.addTab(to: id)
+            }
+        }
+        guard let terminal = created else { return .failure(.spawnFailed("the tab is full")) }
+
+        let env = environment(accountKey: session.accountKey, extra: [:])
+        do {
+            let pid = try host.open(
+                terminal, session: id, cwd: cwd, env: env, size: gridSize(terminal))
+            store.update { $0.setPanePid(terminal, pid: pid) }
+            logLaunch(
+                kind: axis == nil ? "tab" : "split", id: id, cwd: cwd, env: env, command: "")
+            return .success(terminal)
+        } catch {
+            // The store and the host must stay in step, or the row grows a pane with no shell that
+            // nothing can ever close.
+            store.update { _ = $0.closePane(terminal) }
+            logger.error("new terminal failed: \(String(describing: error), privacy: .public)")
+            return .failure(.spawnFailed(String(describing: error)))
+        }
+    }
+
+    /// ⌘W on a pane, and a pane whose shell exited: close that leaf, and only if it was the row's
+    /// last one does the row itself go.
+    public func closeTerminal(_ terminal: TerminalID) {
+        guard let session = store.state.session(owning: terminal) else { return }
+        if session.terminalCount == 1 {
+            // `remove` discards every leaf of the row, this one included — discarding here first
+            // would double it, which a spy host notices and a real one silently tolerates.
+            noteExit(session.id)
+            remove(session.id)
+        } else {
+            host.discard(terminal)
+            store.update { _ = $0.closePane(terminal) }
+        }
     }
 
     // MARK: - Resume
@@ -219,10 +354,13 @@ public final class SessionLauncher {
         let command = "claude --resume \(claudeSessionId)"
         // A shell that was already sitting at its prompt produces no output for `runWhenReady`
         // to wait on, and would only get the bytes after that path's timeout.
+        // Into the focused pane: a resume is something the user asked for while looking at one
+        // particular terminal.
+        let terminal = store.state.sessions[id]?.focusedTerminalID ?? TerminalID(uuid: id.uuid)
         if hadShell {
-            host.run(id, command: command)
+            host.run(terminal, command: command)
         } else {
-            host.runWhenReady(id, command: command)
+            host.runWhenReady(terminal, command: command)
         }
         logger.info("resume \(id.rawValue, privacy: .public): \(command, privacy: .public)")
         return .success(.resumed(claudeSessionId: claudeSessionId))
@@ -258,7 +396,9 @@ public final class SessionLauncher {
     /// Remove (⌘W, the row's `×`, a shell that ended): the row, its shell and its snapshot go
     /// away. Never touches the worktree on disk.
     public func remove(_ id: SessionID) {
-        host.discard(id)
+        // Read the leaves *before* the store mutation: afterwards the row is gone and with it any
+        // way to find the `.ghsnap` files its panes owned.
+        for terminal in store.state.sessions[id]?.terminalIDs ?? [] { host.discard(terminal) }
         store.update { $0.removeSession(id) }
         // Everything else that keys state by session id gets told here. Without it those caches
         // keep one entry per session the process has *ever* seen. `removeGroup` below is the other

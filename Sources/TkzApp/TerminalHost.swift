@@ -13,19 +13,31 @@
 //      `TerminalSession`, plus `TerminalIdleCompressor`, the background-session idle timer that
 //      drives `IdleCompressionPolicy`.
 //
-// ## The invariant this type exists to hold: a background session costs only IO
+// ## The invariant this type exists to hold: an unattached terminal costs only IO
 //
-// There is exactly **one** `TerminalSurface`, and it belongs to the `TerminalMetalView`. A session
-// is attached to it only while it is the visible one; `show(_:)` detaches the outgoing session
-// (freeing its render state and every row cache) before attaching the incoming one. A background
-// session therefore has:
+// Until TKZ-36 this was stated as "there is exactly one `TerminalSurface`". That is no longer
+// true — a session with split panes puts several terminals on screen at once, each with its own
+// surface — but the property that mattered is untouched, and it is the *cost* one, not the count.
+// A terminal is attached to a surface only while it is on screen; `show(_:)` detaches every
+// terminal that is not in the new attachment map before attaching the ones that are. An unattached
+// terminal therefore has:
 //
 //   * no render state, no glyph rows, no atlas positions — `TerminalSurface.detach` frees all of it;
 //   * no render signal — `TerminalMetalView.show` clears the outgoing session's `renderSignal`, so
-//     a background session that produces megabytes calls nothing and can wake no display link;
+//     a background terminal that produces megabytes calls nothing and can wake no display link;
 //   * one serial `DispatchQueue` (not a thread) for its pty reads, and nothing else.
 //
-// `TerminalHostTests` asserts each of those across 30 sessions rather than trusting the prose.
+// So the bill is per **attached** terminal, and the app attaches exactly what is on screen: the
+// selected row's active tab, or its zoomed pane alone. `TerminalHostTests` asserts each of those
+// across 30 terminals rather than trusting the prose.
+//
+// ## Terminals, not sessions
+//
+// The host is keyed by `TerminalID` — one pty, one VT, one `.ghsnap`. A `SessionID` is a *row*,
+// and a row owns one or more terminals. `open` and `restore` therefore take both: the terminal
+// they are creating, and the row it belongs to, because the row's id is what goes into the child's
+// `TKZMUX_SESSION_ID` and so what the shim, the hook relay and ClaudeBridge correlate on. Every
+// pane of a row is one row to them, by design.
 //
 // ## Snapshot/compress ordering
 //
@@ -48,6 +60,29 @@ import TkzTerminalRender
 import TkzTerminalView
 import os
 
+// MARK: - The surface seam
+
+/// What the host needs from the thing a terminal is drawn into.
+///
+/// `TerminalMetalView` satisfies this already — every member below exists on it with exactly this
+/// signature, so the conformance is an empty extension. The protocol exists so the host can hold N
+/// of them without naming an `NSView` a headless test cannot build: the whole `TkzAppTests` suite
+/// runs with no GPU, and a spy surface is four members.
+@MainActor
+public protocol TerminalPaneSurface: AnyObject {
+    /// Attaches `session` to this surface, or detaches whatever was there when nil.
+    func show(_ session: TerminalSession?)
+    /// A dead terminal keeps its screen but must stop blinking a cursor at the user.
+    func setCursorSuppressed(_ suppressed: Bool)
+    /// How many cells fit at the surface's current size.
+    func gridSizeForBounds() -> TerminalSize
+    /// Called when the surface's grid changed. The host installs this on attach so the pty follows
+    /// its own pane, and clears it on detach.
+    var onGridResize: ((TerminalSize) -> Void)? { get set }
+}
+
+extension TerminalMetalView: TerminalPaneSurface {}
+
 // MARK: - TerminalHost
 
 /// What the app half may ask of the terminal half. Nothing above this line knows about libghostty,
@@ -56,38 +91,57 @@ import os
 /// `@MainActor` is not in design.md's listing but is required: the implementation owns an `NSView`.
 @MainActor
 public protocol TerminalHost: AnyObject {
-    /// Spawns a login shell for `id` and returns its pid.
-    func open(_ id: SessionID, cwd: String, env: [String: String], size: TerminalSize) throws -> pid_t
-    /// Types `command` followed by `\r` into the session's pty.
-    func run(_ id: SessionID, command: String)
+    /// Spawns a login shell for the terminal `id` and returns its pid.
+    ///
+    /// `session` is the **row** the terminal belongs to. It becomes `TKZMUX_SESSION_ID`, so two
+    /// panes of one row are one row to the shim and the hook relay. It cannot be smuggled through
+    /// `env`: `TerminalEnvironment.make` writes the tkzmux variables last, over anything a caller
+    /// passed.
+    func open(
+        _ id: TerminalID, session: SessionID, cwd: String, env: [String: String],
+        size: TerminalSize
+    ) throws -> pid_t
+    /// Types `command` followed by `\r` into the terminal's pty.
+    func run(_ id: TerminalID, command: String)
     /// Types `command` **once the shell is ready to receive it** — see `Pty.writeWhenReady`.
     ///
     /// A protocol requirement rather than an extension-only method on purpose: `host` is held as
     /// `any TerminalHost`, and a call to a method that exists only in a protocol extension is
     /// statically dispatched on an existential — the implementation below would never run.
-    func runWhenReady(_ id: SessionID, command: String)
-    /// Attaches the single renderer to `id`; `nil` shows nothing.
-    func show(_ id: SessionID?)
-    /// The session the surface is actually attached to. Not the same as the store's selection: a
+    func runWhenReady(_ id: TerminalID, command: String)
+    /// Raw host input (encoded keys, a mouse report, a paste) for **one addressed terminal**.
+    ///
+    /// Never "the visible one": with several panes on screen there is no such thing, and routing
+    /// by visibility would type the unfocused pane's keystrokes into the focused pane's shell.
+    func writeInput(_ id: TerminalID, _ data: Data)
+    /// Attaches each terminal to its surface, and detaches every terminal that is attached now but
+    /// absent from `attachments`. `[:]` shows nothing, so the whole visible set is one call.
+    func show(_ attachments: [TerminalID: any TerminalPaneSurface])
+    /// The terminals actually attached to a surface. Not derivable from the store's selection: a
     /// row restored from `state.json` (M5.1) is selectable long before it has a terminal, and the
     /// window shows its empty state rather than a blank grid for exactly this reason.
-    var visibleSessionID: SessionID? { get }
-    func resize(_ id: SessionID, _ size: TerminalSize)
-    /// Signals the child (SIGHUP by default). The row stays resumable.
-    func close(_ id: SessionID, signal: Int32)
+    var visibleTerminalIDs: Set<TerminalID> { get }
+    func resize(_ id: TerminalID, _ size: TerminalSize)
+    /// Signals the child (SIGHUP by default). The terminal stays resumable.
+    func close(_ id: TerminalID, signal: Int32)
     /// The `.ghsnap` bytes for `id`.
-    func snapshot(_ id: SessionID) throws -> Data
+    func snapshot(_ id: TerminalID) throws -> Data
     /// Rebuilds `id` from a snapshot and spawns a fresh shell under it. Returns the new pid.
-    /// An id the host still holds (a hung-up session whose grid is kept) is replaced.
-    func restore(_ id: SessionID, from: Data, cwd: String, env: [String: String]) throws -> pid_t
+    /// An id the host still holds (a hung-up terminal whose grid is kept) is replaced.
+    func restore(
+        _ id: TerminalID, session: SessionID, from: Data, cwd: String, env: [String: String]
+    ) throws -> pid_t
     /// The `.ghsnap` on disk for `id`, if one was saved — what a row restored from `state.json`
     /// comes back from (M5.2). Not the live grid: that is `snapshot(_:)`.
-    func savedSnapshot(_ id: SessionID) -> Data?
-    /// **Remove**: forgets the session entirely — hangs it up if alive, drops its grid, deletes its
-    /// snapshot on disk. The one call that makes a row unresumable; design.md → *Session flows*.
-    func discard(_ id: SessionID)
-    /// Every session's events, tagged.
-    var events: AsyncStream<(SessionID, TerminalEvent)> { get }
+    func savedSnapshot(_ id: TerminalID) -> Data?
+    /// **Remove**: forgets the terminal entirely — hangs it up if alive, drops its grid, deletes
+    /// its snapshot on disk. The one call that makes a terminal unresumable.
+    func discard(_ id: TerminalID)
+    /// Does the host hold a terminal under `id`? The lazy-restore paths ask before spawning, so
+    /// it has to be reachable through the existential, not only on `TerminalViewHost`.
+    func contains(_ id: TerminalID) -> Bool
+    /// Every terminal's events, tagged.
+    var events: AsyncStream<(TerminalID, TerminalEvent)> { get }
 }
 
 extension TerminalHost {
@@ -95,7 +149,7 @@ extension TerminalHost {
     /// conformer) does not have to reimplement readiness: wait long enough that a login zsh has
     /// finished its `tcsetattr(TCSAFLUSH)`, then type. `TerminalViewHost` overrides it with the
     /// real signal.
-    public func runWhenReady(_ id: SessionID, command: String) {
+    public func runWhenReady(_ id: TerminalID, command: String) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             MainActor.assumeIsolated { self.run(id, command: command) }
         }
@@ -112,7 +166,10 @@ public enum TerminalHostError: Error, Equatable, Sendable {
 /// One spawned shell: its VT, its pty, and the task draining its event stream.
 @MainActor
 final class HostSession {
-    let id: SessionID
+    let id: TerminalID
+    /// The row this terminal belongs to. Needed on the way back out: `.exited` has to be told to
+    /// the right row, and a re-spawn has to re-export the same `TKZMUX_SESSION_ID`.
+    let sessionID: SessionID
     let session: TerminalSession
     private(set) var pty: Pty
     var title: String = "zsh"
@@ -121,8 +178,9 @@ final class HostSession {
     /// Set when the session's content came from a `.ghsnap` at launch.
     var wasRestored = false
 
-    init(id: SessionID, session: TerminalSession, pty: Pty) {
+    init(id: TerminalID, sessionID: SessionID, session: TerminalSession, pty: Pty) {
         self.id = id
+        self.sessionID = sessionID
         self.session = session
         self.pty = pty
     }
@@ -132,7 +190,7 @@ final class HostSession {
 
 // MARK: - TerminalViewHost
 
-/// `TerminalHost` over one `TerminalMetalView`.
+/// `TerminalHost` over N `TerminalPaneSurface`s sharing one render context.
 ///
 /// Everything injectable is injected for one reason: a test must never write to
 /// `~/Library/Application Support/tkzmux` and must never inherit the developer's environment
@@ -140,27 +198,34 @@ final class HostSession {
 /// locations, and both are overridden by `DevWindowController`'s harness env vars.
 @MainActor
 public final class TerminalViewHost: TerminalHost {
-    public let view: TerminalMetalView
+    /// The app-wide font set / atlas / renderer owner. The host needs it for one thing —
+    /// `makeSession` themes a new VT from it — and holding the context rather than a view is what
+    /// lets the host outlive, and out-number, any individual pane.
+    public let renderContext: TerminalRenderContext
+    /// The grid to spawn a terminal at when it has no surface yet: a pane created behind a
+    /// background tab, or a restore that happens before the container has laid out.
+    public var defaultGrid: () -> TerminalSize
     public let snapshots: SnapshotStore
     /// tkzmux's application-support directory — `ZDOTDIR`, `TKZMUX_BIN`, the socket.
     public let tkzmuxDirectory: URL
     /// What a session's environment is built on top of.
     public let baseEnvironment: [String: String]
 
-    private var sessions: [SessionID: HostSession] = [:]
-    /// Insertion order, for a stable "next session" after a close.
-    public private(set) var order: [SessionID] = []
-    public private(set) var visibleID: SessionID?
+    private var sessions: [TerminalID: HostSession] = [:]
+    /// Insertion order, for a stable sweep order in `snapshotAll` and `closeAll`.
+    public private(set) var order: [TerminalID] = []
+    /// Terminal → the surface it is attached to. The keys are the visible set.
+    public private(set) var visible: [TerminalID: any TerminalPaneSurface] = [:]
 
-    private let continuation: AsyncStream<(SessionID, TerminalEvent)>.Continuation
-    public let events: AsyncStream<(SessionID, TerminalEvent)>
+    private let continuation: AsyncStream<(TerminalID, TerminalEvent)>.Continuation
+    public let events: AsyncStream<(TerminalID, TerminalEvent)>
 
     /// The idle-compression timer, or nil when compression is disabled.
     public let compressor: TerminalIdleCompressor?
 
     /// Called after `show(_:)` completed, so the owner can re-push things the view cannot know
     /// about (the mouse controller's pixel geometry, the window title).
-    public var onDidShow: ((SessionID?) -> Void)?
+    public var onDidShow: ((Set<TerminalID>) -> Void)?
 
     private let signposter = OSSignposter(subsystem: "se.tkz.tkzmux", category: "terminalhost")
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "terminalhost")
@@ -176,13 +241,15 @@ public final class TerminalViewHost: TerminalHost {
     private static let maxShowDurations = 4096
 
     public init(
-        view: TerminalMetalView,
+        renderContext: TerminalRenderContext,
+        defaultGrid: @escaping () -> TerminalSize = { TerminalSize(rows: 40, cols: 120) },
         snapshots: SnapshotStore = .standard(),
         tkzmuxDirectory: URL? = nil,
         baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         compressor: TerminalIdleCompressor? = nil
     ) {
-        self.view = view
+        self.renderContext = renderContext
+        self.defaultGrid = defaultGrid
         self.snapshots = snapshots
         self.tkzmuxDirectory = tkzmuxDirectory
             ?? FileManager.default
@@ -192,7 +259,7 @@ public final class TerminalViewHost: TerminalHost {
         self.baseEnvironment = baseEnvironment
         self.compressor = compressor
         TerminalViewHost.createShellDirectory(in: self.tkzmuxDirectory)
-        var escapee: AsyncStream<(SessionID, TerminalEvent)>.Continuation!
+        var escapee: AsyncStream<(TerminalID, TerminalEvent)>.Continuation!
         self.events = AsyncStream(bufferingPolicy: .unbounded) { escapee = $0 }
         self.continuation = escapee
     }
@@ -217,15 +284,22 @@ public final class TerminalViewHost: TerminalHost {
     // MARK: Introspection (tests and diagnostics)
 
     public var sessionCount: Int { sessions.count }
-    public var sessionIDs: [SessionID] { order }
-    public func contains(_ id: SessionID) -> Bool { sessions[id] != nil }
-    public func isAlive(_ id: SessionID) -> Bool { sessions[id]?.isAlive ?? false }
-    public func pid(of id: SessionID) -> pid_t? { sessions[id]?.pty.pid }
-    public func title(of id: SessionID) -> String? { sessions[id]?.title }
-    public func wasRestored(_ id: SessionID) -> Bool { sessions[id]?.wasRestored ?? false }
+    public var sessionIDs: [TerminalID] { order }
+    public func contains(_ id: TerminalID) -> Bool { sessions[id] != nil }
+    public func isAlive(_ id: TerminalID) -> Bool { sessions[id]?.isAlive ?? false }
+    public func pid(of id: TerminalID) -> pid_t? { sessions[id]?.pty.pid }
+    public func title(of id: TerminalID) -> String? { sessions[id]?.title }
+    public func wasRestored(_ id: TerminalID) -> Bool { sessions[id]?.wasRestored ?? false }
+    /// The row a terminal belongs to, as the host was told at `open`.
+    public func owner(of id: TerminalID) -> SessionID? { sessions[id]?.sessionID }
     /// The `TerminalSession` behind `id`. Exposed so the window controller can push mouse geometry
     /// and so tests can assert on the VT directly.
-    public func session(for id: SessionID) -> TerminalSession? { sessions[id]?.session }
+    public func session(for id: TerminalID) -> TerminalSession? { sessions[id]?.session }
+    /// The terminal a surface currently holds — how the input path turns "the view that got the
+    /// key event" into "the pty to write to".
+    public func terminalID(forSurface surface: any TerminalPaneSurface) -> TerminalID? {
+        visible.first { $0.value === surface }?.key
+    }
     /// Retained scrollback rows per session, in `order`. Diagnostics: it is the only way to say
     /// what a harness corpus actually built up rather than what it was asked to build up.
     public func scrollbackRows() -> [Int] { order.compactMap { sessions[$0]?.session.scrollbackRows } }
@@ -252,12 +326,14 @@ public final class TerminalViewHost: TerminalHost {
     /// `make` always writes last.
     @discardableResult
     public func open(
-        _ id: SessionID, cwd: String, env: [String: String], size: TerminalSize
+        _ id: TerminalID, session sessionID: SessionID, cwd: String, env: [String: String],
+        size: TerminalSize
     ) throws -> pid_t {
         let session = try makeSession(size: size)
-        let pty = try spawn(id: id, session: session, cwd: cwd, env: env, size: size)
+        let pty = try spawn(
+            sessionID: sessionID, session: session, cwd: cwd, env: env, size: size)
         evict(id)
-        adopt(HostSession(id: id, session: session, pty: pty))
+        adopt(HostSession(id: id, sessionID: sessionID, session: session, pty: pty))
         return pty.pid
     }
 
@@ -266,17 +342,21 @@ public final class TerminalViewHost: TerminalHost {
     /// Unlike `discard`, the snapshot on disk is left alone: it is what the reopen restores from.
     /// Without this, `adopt` would overwrite `sessions[id]`, append `id` to `order` a second time
     /// and leave the old event pump running against a session nothing references.
-    private func evict(_ id: SessionID) {
+    private func evict(_ id: TerminalID) {
         guard let host = sessions.removeValue(forKey: id) else { return }
         order.removeAll { $0 == id }
         host.eventsTask?.cancel()
         host.session.finishEvents()
         if host.isAlive { _ = host.pty.terminate(signal: SIGHUP) }
         compressor?.forget(id.rawValue)
-        if visibleID == id {
-            view.show(nil)
-            visibleID = nil
-        }
+        detach(id)
+    }
+
+    /// Frees whatever surface `id` was attached to, if any.
+    private func detach(_ id: TerminalID) {
+        guard var surface = visible.removeValue(forKey: id) else { return }
+        surface.onGridResize = nil
+        surface.show(nil)
     }
 
     /// A `TerminalSession` sized for the grid, themed from the view's render context.
@@ -287,7 +367,7 @@ public final class TerminalViewHost: TerminalHost {
                 rows: max(1, size.rows),
                 cellWidthPx: UInt32(size.cellWidthPx),
                 cellHeightPx: UInt32(size.cellHeightPx),
-                theme: view.renderContext.theme),
+                theme: renderContext.theme),
             label: "tkzmux.session.\(sessions.count)")
         // Repeat-click detection is otherwise dead: libghostty compares timestamps against this
         // interval and `TkzTerminalCore` cannot read AppKit's copy of it.
@@ -296,10 +376,13 @@ public final class TerminalViewHost: TerminalHost {
     }
 
     private func spawn(
-        id: SessionID, session: TerminalSession, cwd: String, env: [String: String], size: TerminalSize
+        sessionID: SessionID, session: TerminalSession, cwd: String, env: [String: String],
+        size: TerminalSize
     ) throws -> Pty {
+        // The **row's** id, not the terminal's: every pane of a row must look like one row to the
+        // shim, the hook relay and ClaudeBridge (TKZ-36).
         let spawn = TerminalEnvironment.loginShellSpawn(
-            sessionID: id.rawValue,
+            sessionID: sessionID.rawValue,
             cwd: cwd,
             size: size,
             tkzmuxDir: tkzmuxDirectory,
@@ -347,18 +430,18 @@ public final class TerminalViewHost: TerminalHost {
                 self.continuation.yield((id, event))
             }
         }
-        compressor?.register(id.rawValue, session: session, isVisible: id == visibleID)
+        compressor?.register(id.rawValue, session: session, isVisible: visible[id] != nil)
     }
 
     /// The host's own reaction to an event. Everything else is the consumer's business.
-    private func observe(_ event: TerminalEvent, for id: SessionID) {
+    private func observe(_ event: TerminalEvent, for id: TerminalID) {
         switch event {
         case .title(let title):
             sessions[id]?.title = title.isEmpty ? "zsh" : title
         case .exited:
             sessions[id]?.isAlive = false
-            // A dead session keeps its screen but must stop blinking a cursor at the user.
-            if id == visibleID { view.setCursorSuppressed(true) }
+            // A dead terminal keeps its screen but must stop blinking a cursor at the user.
+            visible[id]?.setCursorSuppressed(true)
         default:
             break
         }
@@ -375,7 +458,7 @@ public final class TerminalViewHost: TerminalHost {
     /// runner for the same reason), so the write is split after every `\n`/`\r` and, as a
     /// backstop, every `maxChunkBytes`. A single command line longer than `MAX_INPUT` is still
     /// truncated by the tty — that is the kernel's rule, not something this method can paper over.
-    public func run(_ id: SessionID, command: String) {
+    public func run(_ id: TerminalID, command: String) {
         guard let host = sessions[id], host.isAlive else { return }
         let data = Data(command.utf8) + Data([0x0D])
         let pty = host.pty
@@ -391,7 +474,7 @@ public final class TerminalViewHost: TerminalHost {
     /// calls `tcsetattr(…, TCSAFLUSH, …)`, which discards the tty's input queue (measured in
     /// M1.10). `Pty.writeWhenReady` parks the bytes until the child has produced output and then
     /// settled, with a timeout for a shell that prints nothing.
-    public func runWhenReady(_ id: SessionID, command: String) {
+    public func runWhenReady(_ id: TerminalID, command: String) {
         guard let host = sessions[id], host.isAlive else { return }
         let data = Data(command.utf8) + Data([0x0D])
         for chunk in TerminalViewHost.chunkForCanonicalTty(data) {
@@ -418,39 +501,57 @@ public final class TerminalViewHost: TerminalHost {
         return chunks
     }
 
-    /// Raw host input (encoded keys, a mouse report, a paste) for the **visible** session.
-    public func writeInput(_ data: Data) {
-        guard !data.isEmpty, let visibleID, let host = sessions[visibleID], host.isAlive else { return }
+    /// Raw host input (encoded keys, a mouse report, a paste) for one addressed terminal.
+    ///
+    /// This used to route to whichever terminal was visible. With several panes on screen that is
+    /// not merely imprecise, it is wrong: the unfocused pane's keystrokes would reach the focused
+    /// pane's shell. The caller resolves the pane — `TerminalInputController` already knows which
+    /// view produced the event — and says so here.
+    public func writeInput(_ id: TerminalID, _ data: Data) {
+        guard !data.isEmpty, let host = sessions[id], host.isAlive else { return }
         let pty = host.pty
         host.session.ioQueue.async { try? pty.write(data) }
-        compressor?.noteActivity(visibleID.rawValue)
+        compressor?.noteActivity(id.rawValue)
     }
 
     // MARK: - show
 
-    /// Attaches the single renderer to `id`.
+    public var visibleTerminalIDs: Set<TerminalID> { Set(visible.keys) }
+
+    /// Makes `attachments` exactly the visible set: everything attached now and absent from the map
+    /// is detached first, everything in it is attached.
+    ///
+    /// Detaching before attaching is not cosmetic. Both halves take drawables from a small pool,
+    /// and a terminal that is moving from one surface to another (a pane that changed place in the
+    /// tree) must not be attached twice even for an instant — `TerminalSession.renderSignal` is a
+    /// single closure, so the second attach would silently orphan the first surface's wake-ups.
     ///
     /// The whole call is one `os_signpost` interval (`show`), and its wall time is also recorded in
     /// `showDurations` so the distribution can be printed without Instruments. The budget is one
     /// frame at 120 Hz: 8.3 ms.
-    public var visibleSessionID: SessionID? { visibleID }
-
-    public func show(_ id: SessionID?) {
+    public func show(_ attachments: [TerminalID: any TerminalPaneSurface]) {
         let signpostID = signposter.makeSignpostID()
         let interval = signposter.beginInterval("show", id: signpostID)
         let start = ContinuousClock.now
 
-        let previous = visibleID
-        visibleID = id
-        if let id, let host = sessions[id] {
-            view.show(host.session)
-            // `show` resets the flag, so re-apply it: selecting back to an already-dead session
-            // must not resurrect its cursor.
-            view.setCursorSuppressed(!host.isAlive)
-        } else {
-            visibleID = nil
-            view.show(nil)
+        let previous = Set(visible.keys)
+        for id in previous where attachments[id] == nil { detach(id) }
+        // A terminal already attached to a *different* surface has to let go of the old one first.
+        for (id, surface) in attachments where visible[id] !== surface { detach(id) }
+
+        for (id, surface) in attachments {
+            guard let host = sessions[id] else { continue }
+            var surface = surface
+            surface.show(host.session)
+            // `show` resets the flag, so re-apply it: coming back to an already-dead terminal must
+            // not resurrect its cursor.
+            surface.setCursorSuppressed(!host.isAlive)
+            // The pty follows its own pane. This is why `resizeVisible` is gone: with N panes
+            // "the visible one" names nothing, and the hook belongs where the pairing is known.
+            surface.onGridResize = { [weak self] size in self?.resize(id, size) }
+            visible[id] = surface
         }
+
         let elapsed = ContinuousClock.now - start
         showDurations.append(Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18)
         if showDurations.count > TerminalViewHost.maxShowDurations {
@@ -458,19 +559,27 @@ public final class TerminalViewHost: TerminalHost {
         }
         signposter.endInterval("show", interval)
 
-        if let previous, previous != visibleID { compressor?.setVisible(previous.rawValue, false) }
-        if let visibleID { compressor?.setVisible(visibleID.rawValue, true) }
-        onDidShow?(visibleID)
+        let now = Set(visible.keys)
+        if previous != now { compressor?.setVisible(Set(now.map(\.rawValue))) }
+        onDidShow?(now)
+    }
+
+    /// The one-pane spelling, for the many callers that show a single terminal.
+    public func show(_ id: TerminalID?, on surface: any TerminalPaneSurface) {
+        show(id.map { [$0: surface] } ?? [:])
     }
 
     public func resetShowDurations() { showDurations.removeAll(keepingCapacity: true) }
 
     // MARK: - resize
 
-    /// Resizes both halves. For the visible session the view drives this itself on its own tick;
-    /// this entry point exists for background sessions (M2 resizes them when the sidebar's split
-    /// changes) and for the tests.
-    public func resize(_ id: SessionID, _ size: TerminalSize) {
+    /// Resizes both halves.
+    ///
+    /// Every path comes here now, including an attached pane's own `onGridResize`. The view has
+    /// already resized the *terminal* by then, so the `session.resize` below is redundant on that
+    /// path — but it is idempotent inside libghostty, and one entry point that is always correct
+    /// beats two that differ in what they assume about the caller.
+    public func resize(_ id: TerminalID, _ size: TerminalSize) {
         guard let host = sessions[id] else { return }
         do {
             try host.session.resize(
@@ -485,20 +594,11 @@ public final class TerminalViewHost: TerminalHost {
         }
     }
 
-    /// Pushes `size` to whichever session is visible. The view's `onGridResize` hook.
-    public func resizeVisible(_ size: TerminalSize) {
-        guard let visibleID, let host = sessions[visibleID], host.isAlive else { return }
-        // The view already resized the *terminal* before calling back; only the pty is left.
-        do { try host.pty.resize(size) } catch {
-            logger.error("pty resize failed: \(String(describing: error), privacy: .public)")
-        }
-    }
-
     // MARK: - close / discard
 
     /// Signals the child. The row stays: `close` is "hang up the shell", not "forget the session",
     /// and the snapshot on disk stays valid until `discard`.
-    public func close(_ id: SessionID, signal: Int32 = SIGHUP) {
+    public func close(_ id: TerminalID, signal: Int32 = SIGHUP) {
         guard let host = sessions[id] else { return }
         _ = host.pty.terminate(signal: signal)
     }
@@ -509,22 +609,23 @@ public final class TerminalViewHost: TerminalHost {
     /// `state.json` that was never selected has a `.ghsnap` and no `HostSession`, and Remove on it
     /// must still take the file with it (M5.2). Part of the protocol since M5.2; design.md's
     /// `close` keeps the row resumable, so this is the only way to make one go away.
-    public func discard(_ id: SessionID) {
-        let wasVisible = visibleID == id
+    /// It does **not** put something else on screen in place of a discarded visible terminal.
+    /// It used to, when there was one surface and one visible session; with a store-driven window
+    /// that is wrong — `MainWindowController.applySelection` decides what is visible, and quietly
+    /// attaching whatever happened to be last would fight it.
+    public func discard(_ id: TerminalID) {
         evict(id)
         _ = try? snapshots.delete(id.rawValue)
-        if wasVisible { show(order.last) }
     }
 
-    public func savedSnapshot(_ id: SessionID) -> Data? {
+    public func savedSnapshot(_ id: TerminalID) -> Data? {
         try? snapshots.load(id.rawValue)
     }
 
     /// Hangs up every shell and detaches the surface. Called from the window controller's
     /// `shutdown()`, i.e. on window close and on `applicationWillTerminate`.
     public func closeAll(signal: Int32 = SIGHUP) {
-        view.show(nil)
-        visibleID = nil
+        for id in Array(visible.keys) { detach(id) }
         for id in order {
             guard let host = sessions[id] else { continue }
             host.eventsTask?.cancel()
@@ -541,7 +642,7 @@ public final class TerminalViewHost: TerminalHost {
 
     // MARK: - snapshot / restore
 
-    public func snapshot(_ id: SessionID) throws -> Data {
+    public func snapshot(_ id: TerminalID) throws -> Data {
         guard let host = sessions[id] else { throw TerminalHostError.unknownSession(id.rawValue) }
         return try host.session.snapshot()
     }
@@ -555,17 +656,22 @@ public final class TerminalViewHost: TerminalHost {
     /// now reports. The next `show` re-applies the view's real grid.
     @discardableResult
     public func restore(
-        _ id: SessionID, from data: Data, cwd: String, env: [String: String]
+        _ id: TerminalID, session sessionID: SessionID, from data: Data, cwd: String,
+        env: [String: String]
     ) throws -> pid_t {
-        let grid = view.gridSizeForBounds()
+        // A restore can happen before the pane it belongs to has a surface — a background tab, or
+        // a reopen that runs before the container laid out — so the cell metrics come from the
+        // host's default grid rather than from a view that may not exist yet.
+        let grid = visible[id]?.gridSizeForBounds() ?? defaultGrid()
         let session = try makeSession(size: grid)
         try session.restore(from: data)
         let restoredSize = session.size
         let size = TerminalSize(
             rows: restoredSize.rows, cols: restoredSize.cols,
             cellWidthPx: grid.cellWidthPx, cellHeightPx: grid.cellHeightPx)
-        let pty = try spawn(id: id, session: session, cwd: cwd, env: env, size: size)
-        let host = HostSession(id: id, session: session, pty: pty)
+        let pty = try spawn(
+            sessionID: sessionID, session: session, cwd: cwd, env: env, size: size)
+        let host = HostSession(id: id, sessionID: sessionID, session: session, pty: pty)
         host.wasRestored = true
         evict(id)
         adopt(host)
@@ -629,16 +735,25 @@ public final class TerminalViewHost: TerminalHost {
     }
 
     /// Restores every `.ghsnap` in the store, in id order, each with a fresh shell.
+    ///
+    /// `owner` says which row a snapshot belongs to. Its default is the whole point of the schema
+    /// v2 migration: every row lifted from v1 got one leaf whose uuid **is** the session's, so a
+    /// `<uuid>.ghsnap` written by any earlier build maps straight back to its row with no lookup
+    /// table and no rename (see `Migrations.liftV1ToV2`). A caller that knows better — the app,
+    /// which has the tree from `state.json` — passes its own.
     @discardableResult
-    public func restoreAll(cwd: String, env: [String: String] = [:]) -> RestoreSweep {
+    public func restoreAll(
+        cwd: String, env: [String: String] = [:],
+        owner: (TerminalID) -> SessionID = { SessionID(uuid: $0.uuid) }
+    ) -> RestoreSweep {
         let start = ContinuousClock.now
         var sweep = RestoreSweep()
         let entries = (try? snapshots.list()) ?? []
         for entry in entries {
-            guard let id = SessionID(entry.id), sessions[id] == nil else { continue }
+            guard let id = TerminalID(entry.id), sessions[id] == nil else { continue }
             do {
                 let data = try snapshots.load(entry.id)
-                _ = try restore(id, from: data, cwd: cwd, env: env)
+                _ = try restore(id, session: owner(id), from: data, cwd: cwd, env: env)
                 sweep.restored.append(entry.id)
                 sweep.totalBytes += data.count
             } catch {
@@ -680,6 +795,8 @@ public final class TerminalIdleCompressor: Sendable {
     private struct State {
         var policy: IdleCompressionPolicy
         var sessions: [String: TerminalSession] = [:]
+        /// What `setVisible` last installed, so a repeat is a no-op rather than policy churn.
+        var visible: Set<String> = []
         /// The last activity token this compressor *observed*, including the one its own pass
         /// produced. Owning the comparison here rather than in the policy is what stops a
         /// compression pass from looking like user activity: the pass moves the token, and
@@ -767,6 +884,7 @@ public final class TerminalIdleCompressor: Sendable {
     public func register(_ id: String, session: TerminalSession, isVisible: Bool) {
         let token = session.compressionActivity()
         state.withLock { state in
+            if isVisible { state.visible.insert(id) } else { state.visible.remove(id) }
             state.sessions[id] = session
             state.tokens[id] = token
             state.policy.register(id, at: .now, activityToken: token, isVisible: isVisible)
@@ -775,6 +893,7 @@ public final class TerminalIdleCompressor: Sendable {
 
     public func forget(_ id: String) {
         state.withLock { state in
+            state.visible.remove(id)
             state.sessions.removeValue(forKey: id)
             state.tokens.removeValue(forKey: id)
             state.snapshotTokens.removeValue(forKey: id)
@@ -787,8 +906,22 @@ public final class TerminalIdleCompressor: Sendable {
         state.withLock { $0.policy.noteActivity(id, at: .now) }
     }
 
-    public func setVisible(_ id: String, _ isVisible: Bool) {
-        state.withLock { $0.policy.noteVisibility(id, isVisible: isVisible, at: .now) }
+    /// Replaces the visible set wholesale.
+    ///
+    /// Only the symmetric difference reaches the policy: re-showing the same panes — which
+    /// `TerminalHost.show` does on every selection change and every layout delivery — must cost one
+    /// lock and no policy churn, or a busy sidebar would keep resetting every pane's idle clock.
+    public func setVisible(_ ids: Set<String>) {
+        state.withLock { state in
+            let now = ContinuousClock.now
+            for id in state.visible.subtracting(ids) {
+                state.policy.noteVisibility(id, isVisible: false, at: now)
+            }
+            for id in ids.subtracting(state.visible) {
+                state.policy.noteVisibility(id, isVisible: true, at: now)
+            }
+            state.visible = ids
+        }
     }
 
     /// True when `id`'s on-disk snapshot was taken at `token`, i.e. nothing compression-relevant

@@ -104,7 +104,11 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
                 })
             : nil
         self.host = TerminalViewHost(
-            view: view, snapshots: snapshots, compressor: compressor)
+            renderContext: renderContext,
+            defaultGrid: { [weak view] in
+                view?.gridSizeForBounds() ?? TerminalSize(rows: 40, cols: 120)
+            },
+            snapshots: snapshots, compressor: compressor)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1000, height: 680),
@@ -124,15 +128,16 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
         window.initialFirstResponder = view
         installTitlebarAccessory()
 
-        view.onGridResize = { [weak self] size in
-            self?.host.resizeVisible(size)
-        }
-        host.onDidShow = { [weak self] id in self?.didShow(id) }
+        // `onGridResize` is installed per pane by `TerminalHost.show` (TKZ-36), not here.
+        host.onDidShow = { [weak self] ids in self?.didShow(ids.first) }
 
         wireInput()
         startEventPump()
         compressor?.start()
     }
+
+    /// The dev harness is single-pane by construction: it shows one terminal at a time.
+    private var visibleTerminalID: TerminalID? { host.visibleTerminalIDs.first }
 
     // MARK: - Input (TKZ-13)
 
@@ -143,11 +148,14 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
     /// live. Only the *transport* is wired here.
     private func wireInput() {
         terminalView.inputDelegate = inputController
-        inputController.writeInput = { [weak self] data in self?.host.writeInput(data) }
+        inputController.writeInput = { [weak self] data in
+            guard let self, let id = self.visibleTerminalID else { return }
+            self.host.writeInput(id, data)
+        }
         // DEC 1004: Claude Code sets it (verified in the claude-boot fixture), so focus in/out is a
         // real report rather than a no-op.
         inputController.isFocusReportingEnabled = { [weak self] in
-            guard let self, let id = self.host.visibleID else { return false }
+            guard let self, let id = self.visibleTerminalID else { return false }
             return self.host.session(for: id)?.mode(1004) ?? false
         }
 
@@ -156,7 +164,10 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
         // here, while a paste never comes through `sendBytes` at all.
         inputController.mouseHandler = mouseController
         mouseController.attach(to: terminalView)
-        mouseController.sendBytes = { [weak self] bytes in self?.host.writeInput(Data(bytes)) }
+        mouseController.sendBytes = { [weak self] bytes in
+            guard let self, let id = self.visibleTerminalID else { return }
+            self.host.writeInput(id, Data(bytes))
+        }
 
         installCommandKeyMonitor()
     }
@@ -202,7 +213,7 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
         if harness.restoreOnLaunch {
             let sweep = host.restoreAll(cwd: FileManager.default.homeDirectoryForCurrentUser.path)
             if !sweep.restored.isEmpty || !sweep.failed.isEmpty { restoreReport = sweep }
-            if let last = host.sessionIDs.last { host.show(last) }
+            if let last = host.sessionIDs.last { host.show(last, on: terminalView) }
         }
         if let spawn = harness.spawnCount {
             spawnSessions(spawn, busy: harness.busyCount)
@@ -283,15 +294,15 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
 
     /// Spawns a login zsh under the full tkzmux environment and switches to it.
     @discardableResult
-    public func newSession() -> SessionID? {
-        let id = SessionID.generate()
+    public func newSession() -> TerminalID? {
+        let id = TerminalID.generate()
         do {
             _ = try host.open(
-                id,
+                id, session: SessionID(uuid: id.uuid),
                 cwd: FileManager.default.homeDirectoryForCurrentUser.path,
                 env: [:],
                 size: terminalView.gridSizeForBounds())
-            host.show(id)
+            host.show(id, on: terminalView)
             return id
         } catch {
             logger.error("failed to spawn a dev session: \(String(describing: error), privacy: .public)")
@@ -310,13 +321,13 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
     /// queue — so a command written in the same turn as the spawn is silently swallowed. Measured:
     /// with no delay all 30 snapshots came back the same ~17 KiB size, i.e. a bare prompt.
     @discardableResult
-    public func spawnSessions(_ count: Int, busy: Int) -> [SessionID] {
-        var spawned: [SessionID] = []
+    public func spawnSessions(_ count: Int, busy: Int) -> [TerminalID] {
+        var spawned: [TerminalID] = []
         for _ in 0..<count {
             guard let id = newSession() else { break }
             spawned.append(id)
         }
-        if let first = spawned.first { host.show(first) }
+        if let first = spawned.first { host.show(first, on: terminalView) }
         let busyIDs = Array(spawned.prefix(busy))
         if !busyIDs.isEmpty {
             let command = harness.busyCommand
@@ -332,7 +343,7 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
     }
 
     /// Re-pushes what the view cannot know after a session switch.
-    private func didShow(_ id: SessionID?) {
+    private func didShow(_ id: TerminalID?) {
         if let id, let session = host.session(for: id) {
             // `MouseController.syncGeometry` only pushes on *change*, and the geometry has not
             // changed — the session has. Without this a second session keeps the option-derived
@@ -356,7 +367,7 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func handle(_ event: TerminalEvent, for id: SessionID) {
+    private func handle(_ event: TerminalEvent, for id: TerminalID) {
         switch event {
         case .title:
             updateTitle()
@@ -377,7 +388,7 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
     }
 
     private func updateTitle() {
-        guard let id = host.visibleID,
+        guard let id = visibleTerminalID,
               let index = host.sessionIDs.firstIndex(of: id) else {
             window.title = "tkzmux — dev terminal (no session)"
             return
@@ -447,7 +458,7 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
             let id = ids[index % ids.count]
             host.resetShowDurations()
             let start = ContinuousClock.now
-            host.show(id)
+            host.show(id, on: terminalView)
             let afterShow = ContinuousClock.now
             var dirtyIsFull = false
             do {
@@ -574,7 +585,7 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
         let stats = renderContext.renderer.stats
         let metrics = HostProcessMetrics.sample()
         var line = """
-            sessions=\(host.sessionCount) visible=\(host.visibleID.flatMap { host.sessionIDs.firstIndex(of: $0) }.map(String.init) ?? "-") \
+            sessions=\(host.sessionCount) visible=\(visibleTerminalID.flatMap { host.sessionIDs.firstIndex(of: $0) }.map(String.init) ?? "-") \
             grid=\(terminalView.currentGridSize.cols)x\(terminalView.currentGridSize.rows) \
             gridResizes=\(terminalView.gridResizeCount) framesRendered=\(terminalView.framesRendered) \
             glyphs=\(terminalView.surface.glyphCount) \

@@ -223,12 +223,26 @@ public final class GitIntegration {
     /// every process in the tree, and the main thread is where frames are encoded.
     private func scanPorts(for id: SessionID) {
         guard let live = store.state.sessions[id]?.live else { return }
-        // The shell is the root of the tree: a dev server started by Claude is a grandchild of it,
-        // and `claude` itself may have been replaced by a resume.
-        guard let root = live.shellPid ?? live.pid else { return }
+        // Every pane's shell, not just the focused one's (TKZ-36). A shell is the root of a tree —
+        // a dev server started by Claude is a grandchild of it, and `claude` itself may have been
+        // replaced by a resume — and with split panes the server the user wants a badge for is
+        // just as likely to be in the pane they are *not* looking at. `shellPid`/`pid` stay in the
+        // set so a row whose panes predate this map still scans.
+        var roots = Set(live.panePids.values)
+        if let shellPid = live.shellPid { roots.insert(shellPid) }
+        if roots.isEmpty, let pid = live.pid { roots.insert(pid) }
+        guard !roots.isEmpty else { return }
         let scan = scanPorts
         portQueue.async { [weak self] in
-            let found = scan(root)
+            // Deduplicated on the port: two panes in one process tree would otherwise report the
+            // same listener twice.
+            var seen: Set<UInt16> = []
+            var found: [ListeningPort] = []
+            for root in roots.sorted() {
+                for port in scan(root) where seen.insert(port.port).inserted {
+                    found.append(port)
+                }
+            }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { self?.applyPorts(found, to: id) }
             }

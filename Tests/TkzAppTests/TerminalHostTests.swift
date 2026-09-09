@@ -2,11 +2,13 @@
 //
 // What these prove, in order of how much they matter:
 //
-//   1. **A background session costs only IO.** With 30 sessions open there is exactly one
-//      `TerminalSurface`, it holds the visible session and no other, and bytes written to a
-//      *background* session neither wake the display link nor allocate any render state. The
-//      view-layer test (`TerminalMetalViewTests.showSwapsSurfaces`) proves the mechanism for two
-//      sessions; this proves the invariant survives at the scale the ticket cares about.
+//   1. **An unattached terminal costs only IO.** With 30 terminals open, only the ones actually
+//      shown have a surface; each holds its own terminal and no other, and bytes written to an
+//      *unattached* one neither wake any display link nor allocate render state. Until TKZ-36 this
+//      was stated as "exactly one surface" — split panes make that count wrong, but the property
+//      that mattered was always the cost, not the cardinality. The view-layer test
+//      (`TerminalMetalViewTests.showSwapsSurfaces`) proves the mechanism for two sessions; this
+//      proves the invariant survives at the scale the ticket cares about.
 //   2. **`show(_:)` really cycles the surface.** A switch is timed in the harness, so a switch that
 //      was optimised away would report an implausibly good number. Every switch here is followed by
 //      an offscreen frame that must report `DIRTY_FULL` — the signature of a fresh attach.
@@ -73,12 +75,31 @@ private func makeHost(_ temp: TempDirectory, compressor: TerminalIdleCompressor?
     let view = TerminalMetalView(
         renderContext: context, frame: NSRect(x: 0, y: 0, width: 800, height: 600))
     let host = TerminalViewHost(
-        view: view,
+        renderContext: context,
+        defaultGrid: { [weak view] in
+            view?.gridSizeForBounds() ?? TerminalSize(rows: 24, cols: 80)
+        },
         snapshots: temp.snapshots,
         tkzmuxDirectory: temp.supportDirectory,
         baseEnvironment: testEnvironment(),
         compressor: compressor)
     return (context, view, host)
+}
+
+/// A second pane over the same render context — what a split gives you.
+@MainActor
+private func makePane(_ context: TerminalRenderContext) -> TerminalMetalView {
+    TerminalMetalView(renderContext: context, frame: NSRect(x: 0, y: 0, width: 400, height: 600))
+}
+
+/// `open` with the row id derived from the terminal id, the way every migrated and every new row
+/// is shaped. Keeps the call sites here about what they are testing.
+@MainActor
+private func open(
+    _ host: TerminalViewHost, _ id: TerminalID, size: TerminalSize
+) throws -> pid_t {
+    try host.open(
+        id, session: SessionID(uuid: id.uuid), cwd: NSHomeDirectory(), env: [:], size: size)
 }
 
 private func makeSession(cols: UInt16 = 80, rows: UInt16 = 24) throws -> TerminalSession {
@@ -167,37 +188,116 @@ private func waitForHost(
 @Suite("TerminalHost — background sessions", .serialized)
 @MainActor
 struct BackgroundSessionTests {
-    /// The headline invariant, at the ticket's scale.
-    @Test("30 sessions share exactly one surface, and it holds only the visible session")
-    func thirtySessionsOneSurface() throws {
+    /// The headline invariant, at the ticket's scale — restated for panes (TKZ-36).
+    ///
+    /// The count of surfaces is now the app's business (one per visible pane); what the host still
+    /// guarantees is that a terminal nobody is looking at holds no render memory at all.
+    @Test("30 terminals attach only what is shown, and each surface holds its own terminal")
+    func thirtyTerminalsAttachOnlyWhatIsShown() throws {
         let temp = try TempDirectory()
         guard let (context, view, host) = try makeHost(temp) else { return }
         defer { host.closeAll(signal: SIGKILL) }
 
-        var ids: [SessionID] = []
+        var ids: [TerminalID] = []
         for _ in 0..<30 {
-            let id = SessionID.generate()
-            _ = try host.open(id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
+            let id = TerminalID.generate()
+            _ = try open(host, id, size: view.gridSizeForBounds())
             ids.append(id)
         }
         #expect(host.sessionCount == 30)
 
-        // One surface, registered once, for all thirty.
-        #expect(context.liveSurfaces().count == 1)
-
         for id in ids {
-            host.show(id)
+            host.show([id: view])
+            #expect(host.visibleTerminalIDs == [id])
             #expect(view.surface.isAttached)
-            // The single surface holds this session and, by identity, no other.
+            // The surface holds this terminal and, by identity, no other.
             #expect(view.surface.session === host.session(for: id))
             #expect(view.session === host.session(for: id))
         }
 
         // Detaching leaves no libghostty render memory behind at all.
-        host.show(nil)
+        host.show([:])
+        #expect(host.visibleTerminalIDs.isEmpty)
         #expect(!view.surface.isAttached)
         #expect(view.surface.glyphCount == 0)
-        #expect(context.liveSurfaces().count == 1)
+    }
+
+    /// Two panes side by side: both attached, each to its own surface, and `show` is what decides
+    /// which — the split container never touches a surface itself.
+    @Test("two panes attach to two surfaces, and dropping one detaches only that one")
+    func twoPanesAttachToTwoSurfaces() throws {
+        let temp = try TempDirectory()
+        guard let (context, view, host) = try makeHost(temp) else { return }
+        let second = makePane(context)
+        defer { host.closeAll(signal: SIGKILL) }
+
+        let a = TerminalID.generate()
+        let b = TerminalID.generate()
+        _ = try open(host, a, size: view.gridSizeForBounds())
+        _ = try open(host, b, size: view.gridSizeForBounds())
+
+        host.show([a: view, b: second])
+        #expect(host.visibleTerminalIDs == [a, b])
+        #expect(view.surface.session === host.session(for: a))
+        #expect(second.surface.session === host.session(for: b))
+
+        // Closing one pane must not disturb the other.
+        host.show([a: view])
+        #expect(host.visibleTerminalIDs == [a])
+        #expect(view.surface.isAttached)
+        #expect(!second.surface.isAttached)
+        #expect(second.surface.glyphCount == 0)
+    }
+
+    /// The bug this ticket exists to avoid. Input used to be routed to "the visible session",
+    /// which with two panes on screen names nothing in particular — the unfocused pane's
+    /// keystrokes would have landed in the focused pane's shell.
+    @Test("writeInput reaches the addressed terminal and no other")
+    func writeInputAddressesOnePane() async throws {
+        let temp = try TempDirectory()
+        guard let (context, view, host) = try makeHost(temp) else { return }
+        let second = makePane(context)
+        defer { host.closeAll(signal: SIGKILL) }
+
+        let a = TerminalID.generate()
+        let b = TerminalID.generate()
+        _ = try open(host, a, size: view.gridSizeForBounds())
+        _ = try open(host, b, size: view.gridSizeForBounds())
+        host.show([a: view, b: second])
+
+        // Hang both shells up first: a live zsh would echo and prompt over the assertion.
+        host.close(a, signal: SIGKILL)
+        host.close(b, signal: SIGKILL)
+        _ = await waitForHost { !host.isAlive(a) && !host.isAlive(b) }
+
+        host.session(for: b)?.write(ptyText: "MARKER-PANE-B\r\n")
+        let landed = await waitForHost {
+            ((try? host.session(for: b)?.formatted()) ?? nil)?.contains("MARKER-PANE-B") == true
+        }
+        #expect(landed)
+        let other = try #require(try host.session(for: a)?.formatted())
+        #expect(!other.contains("MARKER-PANE-B"), "pane A saw pane B's bytes")
+    }
+
+    /// Each attached pane resizes its own pty. `resizeVisible` is gone precisely because it could
+    /// not express this.
+    @Test("resizing one pane leaves the other pane's terminal alone")
+    func resizeAddressesOnePane() throws {
+        let temp = try TempDirectory()
+        guard let (context, view, host) = try makeHost(temp) else { return }
+        let second = makePane(context)
+        defer { host.closeAll(signal: SIGKILL) }
+
+        let a = TerminalID.generate()
+        let b = TerminalID.generate()
+        _ = try open(host, a, size: view.gridSizeForBounds())
+        _ = try open(host, b, size: view.gridSizeForBounds())
+        host.show([a: view, b: second])
+
+        let before = try #require(host.session(for: b)).size
+        host.resize(a, TerminalSize(rows: 10, cols: 40, cellWidthPx: 8, cellHeightPx: 16))
+        #expect(try #require(host.session(for: a)).size.cols == 40)
+        #expect(try #require(host.session(for: b)).size == before)
     }
 
     /// A session whose shell has exited keeps its screen (the row is resumable) but must stop
@@ -208,9 +308,9 @@ struct BackgroundSessionTests {
         guard let (_, view, host) = try makeHost(temp) else { return }
         defer { host.closeAll(signal: SIGKILL) }
 
-        let id = SessionID.generate()
-        _ = try host.open(id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
-        host.show(id)
+        let id = TerminalID.generate()
+        _ = try open(host, id, size: view.gridSizeForBounds())
+        host.show([id: view])
         #expect(!view.surface.isCursorSuppressed, "a live session must keep its cursor")
 
         host.close(id, signal: SIGKILL)
@@ -218,8 +318,8 @@ struct BackgroundSessionTests {
         #expect(died, "the cursor was still being drawn for a dead shell")
 
         // `show` resets the flag; re-selecting an already-dead session must re-apply it.
-        host.show(nil)
-        host.show(id)
+        host.show([:])
+        host.show([id: view])
         #expect(view.surface.isCursorSuppressed)
     }
 
@@ -257,9 +357,9 @@ struct BackgroundSessionTests {
         guard let (_, view, host) = try makeHost(temp) else { return }
         defer { host.closeAll(signal: SIGKILL) }
 
-        let id = SessionID.generate()
-        _ = try host.open(id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
-        host.show(id)
+        let id = TerminalID.generate()
+        _ = try open(host, id, size: view.gridSizeForBounds())
+        host.show([id: view])
         host.runWhenReady(id, command: "echo TKZMUX-E2E-OK")
 
         let session = try #require(host.session(for: id))
@@ -276,31 +376,38 @@ struct BackgroundSessionTests {
             "the command never ran in the shell. Screen:\n\(screen)")
     }
 
-    /// A background session that produces output must not be able to schedule a frame. This is
-    /// structural in the view (`show` clears the outgoing session's `renderSignal`), and this test
-    /// is what stops a future refactor from making it a policy again.
-    @Test("output from a background session never wakes the display link")
+    /// An **unattached** terminal that produces output must not be able to schedule a frame on
+    /// **any** view. This is structural in the view (`show` clears the outgoing session's
+    /// `renderSignal`), and this test is what stops a future refactor from making it a policy
+    /// again. A second pane is live throughout, so "no link woke" means all of them.
+    @Test("output from an unattached terminal never wakes any display link")
     func backgroundOutputDoesNotWakeTheLink() async throws {
         let temp = try TempDirectory()
-        guard let (_, view, host) = try makeHost(temp) else { return }
+        guard let (context, view, host) = try makeHost(temp) else { return }
+        let second = makePane(context)
         defer { host.closeAll(signal: SIGKILL) }
 
-        let background = SessionID.generate()
-        let visible = SessionID.generate()
-        _ = try host.open(background, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
-        _ = try host.open(visible, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
-        host.show(visible)
+        let background = TerminalID.generate()
+        let visible = TerminalID.generate()
+        let alsoVisible = TerminalID.generate()
+        _ = try open(host, background, size: view.gridSizeForBounds())
+        _ = try open(host, visible, size: view.gridSizeForBounds())
+        _ = try open(host, alsoVisible, size: second.gridSizeForBounds())
+        host.show([visible: view, alsoVisible: second])
 
         // Kill both shells and let their last bytes drain. Otherwise zsh's own prompt lands on the
         // *visible* session mid-test and wakes the link for a perfectly legitimate reason, which
         // would make this test flaky rather than wrong.
         host.close(background, signal: SIGKILL)
         host.close(visible, signal: SIGKILL)
+        host.close(alsoVisible, signal: SIGKILL)
         try? await Task.sleep(for: .milliseconds(250))
 
         // The attach itself legitimately asks for a frame; start from a clean slate.
         view.frameDriver.update { $0.needsUpdate = false }
+        second.frameDriver.update { $0.needsUpdate = false }
         let resumesBefore = view.frameDriver.resumeCount
+        let secondResumesBefore = second.frameDriver.resumeCount
 
         // 64 KiB straight into the *background* session's VT.
         let payload = String(repeating: "background output\n", count: 4000)
@@ -312,6 +419,8 @@ struct BackgroundSessionTests {
 
         #expect(view.frameDriver.demand.needsUpdate == false)
         #expect(view.frameDriver.resumeCount == resumesBefore)
+        #expect(second.frameDriver.demand.needsUpdate == false)
+        #expect(second.frameDriver.resumeCount == secondResumesBefore)
         // …and the same bytes into the *visible* session do wake it, so the test above is not
         // passing merely because nothing works.
         host.session(for: visible)?.write(ptyText: "visible output\n")
@@ -328,11 +437,11 @@ struct BackgroundSessionTests {
         guard let (context, view, host) = try makeHost(temp) else { return }
         defer { host.closeAll(signal: SIGKILL) }
 
-        var ids: [SessionID] = []
+        var ids: [TerminalID] = []
         for index in 0..<3 {
-            let id = SessionID.generate()
-            _ = try host.open(id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
-            host.show(id)
+            let id = TerminalID.generate()
+            _ = try open(host, id, size: view.gridSizeForBounds())
+            host.show([id: view])
             host.session(for: id)?.write(ptyText: "session \(index)\r\n")
             ids.append(id)
         }
@@ -346,7 +455,7 @@ struct BackgroundSessionTests {
         _ = try context.renderer.render(surface: view.surface, to: texture)
 
         for index in 0..<9 {
-            host.show(ids[index % ids.count])
+            host.show([ids[index % ids.count]: view])
             let outcome = try context.renderer.render(surface: view.surface, to: texture)
             #expect(outcome.update.dirty == .full)
             #expect(outcome.glyphCount > 0)
@@ -366,10 +475,10 @@ struct HostSnapshotTests {
         guard let (_, view, host) = try makeHost(temp) else { return }
         defer { host.closeAll(signal: SIGKILL) }
 
-        var ids: [SessionID] = []
+        var ids: [TerminalID] = []
         for _ in 0..<3 {
-            let id = SessionID.generate()
-            _ = try host.open(id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
+            let id = TerminalID.generate()
+            _ = try open(host, id, size: view.gridSizeForBounds())
             ids.append(id)
         }
         let sweep = host.snapshotAll()
@@ -388,8 +497,8 @@ struct HostSnapshotTests {
         let temp = try TempDirectory()
         guard let (_, view, host) = try makeHost(temp) else { return }
 
-        let id = SessionID.generate()
-        _ = try host.open(id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
+        let id = TerminalID.generate()
+        _ = try open(host, id, size: view.gridSizeForBounds())
         let firstPid = try #require(host.pid(of: id))
         host.session(for: id)?.write(ptyText: "MARKER-9F3A\r\n")
         #expect(host.snapshotAll().saved == [id.rawValue])
@@ -399,8 +508,11 @@ struct HostSnapshotTests {
         guard let (_, view2, host2) = try makeHost(temp) else { return }
         defer { host2.closeAll(signal: SIGKILL) }
         _ = view2
+        // No `owner:` argument on purpose: the default is what makes a `.ghsnap` written by any
+        // earlier build map back to its row after the schema v2 migration.
         let sweep = host2.restoreAll(cwd: NSHomeDirectory())
         #expect(sweep.restored == [id.rawValue])
+        #expect(host2.owner(of: id) == SessionID(uuid: id.uuid))
         #expect(sweep.failed.isEmpty)
         #expect(host2.wasRestored(id))
         let restoredPid = try #require(host2.pid(of: id))
@@ -416,8 +528,8 @@ struct HostSnapshotTests {
         guard let (_, view, host) = try makeHost(temp) else { return }
         defer { host.closeAll(signal: SIGKILL) }
 
-        let id = SessionID.generate()
-        _ = try host.open(id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
+        let id = TerminalID.generate()
+        _ = try open(host, id, size: view.gridSizeForBounds())
         _ = host.snapshotAll()
         #expect(temp.snapshots.exists(id.rawValue))
 
@@ -431,7 +543,7 @@ struct HostSnapshotTests {
     func snapshotUnknown() throws {
         let temp = try TempDirectory()
         guard let (_, _, host) = try makeHost(temp) else { return }
-        let id = SessionID.generate()
+        let id = TerminalID.generate()
         #expect(throws: TerminalHostError.unknownSession(id.rawValue)) { try host.snapshot(id) }
     }
 }
@@ -488,8 +600,7 @@ struct IdleCompressorTests {
         #expect(compressor.stats.passes == 1)  // exactly one session was touched
 
         // Flip the visibility and the *other* one becomes eligible.
-        compressor.setVisible("visible", false)
-        compressor.setVisible("background", true)
+        compressor.setVisible(["background"])
         compressor.tick()
         #expect(compressor.stats.passes == 2)
     }

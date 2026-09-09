@@ -27,106 +27,167 @@ struct MainWindowControllerTests {
     // MARK: - Doubles
 
     /// Records what the window asked of the terminal half.
+    ///
+    /// The host is keyed by `TerminalID` since TKZ-36, but almost every assertion in these suites
+    /// is about a *row*. Both are recorded, and the `SessionID`-shaped accessors are the ones the
+    /// tests read: a row created by these harnesses has exactly one pane, whose uuid **is** the
+    /// row's (`Session.init`, and `Migrations.liftV1ToV2` for anything restored), so the mapping
+    /// is the real invariant rather than a convenience. A test that genuinely cares about panes
+    /// reads `openedTerminals` / `shownTerminals`.
     @MainActor
     final class SpyTerminalHost: TerminalHost {
         struct Opened: Equatable {
             var id: SessionID
+            var terminal: TerminalID
             var cwd: String
             var env: [String: String]
         }
 
         struct Restored: Equatable {
             var id: SessionID
+            var terminal: TerminalID
             var cwd: String
             var env: [String: String]
             var snapshot: Data
         }
 
-        private(set) var shown: [SessionID?] = []
+        private(set) var shownTerminals: [Set<TerminalID>] = []
         private(set) var closed: [(id: SessionID, signal: Int32)] = []
         private(set) var opened: [Opened] = []
         private(set) var restored: [Restored] = []
-        private(set) var discarded: [SessionID] = []
-        private(set) var ran: [(id: SessionID, command: String)] = []
+        private(set) var discardedTerminals: [TerminalID] = []
+        private(set) var ranTerminals: [(id: TerminalID, command: String)] = []
         /// Set to make the next `open` throw, so the failure path can be asserted.
         var openError: (any Error)?
         /// Set to make the next `restore` throw (a snapshot that no longer decodes).
         var restoreError: (any Error)?
-        /// `.ghsnap` files "on disk", by id — what `savedSnapshot` answers from.
+        /// `.ghsnap` files "on disk", by row — what `savedSnapshot` answers from.
         var savedSnapshots: [SessionID: Data] = [:]
-        /// The live grids: every id opened or restored on this host. `snapshot` answers for these;
-        /// `discard` and the eviction inside a reopen remove them.
-        private(set) var held: Set<SessionID> = []
-        let events: AsyncStream<(SessionID, TerminalEvent)>
-        private let continuation: AsyncStream<(SessionID, TerminalEvent)>.Continuation
+        /// The live grids: every terminal opened or restored on this host. `snapshot` answers for
+        /// these; `discard` and the eviction inside a reopen remove them.
+        private(set) var heldTerminals: Set<TerminalID> = []
+        private(set) var visibleTerminalIDs: Set<TerminalID> = []
+        let events: AsyncStream<(TerminalID, TerminalEvent)>
+        private let continuation: AsyncStream<(TerminalID, TerminalEvent)>.Continuation
 
         init() {
-            var escapee: AsyncStream<(SessionID, TerminalEvent)>.Continuation!
+            var escapee: AsyncStream<(TerminalID, TerminalEvent)>.Continuation!
             events = AsyncStream { escapee = $0 }
             continuation = escapee
         }
 
-        func open(_ id: SessionID, cwd: String, env: [String: String], size: TerminalSize) throws -> pid_t {
+        func open(
+            _ id: TerminalID, session: SessionID, cwd: String, env: [String: String],
+            size: TerminalSize
+        ) throws -> pid_t {
             if let openError { throw openError }
-            opened.append(Opened(id: id, cwd: cwd, env: env))
+            opened.append(Opened(id: session, terminal: id, cwd: cwd, env: env))
             evict(id)
-            held.insert(id)
+            heldTerminals.insert(id)
             return 4242
         }
 
-        /// The real host drops a session it already holds under `id` before adopting the new one,
-        /// and that detaches the surface if it was the visible one. Modelled here so a reopen of
-        /// the selected row that forgets to re-show it fails a test rather than a user.
-        private func evict(_ id: SessionID) {
-            held.remove(id)
-            if visibleSessionID == id { visibleSessionID = nil }
+        /// The real host drops a terminal it already holds under `id` before adopting the new one,
+        /// and that detaches its surface. Modelled here so a reopen of the selected row that
+        /// forgets to re-show it fails a test rather than a user.
+        private func evict(_ id: TerminalID) {
+            heldTerminals.remove(id)
+            visibleTerminalIDs.remove(id)
         }
-        func run(_ id: SessionID, command: String) { ran.append((id, command)) }
+        func run(_ id: TerminalID, command: String) { ranTerminals.append((id, command)) }
         /// Records synchronously rather than inheriting the protocol's 2 s delayed default — the
         /// point of the assertion is *that the call arrives here at all* (a `runWhenReady` living
         /// only in a protocol extension would be statically dispatched on `any TerminalHost` and
         /// never reach a conformer's override).
-        func runWhenReady(_ id: SessionID, command: String) { run(id, command: command) }
-        private(set) var visibleSessionID: SessionID?
-        func show(_ id: SessionID?) {
-            shown.append(id)
-            // The real host attaches nothing for an id it has never opened, which is what a row
-            // restored from `state.json` looks like. The spy has to model that, or the window's
-            // empty-state logic would be tested against a host that can show anything.
-            visibleSessionID = id.flatMap { held.contains($0) ? $0 : nil }
+        func runWhenReady(_ id: TerminalID, command: String) { run(id, command: command) }
+        func writeInput(_ id: TerminalID, _ data: Data) { wrote.append((id, data)) }
+        private(set) var wrote: [(id: TerminalID, data: Data)] = []
+        func contains(_ id: TerminalID) -> Bool { heldTerminals.contains(id) }
+        func show(_ attachments: [TerminalID: any TerminalPaneSurface]) {
+            // The real host attaches nothing for a terminal it has never opened, which is what a
+            // row restored from `state.json` looks like. The spy has to model that, or the
+            // window's empty-state logic would be tested against a host that can show anything.
+            visibleTerminalIDs = Set(attachments.keys.filter(heldTerminals.contains))
+            shownTerminals.append(visibleTerminalIDs)
         }
-        func resize(_ id: SessionID, _ size: TerminalSize) {}
-        func close(_ id: SessionID, signal: Int32) { closed.append((id, signal)) }
-        /// The live grid, for a held id; the real host throws `unknownSession` otherwise.
-        func snapshot(_ id: SessionID) throws -> Data {
-            guard held.contains(id) else { throw TerminalHostError.unknownSession(id.rawValue) }
+        func resize(_ id: TerminalID, _ size: TerminalSize) { resized.append((id, size)) }
+        private(set) var resized: [(id: TerminalID, size: TerminalSize)] = []
+        func close(_ id: TerminalID, signal: Int32) {
+            closed.append((SessionID(uuid: id.uuid), signal))
+        }
+        /// The live grid, for a held terminal; the real host throws `unknownSession` otherwise.
+        func snapshot(_ id: TerminalID) throws -> Data {
+            guard heldTerminals.contains(id) else {
+                throw TerminalHostError.unknownSession(id.rawValue)
+            }
             return Data("live:\(id.rawValue)".utf8)
         }
-        func restore(_ id: SessionID, from data: Data, cwd: String, env: [String: String]) throws -> pid_t {
+        func restore(
+            _ id: TerminalID, session: SessionID, from data: Data, cwd: String,
+            env: [String: String]
+        ) throws -> pid_t {
             if let restoreError { throw restoreError }
-            restored.append(Restored(id: id, cwd: cwd, env: env, snapshot: data))
+            restored.append(
+                Restored(id: session, terminal: id, cwd: cwd, env: env, snapshot: data))
             evict(id)
-            held.insert(id)
+            heldTerminals.insert(id)
             return 4343
         }
-        func savedSnapshot(_ id: SessionID) -> Data? { savedSnapshots[id] }
-        func discard(_ id: SessionID) {
-            discarded.append(id)
-            held.remove(id)
-            savedSnapshots[id] = nil
-            if visibleSessionID == id { visibleSessionID = nil }
+        func savedSnapshot(_ id: TerminalID) -> Data? { savedSnapshots[SessionID(uuid: id.uuid)] }
+        func discard(_ id: TerminalID) {
+            discardedTerminals.append(id)
+            heldTerminals.remove(id)
+            savedSnapshots[SessionID(uuid: id.uuid)] = nil
+            visibleTerminalIDs.remove(id)
+        }
+
+        /// Gives a *row* a terminal, the way the launcher does: its first leaf carries the row's
+        /// own uuid. Almost every test here means "make this row have a shell", not "open this
+        /// particular pane".
+        @discardableResult
+        func openRow(_ id: SessionID, cwd: String = "/tmp") throws -> pid_t {
+            try open(
+                TerminalID(uuid: id.uuid), session: id, cwd: cwd, env: [:],
+                size: TerminalSize(rows: 24, cols: 80))
         }
 
         /// Pushes an event as if a child had produced it.
-        func emit(_ event: TerminalEvent, for id: SessionID) { continuation.yield((id, event)) }
+        func emit(_ event: TerminalEvent, for id: SessionID) {
+            continuation.yield((TerminalID(uuid: id.uuid), event))
+        }
+        func emit(_ event: TerminalEvent, forTerminal id: TerminalID) {
+            continuation.yield((id, event))
+        }
 
+        // MARK: Row-shaped views, for the assertions
+
+        var shown: [SessionID?] {
+            shownTerminals.map { $0.first.map { SessionID(uuid: $0.uuid) } }
+        }
+        var visibleSessionID: SessionID? { visibleTerminalIDs.first.map { SessionID(uuid: $0.uuid) } }
+        var held: Set<SessionID> { Set(heldTerminals.map { SessionID(uuid: $0.uuid) }) }
+        var discarded: [SessionID] { discardedTerminals.map { SessionID(uuid: $0.uuid) } }
+        var ran: [(id: SessionID, command: String)] {
+            ranTerminals.map { (SessionID(uuid: $0.id.uuid), $0.command) }
+        }
         var lastShown: SessionID?? { shown.last }
         var closedIDs: [SessionID] { closed.map(\.id) }
     }
 
-    /// Stands in for `TerminalMetalView`: focusable, layer-backed, nothing else.
-    final class FakeTerminalView: NSView {
+    /// Stands in for `TerminalMetalView`: focusable, and a `TerminalPaneSurface` that records
+    /// what was attached to it. Everything the host asks of a surface is answered here, so the
+    /// whole suite still runs with no GPU.
+    final class FakeTerminalView: NSView, TerminalPaneSurface {
         override var acceptsFirstResponder: Bool { true }
+
+        private(set) var attached: TerminalSession?
+        private(set) var cursorSuppressed = false
+        var onGridResize: ((TerminalSize) -> Void)?
+        var grid = TerminalSize(rows: 40, cols: 120)
+
+        func show(_ session: TerminalSession?) { attached = session }
+        func setCursorSuppressed(_ suppressed: Bool) { cursorSuppressed = suppressed }
+        func gridSizeForBounds() -> TerminalSize { grid }
     }
 
     // MARK: - Harness
@@ -371,8 +432,7 @@ struct MainWindowControllerTests {
         // The row has to have a terminal behind it: from M5.1 a row can exist in the store with no
         // surface (that is what a restored `state.json` row is), and the window shows the empty
         // state for those rather than focusing a grid that is not there.
-        _ = try harness.host.open(
-            target, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        _ = try harness.host.openRow(target)
         harness.mutate { $0.select(target) }
 
         #expect(harness.host.lastShown == .some(target))
@@ -388,8 +448,7 @@ struct MainWindowControllerTests {
         // Start from nothing selected, so the ⌘1 below is a real change and not a no-op.
         harness.mutate { $0.select(nil) }
         let expected = try #require(SidebarRowAdapter.session(atVisibleIndex: 1, in: harness.store.state))
-        _ = try harness.host.open(
-            expected, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        _ = try harness.host.openRow(expected)
 
         // ⌘1 — the sidebar's own command, exactly what the menu dispatches.
         harness.controller.dispatcher.perform(.selectSession(1))
@@ -422,7 +481,7 @@ struct MainWindowControllerTests {
 
         // A row the host has actually opened shows the terminal.
         let target = try #require(harness.store.state.orderedSessions.first?.id)
-        _ = try harness.host.open(target, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        _ = try harness.host.openRow(target)
         harness.mutate { $0.select(target) }
         #expect(harness.controller.detail.emptyState.isHidden)
         #expect(harness.terminalView.isHidden == false)
