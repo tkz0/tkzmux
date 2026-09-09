@@ -730,10 +730,48 @@ struct SidebarRowViewTests {
             try png.write(to: url.appendingPathComponent("sidebar-rows.png"))
         }
     }
+    // MARK: - Terminal count badge (TKZ-36)
+
+    @Test func aSinglePaneRowShowsNoTerminalBadge() {
+        let row = Self.sessionRow(SidebarSessionRowModel(title: "one", terminalCount: 1))
+        #expect(row.terminalsBadgeLayer.isHidden)
+    }
+
+    @Test func aSplitRowShowsItsTerminalCount() {
+        let row = Self.sessionRow(SidebarSessionRowModel(title: "three", terminalCount: 3))
+        row.layout()
+        #expect(!row.terminalsBadgeLayer.isHidden)
+        #expect(row.terminalsBadgeLayer.frame.width > 0)
+        #expect(row.terminalsBadgeLayer.frame.maxX <= row.bounds.width)
+    }
+
+    /// Both badges share the title line: the count sits inside NEEDS YOU, and the title gives way
+    /// to both rather than running underneath them.
+    @Test func theCountAndNeedsYouShareTheTitleLine() {
+        let row = Self.sessionRow(
+            SidebarSessionRowModel(
+                title: "a very long session title indeed", needsAttention: true, terminalCount: 4))
+        row.layout()
+        let count = row.terminalsBadgeLayer.frame
+        let needsYou = row.needsYouBadgeLayer.frame
+        #expect(!count.isEmpty)
+        #expect(!needsYou.isEmpty)
+        #expect(count.maxX <= needsYou.minX)
+        #expect(row.titleTextLayer.frame.maxX <= count.minX)
+    }
+
+    /// A recycled row must not carry the previous row's badge.
+    @Test func reuseClearsTheTerminalBadge() {
+        let row = Self.sessionRow(SidebarSessionRowModel(title: "three", terminalCount: 3))
+        #expect(!row.terminalsBadgeLayer.isHidden)
+        row.prepareForReuse()
+        #expect(row.terminalsBadgeLayer.isHidden)
+    }
 }
 
 
 // MARK: - Hover and the close button (2026-09-08)
+
 
 @MainActor
 @Suite(.serialized)

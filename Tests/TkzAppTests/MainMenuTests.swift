@@ -63,7 +63,14 @@ struct MainMenuTests {
         #expect(items[.commandPalette]?.keyEquivalentModifierMask == [.command, .shift])
         #expect(items[.toggleSidebar]?.keyEquivalent == "b")
         #expect(items[.closeTerminal]?.keyEquivalent == "w")
-        #expect(items[.closeTerminal]?.title == "Close Session")
+        // ⌘W closes the focused pane and falls through to the row when it is the last one
+        // (TKZ-36); ⇧⌘W is the unconditional one, which `docs/shortcuts.md` promised from M2.4.
+        #expect(items[.closeTerminal]?.title == "Close Terminal")
+        #expect(items[.closeSession]?.keyEquivalent == "w")
+        #expect(items[.closeSession]?.keyEquivalentModifierMask == [.command, .shift])
+        #expect(items[.newTerminal]?.keyEquivalent == "t")
+        #expect(items[.splitVertically]?.keyEquivalent == "d")
+        #expect(items[.splitHorizontally]?.keyEquivalentModifierMask == [.command, .shift])
         #expect(items[.selectSession(1)]?.keyEquivalent == "1")
         #expect(items[.reloadConfig]?.keyEquivalent == ",")
         #expect(items[.reloadConfig]?.keyEquivalentModifierMask == [.command, .shift])

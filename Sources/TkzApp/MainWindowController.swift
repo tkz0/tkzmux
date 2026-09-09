@@ -792,6 +792,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             else { return }
             newSessionMenu.perform(launch)
         }
+        // `◫`/`⬓` — the buttons the design drew disabled behind "Coming later" until TKZ-36.
+        toolbarController.onSplitVertically = { [weak self] in
+            self?.addTerminal(splitting: .horizontal)
+        }
+        toolbarController.onSplitHorizontally = { [weak self] in
+            self?.addTerminal(splitting: .vertical)
+        }
         toolbarController.onSearchChanged = { [weak self] query in
             guard let self, !query.isEmpty else { return }
             self.palette.update(state: self.store.state, mode: .sessions)
@@ -2379,7 +2386,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// shows the whole vocabulary and lies about none of it.
     private func registerMenuHandlers() {
         dispatcher.setHandler(.newSession) { [weak self] in self?.presentNewSessionMenu() }
-        dispatcher.setHandler(.closeTerminal) { [weak self] in self?.removeSelectedSession() }
+        dispatcher.setHandler(.closeTerminal) { [weak self] in self?.closeFocusedTerminal() }
+        dispatcher.setHandler(.closeSession) { [weak self] in self?.removeSelectedSession() }
         dispatcher.setHandler(.searchSessions) { [weak self] in self?.beginSearch() }
         dispatcher.setHandler(.commandPalette) { [weak self] in self?.presentPalette(mode: .all) }
         dispatcher.setHandler(.toggleSidebar) { [weak self] in self?.toggleSidebar() }
@@ -2407,6 +2415,81 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
                 self?.sidebar.selectSession(atVisibleIndex: n)
             }
         }
+        registerPaneHandlers()
+    }
+
+    /// Panes and tabs (TKZ-36).
+    ///
+    /// Every one of these that moves focus calls `focusPane` after its `store.update`: the
+    /// `layout` branch applies selection with `focusTerminal: false` so a click is not fought by a
+    /// re-assertion, which means a *command* has to move the keyboard itself.
+    private func registerPaneHandlers() {
+        dispatcher.setHandler(.newTerminal) { [weak self] in self?.addTerminal(splitting: nil) }
+        dispatcher.setHandler(.splitVertically) { [weak self] in
+            self?.addTerminal(splitting: .horizontal)
+        }
+        dispatcher.setHandler(.splitHorizontally) { [weak self] in
+            self?.addTerminal(splitting: .vertical)
+        }
+        for (action, direction) in [
+            (ShortcutAction.focusPaneLeft, PaneDirection.left),
+            (.focusPaneRight, .right),
+            (.focusPaneUp, .up),
+            (.focusPaneDown, .down),
+        ] {
+            dispatcher.setHandler(action) { [weak self] in self?.moveFocus(direction) }
+        }
+        dispatcher.setHandler(.equalizeSplits) { [weak self] in
+            guard let self, let id = store.state.selection else { return }
+            store.update { $0.equalizeSplits(in: id) }
+        }
+        dispatcher.setHandler(.zoomPane) { [weak self] in
+            guard let self, let id = store.state.selection else { return }
+            store.update { $0.zoomPane(nil, in: id) }
+            if let focused = store.state.sessions[id]?.focusedTerminalID { focusPane(focused) }
+        }
+        dispatcher.setHandler(.nextTab) { [weak self] in self?.selectAdjacentTab(1) }
+        dispatcher.setHandler(.previousTab) { [weak self] in self?.selectAdjacentTab(-1) }
+    }
+
+    /// ⌘T / ⌘D / ⇧⌘D. `axis` nil means a new tab.
+    func addTerminal(splitting axis: PaneAxis?) {
+        guard let id = store.state.selection else { return }
+        switch launcher.addTerminal(to: id, splitting: axis) {
+        case .success(let terminal):
+            focusPane(terminal)
+        case .failure(let failure):
+            showNotice(Self.reopenFailureNotice(failure))
+        }
+    }
+
+    /// ⌘⌥ arrows.
+    private func moveFocus(_ direction: PaneDirection) {
+        guard let id = store.state.selection else { return }
+        var moved: TerminalID?
+        store.updating { moved = $0.focusPaneInDirection(direction, in: id) }
+        if let moved { focusPane(moved) }
+    }
+
+    /// ⇧⌘] / ⇧⌘[.
+    private func selectAdjacentTab(_ offset: Int) {
+        guard let id = store.state.selection else { return }
+        store.update { $0.selectAdjacentTab(in: id, offset: offset) }
+        if let focused = store.state.sessions[id]?.focusedTerminalID { focusPane(focused) }
+    }
+
+    /// ⌘W. Closes the focused pane; when it is the row's last terminal this *is* Close Session,
+    /// confirmation and all, which is the 2026-09-08 behaviour for every row that has one pane —
+    /// i.e. every row that existed before this ticket.
+    func closeFocusedTerminal() {
+        guard let id = store.state.selection, let session = store.state.sessions[id] else { return }
+        guard session.terminalCount > 1 else {
+            removeSelectedSession()
+            return
+        }
+        // No confirmation for a pane: it is a shell, not a conversation.
+        launcher.closeTerminal(session.focusedTerminalID)
+        if let focused = store.state.sessions[id]?.focusedTerminalID { focusPane(focused) }
     }
 
     /// Builds the menu bar for the current bindings and installs it. Called by `AppDelegate` once

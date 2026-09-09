@@ -203,10 +203,12 @@ public enum Fixture {
                 cwdMode: .repoRoot, accountKey: "claude"),
         ]
         state.shortcuts = [
-            "newSession": "cmd+t",
+            // Not "cmd+t": that is `newTerminal` since TKZ-36, and a fixture collision would
+            // silently shadow it under TKZMUX_FIXTURE without any test noticing.
+            "newSession": "ctrl+cmd+n",
             "closeTerminal": "cmd+w",
-            "nextSession": "alt+cmd+down",
-            "previousSession": "alt+cmd+up",
+            "nextSession": "ctrl+cmd+down",
+            "previousSession": "ctrl+cmd+up",
             "searchSessions": "cmd+p",
             "commandPalette": "shift+cmd+p",
             "toggleSidebar": "ctrl+cmd+s",

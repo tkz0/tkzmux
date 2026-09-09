@@ -256,6 +256,21 @@ struct MainWindowControllerTests {
 
     // MARK: - Panes (TKZ-36)
 
+    /// Polls a condition, flushing the store each turn, for up to two seconds.
+    @MainActor
+    private static func settle(
+        _ harness: Harness, until predicate: () -> Bool
+    ) async -> Bool {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while ContinuousClock.now < deadline {
+            harness.store.flush()
+            if predicate() { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        harness.store.flush()
+        return predicate()
+    }
+
     /// Gives a row a terminal and selects it, which is the precondition for every split test.
     @MainActor
     private static func selectedRowWithAShell(_ harness: Harness) throws -> (SessionID, TerminalID) {
@@ -425,17 +440,18 @@ struct MainWindowControllerTests {
             other, session: id, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
         harness.layout()
 
+        // The event pump is a Task; wait for the effect rather than for a fixed interval, or the
+        // test is a race that usually wins.
         harness.host.emit(.exited(.exited(code: 0)), forTerminal: other)
-        try await Task.sleep(for: .milliseconds(120))
-        harness.store.flush()
-
+        var closed = await Self.settle(harness) {
+            harness.store.state.sessions[id]?.terminalIDs == [first]
+        }
+        #expect(closed, "the exiting pane's leaf was not closed")
         #expect(harness.store.state.sessions[id] != nil, "the row must survive its second pane")
-        #expect(harness.store.state.sessions[id]?.terminalIDs == [first])
 
         harness.host.emit(.exited(.exited(code: 0)), forTerminal: first)
-        try await Task.sleep(for: .milliseconds(120))
-        harness.store.flush()
-        #expect(harness.store.state.sessions[id] == nil, "the last pane takes the row with it")
+        closed = await Self.settle(harness) { harness.store.state.sessions[id] == nil }
+        #expect(closed, "the last pane must take the row with it")
     }
 
     /// Store→view: the dividers follow the model's ratios, and an unrelated delivery does not

@@ -31,15 +31,21 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     public static let commandPalette = ShortcutAction("commandPalette")
     public static let toggleSidebar = ShortcutAction("toggleSidebar")
     public static let renameSession = ShortcutAction("renameSession")
-    /// ⌘W — removes the selected session (row, shell, snapshot). The id is historical: it was
-    /// "close terminal, keep the row" until 2026-09-08, when the kept row went away.
+    /// ⌘W — closes the focused pane. When it is the row's last terminal it falls through to
+    /// removing the row (shell, snapshot and all), with the same confirmation as ⇧⌘W. The id was
+    /// "close terminal, keep the row" until 2026-09-08 and briefly meant "remove the row"; since
+    /// TKZ-36 it means what it says again.
     public static let closeTerminal = ShortcutAction("closeTerminal")
+    /// ⇧⌘W — removes the row outright, however many panes it has. `docs/shortcuts.md` has
+    /// documented this since M2.4; TKZ-36 is where it became real.
+    public static let closeSession = ShortcutAction("closeSession")
     public static let jumpToNeedsYou = ShortcutAction("jumpToNeedsYou")
     public static let notifications = ShortcutAction("notifications")
     public static let settings = ShortcutAction("settings")
     public static let openFolder = ShortcutAction("openFolder")
     public static let reloadConfig = ShortcutAction("reloadConfig")
-    /// No cmux default (⌘T/⌘D are reserved) — reachable only through an override or the palette.
+    /// No default — reachable through an override or the palette. ⌘T/⌘D went to the terminal
+    /// (TKZ-36), which is what they were reserved for.
     public static let nextSession = ShortcutAction("nextSession")
     public static let previousSession = ShortcutAction("previousSession")
     /// ⇧⌘C — copies the selected session's last Stop message (M3.4).
@@ -57,6 +63,25 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     public static let managePresets = ShortcutAction("managePresets")
     /// No key: the "auto-resume on launch" preference, shown with a checkmark (M5.2).
     public static let toggleAutoResume = ShortcutAction("toggleAutoResume")
+
+    // MARK: Panes and tabs (TKZ-36)
+
+    /// ⌘T — another terminal in this session, as a new tab.
+    public static let newTerminal = ShortcutAction("newTerminal")
+    /// ⌘D — side by side. "Vertically" is the divider's orientation, matching the toolbar's `◫`.
+    public static let splitVertically = ShortcutAction("splitVertically")
+    /// ⇧⌘D — stacked; the toolbar's `⬓`.
+    public static let splitHorizontally = ShortcutAction("splitHorizontally")
+    public static let focusPaneLeft = ShortcutAction("focusPaneLeft")
+    public static let focusPaneRight = ShortcutAction("focusPaneRight")
+    public static let focusPaneUp = ShortcutAction("focusPaneUp")
+    public static let focusPaneDown = ShortcutAction("focusPaneDown")
+    /// ⌃⌘= — every pane in the tab the same size.
+    public static let equalizeSplits = ShortcutAction("equalizeSplits")
+    /// ⇧⌘↩ — one pane fills the tab.
+    public static let zoomPane = ShortcutAction("zoomPane")
+    public static let nextTab = ShortcutAction("nextTab")
+    public static let previousTab = ShortcutAction("previousTab")
 
     /// ⌘1…⌘9 — `selectSession1` … `selectSession9`.
     public static func selectSession(_ n: Int) -> ShortcutAction { ShortcutAction("selectSession\(n)") }
@@ -118,6 +143,13 @@ public struct Shortcut: Hashable, Sendable {
 
     public var modifierMask: NSEvent.ModifierFlags { modifiers.eventFlags }
 
+    // The arrow keys as AppKit wants them in a `keyEquivalent`, so a default in `ShortcutsTable`
+    // can name one without going through the string parser.
+    public static let upArrow = String(UnicodeScalar(UInt32(NSUpArrowFunctionKey))!)
+    public static let downArrow = String(UnicodeScalar(UInt32(NSDownArrowFunctionKey))!)
+    public static let leftArrow = String(UnicodeScalar(UInt32(NSLeftArrowFunctionKey))!)
+    public static let rightArrow = String(UnicodeScalar(UInt32(NSRightArrowFunctionKey))!)
+
     /// `⇧⌘P`, `⌘,`, `⌥⌘↓` — the palette's right-hand hint.
     public var displayString: String {
         modifiers.displayString + ShortcutsTable.displayKey(keyEquivalent)
@@ -132,15 +164,19 @@ public enum ShortcutsTable {
     public static let allActions: [ShortcutAction] =
         [
             .newSession, .searchSessions, .commandPalette, .toggleSidebar, .renameSession,
-            .closeTerminal, .jumpToNeedsYou, .notifications, .settings,
+            .closeTerminal, .closeSession, .jumpToNeedsYou, .notifications, .settings,
             .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
             .removeShellIntegration, .statusLineIntegration, .resumeSession, .resumeAllInGroup,
             .managePresets, .toggleAutoResume,
+            .newTerminal, .splitVertically, .splitHorizontally,
+            .focusPaneLeft, .focusPaneRight, .focusPaneUp, .focusPaneDown,
+            .equalizeSplits, .zoomPane, .previousTab, .nextTab,
         ] + (1...9).map { ShortcutAction.selectSession($0) }
 
-    /// design.md → Decisions → Shortcuts, verbatim, plus ⇧⌘C (M3.4) and ⌘R (M5.2), which that
-    /// list records as tkzmux additions. `nextSession`/`previousSession` are absent on purpose:
-    /// cmux binds no default for them and ⌘T/⌘D are reserved.
+    /// The cmux bindings, plus ⇧⌘C (M3.4), ⌘R (M5.2) and the pane/tab set (TKZ-36).
+    /// `nextSession`/`previousSession` remain absent on purpose: cmux binds no default for them,
+    /// and the keys they were reserved against — ⌘T, ⌘D and the ⌥⌘ arrows — now belong to the
+    /// terminal, which is what "reserved" meant.
     public static let defaults: [ShortcutAction: Shortcut] = {
         var table: [ShortcutAction: Shortcut] = [
             .newSession: Shortcut("n", .command),
@@ -156,6 +192,18 @@ public enum ShortcutsTable {
             .reloadConfig: Shortcut(",", [.shift, .command]),
             .copyLastMessage: Shortcut("c", [.shift, .command]),
             .resumeSession: Shortcut("r", .command),
+            .closeSession: Shortcut("w", [.shift, .command]),
+            .newTerminal: Shortcut("t", .command),
+            .splitVertically: Shortcut("d", .command),
+            .splitHorizontally: Shortcut("d", [.shift, .command]),
+            .focusPaneLeft: Shortcut(Shortcut.leftArrow, [.option, .command]),
+            .focusPaneRight: Shortcut(Shortcut.rightArrow, [.option, .command]),
+            .focusPaneUp: Shortcut(Shortcut.upArrow, [.option, .command]),
+            .focusPaneDown: Shortcut(Shortcut.downArrow, [.option, .command]),
+            .equalizeSplits: Shortcut("=", [.control, .command]),
+            .zoomPane: Shortcut("\r", [.shift, .command]),
+            .previousTab: Shortcut("[", [.shift, .command]),
+            .nextTab: Shortcut("]", [.shift, .command]),
         ]
         for n in 1...9 { table[.selectSession(n)] = Shortcut("\(n)", .command) }
         return table
@@ -169,7 +217,8 @@ public enum ShortcutsTable {
         case .commandPalette: "Command Palette\u{2026}"
         case .toggleSidebar: "Toggle Sidebar"
         case .renameSession: "Rename Session\u{2026}"
-        case .closeTerminal: "Close Session"
+        case .closeTerminal: "Close Terminal"
+        case .closeSession: "Close Session"
         case .jumpToNeedsYou: "Jump to Next Needs-You"
         case .notifications: "Notifications"
         case .settings: "Settings\u{2026}"
@@ -184,6 +233,17 @@ public enum ShortcutsTable {
         case .resumeAllInGroup: "Resume All in Group"
         case .managePresets: "Manage Presets\u{2026}"
         case .toggleAutoResume: "Auto-resume Sessions on Launch"
+        case .newTerminal: "New Terminal"
+        case .splitVertically: "Split Vertically"
+        case .splitHorizontally: "Split Horizontally"
+        case .focusPaneLeft: "Focus Pane Left"
+        case .focusPaneRight: "Focus Pane Right"
+        case .focusPaneUp: "Focus Pane Up"
+        case .focusPaneDown: "Focus Pane Down"
+        case .equalizeSplits: "Equalize Splits"
+        case .zoomPane: "Zoom Pane"
+        case .nextTab: "Next Terminal"
+        case .previousTab: "Previous Terminal"
         default:
             if let n = selectSessionIndex(action) { "Select Session \(n)" } else { action.rawValue }
         }

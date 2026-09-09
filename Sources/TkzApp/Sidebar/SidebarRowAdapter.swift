@@ -62,7 +62,8 @@ public enum SidebarRowAdapter {
             needsAttention: session.needsAttention,
             isSelected: state.selection == session.id,
             groupColor: state.groups[session.groupID]?.color,
-            memoryBadge: memoryBadge(for: session)
+            memoryBadge: memoryBadge(for: session),
+            terminalCount: session.terminalCount
         )
     }
 
