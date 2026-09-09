@@ -2,6 +2,7 @@ Tests/TkzAppTests/MainWindowControllerTests.swift
   s_440d1f48f681fc::t_6a4b351707b428 475-516
 docs/design.md
   s_440d1f48f681fc::t_f5c9ac803d1593 182
+  s_440d1f48f681fc::t_f8a178b841af27 187
 Tests/TkzCoreTests/ReducersTests.swift
   s_440d1f48f681fc::t_7ad828bc39afbf 335-342
 Sources/TkzCore/Reducers.swift
