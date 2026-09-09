@@ -258,6 +258,15 @@ public final class SessionLauncher {
         store.update { $0.removeSession(id) }
     }
 
+    /// Remove a whole group: every member's shell and snapshot go the way `remove(_:)` sends one,
+    /// then the group and its rows leave in a single change set — one sidebar diff, one selection
+    /// pass, rather than N of each. The reducer's own `removeGroup` never touches `host`, which is
+    /// the whole reason this lives here. Never touches a worktree on disk.
+    public func removeGroup(_ id: GroupID) {
+        for session in store.state.sessions(in: id) { host.discard(session.id) }
+        store.update { $0.removeGroup(id) }
+    }
+
     // MARK: - Worktrees after an exit
 
     /// A shell exited or Claude ended: schedule a re-read of that repo's worktree list.

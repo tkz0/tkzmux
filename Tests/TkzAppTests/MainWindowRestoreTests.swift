@@ -204,6 +204,71 @@ struct MainWindowRestoreTests {
         #expect(harness.controller.statusBar.model.notice?.hasPrefix("Resumed 2") == true)
     }
 
+    @Test("Remove group takes the group and every session in it, once the user has confirmed")
+    func removeGroupFromContextMenu() throws {
+        let cwd = NSTemporaryDirectory()
+        var state = AppState()
+        let doomed = state.addGroup(name: "Scratch", repoRoot: cwd)
+        let keeper = state.addGroup(name: "Keep", repoRoot: cwd)
+        let members = (0..<2).map { _ in state.createSession(groupID: doomed.id, cwd: cwd, accountKey: "claude").id }
+        let survivor = state.createSession(groupID: keeper.id, cwd: cwd, accountKey: "claude").id
+        state.select(members[0])
+        let harness = MainWindowControllerTests.makeHarness(state)
+        defer { harness.tearDown() }
+        #expect(harness.controller.sidebar.outlineView.numberOfRows == 2 + 3)
+
+        let menu = try #require(harness.controller.sidebar.contextMenu(forGroup: doomed.id))
+        let item = try #require(menu.items.first { $0.identifier == MainWindowController.ContextItemID.removeGroup })
+        #expect(item.title == "Remove group")
+
+        // Cancelled: nothing moves.
+        harness.controller.confirmRemoveGroup = { _, _ in false }
+        _ = item.target?.perform(item.action, with: item)
+        harness.store.flush()
+        #expect(harness.store.state.groups[doomed.id] != nil)
+        #expect(harness.store.state.sessions.count == 3)
+
+        // Confirmed: the group, its rows and their shells all go; the other group is untouched.
+        var asked: (group: Group, members: [Session])?
+        harness.controller.confirmRemoveGroup = { group, members in
+            asked = (group, members)
+            return true
+        }
+        _ = item.target?.perform(item.action, with: item)
+        harness.store.flush()
+        harness.layout()
+
+        #expect(asked?.group.id == doomed.id)
+        #expect(Set(asked?.members.map(\.id) ?? []) == Set(members))
+        #expect(harness.store.state.groups[doomed.id] == nil)
+        #expect(harness.store.state.groups[keeper.id] != nil)
+        #expect(Array(harness.store.state.sessions.keys) == [survivor])
+        #expect(Set(harness.host.discarded) == Set(members), "every member's shell and snapshot go")
+        #expect(harness.store.state.selection == survivor, "selection lands on a surviving row")
+        #expect(harness.controller.sidebar.outlineView.numberOfRows == 2, "the header and its rows leave together")
+    }
+
+    @Test("An empty group is removed without asking")
+    func removeEmptyGroupAsksNothing() throws {
+        var state = AppState()
+        let empty = state.addGroup(name: "Bucket")
+        let harness = MainWindowControllerTests.makeHarness(state)
+        defer { harness.tearDown() }
+        var asked = false
+        harness.controller.confirmRemoveGroup = { _, _ in
+            asked = true
+            return true
+        }
+        let menu = try #require(harness.controller.sidebar.contextMenu(forGroup: empty.id))
+        let item = try #require(menu.items.first { $0.identifier == MainWindowController.ContextItemID.removeGroup })
+        _ = item.target?.perform(item.action, with: item)
+        harness.store.flush()
+
+        #expect(asked == false, "nothing was going to be closed, so nothing was asked")
+        #expect(harness.store.state.groups.isEmpty, "the last group is removable; the footer is the way back")
+        #expect(harness.host.discarded.isEmpty)
+    }
+
     @Test("Set Repo… attaches a folder to a bucket group, and one folder roots one group")
     func setGroupRepo() throws {
         var state = AppState()
