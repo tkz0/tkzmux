@@ -124,8 +124,21 @@ final class DetailViewController: NSViewController {
     /// this layout — the safe-area top pin, the empty state as a z=2 sibling, the status bar's own
     /// height constraint — is untouched.
     let paneContainer: PaneContainerView
+    /// Above the panes, and 0 pt tall for a session with one tab — so a single-terminal session's
+    /// layout is exactly what it was before TKZ-36.
+    let tabStrip: TabStripView
+    private var tabStripHeight: NSLayoutConstraint!
     let statusBar: StatusBarView
     let emptyState: NSView
+
+    /// Shows or hides the strip. At 0 pt the panes reach the safe-area top exactly as they did
+    /// before there were tabs, so `terminalRespectsTheSafeArea` still means what it did.
+    func setTabStripVisible(_ visible: Bool) {
+        let height = visible ? TabStripMetrics.stripHeight : 0
+        guard tabStripHeight.constant != height else { return }
+        tabStripHeight.constant = height
+        tabStrip.isHidden = !visible
+    }
 
     /// The empty state's caption. A no-op when the view is the plain `NSView` a test injected.
     var emptyStateMessage: String {
@@ -137,6 +150,7 @@ final class DetailViewController: NSViewController {
 
     init(paneContainer: PaneContainerView, statusBar: StatusBarView, theme: Theme) {
         self.paneContainer = paneContainer
+        self.tabStrip = TabStripView(theme: theme)
         self.statusBar = statusBar
         self.theme = theme
         self.emptyState = DetailViewController.makeEmptyState(theme: theme)
@@ -156,7 +170,9 @@ final class DetailViewController: NSViewController {
         terminalContainer.layer?.backgroundColor = theme.terminalBackground.cgColor
 
         paneContainer.translatesAutoresizingMaskIntoConstraints = false
+        tabStrip.translatesAutoresizingMaskIntoConstraints = false
         emptyState.translatesAutoresizingMaskIntoConstraints = false
+        terminalContainer.addSubview(tabStrip)
         terminalContainer.addSubview(paneContainer)
         terminalContainer.addSubview(emptyState)
         emptyState.layer?.zPosition = 2
@@ -171,7 +187,11 @@ final class DetailViewController: NSViewController {
             terminalContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             terminalContainer.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
 
-            paneContainer.topAnchor.constraint(equalTo: terminalContainer.topAnchor),
+            tabStrip.topAnchor.constraint(equalTo: terminalContainer.topAnchor),
+            tabStrip.leadingAnchor.constraint(equalTo: terminalContainer.leadingAnchor),
+            tabStrip.trailingAnchor.constraint(equalTo: terminalContainer.trailingAnchor),
+
+            paneContainer.topAnchor.constraint(equalTo: tabStrip.bottomAnchor),
             paneContainer.leadingAnchor.constraint(equalTo: terminalContainer.leadingAnchor),
             paneContainer.trailingAnchor.constraint(equalTo: terminalContainer.trailingAnchor),
             paneContainer.bottomAnchor.constraint(equalTo: terminalContainer.bottomAnchor),
@@ -185,6 +205,9 @@ final class DetailViewController: NSViewController {
             statusBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             statusBar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
+
+        tabStripHeight = tabStrip.heightAnchor.constraint(equalToConstant: 0)
+        tabStripHeight.isActive = true
 
         view = root
     }
@@ -446,6 +469,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         wireToolbar()
         wirePalette()
         wireCheatSheet()
+        wireTabStrip()
         registerMenuHandlers()
         observeStore()
         startEventPump()
@@ -819,6 +843,28 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    private func wireTabStrip() {
+        detail.tabStrip.onSelectTab = { [weak self] index in
+            guard let self, let id = store.state.selection,
+                let tab = store.state.sessions[id]?.tabs[safe: index]
+            else { return }
+            store.update { $0.selectTab(tab.id) }
+            if let focused = store.state.sessions[id]?.focusedTerminalID { focusPane(focused) }
+        }
+        detail.tabStrip.onCloseTab = { [weak self] index in
+            guard let self, let id = store.state.selection,
+                let session = store.state.sessions[id], let tab = session.tabs[safe: index]
+            else { return }
+            // The last tab is the row: fall through to Close Session, confirmation and all.
+            guard session.tabs.count > 1 else {
+                removeSelectedSession()
+                return
+            }
+            for terminal in tab.terminalIDs { host.discard(terminal) }
+            store.update { _ = $0.closeTab(tab.id) }
+        }
+    }
+
     private func observeStore() {
         storeToken = store.addObserver { [weak self] change in self?.apply(change) }
     }
@@ -899,12 +945,33 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - Panes (TKZ-36)
 
+    /// Rebuilds the tab strip from the selected row.
+    private func applyTabStrip() {
+        guard let id = store.state.selection, let session = store.state.sessions[id] else {
+            detail.setTabStripVisible(false)
+            return
+        }
+        let model = TabStripModel(
+            items: session.tabs.enumerated().map { index, tab in
+                TabStripItem(
+                    // A tab has no name of its own: the row's title belongs to the row, and a
+                    // shell's title is not a rename (the same rule `Session.displayTitle` follows).
+                    // Numbering is honest and stable; a real name is a later ticket's business.
+                    title: "Terminal \(index + 1)",
+                    isSelected: tab.id == session.activeTab,
+                    terminalCount: tab.terminalCount)
+            })
+        detail.tabStrip.configure(model, theme: theme)
+        detail.setTabStripVisible(model.isVisible)
+    }
+
     /// Builds the pane tree for the current selection, reusing every pane that survives.
     ///
     /// Called from `applySelection`, which the `layout` change bucket drives. Order matters at the
     /// end: the container has to lay out before the host attaches, or a pane's grid is measured at
     /// zero and the shell spawns at 1×1.
     private func applyPaneTree() {
+        applyTabStrip()
         let tab = store.state.selection.flatMap { store.state.sessions[$0]?.activeTabValue }
         detail.paneContainer.viewForTerminal = { [weak self] id in
             self?.makePane(id).view ?? NSView()
