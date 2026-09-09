@@ -1,0 +1,20 @@
+Tests/TkzTerminalRenderTests/TerminalRendererTests.swift
+  s_a6b77fdfad3885::t_706d755617a90c 157-173
+  s_a6b77fdfad3885::t_b3bc553d40f3e9 110-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "27e7ce35fc998ee8d9049ce0aa75ac8468e0884e",
+  "prompts": {},
+  "sessions": {
+    "s_a6b77fdfad3885": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "713d9700-82a5-4f9a-a5df-6678fe809238",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
