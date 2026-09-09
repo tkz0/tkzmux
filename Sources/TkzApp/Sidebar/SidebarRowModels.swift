@@ -77,6 +77,11 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
     /// is an inset rounded rect, not a full-bleed system highlight.
     public var isSelected: Bool
 
+    /// The **containing group's** colour, so the 2.5 pt edge runs down the whole group rather than
+    /// stopping at its header (TKZ-48). `nil` — an uncoloured group — leaves the edge layer fully
+    /// transparent, exactly as on the header; it is never `Theme.groupEdgeDefault`.
+    public var groupColor: RGB?
+
     public init(
         title: String,
         branch: String? = nil,
@@ -85,7 +90,8 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         accountLabel: String? = nil,
         accountColor: RGB? = nil,
         needsAttention: Bool = false,
-        isSelected: Bool = false
+        isSelected: Bool = false,
+        groupColor: RGB? = nil
     ) {
         self.title = title
         self.branch = branch
@@ -95,6 +101,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         self.accountColor = accountColor
         self.needsAttention = needsAttention
         self.isSelected = isSelected
+        self.groupColor = groupColor
     }
 }
 
@@ -134,6 +141,9 @@ public struct SidebarGroupRowModel: Hashable, Sendable {
     /// left fully transparent (it stays in the tree so layout never shifts). `Theme.groupEdgeDefault`
     /// is **not** substituted here: it is the colour the *picker* offers as a default, not a
     /// fallback for an uncoloured group.
+    ///
+    /// The same colour reaches every session row in the group as
+    /// `SidebarSessionRowModel.groupColor`, so the edge is one continuous stripe.
     public var color: RGB?
 
     /// Disclosure state, from `NSOutlineView.isItemExpanded`. Drives the chevron glyph only; the

@@ -19,6 +19,10 @@
 //   * `SidebarGroupRowModel.name` keeps its original casing; the view uppercases.
 //   * `color: nil` stays `nil` — a group with no colour gets a transparent edge, deliberately not
 //     `Theme.groupEdgeDefault` (that token is the colour picker's default, not a fallback).
+//   * `SidebarSessionRowModel.groupColor` is the one field on a *session* row that comes from the
+//     group rather than the session (TKZ-48), so the colour edge runs down the whole group. It is
+//     also the only reason `sessionModel` reads `state.groups`; `SidebarViewController.applyGroups`
+//     has to reload a group's session rows when its colour changes because of it.
 
 import Foundation
 import TkzCore
@@ -55,7 +59,8 @@ public enum SidebarRowAdapter {
             accountLabel: accountLabel(for: session, in: state),
             accountColor: SidebarSessionRowModel.accountChipColor(forKey: session.accountKey),
             needsAttention: session.needsAttention,
-            isSelected: state.selection == session.id
+            isSelected: state.selection == session.id,
+            groupColor: state.groups[session.groupID]?.color
         )
     }
 
