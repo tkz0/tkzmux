@@ -190,6 +190,72 @@ struct StatusBarViewTests {
         }
     }
 
+    @Test func secondaryTextUsesTheStatusBarTokens() {
+        // 2c.1: the branch segment is the WT lavender, the base text is `statusBarText`, and the
+        // percentages are the terminal foreground — the way every artboard draws the footer.
+        for theme in Theme.allPresets {
+            let segments = StatusBarView.segments(for: Self.full, theme: theme)
+            func colors(of text: String) -> [RGB]? {
+                segments.first { $0.plainText == text }?.colors
+            }
+            #expect(colors(of: "\u{2387} feature/tkz-18-main-window") == [theme.wtText, theme.wtText])
+            #expect(colors(of: "12 files") == [theme.statusBarText])
+            #expect(colors(of: "\u{2191}0 \u{2193}2") == [theme.statusBarText, theme.statusBarText, theme.statusBarText])
+            #expect(colors(of: ":3000") == [theme.statusBarText])
+            #expect(colors(of: "Context 62%")
+                    == [theme.statusBarText, theme.contextMeter, theme.meterTrack, theme.terminalForeground])
+            #expect(colors(of: "Usage 5%")
+                    == [theme.statusBarText, theme.usageMeter, theme.meterTrack, theme.terminalForeground])
+            #expect(colors(of: "Sonnet 4.5") == [theme.statusBarText, theme.border])
+        }
+    }
+
+    @Test func metersClampAndKeepTheNumber() throws {
+        // The bar is capped at full; the number still says what the reader reported.
+        let over = try #require(
+            StatusBarView.segments(for: StatusBarModel(contextPercent: 104), theme: .default).first)
+        guard case .meter(_, let fraction, _, _, let value) = over else {
+            Issue.record("context should be a meter"); return
+        }
+        #expect(fraction == 1)
+        #expect(value.text == "104%")
+        let low = try #require(
+            StatusBarView.segments(for: StatusBarModel(usagePercent: 5), theme: .default).first)
+        guard case .meter(_, let usageFraction, _, _, _) = low else {
+            Issue.record("usage should be a meter"); return
+        }
+        #expect(usageFraction == 0.05)
+    }
+
+    @Test func meterPaintsItsFillAndTrackWhereItSaysItDoes() throws {
+        // Draws the strip and samples inside the fill, inside the unfilled track, and just below
+        // the track (background), using the same rects `draw` used — so the geometry and the
+        // colours are both asserted against what was actually painted.
+        for theme in Theme.allPresets {
+            let model = StatusBarModel(contextPercent: 62)
+            let view = StatusBarView(theme: theme, model: model)
+            let rep = Self.render(view, width: 600)
+            let placed = try #require(view.placement().first)
+            let rects = try #require(view.meterRects(placed.item.segment, at: placed.frame.minX))
+            #expect(rects.track.width == StatusBarView.meterWidth)
+            #expect(rects.fill.width == (StatusBarView.meterWidth * 0.62).rounded())
+
+            // The bitmap is 2× and y-flipped relative to the view.
+            func sample(_ x: CGFloat, _ y: CGFloat) -> NSColor? {
+                Self.srgb(rep, x: Int(x * 2), y: Int((StatusBarView.height - y) * 2))
+            }
+            let fillColor = sample(rects.fill.minX + 4, rects.fill.midY)
+            let trackColor = sample(rects.track.maxX - 4, rects.track.midY)
+            let below = sample(rects.track.midX, rects.track.minY - 4)
+            #expect(Self.isClose(fillColor, theme.contextMeter), "\(theme.preset) fill")
+            #expect(Self.isClose(trackColor, theme.meterTrack.over(theme.statusBarBackground)),
+                    "\(theme.preset) track")
+            #expect(Self.isClose(below, theme.statusBarBackground), "\(theme.preset) below")
+            // The right edge of the strip is the number, then the inset: the meter ends inside it.
+            #expect(rects.track.maxX + StatusBarView.meterGap < placed.frame.maxX)
+        }
+    }
+
     @Test func fontSizeComesFromTheTokenNotALiteral() {
         // The family is not asserted: FontSet does not register JetBrains Mono in this process, so
         // resolution legitimately falls back to Menlo. The *size* must still be the design token.
