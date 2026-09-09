@@ -1,0 +1,34 @@
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_20433e0e221f52::t_22e7029c3255d0 573,577-600
+  s_20433e0e221f52::t_b2d6d101564c6d 601-602
+Sources/TkzCore/AppStore.swift
+  s_20433e0e221f52::t_5658fbf6d6a670 31-33
+Sources/TkzApp/Sidebar/GroupRowView.swift
+  s_20433e0e221f52::t_55cfd97b2f4c57 14-18
+  s_20433e0e221f52::t_b6758c2e2e100e 33-34,52-53,143-146,168-170,187-191
+Sources/TkzApp/Sidebar/StatusDotView.swift
+  s_20433e0e221f52::t_d681753a3d4280 239-267
+  s_20433e0e221f52::t_30f6700e2978a1 221-222
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_20433e0e221f52::t_ae0f0816a7eaa0 513,516,519-526
+Tests/TkzCoreTests/ReducersTests.swift
+  s_20433e0e221f52::t_bce4b420fb368c 24-36
+Sources/TkzCore/Reducers.swift
+  s_20433e0e221f52::t_6d90e6376a71be 20-23,54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "cf7dbaac7bc44208362770e5816e0ddc951587ff",
+  "prompts": {},
+  "sessions": {
+    "s_20433e0e221f52": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "00667def-1c51-441f-85d2-82417607d362",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
