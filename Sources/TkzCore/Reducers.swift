@@ -17,6 +17,10 @@ import Foundation
 
 extension AppState {
     /// Appends a session to a group. `order` is one past the group's current last row.
+    ///
+    /// A collapsed target group is **expanded**: every caller is a user asking for a new row, and a
+    /// row nobody can see is worse than a group that reopened. It happens in the same mutation as
+    /// the insert, so the sidebar gets one change set carrying both `structure` and `groups`.
     /// - Returns: the session as inserted (with its assigned `order`).
     @discardableResult
     public mutating func createSession(
@@ -47,6 +51,7 @@ extension AppState {
             lastActiveAt: now
         )
         sessions[id] = session
+        groups[groupID]?.isCollapsed = false
         return session
     }
 

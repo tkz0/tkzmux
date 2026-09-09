@@ -570,8 +570,34 @@ struct SidebarViewControllerTests {
         let playgroundRow = harness.controller.row(forGroup: harness.store.state.orderedGroups[4].id)
         let view = try #require(
             harness.outline.view(atColumn: 0, row: playgroundRow, makeIfNecessary: true) as? GroupRowView)
-        #expect((view.chevronTextLayer.string as? String) == "▸")
+        #expect(view.chevronPointsRight)
         #expect((view.nameTextLayer.string as? String) == "PLAYGROUND")
+    }
+
+    @Test("A new session expands its group, so the row it creates is actually visible")
+    func creatingASessionExpandsACollapsedGroup() throws {
+        let harness = Self.makeHarness()
+        let playground = harness.store.state.orderedGroups[4].id
+        #expect(harness.store.state.groups[playground]?.isCollapsed == true)
+
+        // The shape `SessionLauncher.start` uses: create, give it a shell, select it — one mutation.
+        let created = harness.store.updating { state -> SessionID in
+            let session = state.createSession(groupID: playground, cwd: "/tmp/new")
+            state.select(session.id)
+            return session.id
+        }
+        harness.store.flush()
+
+        #expect(harness.store.state.groups[playground]?.isCollapsed == false)
+        #expect(harness.outline.isItemExpanded(harness.controller.item(.group(playground))))
+        let row = harness.controller.row(forSession: created)
+        #expect(row >= 0)
+        #expect(harness.outline.selectedRow == row)
+
+        let view = try #require(
+            harness.outline.view(atColumn: 0, row: harness.controller.row(forGroup: playground),
+                                 makeIfNecessary: true) as? GroupRowView)
+        #expect(view.chevronPointsRight == false)
     }
 
     @Test("Collapsing and re-expanding hands the selection back to the outline")

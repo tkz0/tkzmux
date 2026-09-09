@@ -21,6 +21,19 @@ import Testing
         #expect(created.status == .idle)  // nothing is running yet; idle until its shell is spawned
     }
 
+    @Test func createExpandsACollapsedTargetGroup() {
+        var state = AppState.fixture
+        let collapsed = Fixture.groupID(4)  // "Playground" — collapsed in the fixture
+        #expect(state.groups[collapsed]?.isCollapsed == true)
+        state.createSession(groupID: collapsed, cwd: "/tmp/new")
+        #expect(state.groups[collapsed]?.isCollapsed == false, "a new row nobody can see is a bug")
+
+        // An already-expanded group is left exactly as it was, so the diff stays session-only.
+        let before = state.groups[group]
+        state.createSession(groupID: group, cwd: "/tmp/other")
+        #expect(state.groups[group] == before)
+    }
+
     @Test func createFallsBackToTheDefaultAccount() {
         var state = AppState()
         let g = state.addGroup(name: "Bucket")

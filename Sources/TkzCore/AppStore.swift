@@ -28,6 +28,9 @@ import Foundation
 /// `structure` therefore means exactly "the outline view's rows or their parents moved" — the only
 /// case that needs `insert/remove/moveItem` or a full `reloadData`. Collapsing a group is *not*
 /// structural: that is `expandItem`/`collapseItem`, driven by `groups`.
+///
+/// One mutation legitimately sets both: `createSession` into a *collapsed* group expands it, so the
+/// change set carries `structure` (the new row) **and** `groups` (the group that reopened).
 public struct ChangeSet: Hashable, Sendable {
     /// Sessions whose value differs (including any part of `live`).
     public var sessions: Set<SessionID>
