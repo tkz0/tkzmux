@@ -1437,6 +1437,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// ahead. Only asked for a `working` or `waiting` row. Tests set it.
     public var confirmRemove: ((Session) -> Bool)?
 
+    /// Overrides the "remove a group with sessions in it?" alert: gets the group and its members,
+    /// returns whether to go ahead. Only asked for a group that still has rows. Tests set it.
+    public var confirmRemoveGroup: ((Group, [Session]) -> Bool)?
+
     /// ⌘W, the row's `×`, the context menu: the session goes — row, shell and snapshot. There is
     /// no "closed but kept" state (decision 2026-09-08: a terminal cannot be exited). A session
     /// that is `working` or `waiting` is confirmed first — Claude is mid-answer, or mid-question;
@@ -1464,6 +1468,42 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             guard confirmed else { return }
         }
         launcher.remove(id)
+    }
+
+    /// The group header's context menu: the group goes, and with it every session in it — row,
+    /// shell and snapshot, exactly as ⌘W sends one row. An empty group goes at once; one that
+    /// still holds rows is confirmed first, once for the whole group rather than once per member,
+    /// because a collapsed header hides what is about to be closed. Sessions are never reassigned
+    /// to another group: dragging a row out first is how you keep it. Worktrees are not touched.
+    func removeGroup(_ id: GroupID) {
+        guard let group = store.state.groups[id] else { return }
+        let members = store.state.sessions(in: id)
+        if !members.isEmpty {
+            let confirmed = confirmRemoveGroup?(group, members) ?? runConfirmation(
+                title: "Remove \u{201C}\(group.name)\u{201D} and its \(members.count) session\(members.count == 1 ? "" : "s")?",
+                message: Self.removeGroupMessage(members),
+                button: "Remove")
+            guard confirmed else { return }
+        }
+        launcher.removeGroup(id)
+    }
+
+    /// The alert's body. The busy count is called out because those are the rows the user would
+    /// have been asked about one at a time had they closed them with ⌘W.
+    private static func removeGroupMessage(_ members: [Session]) -> String {
+        let busy = members.filter { member in
+            switch member.status {
+            case .working, .waiting: return true
+            case .idle: return false
+            }
+        }.count
+        var text = "Removing the group ends their shells and removes their rows"
+        if busy > 0 {
+            text += " \u{2014} \(busy) \(busy == 1 ? "is" : "are") still working or waiting on you"
+        }
+        text += ". The conversations are kept by Claude Code, and the worktrees on disk are not"
+        text += " touched."
+        return text
     }
 
     private func runConfirmation(title: String, message: String, button: String) -> Bool {
@@ -1506,7 +1546,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         return menu
     }
 
-    /// Right-click on a group header: New session… / Resume all in group.
+    /// Right-click on a group header: New session… / Resume all / Set Repo… / Remove group, plus
+    /// the colour picker.
     func groupContextMenu(for id: GroupID) -> NSMenu? {
         guard let group = store.state.groups[id] else { return nil }
         let menu = NSMenu()
@@ -1527,6 +1568,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             action: #selector(contextSetGroupRepo(_:)), id: id.rawValue)
         repo.identifier = ContextItemID.groupRepo
         menu.addItem(repo)
+        menu.addItem(.separator())
+
+        let remove = contextItem("Remove group", action: #selector(contextRemoveGroup(_:)), id: id.rawValue)
+        remove.identifier = ContextItemID.removeGroup
+        menu.addItem(remove)
+
         menu.addItem(.separator())
         menu.addItem(groupColorMenuItem(for: id))
         return menu
@@ -1611,6 +1658,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         public static let newSession = NSUserInterfaceItemIdentifier("tkzmux.context.newSession")
         public static let resumeAll = NSUserInterfaceItemIdentifier("tkzmux.context.resumeAll")
         public static let groupRepo = NSUserInterfaceItemIdentifier("tkzmux.context.groupRepo")
+        public static let removeGroup = NSUserInterfaceItemIdentifier("tkzmux.context.removeGroup")
         /// The "Group color" parent item; its `submenu` holds the swatches.
         public static let groupColor = NSUserInterfaceItemIdentifier("tkzmux.context.groupColor")
         public static let groupColorNone = NSUserInterfaceItemIdentifier("tkzmux.context.groupColor.none")
@@ -1658,6 +1706,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     @objc private func contextResumeAll(_ sender: Any?) {
         guard let id = groupID(from: sender) else { return }
         resumeAll(inGroup: id)
+    }
+
+    @objc private func contextRemoveGroup(_ sender: Any?) {
+        guard let id = groupID(from: sender) else { return }
+        removeGroup(id)
     }
 
     @objc private func contextSetGroupRepo(_ sender: Any?) {
