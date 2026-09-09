@@ -1,0 +1,22 @@
+Tests/TkzTerminalCoreTests/TerminalEnvironmentTests.swift
+  s_a6b77fdfad3885::t_ff9967a2586281 59-128
+Sources/TkzTerminalCore/TerminalEnvironment.swift
+  s_a6b77fdfad3885::t_0f2add8809c8c2 21-43
+  s_a6b77fdfad3885::t_b8ff47f3b656bd 91-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "0968283c6b5c30773e895a05c01ac76e17bf3c16",
+  "prompts": {},
+  "sessions": {
+    "s_a6b77fdfad3885": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "713d9700-82a5-4f9a-a5df-6678fe809238",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
