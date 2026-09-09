@@ -59,6 +59,10 @@ public final class SessionRowView: NSTableCellView {
     private lazy var titleLayer = SidebarLayers.text(titleFont, color: NSColor.clear.cgColor)
     private lazy var branchLayer = SidebarLayers.text(branchFont, color: NSColor.clear.cgColor)
     private lazy var wtBadge = SidebarBadgeLayer(font: badgeFont)
+    /// The "this session's processes are holding N GB" badge. Reuses the amber NEEDS YOU tokens
+    /// rather than introducing its own: both are warnings, and the two never appear on the same
+    /// line (NEEDS YOU sits on the title line, this on the detail line).
+    private lazy var memoryBadge = SidebarBadgeLayer(font: badgeFont)
     private lazy var needsYouBadge = SidebarBadgeLayer(font: badgeFont)
     private lazy var accountChip = SidebarBadgeLayer(font: badgeFont)
 
@@ -99,6 +103,7 @@ public final class SessionRowView: NSTableCellView {
     private var model = SidebarSessionRowModel(title: "")
     private var theme: Theme = .default
     private var wtBadgeWidth: CGFloat = 0
+    private var memoryBadgeWidth: CGFloat = 0
     private var needsYouBadgeWidth: CGFloat = 0
     private var accountChipWidth: CGFloat = 0
 
@@ -114,6 +119,7 @@ public final class SessionRowView: NSTableCellView {
         root.addSublayer(titleLayer)
         root.addSublayer(branchLayer)
         root.addSublayer(wtBadge)
+        root.addSublayer(memoryBadge)
         root.addSublayer(needsYouBadge)
         root.addSublayer(accountChip)
         root.addSublayer(statusDot)
@@ -171,6 +177,7 @@ public final class SessionRowView: NSTableCellView {
         titleLayer.string = nil
         branchLayer.string = nil
         wtBadge.isHidden = true
+        memoryBadge.isHidden = true
         needsYouBadge.isHidden = true
         accountChip.isHidden = true
         selectionLayer.backgroundColor = NSColor.clear.cgColor
@@ -276,6 +283,15 @@ public final class SessionRowView: NSTableCellView {
             wtBadgeWidth = 0
         }
 
+        if let size = model.memoryBadge, !size.isEmpty {
+            memoryBadge.isHidden = false
+            memoryBadgeWidth = memoryBadge.configure(
+                text: size, foreground: theme.needsYouText, background: theme.needsYouBackground)
+        } else {
+            memoryBadge.isHidden = true
+            memoryBadgeWidth = 0
+        }
+
         needsYouBadge.isHidden = !model.needsAttention
         if model.needsAttention {
             needsYouBadgeWidth = needsYouBadge.configure(
@@ -311,6 +327,7 @@ public final class SessionRowView: NSTableCellView {
     var titleTextLayer: CATextLayer { titleLayer }
     var branchTextLayer: CATextLayer { branchLayer }
     var worktreeBadgeLayer: CALayer { wtBadge }
+    var memoryBadgeLayer: CALayer { memoryBadge }
     var needsYouBadgeLayer: CALayer { needsYouBadge }
     var accountChipLayer: CALayer { accountChip }
     var selectionBackgroundLayer: CALayer { selectionLayer }
@@ -380,6 +397,11 @@ public final class SessionRowView: NSTableCellView {
         if !accountChip.isHidden {
             let x = w - Self.rightInset - closeReserve - accountChipWidth
             accountChip.frame = CGRect(x: x, y: Self.detailLineY, width: accountChipWidth, height: badgeH)
+            detailRight = x - Self.badgeGap
+        }
+        if !memoryBadge.isHidden {
+            let x = detailRight - memoryBadgeWidth
+            memoryBadge.frame = CGRect(x: x, y: Self.detailLineY, width: memoryBadgeWidth, height: badgeH)
             detailRight = x - Self.badgeGap
         }
         var detailLeft = Self.textLeft

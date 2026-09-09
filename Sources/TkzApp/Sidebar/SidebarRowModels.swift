@@ -77,6 +77,13 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
     /// is an inset rounded rect, not a full-bleed system highlight.
     public var isSelected: Bool
 
+    /// A short size string ("6.2 GB") when this session's *processes* are holding an alarming
+    /// amount of memory, else `nil` — which hides the badge entirely.
+    ///
+    /// Deliberately absent for a normal session, following the same rule as the account chip: a
+    /// badge every row carries is a badge nobody reads. `SidebarRowAdapter` decides the threshold.
+    public var memoryBadge: String?
+
     /// The **containing group's** colour, so the 2.5 pt edge runs down the whole group rather than
     /// stopping at its header (TKZ-48). `nil` — an uncoloured group — leaves the edge layer fully
     /// transparent, exactly as on the header; it is never `Theme.groupEdgeDefault`.
@@ -91,7 +98,8 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         accountColor: RGB? = nil,
         needsAttention: Bool = false,
         isSelected: Bool = false,
-        groupColor: RGB? = nil
+        groupColor: RGB? = nil,
+        memoryBadge: String? = nil
     ) {
         self.title = title
         self.branch = branch
@@ -102,6 +110,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         self.needsAttention = needsAttention
         self.isSelected = isSelected
         self.groupColor = groupColor
+        self.memoryBadge = memoryBadge
     }
 }
 

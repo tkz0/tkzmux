@@ -450,6 +450,30 @@ struct IdleCompressorTests {
             saveSnapshot: saveSnapshot)
     }
 
+    /// `stop()` only parks the timer. The compressor's own table holds a strong `TerminalSession`
+    /// per entry — and therefore that session's whole scrollback — so a `closeAll` that stopped the
+    /// timer without forgetting the sessions kept every VT alive for the app's remaining lifetime.
+    /// `evict` always did the `forget`; `closeAll` did not.
+    // `@MainActor` because this one drives a real host (the rest of this suite pokes the
+    // compressor directly); the surrounding suite is nonisolated.
+    @MainActor
+    @Test("closeAll releases the compressor's session references, not just its timer")
+    func closeAllForgetsSessions() throws {
+        let temp = try TempDirectory()
+        let compressor = makeCompressor()
+        guard let (_, view, host) = try makeHost(temp, compressor: compressor) else { return }
+
+        for _ in 0..<3 {
+            _ = try host.open(
+                SessionID.generate(), cwd: NSHomeDirectory(), env: [:],
+                size: view.gridSizeForBounds())
+        }
+        #expect(compressor.stats.tracked == 3)
+
+        host.closeAll(signal: SIGKILL)
+        #expect(compressor.stats.tracked == 0)
+    }
+
     @Test("the visible session is never compressed")
     func skipsVisible() throws {
         let compressor = makeCompressor()

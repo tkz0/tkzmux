@@ -51,8 +51,30 @@ public final class GitStatusService: Sendable {
         /// Keyed by `RepoInfo.repoRoot` — one entry per repo, shared by all its worktrees.
         var repos: [String: RepoState] = [:]
         /// Detection is one git launch; sessions retarget often enough to be worth caching by cwd.
+        ///
+        /// Keyed by directory, not by session, so no session teardown can clear it — and OSC 7
+        /// `cd` tracking retargets on *every* directory change, so left alone this grows for the
+        /// life of the process. Bounded FIFO instead: `detectCacheOrder` records insertion order
+        /// and the oldest entries go once `detectCacheLimit` is passed. Evicting a live directory
+        /// costs one `git` launch to re-detect, which is what the cache was saving in the first
+        /// place.
         var detectCache: [String: DetectResult] = [:]
+        var detectCacheOrder: [String] = []
+
+        mutating func cacheDetection(_ result: DetectResult, for directory: String) {
+            if detectCache.updateValue(result, forKey: directory) == nil {
+                detectCacheOrder.append(directory)
+            }
+            guard detectCacheOrder.count > GitStatusService.detectCacheLimit else { return }
+            let excess = detectCacheOrder.count - GitStatusService.detectCacheLimit
+            for key in detectCacheOrder.prefix(excess) { detectCache.removeValue(forKey: key) }
+            detectCacheOrder.removeFirst(excess)
+        }
     }
+
+    /// How many directories' detection results to keep. A few hundred distinct cwds is far more
+    /// than a session ever visits; the point is that the number has a ceiling at all.
+    static let detectCacheLimit = 256
 
     private enum DetectResult {
         case repo(RepoInfo)
@@ -388,7 +410,8 @@ public final class GitStatusService: Sendable {
         }
         let info = RepoInfo.detect(cwd: directory, gitPath: gitPath)
         storage.withLock { s in
-            s.detectCache[directory] = info.map { DetectResult.repo($0) } ?? .notARepo(at: Date())
+            s.cacheDetection(info.map { DetectResult.repo($0) } ?? .notARepo(at: Date()),
+                             for: directory)
         }
         return info
     }

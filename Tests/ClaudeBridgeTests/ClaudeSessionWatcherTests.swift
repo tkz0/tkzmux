@@ -413,6 +413,55 @@ struct ClaudeSessionWatcherTests {
         // busy loop would burn in 2 s (close to 2000 ms on one core) while tolerating that noise.
         #expect((after - before) < 0.4)
     }
+
+    /// A Claude Code that is SIGKILLed never deletes its `<pid>.json`, so the file — and the
+    /// `O_EVTONLY` fd plus kqueue registration watching it — outlived the process forever, one set
+    /// per crashed session. Retention was a function of the directory's contents, not of live
+    /// sessions. A long-dead descriptor now gives its watch back while staying in the snapshot, so
+    /// the row still reads as dead rather than vanishing.
+    @Test("a long-dead descriptor releases its file watch but keeps its snapshot entry")
+    func deadDescriptorReleasesItsWatch() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let liveness = FakeLiveness()
+        let collector = EventCollector()
+        // `deadWatchGrace: 0` so the sweep acts at once; in the app it is 120 s.
+        let watcher = ClaudeSessionWatcher(
+            configDirs: [fixture.configDir.path], liveness: liveness,
+            debounce: .milliseconds(30), sweepInterval: .milliseconds(50), deadWatchGrace: 0,
+            onEvent: collector.callback)
+
+        liveness.setAlive(4242, true)
+        fixture.write(pid: 4242, status: "busy")
+        watcher.start()
+        defer { watcher.stop() }
+
+        #expect(collector.wait(forAtLeast: 1))
+        #expect(watcher.openWatchCount == 1)
+
+        // The process dies; the file stays on disk, as a crash leaves it.
+        liveness.setAlive(4242, false)
+
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline, watcher.openWatchCount > 0 {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        #expect(watcher.openWatchCount == 0, "the watch on a dead descriptor should be given back")
+
+        // Still known, still reported dead — the fd is what was released, not the knowledge.
+        let key = DescriptorKey(configDir: fixture.configDir.path, pid: 4242)
+        let state = try #require(watcher.snapshot()[key])
+        #expect(state.alive == false)
+        #expect(state.info.pid == 4242)
+
+        // And deleting the file still clears it, even with no watch left to notice.
+        try FileManager.default.removeItem(at: fixture.descriptorPath(pid: 4242))
+        let gone = Date().addingTimeInterval(2)
+        while Date() < gone, watcher.snapshot()[key] != nil {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        #expect(watcher.snapshot()[key] == nil)
+    }
 }
 
 /// Mirrors the `proc_pid_rusage`-based CPU accounting used elsewhere in the app

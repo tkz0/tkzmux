@@ -54,17 +54,32 @@ public enum ProcessTree {
         return Array(buffer.prefix(Int(count)))
     }
 
-    /// BFS over descendants of `pid` (excludes `pid` itself), capped at `maxDepth` levels.
-    public static func descendants(of pid: pid_t, maxDepth: Int = 6) -> [pid_t] {
+    /// BFS over descendants of `pid` (excludes `pid` itself).
+    ///
+    /// Bounded by **total process count**, not by depth. The old 6-level cap was too shallow for
+    /// what actually hangs off a tkzmux pty: `zsh` → `claude` → `bash` → `swift-package` →
+    /// `swiftpm-testing-helper` is already five, and a nested shell or a subagent pushes past six —
+    /// which would have hidden exactly the process worth finding (see docs/perf.md → *Session
+    /// process memory*). `maxDepth` stays as a belt-and-braces stop; `maxProcesses` is the real
+    /// bound, matching `PortScanner`'s `maxProcessesVisited`.
+    ///
+    /// A `visited` set makes the walk safe against a pid appearing twice (pid reuse between two
+    /// `proc_listchildpids` calls), which would otherwise loop.
+    public static func descendants(
+        of pid: pid_t, maxDepth: Int = 32, maxProcesses: Int = 512
+    ) -> [pid_t] {
         var result: [pid_t] = []
+        var visited: Set<pid_t> = [pid]
         var frontier: [pid_t] = [pid]
         var depth = 0
-        while depth < maxDepth, !frontier.isEmpty {
+        while depth < maxDepth, !frontier.isEmpty, result.count < maxProcesses {
             var next: [pid_t] = []
             for p in frontier {
-                let kids = children(of: p)
-                result.append(contentsOf: kids)
-                next.append(contentsOf: kids)
+                for kid in children(of: p) where visited.insert(kid).inserted {
+                    result.append(kid)
+                    next.append(kid)
+                    if result.count >= maxProcesses { return result }
+                }
             }
             frontier = next
             depth += 1

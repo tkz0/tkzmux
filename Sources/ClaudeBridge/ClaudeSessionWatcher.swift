@@ -59,6 +59,10 @@ public final class ClaudeSessionWatcher: Sendable {
     private let liveness: any ProcessLiveness
     private let debounce: Duration
     private let sweepInterval: Duration
+    /// How long a descriptor whose process is gone keeps its file watch. Long enough that a
+    /// misjudged liveness check cannot silently stop tracking a live session; injectable so the
+    /// tests do not have to wait it out.
+    private let deadWatchGrace: TimeInterval
     private let onEvent: @Sendable (DescriptorEvent) -> Void
     private let storage: Mutex<Storage>
 
@@ -76,7 +80,6 @@ public final class ClaudeSessionWatcher: Sendable {
         var fd: Int32 = -1
         var source: DispatchSourceFileSystemObject?
         var debounceTimer: DispatchSourceTimer?
-        var lastGoodInfo: ClaudeSessionInfo?
         var path: String
         var inode: ino_t?
 
@@ -99,11 +102,13 @@ public final class ClaudeSessionWatcher: Sendable {
         liveness: any ProcessLiveness = SystemProcessLiveness(),
         debounce: Duration = .milliseconds(100),
         sweepInterval: Duration = .seconds(5),
+        deadWatchGrace: TimeInterval = 120,
         onEvent: @escaping @Sendable (DescriptorEvent) -> Void
     ) {
         self.liveness = liveness
         self.debounce = debounce
         self.sweepInterval = sweepInterval
+        self.deadWatchGrace = deadWatchGrace
         self.onEvent = onEvent
         self.storage = Mutex(Storage(configDirs: configDirs))
     }
@@ -151,6 +156,13 @@ public final class ClaudeSessionWatcher: Sendable {
 
     public func snapshot() -> [DescriptorKey: DescriptorState] {
         storage.withLock { $0.snapshot }
+    }
+
+    /// How many descriptor file watches are currently open — one `O_EVTONLY` fd and one kqueue
+    /// registration each. Lower than `snapshot().count` once dead descriptors have been released;
+    /// see ``releaseWatch(key:_:)``.
+    public var openWatchCount: Int {
+        storage.withLock { $0.files.count }
     }
 
     public func setConfigDirs(_ dirs: [String]) {
@@ -237,7 +249,8 @@ public final class ClaudeSessionWatcher: Sendable {
             guard !base.isEmpty, base.allSatisfy({ $0.isNumber }), let pid = pid_t(base) else { continue }
             seenPids.insert(pid)
             let key = DescriptorKey(configDir: configDir, pid: pid)
-            if s.files[key] == nil {
+            // A descriptor long since concluded dead keeps no watch — see `releaseWatch`.
+            if s.files[key] == nil, descriptorIsWatchable(key: key, s) {
                 let watch = FileWatch(path: (dir as NSString).appendingPathComponent(name))
                 s.files[key] = watch
                 openFileSource(for: key, watch: watch, &s)
@@ -247,7 +260,11 @@ public final class ClaudeSessionWatcher: Sendable {
 
         // Any watched file whose pid is no longer present (deleted, and we missed the per-file
         // .delete event, e.g. because the source hadn't opened yet) is dropped too.
-        for key in s.files.keys where key.configDir == configDir && !seenPids.contains(key.pid) {
+        // Both maps, not just `s.files`: a dead descriptor has no watch any more (see
+        // `releaseWatch`) but still has a snapshot entry, and once its file is gone that entry must
+        // go too — otherwise nothing would ever clear it.
+        let known = Set(s.files.keys).union(s.snapshot.keys)
+        for key in known where key.configDir == configDir && !seenPids.contains(key.pid) {
             if let event = removeDescriptor(key: key, &s) { events.append(event) }
         }
         return events
@@ -340,9 +357,32 @@ public final class ClaudeSessionWatcher: Sendable {
             // Torn write: keep the previous value, emit nothing.
             return nil
         }
-        watch.lastGoodInfo = info
         return applyUpdate(key: key, info: info, &s)
     }
+
+    /// Closes the file watch but keeps the snapshot entry.
+    ///
+    /// A dead process will never rewrite its descriptor, so watching the file buys nothing — and a
+    /// Claude Code that was SIGKILLed never deletes it, so the file (and therefore the watch) would
+    /// otherwise outlive the process forever: one `O_EVTONLY` fd, one kqueue registration and one
+    /// `DispatchSource` per crashed session, for the life of the app. That made the cost a function
+    /// of the *directory's* contents rather than of live sessions.
+    ///
+    /// The snapshot entry is deliberately kept: it is a small struct, it is what makes the row read
+    /// as dead rather than absent, and dropping it would only invite `scanConfigDir` to re-open the
+    /// watch on the next directory event. `descriptorIsWatchable` is the other half of that.
+    private func releaseWatch(key: DescriptorKey, _ s: inout Storage) {
+        s.files[key]?.cancel()
+        s.files[key] = nil
+    }
+
+    /// Whether a descriptor file deserves an open watch: yes, unless its process has been gone
+    /// longer than ``deadWatchGrace``.
+    private func descriptorIsWatchable(key: DescriptorKey, _ s: Storage) -> Bool {
+        guard let state = s.snapshot[key], !state.alive else { return true }
+        return Date().timeIntervalSince(state.lastSeenAt) <= deadWatchGrace
+    }
+
 
     private func removeDescriptor(key: DescriptorKey, _ s: inout Storage) -> DescriptorEvent? {
         s.files[key]?.cancel()
@@ -390,7 +430,19 @@ public final class ClaudeSessionWatcher: Sendable {
         }
         for (key, current) in s.snapshot {
             let alive = liveness.isAlive(pid: current.info.pid, startedAt: current.info.startedAt)
-            guard alive != current.alive else { continue }
+            guard alive != current.alive else {
+                // Long-dead and still on disk: stop paying for a watch on it. Deliberately *not*
+                // done the moment it reads dead — `isAlive` is a pid check, and giving up a watch
+                // immediately would mean a descriptor misjudged dead is never seen updating again.
+                // After the grace there is nothing to miss: a Claude Code that comes back writes a
+                // *new* `<pid>.json`, which the directory source catches.
+                if !alive, s.files[key] != nil,
+                    Date().timeIntervalSince(current.lastSeenAt) > deadWatchGrace
+                {
+                    releaseWatch(key: key, &s)
+                }
+                continue
+            }
             var updated = current
             updated.alive = alive
             updated.lastSeenAt = Date()

@@ -45,9 +45,12 @@ public final class ClaudeIntegration {
 
     /// `launch`-frame bindings. A session that exits keeps its entry until the pid is reused by a
     /// later `launch`, which simply overwrites it.
-    private(set) var pidToSession: [pid_t: SessionID] = [:]
-    /// The whole last Stop message per session (see the file header).
-    private var fullMessages: [SessionID: String] = [:]
+    ///
+    /// Internal setter rather than `private(set)` so the eviction tests can seed a binding; both
+    /// this and `fullMessages` are dropped by ``forget(_:)``.
+    var pidToSession: [pid_t: SessionID] = [:]
+    /// The whole last Stop message per session (see the file header). Internal for the same reason.
+    var fullMessages: [SessionID: String] = [:]
     /// Descriptors no row owns — a cmux window, Terminal.app, VS Code. M5.3's Elsewhere group reads
     /// these; until then they are only kept so the join can be inspected.
     public private(set) var externalDescriptors: [DescriptorKey: DescriptorState] = [:]
@@ -276,6 +279,16 @@ public final class ClaudeIntegration {
               let configDir = store.state.accounts[accountKey]?.configDir
         else { return }
         try installer.uninstall(configDir: configDir, accountKey: accountKey)
+    }
+
+    /// Drops every per-session entry for `id`. Called when the row is removed.
+    ///
+    /// `fullMessages` is the one that matters: a Stop message is an arbitrarily long string (a
+    /// pasted diff, a log dump), and without this the app keeps one per session id it has *ever*
+    /// seen, for as long as it runs. `pidToSession` is small but has the same shape.
+    public func forget(_ id: SessionID) {
+        fullMessages.removeValue(forKey: id)
+        pidToSession = pidToSession.filter { $0.value != id }
     }
 
     /// Deletes `bin/`, `zsh/` and `VERSION`; new shells are plain login shells again. The socket,

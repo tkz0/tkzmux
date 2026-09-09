@@ -66,6 +66,10 @@ public final class SessionLauncher {
     /// Called after a worktree refresh has been applied to the store. Tests wait on it.
     public var onWorktreesRefreshed: ((String, [String]) -> Void)?
 
+    /// Called by ``remove(_:)`` after the row is gone, so per-session caches elsewhere can drop
+    /// their entry. `MainWindowController` wires it to the Claude and git integrations.
+    public var onRemoved: ((SessionID) -> Void)?
+
     private let fileManager: FileManager
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "launch")
     private var pendingWorktreeRefresh: [String: Task<Void, Never>] = [:]
@@ -256,6 +260,10 @@ public final class SessionLauncher {
     public func remove(_ id: SessionID) {
         host.discard(id)
         store.update { $0.removeSession(id) }
+        // Everything else that keys state by session id gets told here. Without it those caches
+        // keep one entry per session the process has *ever* seen. `removeGroup` below is the other
+        // path a row can leave by and fires the same hook — any third one must too.
+        onRemoved?(id)
     }
 
     /// Remove a whole group: every member's shell and snapshot go the way `remove(_:)` sends one,
@@ -263,8 +271,12 @@ public final class SessionLauncher {
     /// pass, rather than N of each. The reducer's own `removeGroup` never touches `host`, which is
     /// the whole reason this lives here. Never touches a worktree on disk.
     public func removeGroup(_ id: GroupID) {
-        for session in store.state.sessions(in: id) { host.discard(session.id) }
+        let members = store.state.sessions(in: id).map(\.id)
+        for member in members { host.discard(member) }
         store.update { $0.removeGroup(id) }
+        // Same per-session cache eviction `remove(_:)` does — a row leaving with its group is
+        // still a row leaving, and `fullMessages` holds an arbitrarily long string per id.
+        for member in members { onRemoved?(member) }
     }
 
     // MARK: - Worktrees after an exit

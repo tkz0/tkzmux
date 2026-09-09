@@ -30,7 +30,10 @@ ticket's report.
 ### What the harness measures, and what it does not
 
 * All memory/thread/CPU numbers are for **the tkzmux host process only**. The N `zsh` children are
-  separate processes; their own RSS and CPU are *not* included anywhere in this document.
+  separate processes; their own RSS and CPU are *not* included anywhere in this document. The app
+  does now *report* the children's footprint at runtime, though it is not benchmarked here — see
+  [§11 Session process memory](#11-session-process-memory), and read that section before concluding
+  from an Activity Monitor number that tkzmux is leaking.
 * `RSS` = `mach_task_basic_info.resident_size`. `Footprint` = `task_vm_info.phys_footprint`, which is
   what Activity Monitor shows as "Memory" and what the memory-pressure system charges you for.
   These two diverge sharply once pages are `MADV_FREE`'d — see *Does compression pay?*.
@@ -261,7 +264,8 @@ is a different order of magnitude from 31 panels on 167 threads**, and the per-s
   machine has no foreground GUI session.**
 * Anything with **live Claude Code sessions** rather than `zsh`. Every Claude number above would
   need a rerun with `claude` as the spawned command.
-* The RSS/CPU of the spawned `zsh` children.
+* The RSS/CPU of the spawned `zsh` children. **Now reported by the app at runtime (§11), though
+  still not benchmarked here.**
 * Whether lowering `SCROLLBACK_MAX_BYTES` on a live terminal trims retained scrollback immediately
   (no setter exists yet).
 * `compress(FULL)` at scale: only INCREMENTAL-to-`COMPLETE` was measured on the live sessions, since
@@ -675,3 +679,134 @@ recorded as `accountKey`.
 | Date | Sessions | Launches logged | Wrong-account launches | Lost rows | Notes |
 |---|---:|---:|---:|---:|---|
 | 2026-09-08 | 10 (restored) | 1 (`reopen` of the selected row, headless autoquit) | 0 | 0 | Smoke run only; housekeeping removed 14 orphaned `.ghsnap` files from earlier harness runs. The day-of-use row is still to be filled in by hand. |
+
+## 11. Session process memory
+
+Every number above this section is about the tkzmux process. This section is about the processes
+tkzmux *starts* — and it exists because that distinction once cost a machine.
+
+### The incident (2026-09-09)
+
+Activity Monitor reported tkzmux at **>30 GB** and macOS put up "your system has run out of
+application memory", repeatedly, on a 36 GB machine. tkzmux was not the culprit. Across the ten
+`JetsamEvent-2026-09-09-*.ips` reports in `/Library/Logs/DiagnosticReports`, the tkzmux process is
+**77–286 MB resident, `lifetimeMax` 295 MB**, in every single one.
+
+What was large was one `swiftpm-testing-helper` — an unfiltered `swift test` — started from a
+tkzmux terminal:
+
+| event (local) | pid | resident | cpuTime |
+|---|---|---:|---:|
+| 11:20 | 6966 | 19.5 GB | 11.2 s |
+| 11:33 | 50126 | 32.8 GB | 33.6 s |
+| 11:59 | 44396 | 38.3 GB | 30.1 s |
+| 12:07 | 72138 | 47.9 GB | 32.1 s |
+| 12:14 | 16591 | 47.8 GB | 29.9 s |
+
+Five distinct pids, one at a time, each replacing the last after it was killed by hand — so a
+*single* `swift test` reached 20–48 GB, not several in parallel. The shape is a **stall**: across
+the 11:33→11:34 pair the process sat at 32.8 GB while its `cpuTime` moved 33.56 → 33.61 s, and the
+later runs all plateau near 48 GB. It allocated, then hung holding it. Jetsam does not kill a
+stalled user process, so it stayed until somebody killed it.
+
+**Why tkzmux got the blame.** Every process forked from a tkzmux pty inherits tkzmux's **process
+coalition** (membership is set at fork and never changes) — the `claude` binaries, `dotnet`, app
+servers, `swift-package`, all of it. Jetsam and the out-of-memory dialog account **by coalition**,
+and Activity Monitor's hierarchical view rolls children into the parent. The control case is in the
+same reports: in a non-tkzmux coalition, `swiftpm-testing-helper` peaked at a normal 330–370 MB the
+same morning.
+
+### How to tell them apart
+
+Group a jetsam report's `processes[]` by `coalition` and read `rpages * 16384` plus `lifetimeMax`:
+
+```sh
+ls -lt /Library/Logs/DiagnosticReports/JetsamEvent-*.ips
+# each .ips is a header line followed by a JSON body
+```
+
+Never conclude the app is leaking from an Activity Monitor figure alone.
+
+### What the app reports now
+
+`SessionMemory` (`Sources/TkzApp/SessionMemory.swift`) sums `ri_phys_footprint` from
+`proc_pid_rusage(pid, RUSAGE_INFO_V4, …)` over a session's pty child and its descendants.
+`proc_pid_rusage` is used rather than `task_info(TASK_VM_INFO)` because the latter needs a task port
+for the target, which is unavailable for another process without entitlements; the accounting is the
+same one `/usr/bin/footprint` and Activity Monitor report.
+
+The walk (`ProcessTree.descendants`) is bounded by **process count** (512), not by depth: the real
+chain is `zsh → claude → bash → swift-package → swiftpm-testing-helper`, already five levels, and
+the previous 6-level cap would have hidden exactly the process worth finding.
+
+The sample separates the root from its descendants, because the two answer different questions: the
+total is what the session costs, while the descendants are what *Kill Processes* on the row's
+context menu would actually take — it spares the login shell so the row stays usable. For an idle
+session the shell is the biggest process in the tree, so naming it as "what will be killed" would be
+wrong twice over.
+
+Surfaced in `diagnosticsLine()` as, e.g.:
+
+```
+sessionMem[total=16.7MiB procs=5 worstSession=5.9MiB worstProc=sleep:0.9MiB]
+```
+
+`worstProc` names the largest *descendant* across all sessions — the runaway, when there is one —
+and is absent when every session is just a shell.
+
+**Interpreting the number.** Six Claude Code processes at 250–400 MB each (≈1.8 GB total) is the
+normal baseline for a working set of sessions in this coalition. A per-session figure in the
+single-digit GB is the anomaly worth acting on.
+
+### On the sidebar
+
+`MainWindowController.sampleSessionMemory()` rides the existing once-a-minute status tick and writes
+each session's total into `LiveSessionState.subtreeFootprintBytes` (process state, never persisted).
+A row past **4 GB** — `SidebarRowAdapter.memoryBadgeThreshold` — carries an amber badge with the
+size; below it there is no badge at all, following the same rule as the account chip: a badge every
+row carries is a badge nobody reads.
+
+Only *bucket* changes are written to the store (256 MB steps below the threshold, 0.1 GB above it,
+where the figure is actually on screen). Every store write is a `ChangeSet.sessions` entry that
+reloads that row, and a steady session must not redraw once a minute — that is the property
+design.md → *Store* exists to protect.
+
+Right-clicking a row with child processes offers **Kill Processes**, which SIGKILLs the subtree
+deepest-first and spares the login shell, after a confirmation naming what it will take.
+
+> **Gotcha when extending this.** `subtreeFootprintBytes` is a stored property on a `TkzCore` model
+> read from `TkzApp`. Adding a field there did **not** trigger a rebuild of the dependent module:
+> the adapter kept reading the old struct layout and returned plausible-but-wrong sizes (9.0 GB read
+> back as "5.7 GB", and a 6.5 GB session as under-threshold). Clean the debug build after changing
+> these models rather than trusting an incremental one.
+
+### Test-suite memory
+
+`scripts/test-memory-probe.sh` runs each test target — or `ALL` for the unfiltered `swift test` that
+actually blew up — under two trip wires: an RSS cap (`LIMIT_MB`, default 4096) and a wall clock
+(`TIMEOUT_S`, default 420), because the failure mode is a stall rather than unbounded growth. On a
+trip it captures `vmmap -summary`, `heap` and `sample` **before** killing, so a process sitting on
+tens of GB says what it is holding instead of having to be bisected for.
+
+Measured on `main` at `bd7cabb` with the changes in this section applied, all in **one run** at a
+0.1 s poll (2026-09-09):
+
+| target | peak RSS | biggest process | outcome |
+|---|---:|---|---|
+| TkzCoreTests | 101 MB | swift-test 58 MB | passed |
+| PersistenceTests | 107 MB | swift-test 54 MB | passed |
+| ClaudeBridgeTests | 123 MB | swift-test 55 MB | passed |
+| GitStatusTests | 109 MB | swift-test 55 MB | passed |
+| TkzTerminalCoreTests | 106 MB | swift-test 55 MB | passed |
+| TkzTerminalRenderTests | 244 MB | swiftpm-testing-helper 188 MB | passed |
+| TkzTerminalViewTests | 166 MB | swiftpm-testing-helper 111 MB | passed |
+| TkzAppTests | 524 MB | swiftpm-testing-helper 481 MB | passed |
+| **`ALL` (unfiltered `swift test`, 1037 tests in one helper)** | **570 MB** | swiftpm-testing-helper 533 MB | **passed** |
+
+The poll interval is load-bearing. At the 1 s default this script first shipped with, targets that
+finish in about a second were sampled once — before the test helper had forked — and reported as
+peaking at 4 MB. Anything measured with this script needs a poll well under the target's runtime.
+
+So the 20–48 GB explosion **does not reproduce on a clean `main`**: the trigger was in uncommitted
+work in one of the other worktrees, and that work is not on `main` today. The probe is what will
+catch it in the act if it returns.

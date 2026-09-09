@@ -165,8 +165,15 @@ public final class TerminalViewHost: TerminalHost {
     private let signposter = OSSignposter(subsystem: "se.tkz.tkzmux", category: "terminalhost")
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "terminalhost")
 
-    /// Every `show(_:)` duration in seconds, in call order. Diagnostics; see docs/perf.md.
+    /// The most recent `show(_:)` durations in seconds, in call order. Diagnostics; see
+    /// docs/perf.md.
+    ///
+    /// Capped: `resetShowDurations()` is only ever called by the dev bench, so in the real app
+    /// this otherwise grew by one `Double` per session switch for the life of the process. The
+    /// switch benchmark reads a distribution over a run of a few hundred, so the cap is well above
+    /// what it needs.
     public private(set) var showDurations: [Double] = []
+    private static let maxShowDurations = 4096
 
     public init(
         view: TerminalMetalView,
@@ -222,6 +229,18 @@ public final class TerminalViewHost: TerminalHost {
     /// Retained scrollback rows per session, in `order`. Diagnostics: it is the only way to say
     /// what a harness corpus actually built up rather than what it was asked to build up.
     public func scrollbackRows() -> [Int] { order.compactMap { sessions[$0]?.session.scrollbackRows } }
+
+    /// Per-session memory held by the *spawned processes* — the shell, Claude Code, and whatever
+    /// those started — in `order`. This is the number the app's own `HostProcessMetrics` cannot
+    /// see and that Activity Monitor blames on us anyway; see `SessionMemory`.
+    ///
+    /// One `proc_pid_rusage` syscall per process in each tree, so call it on a slow timer.
+    public func sessionMemory() -> [(id: SessionID, sample: SessionMemorySample)] {
+        order.compactMap { id in
+            guard let pid = sessions[id]?.pty.pid, pid > 0 else { return nil }
+            return (id, SessionMemory.sample(rootPid: pid))
+        }
+    }
 
     // MARK: - open
 
@@ -434,6 +453,9 @@ public final class TerminalViewHost: TerminalHost {
         }
         let elapsed = ContinuousClock.now - start
         showDurations.append(Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18)
+        if showDurations.count > TerminalViewHost.maxShowDurations {
+            showDurations.removeFirst(showDurations.count - TerminalViewHost.maxShowDurations)
+        }
         signposter.endInterval("show", interval)
 
         if let previous, previous != visibleID { compressor?.setVisible(previous.rawValue, false) }
@@ -509,6 +531,10 @@ public final class TerminalViewHost: TerminalHost {
             _ = host.pty.terminate(signal: signal)
         }
         compressor?.stop()
+        // `stop()` only parks the timer — the compressor's own `sessions` table still holds a
+        // strong `TerminalSession` (and therefore its whole scrollback) per entry. `evict` drops
+        // one; this is the same debt for all of them.
+        for id in order { compressor?.forget(id.rawValue) }
         sessions.removeAll()
         order.removeAll()
     }
@@ -568,20 +594,26 @@ public final class TerminalViewHost: TerminalHost {
         let start = ContinuousClock.now
         var sweep = SnapshotSweep()
         for id in order {
-            guard let host = sessions[id] else { continue }
-            let token = host.session.compressionActivity()
-            if !force, let compressor, compressor.hasFreshSnapshot(id.rawValue, token: token) {
-                sweep.skipped.append(id.rawValue)
-                continue
-            }
-            do {
-                let report = try snapshots.save(host.session.snapshot(), for: id.rawValue)
-                compressor?.noteSnapshotted(id.rawValue, token: token)
-                sweep.saved.append(id.rawValue)
-                sweep.totalBytes += report.byteCount
-            } catch {
-                sweep.failed.append(id.rawValue)
-                logger.error("snapshot failed for \(id.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+            // One pool per session, not one for the sweep: this runs on the main queue and each
+            // iteration encodes up to a session's whole history and pushes it through
+            // `FileManager`/`URL`. Without a pool per iteration, 30 sessions' worth of temporaries
+            // — the `Data` copies included — are all held until the sweep returns.
+            autoreleasepool {
+                guard let host = sessions[id] else { return }
+                let token = host.session.compressionActivity()
+                if !force, let compressor, compressor.hasFreshSnapshot(id.rawValue, token: token) {
+                    sweep.skipped.append(id.rawValue)
+                    return
+                }
+                do {
+                    let report = try snapshots.save(host.session.snapshot(), for: id.rawValue)
+                    compressor?.noteSnapshotted(id.rawValue, token: token)
+                    sweep.saved.append(id.rawValue)
+                    sweep.totalBytes += report.byteCount
+                } catch {
+                    sweep.failed.append(id.rawValue)
+                    logger.error("snapshot failed for \(id.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+                }
             }
         }
         let elapsed = ContinuousClock.now - start
@@ -783,6 +815,10 @@ public final class TerminalIdleCompressor: Sendable {
         public var maxPassSeconds: Double
     }
 
+    /// Whether the timer is armed. A compressor that exists but was never `start()`ed compresses
+    /// nothing, which looks exactly like not having one — so this is worth being able to assert.
+    public var isRunning: Bool { state.withLock { $0.running } }
+
     public var stats: Stats {
         state.withLock {
             Stats(
@@ -812,6 +848,10 @@ public final class TerminalIdleCompressor: Sendable {
         guard !due.isEmpty else { return }
 
         for (id, session) in due {
+          // One pool per session: `saveSnapshot` below encodes a whole history and writes it
+          // through `FileManager`, and this runs on the compressor's own `.utility` queue where a
+          // single pool would otherwise hold every session's temporaries until the tick ends.
+          autoreleasepool {
             // 2. Snapshot *before* compressing: reading history back rehydrates it.
             if let saveSnapshot {
                 let token = session.compressionActivity()
@@ -853,6 +893,7 @@ public final class TerminalIdleCompressor: Sendable {
                 // delay, and re-snapshot (i.e. rehydrate) the session on every cycle.
                 state.tokens[id] = session.compressionActivity()
             }
+          }
         }
     }
 }

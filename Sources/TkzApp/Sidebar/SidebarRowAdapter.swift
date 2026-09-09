@@ -60,8 +60,29 @@ public enum SidebarRowAdapter {
             accountColor: SidebarSessionRowModel.accountChipColor(forKey: session.accountKey),
             needsAttention: session.needsAttention,
             isSelected: state.selection == session.id,
-            groupColor: state.groups[session.groupID]?.color
+            groupColor: state.groups[session.groupID]?.color,
+            memoryBadge: memoryBadge(for: session)
         )
+    }
+
+    /// Above this, a session's process subtree gets a badge on its row.
+    ///
+    /// 4 GB. Calibrated against what "busy but fine" actually measures: a working set of Claude
+    /// Code sessions runs 250–400 MB each, so a whole sidebar of them is under 2 GB (docs/perf.md →
+    /// *Session process memory*). A single session past 4 GB is a build or test that has got away,
+    /// which is the case worth interrupting someone for — and the only case, since a badge on every
+    /// row would be ignored.
+    public static let memoryBadgeThreshold: UInt64 = 4 * 1024 * 1024 * 1024
+
+    static func memoryBadge(for session: Session) -> String? {
+        guard let bytes = session.live?.subtreeFootprintBytes,
+              bytes >= memoryBadgeThreshold else { return nil }
+        return formatBytes(bytes)
+    }
+
+    /// One decimal in GB — "4.7 GB". Only ever called above the GB-scale threshold.
+    static func formatBytes(_ bytes: UInt64) -> String {
+        String(format: "%.1f GB", Double(bytes) / (1024 * 1024 * 1024))
     }
 
     /// The model for one 28 pt group header.
