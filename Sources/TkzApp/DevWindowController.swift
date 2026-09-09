@@ -598,6 +598,26 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
         let rows = host.scrollbackRows().sorted(by: >)
         line += " scrollbackRows[max=\(rows.first ?? 0) top5=\(rows.prefix(5).map(String.init).joined(separator: ","))"
         line += " total=\(rows.reduce(0, +))]"
+        // The spawned processes, which `mem[...]` above cannot see: this is where a runaway
+        // `swift test` or a fat Claude Code session shows up. docs/perf.md → *Session process
+        // memory*.
+        let subtrees = host.sessionMemory()
+        let subtreeTotal = subtrees.reduce(UInt64(0)) { $0 + $1.sample.footprintBytes }
+        let procs = subtrees.reduce(0) { $0 + $1.sample.processCount }
+        line += " sessionMem[total=\(DevWindowController.mib(subtreeTotal)) procs=\(procs)"
+        if let worst = subtrees.max(by: { $0.sample.footprintBytes < $1.sample.footprintBytes }),
+            worst.sample.footprintBytes > 0
+        {
+            line += " worstSession=\(DevWindowController.mib(worst.sample.footprintBytes))"
+        }
+        // The biggest single *descendant* across all sessions — the runaway, when there is one.
+        // `largestName` deliberately excludes each session's own shell; see `SessionMemorySample`.
+        if let hog = subtrees.max(by: { $0.sample.largestBytes < $1.sample.largestBytes }),
+            hog.sample.largestBytes > 0
+        {
+            line += " worstProc=\(hog.sample.largestName):\(DevWindowController.mib(hog.sample.largestBytes))"
+        }
+        line += "]"
         if let compressor = host.compressor {
             let c = compressor.stats
             line += " compress[tracked=\(c.tracked) ticks=\(c.ticks) passes=\(c.passes) steps=\(c.steps)"

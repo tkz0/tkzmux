@@ -95,13 +95,28 @@ final class SidebarOutlineView: NSOutlineView {
         return onContextMenu?(item.kind)
     }
 
-    // MARK: Call counters (tests only; free in release)
+    // MARK: Call counters
+    //
+    // These are read by the tests, but they are recorded in *every* build — the appends below are
+    // unconditional, and `resetCounters()` is only ever called from a test. `reloadData(forRowIndexes:)`
+    // fires on every status change, so an app left open all day accumulated one entry per update
+    // forever. Bounded rings now, the same way `DisplayLinkDriver.transitions` is: the tests assert
+    // on a handful of recent calls, so a cap they cannot reach costs them nothing.
+
+    /// How many recent calls of each kind to keep. Far above anything a test does between resets.
+    private static let maxRecordedCalls = 1024
 
     private(set) var reloadDataCallCount = 0
     private(set) var reloadedRowIndexSets: [IndexSet] = []
     private(set) var insertedItemCalls: [(rows: IndexSet, parent: SidebarItem?)] = []
     private(set) var removedItemCalls: [(rows: IndexSet, parent: SidebarItem?)] = []
     private(set) var movedItemCalls: [(from: Int, to: Int, parent: SidebarItem?)] = []
+
+    /// Appends to a call log, dropping the oldest entry once the cap is reached.
+    private static func record<T>(_ value: T, into log: inout [T]) {
+        log.append(value)
+        if log.count > maxRecordedCalls { log.removeFirst(log.count - maxRecordedCalls) }
+    }
 
     func resetCounters() {
         reloadDataCallCount = 0
@@ -120,26 +135,26 @@ final class SidebarOutlineView: NSOutlineView {
     }
 
     override func reloadData(forRowIndexes rowIndexes: IndexSet, columnIndexes: IndexSet) {
-        reloadedRowIndexSets.append(rowIndexes)
+        Self.record(rowIndexes, into: &reloadedRowIndexSets)
         super.reloadData(forRowIndexes: rowIndexes, columnIndexes: columnIndexes)
     }
 
     override func insertItems(
         at indexes: IndexSet, inParent parent: Any?, withAnimation animationOptions: NSTableView.AnimationOptions
     ) {
-        insertedItemCalls.append((indexes, parent as? SidebarItem))
+        Self.record((indexes, parent as? SidebarItem), into: &insertedItemCalls)
         super.insertItems(at: indexes, inParent: parent, withAnimation: animationOptions)
     }
 
     override func removeItems(
         at indexes: IndexSet, inParent parent: Any?, withAnimation animationOptions: NSTableView.AnimationOptions
     ) {
-        removedItemCalls.append((indexes, parent as? SidebarItem))
+        Self.record((indexes, parent as? SidebarItem), into: &removedItemCalls)
         super.removeItems(at: indexes, inParent: parent, withAnimation: animationOptions)
     }
 
     override func moveItem(at fromIndex: Int, inParent oldParent: Any?, to toIndex: Int, inParent newParent: Any?) {
-        movedItemCalls.append((fromIndex, toIndex, newParent as? SidebarItem))
+        Self.record((fromIndex, toIndex, newParent as? SidebarItem), into: &movedItemCalls)
         super.moveItem(at: fromIndex, inParent: oldParent, to: toIndex, inParent: newParent)
     }
 

@@ -352,6 +352,12 @@ public struct LiveSessionState: Hashable, Sendable {
     /// The shell's working directory as it last reported it (OSC 7 from the ZDOTDIR wrapper on
     /// every `cd`). Process state: the title follows it, nothing is persisted (2026-09-08).
     public var shellCwd: String?
+    /// Summed `phys_footprint` of this session's pty child and its descendants, as last sampled.
+    ///
+    /// The memory tkzmux's *own* metrics cannot see, and which macOS bills to tkzmux anyway because
+    /// everything forked from a pty shares the app's process coalition. `nil` until first sampled.
+    /// Process state, never persisted. See docs/perf.md → *Session process memory*.
+    public var subtreeFootprintBytes: UInt64?
 
     public init(
         pid: pid_t? = nil,

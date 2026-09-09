@@ -274,6 +274,49 @@ struct SidebarRowViewTests {
         }
     }
 
+    /// The memory badge exists so a runaway process subtree is visible without opening Activity
+    /// Monitor — which, for the incident that prompted it, would have blamed the app anyway
+    /// (docs/perf.md → *Session process memory*). It must be absent on a normal row.
+    @Test("The memory badge shows only when a size is given, and stays inside the row")
+    func memoryBadgeIsConditional() throws {
+        let quiet = Self.sessionRow(SidebarSessionRowModel(title: "s", branch: "main"))
+        #expect(quiet.memoryBadgeLayer.isHidden)
+
+        let loud = Self.sessionRow(SidebarSessionRowModel(
+            title: "s", branch: "main", memoryBadge: "6.1 GB"))
+        #expect(!loud.memoryBadgeLayer.isHidden)
+        #expect(loud.memoryBadgeLayer.frame.width > 0)
+        // Amber, like NEEDS YOU: both are warnings.
+        #expect(Self.approxEqual(
+            Self.components(loud.memoryBadgeLayer.backgroundColor),
+            Self.components(Theme.default.needsYouBackground.cgColor)))
+        #expect(loud.memoryBadgeLayer.frame.minX >= 0)
+        #expect(loud.memoryBadgeLayer.frame.maxX <= loud.bounds.width)
+        #expect(loud.memoryBadgeLayer.frame.maxY <= loud.bounds.height)
+    }
+
+    /// The badge shares the detail line with the branch and the account chip, so the crowded case
+    /// is the one that can overflow.
+    @Test("The memory badge does not collide with the account chip or escape a crowded row")
+    func memoryBadgeSurvivesACrowdedRow() throws {
+        let row = Self.sessionRow(SidebarSessionRowModel(
+            title: "a session with a fairly long title",
+            branch: "feature/some-quite-long-branch-name",
+            isWorktree: true,
+            accountLabel: "ALT",
+            accountColor: RGB(hex: 0x8b93f8),
+            memoryBadge: "12.4 GB"))
+        let badge = row.memoryBadgeLayer
+        let chip = row.accountChipLayer
+        #expect(!badge.isHidden)
+        #expect(badge.frame.minX >= 0)
+        #expect(badge.frame.maxX <= row.bounds.width)
+        if !chip.isHidden {
+            // The badge sits to the left of the chip, not on top of it.
+            #expect(badge.frame.maxX <= chip.frame.minX + 0.5)
+        }
+    }
+
     @Test("The account chip is present only with a label, and takes the colour it is given")
     func accountChipIsOptional() {
         let none = Self.sessionRow(SidebarSessionRowModel(title: "s"))

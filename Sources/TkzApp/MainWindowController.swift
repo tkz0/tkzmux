@@ -28,6 +28,7 @@
 import AppKit
 import ClaudeBridge
 import Foundation
+import Persistence
 import TkzCore
 import TkzTerminalCore
 import TkzTerminalRender
@@ -364,6 +365,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         launcher.gridSize = { [weak self] in self?.launchSize() ?? TerminalSize(rows: 40, cols: 120) }
+        // Removing a row must drop its per-session caches too. `fullMessages` in particular holds
+        // a whole Stop message — arbitrarily long — and without this the app kept one per session
+        // id it had *ever* seen, for as long as it ran. Wired here rather than in the `claude`/`git`
+        // observers so it survives either of them being set, unset, or replaced.
+        launcher.onRemoved = { [weak self] id in
+            self?.claude?.forget(id)
+            self?.git?.forget(id)
+        }
         buildSplitView()
         configureWindow()
         wireSidebar()
@@ -384,18 +393,48 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     /// The real window: builds the `TerminalMetalView`, the `TerminalViewHost` behind it, and
     /// wires keyboard, mouse and ⌘C/⌘V. `AppDelegate` is the only caller.
+    /// - Parameters:
+    ///   - snapshots: where `.ghsnap` files go, for the host *and* the compressor's snapshot hook.
+    ///   - tkzmuxDirectory: the application-support directory (`ZDOTDIR`, `TKZMUX_BIN`, the socket);
+    ///     `nil` means the real one.
+    ///
+    /// Both are injected for the same reason the designated initialiser injects everything with a
+    /// filesystem behind it: a test must never write to `~/Library/Application Support/tkzmux`
+    /// (shared agent brief, hard rule 8), and `TerminalViewHost.init` creates its `zsh` directory
+    /// eagerly. The app passes neither.
     public convenience init(
         store: AppStore,
         renderContext: TerminalRenderContext,
-        theme: Theme = .default
+        theme: Theme = .default,
+        snapshots: SnapshotStore = .standard(),
+        tkzmuxDirectory: URL? = nil
     ) {
         let view = TerminalMetalView(
             renderContext: renderContext,
             frame: NSRect(x: 0, y: 0, width: 940, height: 760))
-        let host = TerminalViewHost(view: view)
+        // Idle compression is what keeps N idle sessions from each sitting on their full
+        // `SCROLLBACK_MAX_BYTES`. docs/perf.md measures it taking 30 filled sessions from 577 MiB
+        // of footprint to 26 MiB for 113 ms of work; without it the app stays on the 577 MiB side.
+        // `TerminalIdleCompressor`'s defaults *are* the production values (60 s idle, 5 s tick),
+        // so only the snapshot hook is supplied here — the dev window overrides them from env
+        // instead, which is the only reason it spells them out.
+        let compressor = TerminalIdleCompressor(
+            saveSnapshot: { id, session in
+                // Snapshot *before* compressing (docs/perf.md → *rehydration is real*): reading a
+                // compressed session's history back rehydrates the pages compression just released.
+                // Runs on the compressor's own `.utility` queue; `SnapshotStore` is a value type.
+                guard let data = try? session.snapshot(),
+                      let report = try? snapshots.save(data, for: id) else { return 0 }
+                return report.byteCount
+            })
+        let host = TerminalViewHost(
+            view: view, snapshots: snapshots, tkzmuxDirectory: tkzmuxDirectory,
+            compressor: compressor)
         self.init(store: store, host: host, terminalView: view, theme: theme)
         self.metalView = view
         wireInput(view: view, host: host)
+        // The timer source comes back suspended; nothing compresses until this runs.
+        compressor.start()
     }
 
     // No `deinit`: the ⌘C/⌘V monitor is removed in ``shutdown()``. A `deinit` cannot touch it —
@@ -1539,6 +1578,25 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         remove.identifier = ContextItemID.remove
         menu.addItem(remove)
 
+        // Only offered when there is actually something to kill. Nothing in the system reclaims a
+        // stalled process's memory — jetsam will not kill it — so when a build or test under this
+        // session runs away, killing it by hand is the only way out. The pty's own shell is spared,
+        // so the row stays usable. See `SessionMemory`.
+        if let pid = (host as? TerminalViewHost)?.pid(of: id) {
+            let sample = SessionMemory.sample(rootPid: pid)
+            if sample.descendantCount > 0 {
+                // Describes what would actually be killed: the descendants and their bytes, never
+                // the shell that is spared.
+                let size = MainWindowController.megabytes(sample.descendantBytes)
+                let what = sample.largestName.isEmpty ? "processes" : sample.largestName
+                let kill = contextItem(
+                    "Kill Processes (\(what), \(size))",
+                    action: #selector(contextKillProcessTree(_:)), id: id.rawValue)
+                kill.identifier = ContextItemID.killProcessTree
+                menu.addItem(kill)
+            }
+        }
+
         // The colour belongs to the group, not the row — but the row is what you are pointing at
         // when you decide the whole group needs a colour, so the picker is on both menus (TKZ-48).
         menu.addItem(.separator())
@@ -1655,6 +1713,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         public static let resume = NSUserInterfaceItemIdentifier("tkzmux.context.resume")
         public static let rename = NSUserInterfaceItemIdentifier("tkzmux.context.rename")
         public static let remove = NSUserInterfaceItemIdentifier("tkzmux.context.remove")
+        public static let killProcessTree = NSUserInterfaceItemIdentifier("tkzmux.context.killProcessTree")
         public static let newSession = NSUserInterfaceItemIdentifier("tkzmux.context.newSession")
         public static let resumeAll = NSUserInterfaceItemIdentifier("tkzmux.context.resumeAll")
         public static let groupRepo = NSUserInterfaceItemIdentifier("tkzmux.context.groupRepo")
@@ -1696,6 +1755,58 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     @objc private func contextRemove(_ sender: Any?) {
         guard let id = sessionID(from: sender) else { return }
         removeSession(id)
+    }
+
+    /// Overrides the kill confirmation: return true to proceed. Tests set it — an alert needs a
+    /// key window and a run loop.
+    public var killProcessTreeConfirm: ((SessionMemorySample) -> Bool)?
+
+    @objc private func contextKillProcessTree(_ sender: Any?) {
+        guard let id = sessionID(from: sender) else { return }
+        killProcessTree(for: id)
+    }
+
+    /// SIGKILLs everything under the session's pty child, sparing the shell itself.
+    ///
+    /// Confirmed first: this destroys whatever the user was running (a build, a test run, a
+    /// Claude Code session), and unlike *Remove* it is not undoable by resuming.
+    public func killProcessTree(for id: SessionID) {
+        guard let pid = (host as? TerminalViewHost)?.pid(of: id) else { return }
+        let sample = SessionMemory.sample(rootPid: pid)
+        guard sample.descendantCount > 0 else { return }
+
+        if let killProcessTreeConfirm {
+            guard killProcessTreeConfirm(sample) else { return }
+        } else {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Kill this session's processes?"
+            let count = sample.descendantCount
+            let largest = sample.largestName.isEmpty
+                ? "" : ", the largest being \u{201c}\(sample.largestName)\u{201d}"
+            alert.informativeText = """
+                \(count) process\(count == 1 ? "" : "es") under this session \
+                \(count == 1 ? "is" : "are") holding \
+                \(MainWindowController.megabytes(sample.descendantBytes))\(largest). \
+                They will be killed immediately and anything they were doing is lost. The \
+                session's own shell stays open.
+                """
+            alert.addButton(withTitle: "Kill")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+
+        let killed = SessionMemory.terminateTree(rootPid: pid)
+        logger.info("killed \(killed.count) process(es) under session \(id.rawValue, privacy: .public)")
+        showNotice("Killed \(killed.count) process\(killed.count == 1 ? "" : "es")")
+        focusTerminalIfSessionShown()
+    }
+
+    static func megabytes(_ bytes: UInt64) -> String {
+        let mb = Double(bytes) / (1024 * 1024)
+        return mb >= 1024
+            ? String(format: "%.1f GB", mb / 1024)
+            : String(format: "%.0f MB", mb)
     }
 
     @objc private func contextNewSession(_ sender: Any?) {
@@ -1764,10 +1875,50 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             repeating: Self.statusTickInterval,
             leeway: .seconds(5))
         timer.setEventHandler { [weak self] in
-            MainActor.assumeIsolated { self?.updateStatusBar() }
+            MainActor.assumeIsolated {
+                self?.sampleSessionMemory()
+                self?.updateStatusBar()
+            }
         }
         statusTickTimer = timer
         timer.resume()
+    }
+
+    /// Reads each session's process-subtree footprint and pushes it into the store.
+    ///
+    /// Rides the once-a-minute status tick rather than a timer of its own: a sample costs one
+    /// `proc_pid_rusage` per process in each session's tree, which is cheap but not free, and the
+    /// number only matters at GB resolution.
+    ///
+    /// Only *bucket* changes are written. A steady session would otherwise produce a new value
+    /// every minute, and every write is a `ChangeSet.sessions` entry that reloads that row — the
+    /// one thing the sidebar's design exists to avoid (design.md → *Store*).
+    func sampleSessionMemory() {
+        guard let host = host as? TerminalViewHost else { return }
+        var updates: [(SessionID, UInt64)] = []
+        for (id, sample) in host.sessionMemory() {
+            let previous = store.state.sessions[id]?.live?.subtreeFootprintBytes
+            guard Self.memoryBucket(sample.footprintBytes) != Self.memoryBucket(previous) else {
+                continue
+            }
+            updates.append((id, sample.footprintBytes))
+        }
+        guard !updates.isEmpty else { return }
+        store.update { state in
+            for (id, bytes) in updates {
+                state.updateLive(id) { $0.subtreeFootprintBytes = bytes }
+            }
+        }
+    }
+
+    /// Quantises a footprint so small drifts do not redraw a row: 256 MB steps below the badge
+    /// threshold, and every 0.1 GB above it, where the number is actually on screen.
+    static func memoryBucket(_ bytes: UInt64?) -> Int? {
+        guard let bytes else { return nil }
+        if bytes < SidebarRowAdapter.memoryBadgeThreshold {
+            return Int(bytes / (256 * 1024 * 1024))
+        }
+        return 1_000_000 + Int(bytes / (100 * 1024 * 1024))
     }
 
     /// Every `snapshotInterval`, write the `.ghsnap` of every session that changed. Sessions the
