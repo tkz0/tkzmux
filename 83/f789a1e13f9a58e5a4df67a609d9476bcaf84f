@@ -1,0 +1,66 @@
+Sources/TkzApp/Menus/NewSessionMenu.swift
+  s_f25fc60f32c7bb::t_9ce358aade500a 46-48,105,140-143,176-182,184
+  s_f25fc60f32c7bb::t_705ab3addab533 106-107,292-300,302-305,317-319,325-344,496-503
+  s_f25fc60f32c7bb::t_6ff70eeab70150 101-104,315
+  s_f25fc60f32c7bb::t_35cf554adce667 430
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_f25fc60f32c7bb::t_afa42dba03473e 783,787-789,793,795-796,799-801,806-807,809,811-818
+  s_f25fc60f32c7bb::t_a1dbcfc7dd3108 802-805,808,810
+Tests/TkzAppTests/NewSessionMenuTests.swift
+  s_f25fc60f32c7bb::t_90f9b8248109cf 101,105,107,112-113,115-143,145-148,150-195,211
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_f25fc60f32c7bb::t_515dd4abb6b276 60,97-99,106-116,119-120,130-131,133,136,138
+  s_f25fc60f32c7bb::t_a1dbcfc7dd3108 117-118,121-129
+Sources/TkzApp/MainWindowController.swift
+  s_f25fc60f32c7bb::t_783725807e0d3d 632-634,1556,1590,1665-1743,1760-1769
+  s_f25fc60f32c7bb::t_694c2673d5890f 1270-1274,1280-1282
+  s_f25fc60f32c7bb::t_bc60c44d6a3b33 1551-1553
+Sources/TkzCore/Reducers.swift
+  s_f25fc60f32c7bb::t_58b88587225da4 376,378-382,390-392
+  s_f25fc60f32c7bb::t_3d8a056f8e6fc1 377,383-386,389,393-394
+Tests/TkzCoreTests/ReducersTests.swift
+  s_f25fc60f32c7bb::t_52dfc62cc8f78c 403-405,407-411,415-421
+  s_f25fc60f32c7bb::t_65c1615a28cc72 385-402,406,412-414,422-429
+Sources/TkzApp/ClaudeIntegration.swift
+  s_f25fc60f32c7bb::t_6e9e3c78d2ad33 5-6,97,102-104,144-145,147,150-153,162-193,216
+  s_f25fc60f32c7bb::t_9856233c26c586 210-213
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_f25fc60f32c7bb::t_35fce0d90ebfa0 290-337
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_f25fc60f32c7bb::t_b844f14b2dece7 18,21-23
+  s_f25fc60f32c7bb::t_769b74c2e20165 182-184,407-434,436-448
+  s_f25fc60f32c7bb::t_024406358a5892 107-109,435
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_f25fc60f32c7bb::t_6594a680a48ae6 64-68,96
+  s_f25fc60f32c7bb::t_85a9a85dd24d73 107
+Tests/TkzAppTests/ClaudeIntegrationTests.swift
+  s_f25fc60f32c7bb::t_afa42dba03473e 244
+  s_f25fc60f32c7bb::t_a1dbcfc7dd3108 203-205
+  s_f25fc60f32c7bb::t_e3167b3767cbe5 159,173-202,206-218
+  s_f25fc60f32c7bb::t_8679aa8b997b10 219-220
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_f25fc60f32c7bb::t_790ef8a8f240a1 359-439
+  s_f25fc60f32c7bb::t_afa42dba03473e 159-161
+  s_f25fc60f32c7bb::t_3170e24021ad17 358
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_f25fc60f32c7bb::t_fc0d3a0f9ab54d 290-298,404,444,449-462
+  s_f25fc60f32c7bb::t_f83ff6c5f68b54 463-464
+Tests/TkzAppTests/GitIntegrationTests.swift
+  s_f25fc60f32c7bb::t_0a52f75724679e 208-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "83f789a1e13f9a58e5a4df67a609d9476bcaf84f",
+  "prompts": {},
+  "sessions": {
+    "s_f25fc60f32c7bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08d8cb8c-9e52-40eb-86ff-279f1a8fd081",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
