@@ -1,0 +1,25 @@
+Tests/TkzAppTests/SessionKillTests.swift
+  s_868c3303b1432f::t_2ebe726abb7b5f 122-134,136-140
+  s_868c3303b1432f::t_2018bde8ca8228 135
+Sources/TkzApp/MainWindowController.swift
+  s_868c3303b1432f::t_572dfff02eee4a 2291-2293
+  s_868c3303b1432f::t_acc2895e6a1dc8 2288-2290,2295,2305-2306
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_868c3303b1432f::t_4d8e046ae10bd2 273-290
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "f986c6fb13cf86dd7b1699932a1cd3a6470b7d2c",
+  "prompts": {},
+  "sessions": {
+    "s_868c3303b1432f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9aebc8fa-b090-413f-9d3a-3c8f43114e8a",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
