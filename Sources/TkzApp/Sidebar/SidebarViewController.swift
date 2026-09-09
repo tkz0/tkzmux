@@ -62,6 +62,16 @@ final class SidebarItem: NSObject {
     override var description: String { "SidebarItem(\(kind))" }
 }
 
+// MARK: - Pasteboard
+
+extension NSPasteboard.PasteboardType {
+    /// A session row being dragged inside our own sidebar. The payload is `SessionID.rawValue`.
+    ///
+    /// Private to the app on purpose: a session row is only meaningful next to the store that owns
+    /// it, so there is nothing to promise another application and nothing to accept from one.
+    static let tkzSidebarSession = NSPasteboard.PasteboardType("com.tkz.tkzmux.sidebar-session")
+}
+
 // MARK: - Outline view
 
 /// The sidebar's `NSOutlineView`, with two jobs beyond the stock one:
@@ -325,6 +335,11 @@ public final class SidebarViewController: NSViewController {
         outline.target = self
         outline.action = #selector(outlineClicked)
         outline.onArrowKey = { [weak self] offset in self?.moveSelection(by: offset) }
+        outline.registerForDraggedTypes([.tkzSidebarSession])
+        outline.setDraggingSourceOperationMask(.move, forLocal: true)
+        // `.gap` opens the insertion point between rows instead of drawing a two-pixel line the
+        // rows' own `selectionLayer` would sit on top of.
+        outline.draggingDestinationFeedbackStyle = .gap
 
         scroll.documentView = outline
         scroll.hasVerticalScroller = true
@@ -747,6 +762,142 @@ extension SidebarViewController: NSOutlineViewDataSource {
 
     public func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         (item as? SidebarItem)?.groupID != nil
+    }
+}
+
+// MARK: - Drag and drop
+
+// Dragging a session row into another group is a *store* edit: `acceptDrop` calls
+// `AppState.moveSession` and nothing else. The rows that leave and arrive are then produced by the
+// ordinary `structure` change set through `applyStructure()`, exactly as a launch or a remove is, so
+// there is no second, drag-shaped update path that could disagree with the store about what the
+// sidebar shows.
+//
+// **Only sessions drag.** `pasteboardWriterForItem` returns `nil` for a group header, so reordering
+// groups stays the `moveGroup` affair it already was.
+//
+// **A collapsed group is a valid destination**, and the only thing it can offer is "on the header",
+// which appends. Hovering one mid-drag also lets AppKit spring-load it open, which runs the ordinary
+// `outlineViewItemDidExpand` path and so writes `setGroupCollapsed(false)` to the store — the group
+// stays open after the drop. That is wanted: the row has to be somewhere the user can see it.
+//
+// **The two index bases differ, and that is the one real trap.** `NSOutlineView` reports a
+// `childIndex` within the group *as currently displayed* — the dragged row included. `moveSession`
+// inserts into the group *after* the dragged session has been pulled out of it. For a drop into a
+// different group the two agree; for a drop into the session's own group, every position below the
+// row it came from is off by one. So the two are kept apart: `dropTarget(for:childIndex:)` yields
+// the *displayed* index, which is what `setDropItem` needs to draw the gap, and
+// `storeIndex(forDisplayed:in:dragging:)` rebases it for `moveSession`. Both are pure functions with
+// their own tests — a real drag cannot be staged in a headless suite.
+
+extension SidebarViewController {
+
+    /// Where a drop lands, resolved from whatever `NSOutlineView` proposes.
+    ///
+    /// Every proposal is normalised onto a group, because a session row is never a drop *container*:
+    ///
+    ///  * a group with no child index — dropping *on* the header, which is also all a collapsed
+    ///    group can offer — appends;
+    ///  * a group with a child index — that position among its session rows;
+    ///  * a session — the position that row occupies in its own group;
+    ///  * the root list (between or below the headers) — the end of the group above the drop point,
+    ///    or the top of the first group when the drop is above every header.
+    ///
+    /// The index is *displayed*: it counts the group's session rows as they are on screen right now,
+    /// dragged row included, so it can be handed straight back to `setDropItem` to place the gap.
+    /// `storeIndex(forDisplayed:in:dragging:)` is what turns it into a `moveSession` argument.
+    ///
+    /// - Parameters:
+    ///   - item: the proposed drop item; `nil` is the root list.
+    ///   - childIndex: the proposed child index, or `NSOutlineViewDropOnItemIndex` for "on the item".
+    /// - Returns: the destination group and a displayed index (`nil` = on the header, i.e. append),
+    ///   or `nil` when there is nowhere sensible to drop.
+    func dropTarget(for item: SidebarItem?, childIndex: Int) -> (group: GroupID, displayed: Int?)? {
+        let state = store.state
+
+        /// A collapsed group has no visible children, so no child index can point into it — the only
+        /// thing to say about such a drop is "this group", which appends.
+        func placed(_ id: GroupID, at index: Int) -> (group: GroupID, displayed: Int?) {
+            guard state.groups[id]?.isCollapsed != true else { return (id, nil) }
+            return (id, min(max(index, 0), state.sessions(in: id).count))
+        }
+
+        switch item?.kind {
+        case .group(let id):
+            guard state.groups[id] != nil else { return nil }
+            guard childIndex != NSOutlineViewDropOnItemIndex else { return (id, nil) }
+            return placed(id, at: childIndex)
+
+        case .session(let id):
+            // A session row is never a container: a drop on one means "take that row's place".
+            guard let session = state.sessions[id],
+                let index = state.sessions(in: session.groupID).map(\.id).firstIndex(of: id)
+            else { return nil }
+            return (session.groupID, index)
+
+        case nil:
+            // The root list, where `childIndex` counts group headers: `n` means "after group n-1".
+            let groups = state.orderedGroups.map(\.id)
+            guard !groups.isEmpty, childIndex != NSOutlineViewDropOnItemIndex else { return nil }
+            guard childIndex > 0 else { return placed(groups[0], at: 0) }
+            return (groups[min(childIndex, groups.count) - 1], nil)
+        }
+    }
+
+    /// Rebases a displayed drop index onto the list `moveSession` inserts into — the group with
+    /// `dragged` already removed. `nil` in, `nil` out: both mean append.
+    func storeIndex(forDisplayed displayed: Int?, in group: GroupID, dragging dragged: SessionID) -> Int? {
+        guard let displayed else { return nil }
+        let rows = store.state.sessions(in: group).map(\.id)
+        guard let from = rows.firstIndex(of: dragged) else {
+            // Another group: no row is leaving it, so the two bases already agree.
+            return min(max(displayed, 0), rows.count)
+        }
+        // Its own group: every slot below the dragged row shifts up by one once it lifts out.
+        return min(max(displayed > from ? displayed - 1 : displayed, 0), max(rows.count - 1, 0))
+    }
+
+    /// The session id carried by a sidebar drag, if this drag is one of ours at all.
+    func draggedSession(from info: any NSDraggingInfo) -> SessionID? {
+        guard let raw = info.draggingPasteboard.string(forType: .tkzSidebarSession) else { return nil }
+        return SessionID(raw)
+    }
+}
+
+extension SidebarViewController {
+    public func outlineView(
+        _ outlineView: NSOutlineView, pasteboardWriterForItem item: Any
+    ) -> (any NSPasteboardWriting)? {
+        // `nil` is how a row is told not to drag, which is what a group header wants.
+        guard let id = (item as? SidebarItem)?.sessionID else { return nil }
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(id.rawValue, forType: .tkzSidebarSession)
+        return pasteboardItem
+    }
+
+    public func outlineView(
+        _ outlineView: NSOutlineView, validateDrop info: any NSDraggingInfo,
+        proposedItem item: Any?, proposedChildIndex index: Int
+    ) -> NSDragOperation {
+        guard draggedSession(from: info) != nil,
+            let target = dropTarget(for: item as? SidebarItem, childIndex: index)
+        else { return [] }
+        // Retarget, so the gap the user sees is the row the drop will actually produce.
+        outlineView.setDropItem(
+            self.item(.group(target.group)),
+            dropChildIndex: target.displayed ?? NSOutlineViewDropOnItemIndex)
+        return .move
+    }
+
+    public func outlineView(
+        _ outlineView: NSOutlineView, acceptDrop info: any NSDraggingInfo, item: Any?, childIndex index: Int
+    ) -> Bool {
+        guard let dragged = draggedSession(from: info), store.state.sessions[dragged] != nil,
+            let target = dropTarget(for: item as? SidebarItem, childIndex: index)
+        else { return false }
+        let at = storeIndex(forDisplayed: target.displayed, in: target.group, dragging: dragged)
+        store.update { $0.moveSession(dragged, toGroup: target.group, at: at) }
+        return true
     }
 }
 

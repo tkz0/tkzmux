@@ -856,3 +856,193 @@ struct SidebarSelectionOnInsertTests {
         }
     }
 }
+
+// MARK: - Drag and drop
+
+/// Dragging a session row into another group (`moveSession` from the sidebar's own drop handling).
+///
+/// A real drag cannot be staged headlessly — `NSDraggingInfo` has no public initialiser — so what is
+/// asserted here are the two pure functions the drop path is built out of, plus the composition that
+/// actually matters: the row the insertion gap promised is the row the store ends up with.
+@MainActor
+@Suite(.serialized)
+struct SidebarDragAndDropTests {
+
+    @Test("The outline is wired to accept its own session drags")
+    func theOutlineIsRegisteredForSessionDrags() {
+        let harness = SidebarViewControllerTests.makeHarness()
+        // The only type it takes: a session row means nothing outside this app, and nothing from
+        // outside it means anything here. (`setDraggingSourceOperationMask` has no getter to assert.)
+        #expect(harness.outline.registeredDraggedTypes == [.tkzSidebarSession])
+        #expect(harness.outline.draggingDestinationFeedbackStyle == .gap)
+
+        // The one failure mode every other test here would sail straight past: the methods are
+        // correct Swift but AppKit never finds them, so nothing drags in the real app.
+        let controller = harness.controller
+        #expect(controller.responds(
+            to: #selector(NSOutlineViewDataSource.outlineView(_:pasteboardWriterForItem:))))
+        #expect(controller.responds(
+            to: #selector(NSOutlineViewDataSource.outlineView(_:validateDrop:proposedItem:proposedChildIndex:))))
+        #expect(controller.responds(
+            to: #selector(NSOutlineViewDataSource.outlineView(_:acceptDrop:item:childIndex:))))
+    }
+
+    @Test("A collapsed group can only be appended to — no child index points into it")
+    func collapsedGroupsOnlyAppend() {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let controller = harness.controller
+        // The fixture collapses the last group (Playground).
+        let collapsed = harness.store.state.orderedGroups[4]
+        #expect(collapsed.isCollapsed)
+
+        let onHeader = controller.dropTarget(
+            for: controller.item(.group(collapsed.id)), childIndex: NSOutlineViewDropOnItemIndex)
+        #expect(onHeader?.group == collapsed.id)
+        #expect(onHeader?.displayed == nil)
+
+        // Even asked for a slot inside it, the answer is "append".
+        let inside = controller.dropTarget(for: controller.item(.group(collapsed.id)), childIndex: 2)
+        #expect(inside?.group == collapsed.id)
+        #expect(inside?.displayed == nil)
+    }
+
+    @Test("Only session rows are draggable; a group header returns no pasteboard writer")
+    func groupHeadersDoNotDrag() {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let controller = harness.controller
+        let group = harness.store.state.orderedGroups[0].id
+        let session = harness.store.state.sessions(in: group)[0].id
+
+        let forGroup = controller.outlineView(
+            harness.outline, pasteboardWriterForItem: controller.item(.group(group)))
+        #expect(forGroup == nil)
+
+        let forSession = controller.outlineView(
+            harness.outline, pasteboardWriterForItem: controller.item(.session(session)))
+        let item = try? #require(forSession as? NSPasteboardItem)
+        #expect(item?.string(forType: .tkzSidebarSession) == session.rawValue)
+    }
+
+    @Test("A drop on a group header appends; a drop between its rows takes that slot")
+    func dropTargetResolvesGroupProposals() {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let group = harness.store.state.orderedGroups[1].id
+
+        let onHeader = harness.controller.dropTarget(
+            for: harness.controller.item(.group(group)), childIndex: NSOutlineViewDropOnItemIndex)
+        #expect(onHeader?.group == group)
+        #expect(onHeader?.displayed == nil)  // nil = append
+
+        let betweenRows = harness.controller.dropTarget(
+            for: harness.controller.item(.group(group)), childIndex: 2)
+        #expect(betweenRows?.group == group)
+        #expect(betweenRows?.displayed == 2)
+    }
+
+    @Test("A drop on a session row resolves to that row's place in its own group")
+    func dropTargetRetargetsSessionsOntoTheirGroup() {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let group = harness.store.state.orderedGroups[1].id
+        let third = harness.store.state.sessions(in: group)[2].id
+
+        let target = harness.controller.dropTarget(
+            for: harness.controller.item(.session(third)), childIndex: NSOutlineViewDropOnItemIndex)
+
+        #expect(target?.group == group)
+        #expect(target?.displayed == 2)
+    }
+
+    @Test("A drop in the root list lands in the group above it; on the bare background, nowhere")
+    func dropTargetResolvesRootProposals() {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let groups = harness.store.state.orderedGroups.map(\.id)
+
+        // Above every header: the top of the first group.
+        let top = harness.controller.dropTarget(for: nil, childIndex: 0)
+        #expect(top?.group == groups[0])
+        #expect(top?.displayed == 0)
+
+        // Between headers 1 and 2: the end of the group above.
+        let between = harness.controller.dropTarget(for: nil, childIndex: 2)
+        #expect(between?.group == groups[1])
+        #expect(between?.displayed == nil)
+
+        // "On" the root itself is not a place.
+        #expect(harness.controller.dropTarget(for: nil, childIndex: NSOutlineViewDropOnItemIndex) == nil)
+    }
+
+    @Test("Into another group the index passes through; within one, slots below the row shift up")
+    func storeIndexRebasesOnlyWithinTheSourceGroup() {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let controller = harness.controller
+        let source = harness.store.state.orderedGroups[0].id
+        let other = harness.store.state.orderedGroups[1].id
+        let first = harness.store.state.sessions(in: source)[0].id
+
+        // A different group loses no row, so displayed and store indices agree.
+        #expect(controller.storeIndex(forDisplayed: 3, in: other, dragging: first) == 3)
+        // Its own group: dropping below the dragged row shifts up by one...
+        #expect(controller.storeIndex(forDisplayed: 4, in: source, dragging: first) == 3)
+        // ...while dropping at or above it does not.
+        #expect(controller.storeIndex(forDisplayed: 0, in: source, dragging: first) == 0)
+        // Append stays append.
+        #expect(controller.storeIndex(forDisplayed: nil, in: source, dragging: first) == nil)
+    }
+
+    @Test("A within-group drag lands exactly in the gap the user was shown")
+    func withinGroupDropLandsWhereTheGapWas() throws {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let controller = harness.controller
+        let group = harness.store.state.orderedGroups[0].id
+        let before = harness.store.state.sessions(in: group).map(\.id)
+        let dragged = before[0]
+
+        // The gap at displayed index 4 sits immediately above the row that is there now.
+        let target = controller.dropTarget(for: controller.item(.group(group)), childIndex: 4)
+        let destination = try #require(target?.group)
+        let at = controller.storeIndex(
+            forDisplayed: target?.displayed, in: destination, dragging: dragged)
+        harness.mutate { $0.moveSession(dragged, toGroup: destination, at: at) }
+
+        let after = harness.store.state.sessions(in: group).map(\.id)
+        #expect(after == [before[1], before[2], before[3], dragged] + before.dropFirst(4))
+        // Which is to say: still directly above the row the gap was drawn above.
+        #expect(after.firstIndex(of: dragged) == after.firstIndex(of: before[4]).map { $0 - 1 })
+    }
+
+    @Test("A cross-group drag moves the row and keeps it selected")
+    func crossGroupDropMovesTheRowAndKeepsSelection() {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let controller = harness.controller
+        let source = harness.store.state.orderedGroups[0].id
+        let destination = harness.store.state.orderedGroups[1].id
+        let dragged = harness.store.state.sessions(in: source)[0].id
+        let sourceCount = harness.store.state.sessions(in: source).count
+        harness.mutate { $0.select(dragged) }
+
+        let target = controller.dropTarget(for: controller.item(.group(destination)), childIndex: 0)
+        #expect(target?.group == destination)
+        let at = controller.storeIndex(
+            forDisplayed: target?.displayed, in: destination, dragging: dragged)
+        harness.mutate { $0.moveSession(dragged, toGroup: destination, at: at) }
+
+        #expect(harness.store.state.sessions[dragged]?.groupID == destination)
+        #expect(harness.store.state.sessions(in: destination).first?.id == dragged)
+        #expect(harness.store.state.sessions(in: source).count == sourceCount - 1)
+        // The row moved under the new parent, and the move did not disturb the selection.
+        #expect(harness.store.state.selection == dragged)
+        #expect(
+            (harness.outline.parent(forItem: controller.item(.session(dragged))) as? SidebarItem)?
+                .groupID == destination)
+    }
+
+    @Test("A session that is not in the destination group is incoming: its index passes through")
+    func storeIndexPassesThroughForANonMember() {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let group = harness.store.state.orderedGroups[0].id
+        let gone = SessionID.generate()
+
+        // Not a member of the group, so it is treated as an incoming row: index passes through.
+        #expect(harness.controller.storeIndex(forDisplayed: 1, in: group, dragging: gone) == 1)
+    }
+}
