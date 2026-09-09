@@ -128,6 +128,7 @@ public struct ChangeSet: Hashable, Sendable {
             || old.windowFrame != new.windowFrame
             || old.presets != new.presets || old.shortcuts != new.shortcuts
             || old.autoResumeOnLaunch != new.autoResumeOnLaunch
+            || old.statuslineOffered != new.statuslineOffered
         {
             change.chrome = true
         }

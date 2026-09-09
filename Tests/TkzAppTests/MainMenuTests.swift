@@ -189,7 +189,7 @@ struct MainMenuTests {
         for action in [ShortcutAction.newSession, .searchSessions, .commandPalette, .toggleSidebar,
                        .jumpToNeedsYou, .nextSession, .previousSession, .closeTerminal,
                        .renameSession, .copyLastMessage, .removeShellIntegration,
-                       .resumeSession, .resumeAllInGroup, .managePresets,
+                       .statusLineIntegration, .resumeSession, .resumeAllInGroup, .managePresets,
                        .toggleAutoResume] {
             #expect(dispatcher.canPerform(action), "\(action.rawValue) should be wired")
         }

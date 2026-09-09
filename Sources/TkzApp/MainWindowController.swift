@@ -26,6 +26,7 @@
 // reports what the window is doing back into the store, and applies what the store says.
 
 import AppKit
+import ClaudeBridge
 import Foundation
 import TkzCore
 import TkzTerminalCore
@@ -792,6 +793,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Overrides the confirmation alert for "Remove Shell Integration". Tests set it.
     public var confirmRemoveShellIntegration: (() -> Bool)?
 
+    /// Overrides the statusline consent sheet: gets the plan, returns true to install. Tests set
+    /// it — `runModal()` in a test process never returns.
+    public var confirmInstallStatusline: ((StatuslineInstallPlan) -> Bool)?
+    /// Overrides the confirmation for removing the statusline again.
+    public var confirmRemoveStatusline: (() -> Bool)?
+
     /// Overrides the rename sheet: gets the current title, returns the new one or `nil` for
     /// cancel. Tests set it — a sheet needs a key window and a run loop.
     public var renamePrompt: ((String) -> String?)?
@@ -852,6 +859,114 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             logger.error("remove shell integration failed: \(String(describing: error), privacy: .public)")
             showNotice("Could not remove shell integration: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: Status line integration (TKZ-32)
+
+    /// The account the statusline commands act on: the selected row's, else the primary one.
+    private var statuslineAccountKey: String {
+        if let session = store.state.selectedSession, store.state.accounts[session.accountKey] != nil {
+            return session.accountKey
+        }
+        return Account.defaultKey
+    }
+
+    /// The menu command — a toggle. Installing edits the user's `settings.json`, which nothing else
+    /// in tkzmux does, so it never happens without the sheet below.
+    func statusLineIntegration() {
+        guard let claude else { return }
+        let key = statuslineAccountKey
+        if claude.statuslineProducer(accountKey: key) == .tkzmux {
+            removeStatusline(accountKey: key)
+        } else {
+            offerStatusline(accountKey: key, automatic: false)
+        }
+    }
+
+    /// Puts the install to the user. `automatic` is the once-per-install offer made at startup; it
+    /// stays silent when there is nothing to offer, whereas the menu command reports why.
+    func offerStatusline(accountKey: String, automatic: Bool) {
+        guard let claude else { return }
+        let plan: StatuslineInstallPlan?
+        do {
+            plan = try claude.statuslinePlan(accountKey: accountKey)
+        } catch {
+            logger.error("statusline plan failed: \(String(describing: error), privacy: .public)")
+            if !automatic { showNotice("Could not read settings.json for \(accountKey)") }
+            return
+        }
+        guard let plan, plan.producer != .tkzmux else { return }
+
+        let confirmed: Bool
+        if let confirmInstallStatusline {
+            confirmed = confirmInstallStatusline(plan)
+        } else {
+            let alert = NSAlert()
+            alert.messageText = "Show usage and context in the status bar?"
+            var body = "tkzmux needs its own status line command to read Claude Code's quota and "
+                + "context usage — they are handed to the status line and never written to disk.\n\n"
+                + "This changes statusLine in \(plan.settingsPath):\n\n"
+            if let before = plan.before {
+                body += "Now:\n\(before)\n\nAfter:\n\(plan.after)\n\n"
+                    + "Your current status line keeps running and its output is passed through "
+                    + "unchanged. Status Line Integration in the app menu puts it back exactly."
+            } else {
+                body += "After:\n\(plan.after)\n\n"
+                    + "Status Line Integration in the app menu removes it again."
+            }
+            alert.informativeText = body
+            alert.addButton(withTitle: "Install")
+            alert.addButton(withTitle: "Not Now")
+            confirmed = alert.runModal() == .alertFirstButtonReturn
+        }
+        // Asked is asked: a decline is an answer, and the menu command stays available.
+        store.update { $0.setStatuslineOffered(true) }
+        guard confirmed else { return }
+        do {
+            try claude.installStatusline(accountKey: accountKey)
+            showNotice("Status line installed \u{2014} usage appears within a few seconds")
+        } catch {
+            logger.error("statusline install failed: \(String(describing: error), privacy: .public)")
+            showNotice("Could not install the status line: \(error.localizedDescription)")
+        }
+    }
+
+    func removeStatusline(accountKey: String) {
+        guard let claude else { return }
+        let confirmed: Bool
+        if let confirmRemoveStatusline {
+            confirmed = confirmRemoveStatusline()
+        } else {
+            let alert = NSAlert()
+            alert.messageText = "Remove the tkzmux status line?"
+            alert.informativeText = "Puts back the statusLine you had before, exactly. "
+                + "The Context, model and Usage segments go empty."
+            alert.addButton(withTitle: "Remove")
+            alert.addButton(withTitle: "Cancel")
+            alert.alertStyle = .warning
+            confirmed = alert.runModal() == .alertFirstButtonReturn
+        }
+        guard confirmed else { return }
+        do {
+            try claude.uninstallStatusline(accountKey: accountKey)
+            showNotice("Status line removed")
+        } catch {
+            logger.error("statusline remove failed: \(String(describing: error), privacy: .public)")
+            showNotice("Could not remove the status line: \(error.localizedDescription)")
+        }
+    }
+
+    /// The one-time offer, made after `ClaudeIntegration.start()` rather than from `init` — a modal
+    /// inside `init` blocks every window test, and the shim has to be installed before the command
+    /// we write into settings.json exists on disk.
+    func offerStatuslineIfNeeded() {
+        guard let claude, !store.state.statuslineOffered else { return }
+        let key = statuslineAccountKey
+        guard claude.statuslineProducer(accountKey: key) != .tkzmux else {
+            store.update { $0.setStatuslineOffered(true) }
+            return
+        }
+        offerStatusline(accountKey: key, automatic: true)
     }
 
     private func recordWindowFrame() {
@@ -1651,6 +1766,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         dispatcher.setHandler(.renameSession) { [weak self] in self?.renameSelectedSession() }
         dispatcher.setHandler(.copyLastMessage) { [weak self] in self?.copyLastMessage() }
         dispatcher.setHandler(.removeShellIntegration) { [weak self] in self?.removeShellIntegration() }
+        dispatcher.setHandler(.statusLineIntegration) { [weak self] in self?.statusLineIntegration() }
         // M5.2
         dispatcher.setHandler(.resumeSession) { [weak self] in self?.resumeSelectedSession() }
         dispatcher.setHandler(.resumeAllInGroup) { [weak self] in self?.resumeAll() }

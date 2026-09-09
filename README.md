@@ -130,7 +130,9 @@ config dir — is read, never written:
 - `settings.json`, `sessions/` and `.claude.json` are used **only as existence markers** when
   discovering accounts — `FileManager.fileExists`, never opened or parsed
   (`Sources/TkzApp/ClaudeIntegration.swift`, `discoverAccounts`). `.claude.json` is Claude Code's
-  own configuration file; tkzmux checks that it is there and never reads its contents.
+  own configuration file; the one thing tkzmux ever reads out of it is `oauthAccount`, and only to
+  put a name and plan on an account badge (`Sources/tkzmux-hook/StatuslineCommand.swift`). It is
+  read only when the account's own sidecar carries no label yet, and never written.
 - If you pass `claude --settings <file-or-json>`, the shim reads that document in order to merge
   tkzmux's hooks into it (`Sources/tkzmux-hook/SettingsMerge.swift`).
 
@@ -146,6 +148,11 @@ config dir — is read, never written:
   prints — can end up in one of these files. They are deleted with the session.
 - `bin/claude`, `bin/tkzmux-hook`, `zsh/.{zshenv,zprofile,zshrc,zlogin}`, `VERSION` — the shell
   integration (`Sources/ClaudeBridge/ShimInstaller.swift`).
+- `statusline/usage-<account>.json`, `statusline/context-<session id>.json` — what the status line
+  command captures: quota percentages and reset times, and per session the context percentage,
+  model name, session name, working directory, repo and open PR
+  (`Sources/tkzmux-hook/StatuslineCommand.swift`). Written only while the status line is installed.
+- `statusline/previous-<account>.json` — the `statusLine` you had before, kept so it can be restored.
 - `tkzmux.sock` — the local hook socket.
 
 **Shell integration and hooks.** Terminals tkzmux opens run with `ZDOTDIR` pointed at its own `zsh/`
@@ -159,6 +166,24 @@ recognise. The wrappers also point `HISTFILE` back at your own `~/.zsh_history` 
 share your history rather than starting a private one
 (`Sources/ClaudeBridge/Resources/zsh/zshrc`). *Remove Shell Integration* in the app menu deletes
 `bin/` and `zsh/` again.
+
+**The status line — the one file tkzmux writes outside its own directory.** Claude Code hands rate
+limits and context usage to the `statusLine` command on stdin and writes them nowhere else, so the
+*Context*, model and *Usage* segments cannot work without tkzmux being that command. Nothing happens
+until you say yes: the app asks once, shows the exact before/after of the `statusLine` key, and only
+then sets `statusLine.command` in `<config dir>/settings.json` to `"…/bin/tkzmux-hook" statusline`
+(`Sources/ClaudeBridge/StatuslineInstaller.swift`). Every other key in that file — and its key order,
+and its number formatting — is preserved byte for byte, because the rewrite goes through the hook's
+own JSON parser rather than `JSONSerialization`.
+
+If you already had a status line, it keeps running: the whole original `statusLine` object is saved
+to `statusline/previous-<account>.json` first, and tkzmux runs your command under `/bin/sh -c` with
+the identical stdin bytes and passes its output through unchanged. *Status Line Integration* in the
+app menu puts your original back exactly, and refuses rather than guessing if the saved copy is
+missing or you have rewired `statusLine` yourself since. Two things it does not handle: a `statusLine`
+in a **project** `.claude/settings.json` overrides the user-level one and is not detected, and if you
+delete `~/Library/Application Support/tkzmux` by hand the `statusLine` key is left pointing at a
+binary that is gone — `/statusline remove` in Claude Code, or deleting the key, fixes that.
 
 **Hook payloads.** Each hook sends one NDJSON frame over the `AF_UNIX` socket — event name, Claude's
 session id, the hook process's ppid, a timestamp, and Claude Code's own payload, which includes
@@ -181,9 +206,9 @@ signed.
 
 ## Known gaps
 
-- **No usage or context readout.** The status bar's *Context*, model badge and *Usage* segments stay
-  empty: reading Claude Code's quota requires a statusline shim that this repo does not ship yet
-  (Linear TKZ-32).
+- **Usage and context need the status line installed.** The *Context*, model badge and *Usage*
+  segments stay empty until you accept the status line integration described above — Claude Code
+  publishes that data nowhere else. It is offered once at startup and lives in the app menu.
 - **The PR badge needs `gh`.** Branch, diff stats, ahead/behind and ports are live. The PR badge
   additionally needs the GitHub CLI installed and authenticated, and only appears for repos whose
   origin is on GitHub — on any other host the lookup is skipped by design, and the badge stays

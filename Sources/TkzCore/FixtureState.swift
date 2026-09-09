@@ -28,7 +28,7 @@ public enum Fixture {
     public static let now = Date(timeIntervalSince1970: 1_788_944_400)
 
     /// The two account keys: the basenames of `~/.claude` and `~/.claude-work`. Labels here are
-    /// generic on purpose — real ones come from `dash-accounts.json` at runtime.
+    /// generic on purpose — real ones come from the account's own identity at runtime.
     public static let accountKeys = ["claude", "claude-work"]
 
     private struct Spec {

@@ -97,6 +97,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 // After the integration: every `claude --resume` must run through the shim the
                 // installer just wrote, so the launch frame binds its pid.
                 if restored.loaded != nil { controller.autoResumeIfEnabled() }
+                // TKZ-32: the one-time statusline offer. Async so the launch is never blocked on a
+                // modal, and last so `bin/tkzmux-hook` — the command it writes into settings.json —
+                // is already on disk.
+                DispatchQueue.main.async { controller.offerStatuslineIfNeeded() }
             }
         } catch {
             MainMenu.installDefault()

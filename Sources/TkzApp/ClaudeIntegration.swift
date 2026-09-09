@@ -35,6 +35,13 @@ public final class ClaudeIntegration {
     public let hookServer: HookServer
     public let watcher: ClaudeSessionWatcher
     public let installer: ShimInstaller?
+    /// Reads the two statusline sidecars `tkzmux-hook statusline` writes (TKZ-32). Present even
+    /// when nothing has been installed yet — the directory simply stays empty and the sweep keeps
+    /// looking, so the badges light up the moment the user consents.
+    public let statusline: StatuslineReader
+    /// Writes `statusLine` into the user's `settings.json`. `nil` when the hook binary isn't
+    /// installed, exactly like `installer`.
+    public let statuslineInstaller: StatuslineInstaller?
 
     /// `launch`-frame bindings. A session that exits keeps its entry until the pid is reused by a
     /// later `launch`, which simply overwrites it.
@@ -110,6 +117,12 @@ public final class ClaudeIntegration {
         watcher = ClaudeSessionWatcher(configDirs: configDirs) { event in
             DispatchQueue.main.async { MainActor.assumeIsolated { box.value?.handle(event) } }
         }
+        statusline = StatuslineReader(
+            directory: StatuslineReader.standardDirectory(supportDirectory: directory)
+        ) { event in
+            DispatchQueue.main.async { MainActor.assumeIsolated { box.value?.handle(event) } }
+        }
+        statuslineInstaller = StatuslineInstaller(directory: directory)
         box.value = self
 
         let toRegister = accounts.values.filter { store.state.accounts[$0.key] == nil }
@@ -196,6 +209,7 @@ public final class ClaudeIntegration {
             logger.error("hook server failed to start: \(String(describing: error), privacy: .public)")
         }
         watcher.start()
+        statusline.start()
 
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + Self.tickInterval, repeating: Self.tickInterval)
@@ -212,12 +226,69 @@ public final class ClaudeIntegration {
         tick?.cancel()
         tick = nil
         watcher.stop()
+        statusline.stop()
         hookServer.stop()
+    }
+
+    // MARK: Statusline sidecars
+
+    /// Quota and per-session context, posted straight into the store. Unlike hook frames these need
+    /// no attribution work: usage is keyed by account and context joins on Claude's own session id.
+    func handle(_ event: StatuslineEvent) {
+        store.update { state in
+            switch event {
+            case .usage(let snapshot):
+                state.setUsage(snapshot)
+            case .usageCleared(let accountKey):
+                state.clearUsage(for: accountKey)
+            case .context(let sidecar):
+                state.setSessionSidecar(sidecar)
+            case .contextRemoved(let sessionId):
+                state.clearSessionSidecar(claudeSessionId: sessionId)
+            }
+        }
+    }
+
+    /// Which producer, if any, is feeding the statusline for an account's config dir.
+    public func statuslineProducer(accountKey: String) -> StatuslineProducer {
+        guard let installer = statuslineInstaller,
+              let configDir = store.state.accounts[accountKey]?.configDir
+        else { return .none }
+        return installer.detect(configDir: configDir)
+    }
+
+    public func statuslinePlan(accountKey: String) throws -> StatuslineInstallPlan? {
+        guard let installer = statuslineInstaller,
+              let configDir = store.state.accounts[accountKey]?.configDir
+        else { return nil }
+        return try installer.plan(configDir: configDir, accountKey: accountKey)
+    }
+
+    public func installStatusline(accountKey: String) throws {
+        guard let installer = statuslineInstaller,
+              let configDir = store.state.accounts[accountKey]?.configDir
+        else { return }
+        try installer.install(configDir: configDir, accountKey: accountKey)
+    }
+
+    public func uninstallStatusline(accountKey: String) throws {
+        guard let installer = statuslineInstaller,
+              let configDir = store.state.accounts[accountKey]?.configDir
+        else { return }
+        try installer.uninstall(configDir: configDir, accountKey: accountKey)
     }
 
     /// Deletes `bin/`, `zsh/` and `VERSION`; new shells are plain login shells again. The socket,
     /// snapshots and `state.json` stay.
+    ///
+    /// The statusline is uninstalled **first**: `settings.json` points at `bin/tkzmux-hook`, and
+    /// removing `bin/` while that reference stands would leave the user with a statusline command
+    /// that no longer exists. A failure here is deliberately swallowed per account — a config dir
+    /// the user has since rewired by hand must not block removing the shell integration.
     public func removeShellIntegration() throws {
+        for account in store.state.accounts.values.sorted(by: { $0.key < $1.key }) {
+            try? uninstallStatusline(accountKey: account.key)
+        }
         try installer?.remove()
     }
 

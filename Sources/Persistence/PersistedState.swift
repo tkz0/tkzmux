@@ -62,16 +62,20 @@ public struct PersistedSidebar: Hashable, Sendable, Codable {
 public struct PersistedPreferences: Hashable, Sendable, Codable {
     /// `claude --resume` every restored row at launch.
     public var autoResumeOnLaunch: Bool
+    /// The statusline consent sheet has been shown once (TKZ-32).
+    public var statuslineOffered: Bool
 
-    public init(autoResumeOnLaunch: Bool = false) {
+    public init(autoResumeOnLaunch: Bool = false, statuslineOffered: Bool = false) {
         self.autoResumeOnLaunch = autoResumeOnLaunch
+        self.statuslineOffered = statuslineOffered
     }
 
-    private enum CodingKeys: String, CodingKey { case autoResumeOnLaunch }
+    private enum CodingKeys: String, CodingKey { case autoResumeOnLaunch, statuslineOffered }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         autoResumeOnLaunch = try c.decodeIfPresent(Bool.self, forKey: .autoResumeOnLaunch) ?? false
+        statuslineOffered = try c.decodeIfPresent(Bool.self, forKey: .statuslineOffered) ?? false
     }
 }
 
@@ -162,7 +166,9 @@ public struct PersistedState: Hashable, Sendable, Codable {
                 visible: state.sidebarVisible, width: state.sidebarWidth.map { Double($0) }),
             windowFrame: state.windowFrame.map(PersistedFrame.init),
             shortcuts: state.shortcuts,
-            preferences: PersistedPreferences(autoResumeOnLaunch: state.autoResumeOnLaunch))
+            preferences: PersistedPreferences(
+                autoResumeOnLaunch: state.autoResumeOnLaunch,
+                statuslineOffered: state.statuslineOffered))
     }
 
     // MARK: Restore
@@ -206,6 +212,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
         if let windowFrame { state.windowFrame = windowFrame.rect }
         state.shortcuts = shortcuts
         state.autoResumeOnLaunch = preferences.autoResumeOnLaunch
+        state.statuslineOffered = preferences.statuslineOffered
 
         return warnings
     }

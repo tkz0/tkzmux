@@ -172,7 +172,7 @@ public struct ShimInstaller: Sendable {
 
     // MARK: Atomic writes (write-to-temp + rename, same directory so it can't cross a mount)
 
-    private static func writeAtomically(
+    static func writeAtomically(
         _ data: Data, to url: URL, permissions: Int, fileManager: FileManager
     ) throws {
         let directory = url.deletingLastPathComponent()
@@ -213,7 +213,7 @@ public struct ShimInstaller: Sendable {
         }
     }
 
-    private static func rename(from source: URL, to destination: URL) -> Bool {
+    static func rename(from source: URL, to destination: URL) -> Bool {
         source.withUnsafeFileSystemRepresentation { from in
             destination.withUnsafeFileSystemRepresentation { to in
                 guard let from, let to else { errno = EINVAL; return false }

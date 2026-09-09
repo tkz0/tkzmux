@@ -27,6 +27,7 @@ this table; nothing hard-codes a key equivalent.
 | `reloadConfig` | ⇧⌘, | Reload config |
 | `copyLastMessage` | ⇧⌘C | Copy the selected session's last Stop message (M3.4) |
 | `removeShellIntegration` | — | Delete the claude shim and zsh wrappers under Application Support (M3.3); app menu |
+| `statusLineIntegration` | — | Install or remove tkzmux's `statusLine` command, behind a consent sheet (TKZ-32); app menu |
 | `nextSession` | — | Known action, **no default**: ⌘T/⌘D are reserved for the terminal |
 | `previousSession` | — | Same |
 

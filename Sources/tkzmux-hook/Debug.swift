@@ -17,3 +17,10 @@ func debugLog(_ message: @autoclosure () -> String) {
         _ = write(STDERR_FILENO, buf.baseAddress, buf.count)
     }
 }
+
+/// `$CLAUDE_CONFIG_DIR`, else `$HOME/.claude`. Which account a Claude Code process belongs to
+/// follows from this directory and nothing else — see `statuslineAccountKey(configDir:)`.
+func claudeConfigDirectory() -> String {
+    if let configDir = envString("CLAUDE_CONFIG_DIR"), !configDir.isEmpty { return configDir }
+    return (envString("HOME") ?? "") + "/.claude"
+}
