@@ -68,11 +68,15 @@ public final class HeaderBackdropView: NSView {
 final class ChromeViewController: NSViewController {
     let splitViewController: NSSplitViewController
     let headerBackdrop = HeaderBackdropView()
+    /// The ⌘-hold cheat sheet. Covers the sidebar, the terminal and the status strip, but not the
+    /// toolbar: with `.fullSizeContentView` the titlebar controls live above `contentView`.
+    let overlay: NSView
 
     private var theme: Theme
 
-    init(splitViewController: NSSplitViewController, theme: Theme) {
+    init(splitViewController: NSSplitViewController, overlay: NSView, theme: Theme) {
         self.splitViewController = splitViewController
+        self.overlay = overlay
         self.theme = theme
         super.init(nibName: nil, bundle: nil)
     }
@@ -94,7 +98,15 @@ final class ChromeViewController: NSViewController {
         headerBackdrop.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(headerBackdrop)   // after the split view: above it
 
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(overlay)          // last: above the backdrop too
+
         NSLayoutConstraint.activate([
+            overlay.topAnchor.constraint(equalTo: root.topAnchor),
+            overlay.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            overlay.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+
             split.topAnchor.constraint(equalTo: root.topAnchor),
             split.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             split.trailingAnchor.constraint(equalTo: root.trailingAnchor),

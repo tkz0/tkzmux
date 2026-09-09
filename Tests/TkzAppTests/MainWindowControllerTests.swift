@@ -226,7 +226,13 @@ struct MainWindowControllerTests {
         #expect(abs(backdrop.frame.height - inset) < 1)
         #expect(abs(backdrop.frame.width - (harness.window.contentView?.frame.width ?? 0)) < 1)
         #expect(backdrop.superview === harness.window.contentView)
-        #expect(harness.window.contentView?.subviews.last === backdrop, "the backdrop is above the split view")
+        let chromeSubviews = harness.window.contentView?.subviews ?? []
+        #expect(
+            (chromeSubviews.firstIndex(of: backdrop) ?? -1)
+                > (chromeSubviews.firstIndex(of: harness.controller.splitViewController.view) ?? -1),
+            "the backdrop is above the split view")
+        // Only the ⌘-hold cheat sheet is above the backdrop, and it is hidden until ⌘ is held.
+        #expect(chromeSubviews.last === harness.controller.cheatSheet.view)
         #expect(backdrop.effectView.blendingMode == .behindWindow)
         #expect(backdrop.effectView.material == HeaderBackdropView.material)
         #expect(backdrop.borderView.frame.height == 1)

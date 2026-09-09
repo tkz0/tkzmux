@@ -275,6 +275,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     let splitViewController: MainSplitViewController
     /// The window's content view controller: the split view plus the header backdrop.
     let chrome: ChromeViewController
+    /// Hold ⌘ alone for two seconds and this lists the shortcuts.
+    let cheatSheet: CheatSheetOverlayController
     let detail: DetailViewController
     /// The right-hand surface. `NSView` rather than `TerminalMetalView` so a test can drive the
     /// window with a plain focusable view and no GPU.
@@ -344,7 +346,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             terminalView: terminalView, statusBar: statusBar, theme: theme)
         let splitViewController = MainSplitViewController()
         self.splitViewController = splitViewController
-        self.chrome = ChromeViewController(splitViewController: splitViewController, theme: theme)
+        let cheatSheet = CheatSheetOverlayController(theme: theme)
+        self.cheatSheet = cheatSheet
+        self.chrome = ChromeViewController(
+            splitViewController: splitViewController, overlay: cheatSheet.view, theme: theme)
 
         let frame = store.state.windowFrame
             ?? NSRect(origin: .zero, size: MainWindowController.defaultWindowSize)
@@ -363,6 +368,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         wireSidebar()
         wireToolbar()
         wirePalette()
+        wireCheatSheet()
         registerMenuHandlers()
         observeStore()
         startEventPump()
@@ -671,12 +677,36 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         view.onGridResize = { [weak host] size in host?.resizeVisible(size) }
         host.onDidShow = { [weak self] _ in self?.updateToolbarTitle() }
 
+    }
+
+    /// The cheat sheet, and with it the window's one key monitor.
+    ///
+    /// `.flagsChanged` is what makes "hold ⌘" observable at all — no responder method sees a
+    /// modifier that never becomes a chord. The monitor is installed here, from the designated
+    /// initialiser, rather than in ``wireInput(view:host:)``: `handleCommandKey` already declines
+    /// when there is no `metalView`, so the copy/paste half stays inert for the plain-view windows
+    /// tests build, while the cheat sheet works in both.
+    private func wireCheatSheet() {
+        cheatSheet.menuProvider = { [weak self] in self?.buildMainMenu() }
+
         // ⌘C / ⌘V. `TerminalInputController` declines anything with ⌘ held so the menu bar keeps
         // working, and there is deliberately **no Edit menu**: an Edit menu would win the key
         // match and route `copy:`/`paste:` at a first responder that does not implement them.
-        commandKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.handleCommandKey(event) else { return event }
-            return nil
+        commandKeyMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .flagsChanged]
+        ) { [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            // Deliberately *not* gated on the first responder the way `handleCommandKey` is:
+            // clicking a sidebar row makes the outline view first responder, and holding ⌘ there
+            // should still show the sheet.
+            switch event.type {
+            case .flagsChanged:
+                self.cheatSheet.flagsChanged(event.modifierFlags)
+            default:
+                self.cheatSheet.keyDown(event.modifierFlags)
+                if self.handleCommandKey(event) { return nil }
+            }
+            return event
         }
     }
 
@@ -724,6 +754,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             _ = host.snapshotAll()
             host.closeAll(signal: SIGHUP)
         }
+        cheatSheet.stop()
         if let commandKeyMonitor {
             NSEvent.removeMonitor(commandKeyMonitor)
             self.commandKeyMonitor = nil
@@ -739,6 +770,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public func windowDidBecomeKey(_ notification: Notification) {
         guard let id = store.state.selection else { return }
         store.update { $0.markAttended(id) }
+    }
+
+    /// Drops a ⌘ we will never see released. ⌘-Tab away with the cheat sheet up and the release
+    /// lands while another app is active, where no local monitor of ours runs — without this the
+    /// card would still be there on return. `MouseController.focusDidChange` clears held mouse
+    /// buttons for exactly the same reason.
+    public func windowDidResignKey(_ notification: Notification) {
+        cheatSheet.resignedKey()
     }
 
     /// The M3 coordinator, once `AppDelegate` has built it. Setting it routes the last-message
@@ -1673,11 +1712,17 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Builds the menu bar for the current bindings and installs it. Called by `AppDelegate` once
     /// the window exists, because the handlers capture it.
     public func installMainMenu(appName: String = "tkzmux") {
-        MainMenu.install(
-            MainMenu.build(
-                appName: appName,
-                shortcuts: ShortcutsTable.resolved(state: store.state),
-                dispatcher: dispatcher))
+        MainMenu.install(buildMainMenu(appName: appName))
+    }
+
+    /// The menu for the bindings in force right now. `installMainMenu` installs it; the cheat sheet
+    /// reads its rows straight off it, which is why an edited `AppState.shortcuts` reaches the
+    /// sheet without a relaunch even though the installed menu bar is only built at launch.
+    func buildMainMenu(appName: String = "tkzmux") -> NSMenu {
+        MainMenu.build(
+            appName: appName,
+            shortcuts: ShortcutsTable.resolved(state: store.state),
+            dispatcher: dispatcher)
     }
 
     // MARK: Diagnostics
