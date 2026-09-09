@@ -1,0 +1,56 @@
+Sources/TkzTerminalCore/TerminalSession.swift
+  s_2e18a7ba247be3::t_e8a93011b2c16d 687-695
+Sources/TkzTerminalRender/TerminalSurface.swift
+  s_2e18a7ba247be3::t_fbf6953ae76551 132-138
+  s_2e18a7ba247be3::t_1a32c5e267c6ac 252-260
+  s_2e18a7ba247be3::t_b7e0bf9a3a3da8 220
+Sources/TkzTerminalCore/ScrollMetrics.swift
+  s_2e18a7ba247be3::t_6471d98a178930 62-64
+  s_2e18a7ba247be3::t_b9ed834794e192 1-61,65-80
+Sources/TkzTerminalCore/GhosttyVt+Swift.swift
+  s_2e18a7ba247be3::t_8b296d72470bfd 2
+Sources/TkzTerminalView/ScrollIndicator.swift
+  s_2e18a7ba247be3::t_cf5ea95a34157b 131-133,135-138
+  s_2e18a7ba247be3::t_46c56b09572e28 63,65,67,70
+  s_2e18a7ba247be3::t_837f85d6a5ed20 255-263,266,270-272,275,277-278
+  s_2e18a7ba247be3::t_e6d31b88389a3e 1-62,64,66,68-69,71-80,82-84,86-89,94-96,99-130,134,139-254,264-265,267-269,273-274,276,279-280
+  s_2e18a7ba247be3::t_29c8cb5dffe3fe 81,85,90-93,97-98
+Sources/TkzTerminalRender/FrameBuilder.swift
+  s_2e18a7ba247be3::t_6a56d24c4d5ab9 90-92,94,97,101-105
+  s_2e18a7ba247be3::t_bbb8cc4d24bcb4 106
+Tests/TkzTerminalViewTests/ScrollIndicatorTests.swift
+  s_2e18a7ba247be3::t_d9e38e62a49aa6 44,46,48-49,51,56-57,59,63-64,66,70,72,74,78-79,82,86-87,89,116,119-123
+  s_2e18a7ba247be3::t_92a51d4d490cd2 1-43,45,47,50,52-55,58,60-62,65,67-69,71,73,75-77,80-81,83-85,88,90-115,117-118,124-149,152-212
+  s_2e18a7ba247be3::t_c7d27f68d4d296 150-151
+Tests/TkzTerminalRenderTests/FrameBuilderTests.swift
+  s_2e18a7ba247be3::t_ba3e7b57d89e6f 580-582,584
+  s_2e18a7ba247be3::t_4b9a8b69558d80 517-579,583,585-604
+Sources/TkzTerminalView/TerminalMetalView.swift
+  s_2e18a7ba247be3::t_639004da4be6a7 198-200
+  s_2e18a7ba247be3::t_ddd30c609102e4 597,599-609
+  s_2e18a7ba247be3::t_a5a5a8496c8e50 101-102
+  s_2e18a7ba247be3::t_883a95fa56e8d9 98-100
+  s_2e18a7ba247be3::t_26810b3f3ca324 581,585-596,598,610-619
+  s_2e18a7ba247be3::t_89636983107879 620
+Tests/TkzTerminalCoreTests/TerminalSessionTests.swift
+  s_2e18a7ba247be3::t_83991c9ee308e5 265-281,283-294,296-329,331-338,340
+  s_2e18a7ba247be3::t_aa97d2e72442c4 264,282,295,330,339,341
+Tests/TkzTerminalViewTests/TerminalMetalViewTests.swift
+  s_2e18a7ba247be3::t_2da4221cc76f75 240-322
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "55bd31c29ce8863d23eab8534928620a9fc3592d",
+  "prompts": {},
+  "sessions": {
+    "s_2e18a7ba247be3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8bfc2c2a-af0d-4848-bde8-43d9c61940f3",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
