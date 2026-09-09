@@ -29,7 +29,8 @@ public enum SidebarStatus: String, Hashable, Sendable, CaseIterable {
     case working
     /// Claude is blocked on the human (permission prompt, elicitation, or done-unattended).
     case waiting
-    /// Alive but nothing is happening.
+    /// Alive but nothing is happening — and the catch-all for no Claude at all, a restored row with
+    /// no terminal, a parked job, an attended Stop. **Draws no dot** (2026-09-09).
     case idle
     /// Claude finished less than a minute ago and nobody has looked yet: idle with the accent
     /// tint, so a finished answer is visible before it ages into `NEEDS YOU` (GUI pass

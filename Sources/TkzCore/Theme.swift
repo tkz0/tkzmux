@@ -39,7 +39,7 @@ public struct Theme: Hashable, Sendable {
     // MARK: Session status
     public let working: RGB               // status dot + "N working"
     public let waiting: RGB               // status dot + "N need you"
-    public let idle: RGB                  // status dot, translucent
+    public let idle: RGB                  // translucent; kept, but nothing draws it — the idle dot is hidden
     public let needsYouText: RGB          // NEEDS YOU badge
     public let needsYouBackground: RGB
 

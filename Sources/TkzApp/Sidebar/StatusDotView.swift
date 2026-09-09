@@ -25,6 +25,10 @@ import TkzCore
 
 /// A 7 pt status dot. (Until 2026-09-08 `exited` drew as a hollow ring; that status is gone.) A
 /// colour token of its own.
+///
+/// **`.idle` draws no dot at all** (decision 2026-09-09), so a dot in the sidebar always means
+/// something is happening. `Theme.idle` is kept as a token nothing reads. Which states collapse
+/// to idle, and why the grey dot said nothing, is design.md → *Status derivation*.
 public final class StatusDotLayer: CALayer {
     /// Key the pulse is registered under. Exposed so the row view and the tests can assert presence
     /// without duplicating the string.
@@ -43,7 +47,7 @@ public final class StatusDotLayer: CALayer {
         bounds = CGRect(x: 0, y: 0, width: Self.diameter, height: Self.diameter)
         actions = [
             "backgroundColor": NSNull(), "borderColor": NSNull(), "borderWidth": NSNull(),
-            "position": NSNull(), "bounds": NSNull(), "opacity": NSNull(),
+            "position": NSNull(), "bounds": NSNull(), "opacity": NSNull(), "hidden": NSNull(),
         ]
         apply()
     }
@@ -125,17 +129,24 @@ public final class StatusDotLayer: CALayer {
         case .working:
             backgroundColor = theme.working.cgColor
             borderWidth = 0
+            isHidden = false
         case .waiting:
             backgroundColor = theme.waiting.cgColor
             borderWidth = 0
+            isHidden = false
         case .idle:
-            backgroundColor = theme.idle.cgColor
+            // Nothing to report, so nothing is drawn. The colour is cleared as well as the layer
+            // hidden: a stale `backgroundColor` would leave `fillColor` naming a token that is not
+            // on screen.
+            backgroundColor = nil
             borderWidth = 0
+            isHidden = true
         case .done:
             // No token of its own: the accent is the one chromatic colour not already meaning
             // "working" (green) or "needs you" (amber) in every preset.
             backgroundColor = theme.accent.cgColor
             borderWidth = 0
+            isHidden = false
         }
 
         if status == .working {
