@@ -1,0 +1,21 @@
+docs/manual-checks.md
+  s_a6b77fdfad3885::t_68e3fb3750920c 471
+docs/design.md
+  s_a6b77fdfad3885::t_68e3fb3750920c 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "b9ea3274748becf355033752ce0fb8718f797d0e",
+  "prompts": {},
+  "sessions": {
+    "s_a6b77fdfad3885": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "713d9700-82a5-4f9a-a5df-6678fe809238",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
