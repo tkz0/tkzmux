@@ -241,3 +241,64 @@ private func runInteractiveLoginShell(
     let quiet = try run(URL(fileURLWithPath: "/bin/zsh"), ["-l", "-i", "-c", "cd /tmp; print -r -- end"], environment: env)
     #expect(!quiet.stdout.contains("\u{1b}]7;"))
 }
+
+// MARK: - TKZMUX_BOOT_COMMAND
+
+/// Acceptance (2026-09-09): the command a session is opened to run — `claude --resume <id>`, a
+/// preset — actually runs in the shell.
+///
+/// This replaces the readiness heuristic it used to arrive by. Typing the command into the pty
+/// after the spawn could not be made reliable: zsh's line editor calls `tcsetattr(…, TCSAFLUSH, …)`
+/// while it starts up, discarding whatever is queued on the tty, and no dependable signal says when
+/// the last such flush has happened. Sessions were observed sitting at a bare prompt with Claude
+/// never started. `.zlogin` runs after every rc file and before the interactive loop, so there is
+/// nothing left to flush.
+@Test func bootCommandRuns() throws {
+    let fixture = try makeWrapperFixture()
+    let result = try runInteractiveLoginShell(
+        fixture, extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- BOOT-RAN"])
+    #expect(result.stdout.contains("BOOT-RAN"), "boot command never ran: \(result.stdout)")
+}
+
+/// It must not survive into anything the command starts: `claude` itself re-execs shells, and an
+/// inherited value would run the command a second time.
+@Test func bootCommandIsUnsetBeforeItRuns() throws {
+    let fixture = try makeWrapperFixture()
+    let result = try runInteractiveLoginShell(
+        fixture,
+        extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- INNER=${TKZMUX_BOOT_COMMAND:-unset}"])
+    #expect(result.stdout.contains("INNER=unset"), "\(result.stdout)")
+}
+
+/// The shim has to win: `claude` in the boot command must resolve to `$TKZMUX_BIN/claude`, or the
+/// resumed session runs the real binary and the row never gets its pid bound.
+@Test func bootCommandSeesTkzmuxBinFirstOnPath() throws {
+    let fixture = try makeWrapperFixture()
+    let shim = fixture.tkzmuxBin.appendingPathComponent("claude")
+    try "#!/bin/sh\n".write(to: shim, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shim.path)
+
+    let result = try runInteractiveLoginShell(
+        fixture, extraEnv: ["TKZMUX_BOOT_COMMAND": "command -v claude"])
+    #expect(result.stdout.contains(shim.path), "\(result.stdout)")
+}
+
+/// A `.shell` session carries no command, and the block must then do nothing at all.
+@Test func noBootCommandIsANoOp() throws {
+    let fixture = try makeWrapperFixture()
+    let result = try runInteractiveLoginShell(fixture)
+    #expect(!result.stdout.contains("BOOT-RAN"))
+    let markers = (try? String(contentsOf: fixture.log, encoding: .utf8)) ?? ""
+    #expect(markers.split(separator: "\n").map(String.init) == ["zshenv", "zprofile", "zshrc", "zlogin"])
+}
+
+/// A `return` in the user's own .zlogin must not skip the boot command — hence the block sitting
+/// outside the wrapper's guard.
+@Test func bootCommandSurvivesAReturnInTheUsersZlogin() throws {
+    let fixture = try makeWrapperFixture()
+    try "echo zlogin >> \"$MARKER_LOG\"\nreturn 0\n".write(
+        to: fixture.fakeHome.appendingPathComponent(".zlogin"), atomically: true, encoding: .utf8)
+    let result = try runInteractiveLoginShell(
+        fixture, extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- BOOT-RAN"])
+    #expect(result.stdout.contains("BOOT-RAN"), "\(result.stdout)")
+}

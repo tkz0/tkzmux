@@ -21,6 +21,7 @@
 // directory into a temporary directory, and hands the child a minimal environment whose `ZDOTDIR`
 // does not exist — so zsh sources no user rc file and a test can never read or write real state.
 
+import ClaudeBridge
 import Foundation
 import Metal
 import Persistence
@@ -245,34 +246,46 @@ struct BackgroundSessionTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: zdotdir.path).isEmpty)
     }
 
-    /// End-to-end for M2.5 (TKZ-43): `open` then `runWhenReady` on the real host actually runs the
-    /// command in the spawned shell, and the result lands on the rendered screen.
+    /// End-to-end (2026-09-09): a session opened with a boot command really runs it in the spawned
+    /// shell, and the output lands on the rendered screen.
     ///
-    /// The spy-host tests assert the wiring; this is the one that would catch the M1.10 failure
-    /// (a command written in the same turn as the spawn is discarded by zsh's `tcsetattr`) coming
-    /// back through `TerminalViewHost` rather than through `Pty`.
-    @Test("runWhenReady types into a real shell and its output reaches the screen")
-    func runWhenReadyReachesTheShell() async throws {
+    /// The spy-host tests assert the wiring and `ZshWrapperTests` covers `.zlogin` on its own; this
+    /// is the one that exercises the whole path through `TerminalViewHost` and a real pty — the
+    /// place the old readiness heuristic silently lost `claude --resume` when zsh's line-editor
+    /// setup flushed the tty's input queue out from under it.
+    @Test("a boot command runs in a real shell and its output reaches the screen")
+    func bootCommandReachesTheShell() async throws {
         let temp = try TempDirectory()
         guard let (_, view, host) = try makeHost(temp) else { return }
         defer { host.closeAll(signal: SIGKILL) }
 
+        // The spawn points ZDOTDIR at `<support>/zsh`; the boot command lives in `.zlogin`, so the
+        // real wrapper has to be on disk there for this to be an end-to-end test at all.
+        let zdotdir = temp.supportDirectory.appendingPathComponent("zsh", isDirectory: true)
+        try FileManager.default.createDirectory(at: zdotdir, withIntermediateDirectories: true)
+        let zlogin = try #require(ShimResources.bundled().zshFiles["zlogin"])
+        try zlogin.write(
+            to: zdotdir.appendingPathComponent(".zlogin"), atomically: true, encoding: .utf8)
+
         let id = SessionID.generate()
-        _ = try host.open(id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
+        _ = try host.open(
+            id, cwd: NSHomeDirectory(),
+            env: ["TKZMUX_BOOT_COMMAND": "echo TKZMUX-E2E-OK"],
+            size: view.gridSizeForBounds())
         host.show(id)
-        host.runWhenReady(id, command: "echo TKZMUX-E2E-OK")
 
         let session = try #require(host.session(for: id))
         let deadline = ContinuousClock.now + .seconds(10)
         var screen = ""
         while ContinuousClock.now < deadline {
             screen = (try? session.formatted()) ?? ""
-            // Twice: once as the tty's echo of the typed line, once as the command's output.
-            if screen.components(separatedBy: "TKZMUX-E2E-OK").count - 1 >= 2 { break }
+            // Once: the command's own output. A boot command is run by `.zlogin`, not typed, so
+            // the tty never echoes it back the way a typed line would.
+            if screen.contains("TKZMUX-E2E-OK") { break }
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(
-            screen.components(separatedBy: "TKZMUX-E2E-OK").count - 1 >= 2,
+            screen.contains("TKZMUX-E2E-OK"),
             "the command never ran in the shell. Screen:\n\(screen)")
     }
 

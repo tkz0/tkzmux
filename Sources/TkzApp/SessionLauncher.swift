@@ -98,7 +98,8 @@ public final class SessionLauncher {
         guard isDirectory(cwd) else { return .failure(.missingDirectory(cwd)) }
 
         let id = SessionID.generate()
-        let env = environment(accountKey: spec.accountKey, extra: spec.env)
+        let env = environment(
+            accountKey: spec.accountKey, extra: spec.env, bootCommand: spec.command)
         let pid: pid_t
         do {
             pid = try host.open(id, cwd: cwd, env: env, size: gridSize())
@@ -118,11 +119,8 @@ public final class SessionLauncher {
             $0.select(id)
         }
 
-        // `.shell` types nothing. Everything else waits for the shell to be ready first — a write
-        // in the same turn as the spawn is discarded by zsh's `tcsetattr(TCSAFLUSH)` (M1.10).
-        if !spec.command.isEmpty {
-            host.runWhenReady(id, command: spec.command)
-        }
+        // The command is not typed in: it rides along as `TKZMUX_BOOT_COMMAND` and the ZDOTDIR
+        // `.zlogin` runs it. `.shell` carries no command, so that file no-ops.
         logLaunch(kind: spec.kind.rawValue, id: id, cwd: cwd, env: env, command: spec.command)
         return .success(id)
     }
@@ -145,7 +143,9 @@ public final class SessionLauncher {
     /// worktree is what went missing — so a row whose worktree Claude removed reads correctly the
     /// moment it is reopened, resume or not.
     @discardableResult
-    public func reopen(_ id: SessionID) -> Result<ReopenOutcome, Failure> {
+    public func reopen(
+        _ id: SessionID, bootCommand: String? = nil
+    ) -> Result<ReopenOutcome, Failure> {
         guard let session = store.state.sessions[id] else { return .failure(.unknownSession) }
         if session.live != nil { return .success(.alreadyRunning) }
 
@@ -159,7 +159,8 @@ public final class SessionLauncher {
             store.update { $0.clearWorktreeBadge(id) }
         }
 
-        let env = environment(accountKey: session.accountKey, extra: [:])
+        let env = environment(
+            accountKey: session.accountKey, extra: [:], bootCommand: bootCommand)
         // The live grid first: after ⌘W the host still holds the screen exactly as the shell left
         // it, which is fresher than anything on disk. Then the `.ghsnap` from the last quit.
         let snapshot = (try? host.snapshot(id)) ?? host.savedSnapshot(id)
@@ -208,22 +209,22 @@ public final class SessionLauncher {
         if before.live?.descriptor != nil { return .success(.claudeRunning) }
 
         let hadShell = before.live != nil
+        // Worked out before the shell is opened: a shell this call spawns is handed the command as
+        // `TKZMUX_BOOT_COMMAND` rather than having it typed in afterwards.
+        let claudeSessionId = before.claudeSessionId.flatMap { $0.isEmpty ? nil : $0 }
+        let command = claudeSessionId.map { "claude --resume \($0)" }
         if !hadShell {
-            if case .failure(let failure) = reopen(id) { return .failure(failure) }
+            if case .failure(let failure) = reopen(id, bootCommand: command) {
+                return .failure(failure)
+            }
         }
         if select { store.update { $0.select(id) } }
 
-        guard let claudeSessionId = before.claudeSessionId, !claudeSessionId.isEmpty else {
-            return .success(.nothingToResume)
-        }
-        let command = "claude --resume \(claudeSessionId)"
-        // A shell that was already sitting at its prompt produces no output for `runWhenReady`
-        // to wait on, and would only get the bytes after that path's timeout.
-        if hadShell {
-            host.run(id, command: command)
-        } else {
-            host.runWhenReady(id, command: command)
-        }
+        guard let claudeSessionId, let command else { return .success(.nothingToResume) }
+        // A shell that is already sitting at its prompt has finished every `tcsetattr` its startup
+        // performs, so typing into it is sound — and it is the only way in, the boot command
+        // having been consumed when that shell started.
+        if hadShell { host.run(id, command: command) }
         logger.info("resume \(id.rawValue, privacy: .public): \(command, privacy: .public)")
         return .success(.resumed(claudeSessionId: claudeSessionId))
     }
@@ -335,13 +336,19 @@ public final class SessionLauncher {
     /// The same value goes out as `TKZMUX_CLAUDE_CONFIG_DIR`: the ZDOTDIR wrapper re-exports it
     /// after the user's own rc files have run, so an `export CLAUDE_CONFIG_DIR=…` in a `.zshrc`
     /// cannot override an account the user picked in the app.
-    public func environment(accountKey: String?, extra: [String: String]) -> [String: String] {
+    public func environment(
+        accountKey: String?, extra: [String: String], bootCommand: String? = nil
+    ) -> [String: String] {
         var env: [String: String] = [:]
         if let key = accountKey, let dir = configDirectory(forKey: key) {
             env["CLAUDE_CONFIG_DIR"] = dir
             env["TKZMUX_CLAUDE_CONFIG_DIR"] = dir
         }
         env.merge(extra) { _, override in override }
+        // Read and `unset` by the ZDOTDIR `.zlogin` before it runs the command, so nothing the
+        // command starts inherits it and runs it a second time. Not in `strippedKeys`: the strip
+        // happens after this is merged into the spawn environment and would take our own value.
+        if let bootCommand, !bootCommand.isEmpty { env["TKZMUX_BOOT_COMMAND"] = bootCommand }
         return env
     }
 

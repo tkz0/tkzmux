@@ -60,12 +60,6 @@ public protocol TerminalHost: AnyObject {
     func open(_ id: SessionID, cwd: String, env: [String: String], size: TerminalSize) throws -> pid_t
     /// Types `command` followed by `\r` into the session's pty.
     func run(_ id: SessionID, command: String)
-    /// Types `command` **once the shell is ready to receive it** — see `Pty.writeWhenReady`.
-    ///
-    /// A protocol requirement rather than an extension-only method on purpose: `host` is held as
-    /// `any TerminalHost`, and a call to a method that exists only in a protocol extension is
-    /// statically dispatched on an existential — the implementation below would never run.
-    func runWhenReady(_ id: SessionID, command: String)
     /// Attaches the single renderer to `id`; `nil` shows nothing.
     func show(_ id: SessionID?)
     /// The session the surface is actually attached to. Not the same as the store's selection: a
@@ -88,18 +82,6 @@ public protocol TerminalHost: AnyObject {
     func discard(_ id: SessionID)
     /// Every session's events, tagged.
     var events: AsyncStream<(SessionID, TerminalEvent)> { get }
-}
-
-extension TerminalHost {
-    /// The stopgap the M1 harness used, kept as the default so a test double (or any future
-    /// conformer) does not have to reimplement readiness: wait long enough that a login zsh has
-    /// finished its `tcsetattr(TCSAFLUSH)`, then type. `TerminalViewHost` overrides it with the
-    /// real signal.
-    public func runWhenReady(_ id: SessionID, command: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            MainActor.assumeIsolated { self.run(id, command: command) }
-        }
-    }
 }
 
 public enum TerminalHostError: Error, Equatable, Sendable {
@@ -381,21 +363,6 @@ public final class TerminalViewHost: TerminalHost {
         let pty = host.pty
         for chunk in TerminalViewHost.chunkForCanonicalTty(data) {
             host.session.ioQueue.async { try? pty.write(chunk) }
-        }
-        compressor?.noteActivity(id.rawValue)
-    }
-
-    /// Types `command` once the shell has printed its prompt and gone quiet.
-    ///
-    /// `run` in the same turn as `open` is silently swallowed: a login zsh's line-editor setup
-    /// calls `tcsetattr(…, TCSAFLUSH, …)`, which discards the tty's input queue (measured in
-    /// M1.10). `Pty.writeWhenReady` parks the bytes until the child has produced output and then
-    /// settled, with a timeout for a shell that prints nothing.
-    public func runWhenReady(_ id: SessionID, command: String) {
-        guard let host = sessions[id], host.isAlive else { return }
-        let data = Data(command.utf8) + Data([0x0D])
-        for chunk in TerminalViewHost.chunkForCanonicalTty(data) {
-            host.pty.writeWhenReady(chunk)
         }
         compressor?.noteActivity(id.rawValue)
     }

@@ -17,3 +17,26 @@ if [[ -n "${TKZMUX_ZDOTDIR:-}" && -n "${TKZMUX_USER_ZDOTDIR:-}" ]]; then
         export ZDOTDIR="$TKZMUX_USER_ZDOTDIR"
     fi
 fi
+
+# The command this session was opened to run: `claude --resume <id>` for a resume, a preset's
+# command for a new session. Deliberately *run here* rather than typed into the pty.
+#
+# Typing it in cannot be made reliable: zsh's line editor sets up the tty with
+# `tcsetattr(…, TCSAFLUSH, …)`, which discards whatever is already sitting in the input queue, and
+# the shell's startup output gives no dependable signal for when the last such flush has happened.
+# Waiting for the output to go quiet was the previous approach and it lost the race often enough
+# to leave sessions sitting at a bare prompt with Claude never started (2026-09-09). `.zlogin` is
+# read after every rc file and before the interactive loop begins, so there is nothing left to
+# flush by the time this runs.
+#
+# Outside the guard above on purpose: a `return` in the user's own .zlogin must not skip it.
+if [[ -n "${TKZMUX_BOOT_COMMAND:-}" ]]; then
+    __tkzmux_boot_command="$TKZMUX_BOOT_COMMAND"
+    # Out of the environment before it runs: nothing this command starts -- claude itself, a
+    # nested shell -- may inherit it and run it a second time.
+    unset TKZMUX_BOOT_COMMAND
+    # Into the history, so the command behaves like one that was typed and Up repeats it.
+    print -s -- "$__tkzmux_boot_command"
+    eval "$__tkzmux_boot_command"
+    unset __tkzmux_boot_command
+fi

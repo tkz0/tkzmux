@@ -94,7 +94,7 @@ struct SessionLauncherTests {
         // No account in the store: derived from the key, `~/.<key>` under the launcher's home.
         #expect(opened.env["CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude-work")
         #expect(opened.env["TKZ_TEST"] == "1")
-        #expect(h.host.ran.first?.command == "claude -w review")
+        #expect(opened.env["TKZMUX_BOOT_COMMAND"] == "claude -w review")
         #expect(h.session(id)?.accountKey == "claude-work")
         #expect(h.session(id)?.status == .idle)
         #expect(h.store.state.selection == id)
@@ -250,7 +250,7 @@ struct SessionLauncherTests {
 
     // MARK: - Resume
 
-    @Test("resume: reopens the shell and types claude --resume <id> through the readiness path")
+    @Test("resume: reopens the shell with claude --resume <id> as its boot command")
     func resumeRestoredRow() throws {
         let h = try Self.makeHarness()
         defer { h.tree.tearDown() }
@@ -262,7 +262,9 @@ struct SessionLauncherTests {
         #expect(outcome == .success(.resumed(claudeSessionId: "abc-123")))
         #expect(h.host.restored.first?.cwd == h.tree.worktree)
         #expect(h.host.restored.first?.env["CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude-work")
-        #expect(h.host.ran.map(\.command) == ["claude --resume abc-123"])
+        // Handed to the shell it spawns, not typed in afterwards.
+        #expect(h.host.bootCommands == ["claude --resume abc-123"])
+        #expect(h.host.ran.isEmpty)
         #expect(h.store.state.selection == id)
         // The conversation id is untouched: SessionStart will confirm the same one.
         #expect(h.session(id)?.claudeSessionId == "abc-123")
@@ -276,7 +278,10 @@ struct SessionLauncherTests {
         _ = h.launcher.reopen(id)
         h.store.flush()
         #expect(h.launcher.resume(id) == .success(.resumed(claudeSessionId: "abc")))
+        // The one case that is still typed: this shell was already up and at its prompt, so it
+        // has finished every `tcsetattr` its startup performs and the boot command is long spent.
         #expect(h.host.ran.map(\.command) == ["claude --resume abc"])
+        #expect(h.host.bootCommands.isEmpty)
         #expect(h.host.opened.count == 1, "no second shell")
     }
 
@@ -323,7 +328,7 @@ struct SessionLauncherTests {
         #expect(Set(outcome.resumed) == [a, b])
         #expect(outcome.failed.map(\.0) == [broken])
         #expect(outcome.failed.first?.1 == .missingDirectory(missing))
-        #expect(Set(h.host.ran.map(\.command)) == ["claude --resume a", "claude --resume b"])
+        #expect(Set(h.host.bootCommands) == ["claude --resume a", "claude --resume b"])
         #expect(h.store.state.selection == noConversation)
         #expect(h.session(noConversation)?.live == nil, "a row with nothing to resume is left alone")
     }

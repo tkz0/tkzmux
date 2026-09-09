@@ -120,7 +120,6 @@ struct PerSessionCacheEvictionTests {
         var discarded: [SessionID] = []
         func open(_ id: SessionID, cwd: String, env: [String: String], size: TerminalSize) throws -> pid_t { 1 }
         func run(_ id: SessionID, command: String) {}
-        func runWhenReady(_ id: SessionID, command: String) {}
         func show(_ id: SessionID?) {}
         var visibleSessionID: SessionID? { nil }
         func resize(_ id: SessionID, _ size: TerminalSize) {}
