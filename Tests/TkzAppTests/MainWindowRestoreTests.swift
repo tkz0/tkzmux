@@ -178,7 +178,7 @@ struct MainWindowRestoreTests {
         let resume = try #require(item(restored, MainWindowController.ContextItemID.resume))
         _ = resume.target?.perform(resume.action, with: resume)
         harness.store.flush()
-        #expect(harness.host.ran.last?.command == "claude --resume conv-1")
+        #expect(harness.host.bootCommands.last == "claude --resume conv-1")
         #expect(harness.store.state.selection == ids[1], "Resume from the menu does select the row")
 
         harness.controller.confirmRemove = { _ in true }
@@ -201,7 +201,9 @@ struct MainWindowRestoreTests {
 
         _ = resumeAll.target?.perform(resumeAll.action, with: resumeAll)
         harness.store.flush()
-        #expect(Set(harness.host.ran.map(\.command)) == ["claude --resume conv-0", "claude --resume conv-1"])
+        // conv-0's shell is already up so its command is typed; conv-1 gets a shell and a boot
+        // command. Both routes, one per row, is the correct outcome here.
+        #expect(Set(harness.host.commandsIssued) == ["claude --resume conv-0", "claude --resume conv-1"])
         #expect(harness.store.state.selection == ids[0], "resume-all leaves the selection alone")
         #expect(harness.controller.statusBar.model.notice?.hasPrefix("Resumed 2") == true)
     }
@@ -491,7 +493,7 @@ struct MainWindowRestoreTests {
         let created = try #require(harness.store.state.groups.values.first { $0.repoRoot == folder.standardizedFileURL.path })
         let launched = try #require(harness.host.opened.last)
         #expect(launched.cwd == folder.standardizedFileURL.path)
-        #expect(harness.host.ran.last?.command == "claude")
+        #expect(launched.env["TKZMUX_BOOT_COMMAND"] == "claude")
         #expect(harness.store.state.sessions[launched.id]?.groupID == created.id)
         #expect(harness.store.state.selection == launched.id)
     }
@@ -501,12 +503,12 @@ struct MainWindowRestoreTests {
         let (harness, ids, _) = Self.makeRestoredHarness()
         defer { harness.tearDown() }
         harness.controller.autoResumeIfEnabled()
-        #expect(harness.host.ran.isEmpty, "off by default")
+        #expect(harness.host.commandsIssued.isEmpty, "off by default")
 
         harness.mutate { $0.setAutoResumeOnLaunch(true) }
         harness.controller.autoResumeIfEnabled()
         harness.store.flush()
-        #expect(Set(harness.host.ran.map(\.command)) == ["claude --resume conv-0", "claude --resume conv-1"])
+        #expect(Set(harness.host.commandsIssued) == ["claude --resume conv-0", "claude --resume conv-1"])
         #expect(harness.host.opened.count == 2)
         #expect(harness.store.state.selection == ids[0])
 

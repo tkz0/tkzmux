@@ -54,6 +54,7 @@ struct SessionKillTests {
         let controller: MainWindowController
         let host: TerminalViewHost
         let sessionID: SessionID
+        let terminalID: TerminalID
         let pid: pid_t
     }
 
@@ -65,7 +66,7 @@ struct SessionKillTests {
         let view = TerminalMetalView(
             renderContext: context, frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         let host = TerminalViewHost(
-            view: view, snapshots: temp.snapshots, tkzmuxDirectory: temp.support,
+            renderContext: context, snapshots: temp.snapshots, tkzmuxDirectory: temp.support,
             baseEnvironment: testEnvironment())
 
         // The store must carry the same id the host opened, because the context menu is built from
@@ -75,12 +76,15 @@ struct SessionKillTests {
         var created: Session?
         store.update { created = $0.createSession(groupID: groupID, cwd: NSHomeDirectory()) }
         let id = try #require(created?.id)
+        // `Session.init` seeds its first leaf with the row's own uuid (TKZ-36).
+        let terminal = TerminalID(uuid: id.uuid)
 
         let pid = try host.open(
-            id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
+            terminal, session: id, cwd: NSHomeDirectory(), env: [:], size: view.gridSizeForBounds())
+        host.show([terminal: view])
         let controller = MainWindowController(
             store: store, host: host, terminalView: view, theme: .default)
-        return Harness(controller: controller, host: host, sessionID: id, pid: pid)
+        return Harness(controller: controller, host: host, sessionID: id, terminalID: terminal, pid: pid)
     }
 
     private static func waitFor(seconds: Double = 15, _ predicate: () -> Bool) -> Bool {
@@ -102,7 +106,7 @@ struct SessionKillTests {
         let bare = try #require(harness.controller.sessionContextMenu(for: harness.sessionID))
         #expect(bare.items.allSatisfy { $0.identifier != MainWindowController.ContextItemID.killProcessTree })
 
-        harness.host.run(harness.sessionID, command: "sleep 45")
+        harness.host.run(harness.terminalID, command: "sleep 45")
         #expect(
             Self.waitFor { SessionMemory.sample(rootPid: harness.pid).processCount > 1 },
             "the shell should have forked a child")
@@ -121,7 +125,7 @@ struct SessionKillTests {
         guard let harness = try Self.makeHarness(temp) else { return }
         defer { harness.controller.shutdown() }
 
-        harness.host.run(harness.sessionID, command: "sleep 45")
+        harness.host.run(harness.terminalID, command: "sleep 45")
         #expect(Self.waitFor { SessionMemory.sample(rootPid: harness.pid).processCount > 1 })
 
         var asked: SessionMemorySample?
@@ -171,7 +175,7 @@ struct SessionKillTests {
         guard let harness = try Self.makeHarness(temp) else { return }
         defer { harness.controller.shutdown() }
 
-        harness.host.run(harness.sessionID, command: "sleep 45")
+        harness.host.run(harness.terminalID, command: "sleep 45")
         #expect(Self.waitFor { SessionMemory.sample(rootPid: harness.pid).processCount > 1 })
 
         harness.controller.killProcessTreeConfirm = { _ in false }

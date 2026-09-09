@@ -140,7 +140,7 @@ struct CheatSheetTests {
     func sectionsMirrorTheMenu() {
         let sections = CheatSheetModel.sections(from: Self.makeMenu())
         // The application menu is titled with the app name; the rest are the real submenu titles.
-        #expect(sections.map(\.title) == ["tkzmux", "File", "View", "Session", "Window"])
+        #expect(sections.map(\.title) == ["tkzmux", "File", "View", "Terminal", "Session", "Window"])
     }
 
     @Test("Bound commands are listed with the keys the menu carries")

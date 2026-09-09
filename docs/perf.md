@@ -344,9 +344,13 @@ Three things about the corpus, because they make these numbers **not comparable*
 3. The busy command is typed **2 s after** the spawn, not immediately. A login `zsh` calls
    `tcsetattr(…, TCSAFLUSH, …)` while it sets up its line editor, which discards whatever is
    already in the tty input queue. Measured: with no delay all thirty snapshots came back at the
-   same bare-prompt size and `head` never ran. This is a real constraint on
-   `TerminalHost.run(_:command:)` and M2 must respect it when it auto-runs `claude` on session
-   start.
+   same bare-prompt size and `head` never ran. The delay is why this harness still works, and it is
+   a real constraint on `TerminalHost.run(_:command:)` — but the app no longer depends on getting
+   it right: a session's own command (`claude --resume …`, a preset) is handed to the shell as
+   `TKZMUX_BOOT_COMMAND` and run from the ZDOTDIR `.zlogin`, after every rc file and before the
+   interactive loop, so there is nothing left to flush. Waiting for the output to go quiet was the
+   previous approach and it lost the race often enough to leave sessions at a bare prompt with
+   Claude never started (2026-09-09).
 
 Also note the harness spawns thirty shells; as in section 1, **every number is the tkzmux host
 process only**. The thirty `zsh` children are not counted anywhere.

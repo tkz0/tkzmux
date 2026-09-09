@@ -66,8 +66,8 @@ struct MainWindowLaunchTests {
         #expect(harness.host.lastShown == .some(opened.id))
     }
 
-    @Test("The command is typed through the readiness path, never in the same turn as open")
-    func commandGoesThroughRunWhenReady() {
+    @Test("The command rides in on the spawn environment, never typed into the pty")
+    func commandGoesThroughTheBootCommand() {
         let (harness, group) = Self.makeHarness()
         defer { harness.tearDown() }
 
@@ -76,9 +76,8 @@ struct MainWindowLaunchTests {
         harness.store.flush()
 
         let opened = try! #require(harness.host.opened.first)
-        #expect(harness.host.ran.count == 1)
-        #expect(harness.host.ran.first?.id == opened.id)
-        #expect(harness.host.ran.first?.command == "claude --permission-mode plan")
+        #expect(opened.env["TKZMUX_BOOT_COMMAND"] == "claude --permission-mode plan")
+        #expect(harness.host.ran.isEmpty, "nothing is typed into a shell that is still starting")
     }
 
     @Test("A shell launch opens a pty and types nothing into it")

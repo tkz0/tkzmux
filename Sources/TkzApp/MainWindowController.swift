@@ -1164,7 +1164,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public var confirmRemoveShellIntegration: (() -> Bool)?
 
     /// Overrides the statusline consent sheet: gets the plan, returns true to install. Tests set
-    /// it — `runModal()` in a test process never returns.
+    /// it — a sheet needs a key window and a run loop.
     public var confirmInstallStatusline: ((StatuslineInstallPlan) -> Bool)?
     /// Overrides the confirmation for removing the statusline again.
     public var confirmRemoveStatusline: (() -> Bool)?
@@ -1267,28 +1267,43 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         guard let plan, plan.producer != .tkzmux else { return }
 
-        let confirmed: Bool
         if let confirmInstallStatusline {
-            confirmed = confirmInstallStatusline(plan)
-        } else {
-            let alert = NSAlert()
-            alert.messageText = "Show usage and context in the status bar?"
-            var body = "tkzmux needs its own status line command to read Claude Code's quota and "
-                + "context usage — they are handed to the status line and never written to disk.\n\n"
-                + "This changes statusLine in \(plan.settingsPath):\n\n"
-            if let before = plan.before {
-                body += "Now:\n\(before)\n\nAfter:\n\(plan.after)\n\n"
-                    + "Your current status line keeps running and its output is passed through "
-                    + "unchanged. Status Line Integration in the app menu puts it back exactly."
-            } else {
-                body += "After:\n\(plan.after)\n\n"
-                    + "Status Line Integration in the app menu removes it again."
-            }
-            alert.informativeText = body
-            alert.addButton(withTitle: "Install")
-            alert.addButton(withTitle: "Not Now")
-            confirmed = alert.runModal() == .alertFirstButtonReturn
+            finishStatuslineOffer(confirmed: confirmInstallStatusline(plan), accountKey: accountKey)
+            return
         }
+        let alert = NSAlert()
+        alert.messageText = "Show usage and context in the status bar?"
+        var body = "tkzmux needs its own status line command to read Claude Code's quota and "
+            + "context usage — they are handed to the status line and never written to disk.\n\n"
+            + "This changes statusLine in \(plan.settingsPath):\n\n"
+        if let before = plan.before {
+            body += "Now:\n\(before)\n\nAfter:\n\(plan.after)\n\n"
+                + "Your current status line keeps running and its output is passed through "
+                + "unchanged. Status Line Integration in the app menu puts it back exactly."
+        } else {
+            body += "After:\n\(plan.after)\n\n"
+                + "Status Line Integration in the app menu removes it again."
+        }
+        alert.informativeText = body
+        alert.addButton(withTitle: "Install")
+        alert.addButton(withTitle: "Not Now")
+        // A sheet, never `runModal()`. The automatic offer is made one run-loop turn after
+        // `applicationDidFinishLaunching`, and an app-modal loop *there* takes the run loop over
+        // into `NSModalPanelRunLoopMode` while the window is still assembling: the alert is a free
+        // -floating panel rather than something attached to the window, and every window behind it
+        // is inert until it is answered — on the one launch that shows it, the app reads as hung
+        // (reported 2026-09-09). A sheet is what this was always documented to be.
+        alert.beginSheetModal(for: window) { [weak self] response in
+            self?.finishStatuslineOffer(
+                confirmed: response == .alertFirstButtonReturn, accountKey: accountKey)
+        }
+    }
+
+    /// Records the answer and installs when it was yes. Split out so the sheet's completion and the
+    /// synchronous test hook share one tail; nothing here runs until the user has actually replied,
+    /// so quitting while the sheet is up leaves the offer un-made and it is put again next launch.
+    private func finishStatuslineOffer(confirmed: Bool, accountKey: String) {
+        guard let claude else { return }
         // Asked is asked: a decline is an answer, and the menu command stays available.
         store.update { $0.setStatuslineOffered(true) }
         guard confirmed else { return }
@@ -1989,8 +2004,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // stalled process's memory — jetsam will not kill it — so when a build or test under this
         // session runs away, killing it by hand is the only way out. The pty's own shell is spared,
         // so the row stays usable. See `SessionMemory`.
-        if let pid = (host as? TerminalViewHost)?.pid(of: id) {
-            let sample = SessionMemory.sample(rootPid: pid)
+        if let sample = sessionMemorySample(for: id) {
             if sample.descendantCount > 0 {
                 // Describes what would actually be killed: the descendants and their bytes, never
                 // the shell that is spared.
@@ -2265,13 +2279,34 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         killProcessTree(for: id)
     }
 
-    /// SIGKILLs everything under the session's pty child, sparing the shell itself.
+    /// The row's process-subtree footprint, combined across every pane it holds (TKZ-36): a build
+    /// or a runaway test can land in any one of them, not only the first.
+    private func sessionMemorySample(for id: SessionID) -> SessionMemorySample? {
+        guard let host = host as? TerminalViewHost else { return nil }
+        let pids = (store.state.sessions[id]?.terminalIDs ?? []).compactMap { host.pid(of: $0) }
+        guard !pids.isEmpty else { return nil }
+        return pids.map(SessionMemory.sample(rootPid:)).reduce(.empty) { combined, sample in
+            var result = combined
+            result.footprintBytes += sample.footprintBytes
+            result.processCount += sample.processCount
+            result.rootBytes += sample.rootBytes
+            result.truncated = result.truncated || sample.truncated
+            if sample.largestBytes > result.largestBytes {
+                result.largestName = sample.largestName
+                result.largestPid = sample.largestPid
+                result.largestBytes = sample.largestBytes
+            }
+            return result
+        }
+    }
+
+    /// SIGKILLs everything under every pane's pty child, sparing the shells themselves.
     ///
     /// Confirmed first: this destroys whatever the user was running (a build, a test run, a
     /// Claude Code session), and unlike *Remove* it is not undoable by resuming.
     public func killProcessTree(for id: SessionID) {
-        guard let pid = (host as? TerminalViewHost)?.pid(of: id) else { return }
-        let sample = SessionMemory.sample(rootPid: pid)
+        guard let host = host as? TerminalViewHost else { return }
+        guard let sample = sessionMemorySample(for: id) else { return }
         guard sample.descendantCount > 0 else { return }
 
         if let killProcessTreeConfirm {
@@ -2295,7 +2330,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
 
-        let killed = SessionMemory.terminateTree(rootPid: pid)
+        let pids = (store.state.sessions[id]?.terminalIDs ?? []).compactMap { host.pid(of: $0) }
+        let killed = pids.flatMap { SessionMemory.terminateTree(rootPid: $0) }
         logger.info("killed \(killed.count) process(es) under session \(id.rawValue, privacy: .public)")
         showNotice("Killed \(killed.count) process\(killed.count == 1 ? "" : "es")")
         focusTerminalIfSessionShown()
@@ -2394,13 +2430,17 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// one thing the sidebar's design exists to avoid (design.md → *Store*).
     func sampleSessionMemory() {
         guard let host = host as? TerminalViewHost else { return }
+        // A row can hold several panes now (TKZ-36); its footprint is the sum across all of them.
+        var totals: [SessionID: UInt64] = [:]
+        for (terminal, sample) in host.sessionMemory() {
+            guard let id = store.state.session(owning: terminal)?.id else { continue }
+            totals[id, default: 0] += sample.footprintBytes
+        }
         var updates: [(SessionID, UInt64)] = []
-        for (id, sample) in host.sessionMemory() {
+        for (id, bytes) in totals {
             let previous = store.state.sessions[id]?.live?.subtreeFootprintBytes
-            guard Self.memoryBucket(sample.footprintBytes) != Self.memoryBucket(previous) else {
-                continue
-            }
-            updates.append((id, sample.footprintBytes))
+            guard Self.memoryBucket(bytes) != Self.memoryBucket(previous) else { continue }
+            updates.append((id, bytes))
         }
         guard !updates.isEmpty else { return }
         store.update { state in

@@ -177,10 +177,15 @@ private func terminals(_ count: Int) -> [TerminalID] {
     }
 
     /// A hand-edited file must not be able to overflow the stack on the way in.
+    ///
+    /// Nests on **one** side only, with a cheap leaf on the other: nesting both sides doubles the
+    /// JSON string's length at every level, so 200 levels of *that* is 2^200 bytes rather than 200
+    /// nested objects — the test hung the process before it ever reached the decoder.
     @Test func aTreeNestedTooDeeplyIsRejectedRatherThanCrashing() throws {
-        var json = #"{"kind":"leaf","id":"\#(TerminalID.generate().rawValue)"}"#
+        let leaf = #"{"kind":"leaf","id":"\#(TerminalID.generate().rawValue)"}"#
+        var json = leaf
         for _ in 0..<200 {
-            json = #"{"kind":"split","axis":"horizontal","ratio":0.5,"first":\#(json),"second":\#(json)}"#
+            json = #"{"kind":"split","axis":"horizontal","ratio":0.5,"first":\#(json),"second":\#(leaf)}"#
         }
         #expect(throws: (any Error).self) {
             try JSONDecoder().decode(PaneNode.self, from: Data(json.utf8))

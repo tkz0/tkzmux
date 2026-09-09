@@ -103,12 +103,6 @@ public protocol TerminalHost: AnyObject {
     ) throws -> pid_t
     /// Types `command` followed by `\r` into the terminal's pty.
     func run(_ id: TerminalID, command: String)
-    /// Types `command` **once the shell is ready to receive it** — see `Pty.writeWhenReady`.
-    ///
-    /// A protocol requirement rather than an extension-only method on purpose: `host` is held as
-    /// `any TerminalHost`, and a call to a method that exists only in a protocol extension is
-    /// statically dispatched on an existential — the implementation below would never run.
-    func runWhenReady(_ id: TerminalID, command: String)
     /// Raw host input (encoded keys, a mouse report, a paste) for **one addressed terminal**.
     ///
     /// Never "the visible one": with several panes on screen there is no such thing, and routing
@@ -142,18 +136,6 @@ public protocol TerminalHost: AnyObject {
     func contains(_ id: TerminalID) -> Bool
     /// Every terminal's events, tagged.
     var events: AsyncStream<(TerminalID, TerminalEvent)> { get }
-}
-
-extension TerminalHost {
-    /// The stopgap the M1 harness used, kept as the default so a test double (or any future
-    /// conformer) does not have to reimplement readiness: wait long enough that a login zsh has
-    /// finished its `tcsetattr(TCSAFLUSH)`, then type. `TerminalViewHost` overrides it with the
-    /// real signal.
-    public func runWhenReady(_ id: TerminalID, command: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            MainActor.assumeIsolated { self.run(id, command: command) }
-        }
-    }
 }
 
 public enum TerminalHostError: Error, Equatable, Sendable {
@@ -309,7 +291,7 @@ public final class TerminalViewHost: TerminalHost {
     /// see and that Activity Monitor blames on us anyway; see `SessionMemory`.
     ///
     /// One `proc_pid_rusage` syscall per process in each tree, so call it on a slow timer.
-    public func sessionMemory() -> [(id: SessionID, sample: SessionMemorySample)] {
+    public func sessionMemory() -> [(id: TerminalID, sample: SessionMemorySample)] {
         order.compactMap { id in
             guard let pid = sessions[id]?.pty.pid, pid > 0 else { return nil }
             return (id, SessionMemory.sample(rootPid: pid))
@@ -464,21 +446,6 @@ public final class TerminalViewHost: TerminalHost {
         let pty = host.pty
         for chunk in TerminalViewHost.chunkForCanonicalTty(data) {
             host.session.ioQueue.async { try? pty.write(chunk) }
-        }
-        compressor?.noteActivity(id.rawValue)
-    }
-
-    /// Types `command` once the shell has printed its prompt and gone quiet.
-    ///
-    /// `run` in the same turn as `open` is silently swallowed: a login zsh's line-editor setup
-    /// calls `tcsetattr(…, TCSAFLUSH, …)`, which discards the tty's input queue (measured in
-    /// M1.10). `Pty.writeWhenReady` parks the bytes until the child has produced output and then
-    /// settled, with a timeout for a shell that prints nothing.
-    public func runWhenReady(_ id: TerminalID, command: String) {
-        guard let host = sessions[id], host.isAlive else { return }
-        let data = Data(command.utf8) + Data([0x0D])
-        for chunk in TerminalViewHost.chunkForCanonicalTty(data) {
-            host.pty.writeWhenReady(chunk)
         }
         compressor?.noteActivity(id.rawValue)
     }

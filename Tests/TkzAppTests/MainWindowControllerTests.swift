@@ -95,11 +95,6 @@ struct MainWindowControllerTests {
             visibleTerminalIDs.remove(id)
         }
         func run(_ id: TerminalID, command: String) { ranTerminals.append((id, command)) }
-        /// Records synchronously rather than inheriting the protocol's 2 s delayed default — the
-        /// point of the assertion is *that the call arrives here at all* (a `runWhenReady` living
-        /// only in a protocol extension would be statically dispatched on `any TerminalHost` and
-        /// never reach a conformer's override).
-        func runWhenReady(_ id: TerminalID, command: String) { run(id, command: command) }
         func writeInput(_ id: TerminalID, _ data: Data) { wrote.append((id, data)) }
         private(set) var wrote: [(id: TerminalID, data: Data)] = []
         func contains(_ id: TerminalID) -> Bool { heldTerminals.contains(id) }
@@ -110,6 +105,17 @@ struct MainWindowControllerTests {
             visibleTerminalIDs = Set(attachments.keys.filter(heldTerminals.contains))
             shownTerminals.append(visibleTerminalIDs)
         }
+        /// Every command handed to a shell this host spawned, as `TKZMUX_BOOT_COMMAND` in the
+        /// spawn environment. Both `open` and `restore` are read: whether a resume goes through
+        /// one or the other depends on whether the row had a snapshot, so a test that watched only
+        /// `opened` would pass while the path the app actually takes was broken.
+        var bootCommands: [String] {
+            (opened.map(\.env) + restored.map(\.env)).compactMap { $0["TKZMUX_BOOT_COMMAND"] }
+        }
+        /// Every command this host was asked to run, by either route. A resume takes the boot
+        /// command when it spawns the shell and the typed path when the row's shell was already
+        /// up, so a mixed set of rows legitimately produces some of each.
+        var commandsIssued: [String] { bootCommands + ran.map(\.command) }
         func resize(_ id: TerminalID, _ size: TerminalSize) { resized.append((id, size)) }
         private(set) var resized: [(id: TerminalID, size: TerminalSize)] = []
         func close(_ id: TerminalID, signal: Int32) {
