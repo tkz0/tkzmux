@@ -45,6 +45,32 @@ private func terminals(_ count: Int) -> [TerminalID] {
         #expect(tree.depth == 2)
     }
 
+    /// The split container rebuilds its views only when this says so. A divider drag changes a
+    /// ratio and a click changes the focused leaf; neither moves a view, so neither is a shape
+    /// change. A different axis, leaf, zoom or tab is.
+    @Test func hasSameShapeIgnoresRatioAndFocus() {
+        let t = terminals(3)
+        let tabID = TabID.generate()
+        func tab(
+            ratio: Double = 0.5, axis: PaneAxis = .horizontal, second: TerminalID,
+            focused: TerminalID, zoomed: TerminalID? = nil
+        ) -> Tab {
+            Tab(
+                id: tabID,
+                root: .split(
+                    PaneSplit(axis: axis, ratio: ratio, first: .leaf(t[0]), second: .leaf(second))),
+                focusedLeaf: focused, zoomedLeaf: zoomed)
+        }
+        let base = tab(second: t[1], focused: t[0])
+        #expect(base.hasSameShape(as: tab(ratio: 0.3, second: t[1], focused: t[0])))
+        #expect(base.hasSameShape(as: tab(second: t[1], focused: t[1])))
+        #expect(!base.hasSameShape(as: tab(axis: .vertical, second: t[1], focused: t[0])))
+        #expect(!base.hasSameShape(as: tab(second: t[2], focused: t[0])))
+        #expect(!base.hasSameShape(as: tab(second: t[1], focused: t[0], zoomed: t[0])))
+        #expect(!base.hasSameShape(as: Tab(id: .generate(), root: base.root, focusedLeaf: t[0])))
+        #expect(!base.root.hasSameShape(as: .leaf(t[0])))
+    }
+
     @Test func framesDivideTheRectangleByRatio() {
         let t = terminals(2)
         let tree = PaneNode.split(

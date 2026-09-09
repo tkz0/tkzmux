@@ -233,13 +233,10 @@ struct MainWindowControllerTests {
         let store = AppStore(state: state)
         let host = SpyTerminalHost()
         let first = FakeTerminalView(frame: NSRect(x: 0, y: 0, width: 900, height: 700))
-        var vended = false
         let controller = MainWindowController(
-            store: store, host: host,
+            store: store, host: host, sharedView: first,
             terminalViewFactory: { _ in
-                defer { vended = true }
-                return vended
-                    ? FakeTerminalView(frame: NSRect(x: 0, y: 0, width: 450, height: 700)) : first
+                FakeTerminalView(frame: NSRect(x: 0, y: 0, width: 450, height: 700))
             },
             theme: .default)
         let harness = Harness(store: store, controller: controller, host: host, terminalView: first)
@@ -444,7 +441,87 @@ struct MainWindowControllerTests {
         let otherView = try #require(harness.controller.paneContainer.paneView(for: other))
         _ = harness.window.makeFirstResponder(otherView)
         harness.store.flush()
+        harness.layout()
         #expect(harness.store.state.sessions[id]?.focusedTerminalID == other)
+        // And the click must *keep* the keyboard: the delivery it caused used to rebuild the view
+        // tree, and a view that leaves the window takes the first responder with it.
+        #expect(harness.window.firstResponder === otherView)
+    }
+
+    /// The view factory used to treat `superview == nil` as "free", but the container unparents
+    /// the old root before it builds the new tree — and for a one-pane tab that root *is* the
+    /// shared view. So the new pane was handed the view the first pane already held: one `NSView`
+    /// in both halves of the split, one input delegate for two shells, both sessions attached to
+    /// one surface in turn. The single-view initialiser is the app's own shape of the problem.
+    @Test("A split gives the new pane its own view")
+    func aSplitPaneGetsItsOwnView() throws {
+        let harness = Self.makeHarness()
+        defer { harness.tearDown() }
+        let (_, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        harness.layout()
+        let other = try #require(second)
+
+        let container = harness.controller.paneContainer
+        let firstView = try #require(container.paneView(for: first))
+        let otherView = try #require(container.paneView(for: other))
+        #expect(firstView === harness.terminalView)
+        #expect(firstView !== otherView)
+        let split = try #require(firstView.superview as? NSSplitView)
+        #expect(split.arrangedSubviews.count == 2)
+        #expect(otherView.superview === split)
+    }
+
+    /// Focus and divider ratios are not shape. Rebuilding the tree for either detaches every
+    /// surface and drops the first responder, so the container must leave the views where they are.
+    @Test("A focus change or a divider drag does not rebuild the view tree")
+    func focusChangeDoesNotRebuildTheTree() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        harness.layout()
+        _ = try #require(second)
+
+        let container = harness.controller.paneContainer
+        let firstView = try #require(container.paneView(for: first))
+        let split = try #require(firstView.superview)
+
+        harness.mutate { $0.focusPane(first) }
+        #expect(harness.store.state.sessions[id]?.focusedTerminalID == first)
+        #expect(container.paneView(for: first) === firstView)
+        #expect(firstView.superview === split)
+
+        harness.mutate { $0.setRatio(above: first, levels: 0, to: 0.3) }
+        #expect(firstView.superview === split)
+    }
+
+    /// ⌘D focuses the new pane, but the pane's view does not exist until the store delivers on the
+    /// next turn — so the command's own `focusPane` finds nothing, and the rebuild that follows
+    /// leaves the keyboard with the window. The delivery has to finish the job.
+    @Test("Splitting moves the keyboard to the new pane")
+    func splittingMovesTheKeyboardToTheNewPane() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (_, first) = try Self.selectedRowWithAShell(harness)
+        harness.controller.focusPane(first)
+        #expect(
+            harness.window.firstResponder === harness.controller.paneContainer.paneView(for: first))
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        harness.layout()
+        let other = try #require(second)
+
+        let otherView = try #require(harness.controller.paneContainer.paneView(for: other))
+        #expect(harness.window.firstResponder === otherView)
     }
 
     /// A store-driven focus change must move the keyboard too — the `layout` branch passes

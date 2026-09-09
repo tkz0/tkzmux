@@ -301,6 +301,46 @@ struct BackgroundSessionTests {
         #expect(try #require(host.session(for: b)).size == before)
     }
 
+    /// Attaching ends with a forced grid resize, and the pty has to hear it too. The hook that
+    /// carries it used to be installed *after* `show`, so the VT was sized to the pane while the
+    /// shell kept its spawn size and redrew its prompt against the wrong grid.
+    @Test("attaching a pane resizes its pty to the surface's grid")
+    func attachResizesThePty() throws {
+        let temp = try TempDirectory()
+        guard let (_, view, host) = try makeHost(temp) else { return }
+        defer { host.closeAll(signal: SIGKILL) }
+
+        let id = TerminalID.generate()
+        _ = try open(
+            host, id, size: TerminalSize(rows: 10, cols: 10, cellWidthPx: 8, cellHeightPx: 16))
+        #expect(host.ptySize(for: id)?.cols == 10)
+
+        host.show([id: view])
+        let grid = view.gridSizeForBounds()
+        #expect(grid.cols != 10)
+        #expect(host.ptySize(for: id) == grid)
+        #expect(host.session(for: id)?.size.cols == grid.cols)
+    }
+
+    /// Every layout delivery re-shows the visible set. A pane that is already on its surface must
+    /// not be re-attached: that is a full redraw and a forced resize of a pane nobody touched.
+    @Test("re-showing a pane on the surface it already has does not re-attach it")
+    func reshowingTheSameSurfaceDoesNotReattach() throws {
+        let temp = try TempDirectory()
+        guard let (_, view, host) = try makeHost(temp) else { return }
+        defer { host.closeAll(signal: SIGKILL) }
+
+        let id = TerminalID.generate()
+        _ = try open(host, id, size: view.gridSizeForBounds())
+        host.show([id: view])
+        let resizes = view.gridResizeCount
+
+        host.show([id: view])
+        #expect(view.gridResizeCount == resizes)
+        #expect(view.surface.isAttached)
+        #expect(host.visibleTerminalIDs == [id])
+    }
+
     /// A session whose shell has exited keeps its screen (the row is resumable) but must stop
     /// blinking a cursor at the user — it reads as ready for input that goes nowhere.
     @Test("an exited session stops showing a cursor, and selecting back to it does not resurrect it")

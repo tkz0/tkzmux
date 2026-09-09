@@ -117,13 +117,23 @@ public final class PaneContainerView: NSView {
     /// Reuse is the point: a pane's view carries its surface, and re-creating one detaches and
     /// re-attaches it, which is a full rebuild of that pane's grid. Splitting the pane on the left
     /// must not flash the pane on the right.
-    func apply(_ tab: Tab?) {
+    ///
+    /// Returns whether the tree was rebuilt. A caller that needs the first responder back after a
+    /// rebuild (every view left the window and came back) keys off it.
+    @discardableResult
+    func apply(_ tab: Tab?) -> Bool {
         guard let tab else {
             teardown()
-            return
+            return false
         }
-        // A tab whose shape is unchanged needs nothing: `layout()` keeps the frames honest.
-        if builtTab == tab { return }
+        // A tab whose *shape* is unchanged needs nothing: `layout()` keeps the frames honest and
+        // `applyRatios` places the dividers. Focus and ratios are not shape — comparing the whole
+        // `Tab` here rebuilt the tree on every click and every divider drag, and a rebuild takes
+        // the focused view out of the window, which is how a pane stopped taking keys.
+        if let built = builtTab, built.hasSameShape(as: tab) {
+            builtTab = tab
+            return false
+        }
         builtTab = tab
 
         let visible = tab.visibleTerminalIDs
@@ -152,6 +162,7 @@ public final class PaneContainerView: NSView {
         root.autoresizingMask = [.width, .height]
         addSubview(root)
         needsLayout = true
+        return true
     }
 
     private func teardown() {

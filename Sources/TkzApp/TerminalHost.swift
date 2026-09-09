@@ -277,6 +277,11 @@ public final class TerminalViewHost: TerminalHost {
     /// The `TerminalSession` behind `id`. Exposed so the window controller can push mouse geometry
     /// and so tests can assert on the VT directly.
     public func session(for id: TerminalID) -> TerminalSession? { sessions[id]?.session }
+
+    /// The size last pushed to the pty — what the shell sees as `TIOCGWINSZ`. Tests only: the
+    /// view's grid and the VT's size can agree while the pty still disagrees with both.
+    func ptySize(for id: TerminalID) -> TerminalSize? { sessions[id]?.pty.size }
+
     /// The terminal a surface currently holds — how the input path turns "the view that got the
     /// key event" into "the pty to write to".
     public func terminalID(forSurface surface: any TerminalPaneSurface) -> TerminalID? {
@@ -336,7 +341,7 @@ public final class TerminalViewHost: TerminalHost {
 
     /// Frees whatever surface `id` was attached to, if any.
     private func detach(_ id: TerminalID) {
-        guard var surface = visible.removeValue(forKey: id) else { return }
+        guard let surface = visible.removeValue(forKey: id) else { return }
         surface.onGridResize = nil
         surface.show(nil)
     }
@@ -486,7 +491,8 @@ public final class TerminalViewHost: TerminalHost {
     public var visibleTerminalIDs: Set<TerminalID> { Set(visible.keys) }
 
     /// Makes `attachments` exactly the visible set: everything attached now and absent from the map
-    /// is detached first, everything in it is attached.
+    /// is detached first, everything in it is attached — except a terminal that is already on the
+    /// surface the map gives it, which is left exactly as it is.
     ///
     /// Detaching before attaching is not cosmetic. Both halves take drawables from a small pool,
     /// and a terminal that is moving from one surface to another (a pane that changed place in the
@@ -508,14 +514,23 @@ public final class TerminalViewHost: TerminalHost {
 
         for (id, surface) in attachments {
             guard let host = sessions[id] else { continue }
-            var surface = surface
-            surface.show(host.session)
+            // The pty follows its own pane. This is why `resizeVisible` is gone: with N panes
+            // "the visible one" names nothing, and the hook belongs where the pairing is known.
+            //
+            // Installed **before** `show`: attaching ends with a forced grid resize that fires this
+            // hook, and a hook installed afterwards misses it. Then the VT is sized to the pane
+            // while the pty keeps its spawn size, and the shell redraws its prompt against the
+            // wrong grid until the pane's bounds happen to change again.
+            surface.onGridResize = { [weak self] size in self?.resize(id, size) }
+            // Already on this very surface: nothing to attach. A re-attach is a `DIRTY_FULL` and a
+            // forced resize of a pane the user did not touch, and every layout delivery — a focus
+            // change, a divider drag — comes through here.
+            if visible[id] !== surface {
+                surface.show(host.session)
+            }
             // `show` resets the flag, so re-apply it: coming back to an already-dead terminal must
             // not resurrect its cursor.
             surface.setCursorSuppressed(!host.isAlive)
-            // The pty follows its own pane. This is why `resizeVisible` is gone: with N panes
-            // "the visible one" names nothing, and the hook belongs where the pairing is known.
-            surface.onGridResize = { [weak self] size in self?.resize(id, size) }
             visible[id] = surface
         }
 
