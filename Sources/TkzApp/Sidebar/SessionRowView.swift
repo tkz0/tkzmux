@@ -50,6 +50,11 @@ public final class SessionRowView: NSTableCellView {
 
     // MARK: Layers & subviews
 
+    /// The group's 2.5 pt colour edge, continued down this row so the stripe spans the whole group
+    /// rather than stopping at its header (TKZ-48). Always present so layout never shifts; fully
+    /// transparent when the group has no colour. Bottom of the z-order, though nothing overlaps it:
+    /// `selectionInset` keeps the selection/hover rect at x = 5.
+    private let edgeLayer = SidebarLayers.fill(cornerRadius: 0)
     private let selectionLayer = SidebarLayers.fill(cornerRadius: 6)
     private lazy var titleLayer = SidebarLayers.text(titleFont, color: NSColor.clear.cgColor)
     private lazy var branchLayer = SidebarLayers.text(branchFont, color: NSColor.clear.cgColor)
@@ -104,6 +109,7 @@ public final class SessionRowView: NSTableCellView {
         wantsLayer = true
         layer?.masksToBounds = true
         guard let root = layer else { return }
+        root.addSublayer(edgeLayer)
         root.addSublayer(selectionLayer)
         root.addSublayer(titleLayer)
         root.addSublayer(branchLayer)
@@ -168,6 +174,7 @@ public final class SessionRowView: NSTableCellView {
         needsYouBadge.isHidden = true
         accountChip.isHidden = true
         selectionLayer.backgroundColor = NSColor.clear.cgColor
+        edgeLayer.backgroundColor = NSColor.clear.cgColor
         onStatusDotClick = nil
         onClose = nil
         isHovered = false
@@ -213,6 +220,10 @@ public final class SessionRowView: NSTableCellView {
         if let layer { SidebarLayers.applyContentsScale(scale, to: layer) }
     }
 
+    /// The group-edge layer's colour, mirroring `GroupRowView.edgeColor`. `nil`/zero alpha means
+    /// "this row's group has no colour"; a test asserts it.
+    public var edgeColor: CGColor? { edgeLayer.backgroundColor }
+
     /// Drops the pulse when the row leaves the window, and restores it when it comes back — the
     /// second half of the "zero CPU when nothing is on screen" claim.
     public override func viewDidMoveToWindow() {
@@ -226,6 +237,9 @@ public final class SessionRowView: NSTableCellView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
+
+        // `nil` colour → transparent, never `theme.groupEdgeDefault`; same rule as the header.
+        edgeLayer.backgroundColor = model.groupColor?.cgColor ?? NSColor.clear.cgColor
 
         // Hover is a fainter version of the selection tint, so a hovered selected row stays selected-looking.
         if model.isSelected {
@@ -300,6 +314,7 @@ public final class SessionRowView: NSTableCellView {
     var needsYouBadgeLayer: CALayer { needsYouBadge }
     var accountChipLayer: CALayer { accountChip }
     var selectionBackgroundLayer: CALayer { selectionLayer }
+    var colourEdgeLayer: CALayer { edgeLayer }
     var titleFontForMeasurement: NSFont { titleFont }
 
     // MARK: Layout
@@ -313,6 +328,10 @@ public final class SessionRowView: NSTableCellView {
         let w = bounds.width
         let h = bounds.height
         let badgeH = SidebarBadgeLayer.height
+
+        // Full height and flush left, exactly as on the header — with `intercellSpacing == .zero`
+        // that makes one unbroken stripe from the header down to the group's last row.
+        edgeLayer.frame = CGRect(x: 0, y: 0, width: SidebarMetrics.groupEdgeWidth, height: h)
 
         selectionLayer.frame = CGRect(
             x: Self.selectionInset,

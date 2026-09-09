@@ -156,7 +156,7 @@ struct MainWindowRestoreTests {
         #expect(item(restored, MainWindowController.ContextItemID.resume)?.isEnabled == true)
         #expect(item(restored, MainWindowController.ContextItemID.remove)?.isEnabled == true)
         #expect(item(restored, MainWindowController.ContextItemID.rename) != nil)
-        #expect(restored.items.count == 4, "Resume, Rename, separator, Remove")
+        #expect(restored.items.count == 6, "Resume, Rename, separator, Remove, separator, Group color")
 
         // ids[0]: a live shell, still resumable (no Claude bound).
         let live = try #require(harness.controller.sidebar.contextMenu(forSession: ids[0]))
@@ -202,6 +202,93 @@ struct MainWindowRestoreTests {
         #expect(Set(harness.host.ran.map(\.command)) == ["claude --resume conv-0", "claude --resume conv-1"])
         #expect(harness.store.state.selection == ids[0], "resume-all leaves the selection alone")
         #expect(harness.controller.statusBar.model.notice?.hasPrefix("Resumed 2") == true)
+    }
+
+    // MARK: Group colour (TKZ-48)
+
+    /// The submenu on a group header row.
+    @Test("Group color offers the palette plus None, and writes the colour into the store")
+    func groupColorMenu() throws {
+        let (harness, _, group) = Self.makeRestoredHarness()
+        defer { harness.tearDown() }
+
+        let menu = try #require(harness.controller.sidebar.contextMenu(forGroup: group))
+        let parent = try #require(menu.items.first { $0.identifier == MainWindowController.ContextItemID.groupColor })
+        let submenu = try #require(parent.submenu)
+        #expect(submenu.items.count == GroupPalette.swatches.count + 2, "swatches, a separator, None")
+
+        // Every swatch is there, in palette order, with a visible (non-template) colour chip.
+        for (index, swatch) in GroupPalette.swatches.enumerated() {
+            let item = submenu.items[index]
+            #expect(item.identifier == MainWindowController.ContextItemID.groupColorSwatch(swatch.slug))
+            #expect(item.title == swatch.name)
+            #expect(item.image != nil)
+            #expect(item.image?.isTemplate == false)
+        }
+
+        // Nothing is set yet, so None carries the mark and no swatch does.
+        let none = try #require(submenu.items.first { $0.identifier == MainWindowController.ContextItemID.groupColorNone })
+        #expect(harness.store.state.groups[group]?.color == nil)
+        #expect(none.state == .on)
+        #expect(submenu.items.allSatisfy { $0.identifier == MainWindowController.ContextItemID.groupColorNone || $0.state == .off })
+
+        // Pick one.
+        let violet = try #require(GroupPalette.swatches.first { $0.slug == "violet" })
+        let pick = try #require(submenu.items.first {
+            $0.identifier == MainWindowController.ContextItemID.groupColorSwatch(violet.slug)
+        })
+        _ = pick.target?.perform(pick.action, with: pick)
+        harness.store.flush()
+        #expect(harness.store.state.groups[group]?.color == violet.rgb)
+
+        // Re-opening the menu marks it, and only it.
+        let reopened = try #require(harness.controller.sidebar.contextMenu(forGroup: group))
+        let reopenedSub = try #require(
+            reopened.items.first { $0.identifier == MainWindowController.ContextItemID.groupColor }?.submenu)
+        let marked = reopenedSub.items.filter { $0.state == .on }
+        #expect(marked.count == 1)
+        #expect(marked.first?.identifier == MainWindowController.ContextItemID.groupColorSwatch(violet.slug))
+
+        // None clears it.
+        let clear = try #require(reopenedSub.items.first { $0.identifier == MainWindowController.ContextItemID.groupColorNone })
+        _ = clear.target?.perform(clear.action, with: clear)
+        harness.store.flush()
+        #expect(harness.store.state.groups[group]?.color == nil)
+    }
+
+    /// The same submenu on a session row — it acts on the group the session lives in.
+    @Test("A session row's Group color submenu colours that session's group")
+    func groupColorMenuOnASessionRow() throws {
+        let (harness, ids, group) = Self.makeRestoredHarness()
+        defer { harness.tearDown() }
+
+        let menu = try #require(harness.controller.sidebar.contextMenu(forSession: ids[0]))
+        let submenu = try #require(
+            menu.items.first { $0.identifier == MainWindowController.ContextItemID.groupColor }?.submenu)
+        let coral = try #require(GroupPalette.swatches.first { $0.slug == "coral" })
+        let pick = try #require(submenu.items.first {
+            $0.identifier == MainWindowController.ContextItemID.groupColorSwatch(coral.slug)
+        })
+        _ = pick.target?.perform(pick.action, with: pick)
+        harness.store.flush()
+
+        #expect(harness.store.state.groups[group]?.color == coral.rgb)
+        // The row it was invoked from is untouched otherwise — this is not a per-session colour.
+        #expect(harness.store.state.selection == ids[0], "the menu does not move the selection")
+    }
+
+    /// A colour that is not in the palette (an older build, a hand-edited `state.json`) leaves every
+    /// item unmarked rather than silently claiming the nearest swatch.
+    @Test("An off-palette group colour marks nothing")
+    func offPaletteColourMarksNothing() throws {
+        let (harness, _, group) = Self.makeRestoredHarness()
+        defer { harness.tearDown() }
+        harness.mutate { $0.setGroupColor(group, color: RGB(hex: 0x123456)) }
+
+        let menu = try #require(harness.controller.sidebar.contextMenu(forGroup: group))
+        let submenu = try #require(
+            menu.items.first { $0.identifier == MainWindowController.ContextItemID.groupColor }?.submenu)
+        #expect(submenu.items.allSatisfy { $0.state == .off })
     }
 
     // MARK: - Another repo, auto-resume

@@ -1303,6 +1303,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let remove = contextItem("Remove", action: #selector(contextRemove(_:)), id: id.rawValue)
         remove.identifier = ContextItemID.remove
         menu.addItem(remove)
+
+        // The colour belongs to the group, not the row — but the row is what you are pointing at
+        // when you decide the whole group needs a colour, so the picker is on both menus (TKZ-48).
+        menu.addItem(.separator())
+        menu.addItem(groupColorMenuItem(for: session.groupID))
         return menu
     }
 
@@ -1320,7 +1325,80 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         resumeAll.identifier = ContextItemID.resumeAll
         menu.addItem(resumeAll)
+        menu.addItem(.separator())
+        menu.addItem(groupColorMenuItem(for: id))
         return menu
+    }
+
+    // MARK: Group colour
+
+    /// "Group color ▸": one item per `GroupPalette.swatches`, then **None**.
+    ///
+    /// The swatch is drawn as a small filled circle rather than left to a colour name alone — the
+    /// point of the picker is that you pick by eye. It is deliberately not a template image, which
+    /// AppKit would recolour to the menu's text colour.
+    ///
+    /// The current colour carries a checkmark. Matching goes through `GroupPalette.swatch(matching:)`,
+    /// which compares 8-bit channels, so the mark still lands after a round trip through
+    /// `state.json`. A colour that is not in the palette (an older build, a hand-edited file) simply
+    /// leaves every item unchecked; it is not overwritten until the user picks something.
+    private func groupColorMenuItem(for id: GroupID) -> NSMenuItem {
+        let parent = NSMenuItem(title: "Group color", action: nil, keyEquivalent: "")
+        parent.identifier = ContextItemID.groupColor
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+
+        let current = store.state.groups[id]?.color
+        let currentSwatch = GroupPalette.swatch(matching: current)
+
+        for swatch in GroupPalette.swatches {
+            let item = colorItem(swatch.name, groupID: id, color: swatch.rgb)
+            item.identifier = ContextItemID.groupColorSwatch(swatch.slug)
+            item.image = Self.swatchImage(swatch.rgb)
+            item.state = swatch == currentSwatch ? .on : .off
+            submenu.addItem(item)
+        }
+
+        submenu.addItem(.separator())
+        let none = colorItem("None", groupID: id, color: nil)
+        none.identifier = ContextItemID.groupColorNone
+        none.state = current == nil ? .on : .off
+        submenu.addItem(none)
+
+        parent.submenu = submenu
+        return parent
+    }
+
+    /// Which group, and which colour. `contextItem(_:action:id:)` carries a single `String`, and a
+    /// colour item needs both, so it gets its own `representedObject`.
+    private struct GroupColorChoice {
+        let groupID: GroupID
+        let color: RGB?
+    }
+
+    private func colorItem(_ title: String, groupID: GroupID, color: RGB?) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(contextSetGroupColor(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = GroupColorChoice(groupID: groupID, color: color)
+        return item
+    }
+
+    private static let swatchDiameter: CGFloat = 10
+
+    private static func swatchImage(_ color: RGB) -> NSImage {
+        let size = NSSize(width: swatchDiameter, height: swatchDiameter)
+        let image = NSImage(size: size, flipped: false) { rect in
+            color.nsColor.setFill()
+            NSBezierPath(ovalIn: rect).fill()
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+
+    @objc private func contextSetGroupColor(_ sender: Any?) {
+        guard let choice = (sender as? NSMenuItem)?.representedObject as? GroupColorChoice else { return }
+        store.update { $0.setGroupColor(choice.groupID, color: choice.color) }
     }
 
     /// Identifiers for the context-menu rows, so tests can find them.
@@ -1330,6 +1408,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         public static let remove = NSUserInterfaceItemIdentifier("tkzmux.context.remove")
         public static let newSession = NSUserInterfaceItemIdentifier("tkzmux.context.newSession")
         public static let resumeAll = NSUserInterfaceItemIdentifier("tkzmux.context.resumeAll")
+        /// The "Group color" parent item; its `submenu` holds the swatches.
+        public static let groupColor = NSUserInterfaceItemIdentifier("tkzmux.context.groupColor")
+        public static let groupColorNone = NSUserInterfaceItemIdentifier("tkzmux.context.groupColor.none")
+        /// One swatch, addressed by `GroupSwatch.slug`.
+        public static func groupColorSwatch(_ slug: String) -> NSUserInterfaceItemIdentifier {
+            NSUserInterfaceItemIdentifier("tkzmux.context.groupColor.\(slug)")
+        }
     }
 
     private func contextItem(_ title: String, action: Selector, id: String) -> NSMenuItem {

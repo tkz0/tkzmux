@@ -112,7 +112,10 @@ public struct Group: Hashable, Sendable, Codable, Identifiable {
     public var name: String
     /// Absolute path of the repo this group represents, or `nil` for a bucket with no repo.
     public var repoRoot: String?
-    /// The 2–3 pt colour edge on the group header. `nil` = `Theme.groupEdgeDefault`.
+    /// The 2.5 pt colour edge down the group's left side — the header row and every session row in
+    /// it. `nil` = **no edge at all** (fully transparent), never `Theme.groupEdgeDefault`: that
+    /// token is the colour the picker offers as its default, not a fallback. Set from the sidebar's
+    /// "Group color" context menu, whose entries are `GroupPalette.swatches`.
     public var color: RGB?
     public var isCollapsed: Bool
     /// Sort key among groups. Contiguous from 0 after `AppState.normalizeGroupOrder()`.

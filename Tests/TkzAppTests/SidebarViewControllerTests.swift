@@ -422,6 +422,110 @@ struct SidebarViewControllerTests {
         #expect(harness.store.state.selection == Fixture.sessionID(22))
     }
 
+    // MARK: - Group colour
+
+    @Test("Setting a group's colour reloads its header and its session rows, and nothing else")
+    func groupColourReloadsTheWholeGroup() throws {
+        let harness = Self.makeHarness()
+        let groupID = harness.store.state.orderedGroups[0].id
+        let teal = GroupPalette.swatches[0].rgb
+
+        var expected = IndexSet(integer: harness.controller.row(forGroup: groupID))
+        for session in harness.store.state.sessions(in: groupID) {
+            expected.insert(harness.controller.row(forSession: session.id))
+        }
+        #expect(expected.count == 13)  // Northwind: 1 header + 12 sessions
+
+        harness.outline.resetCounters()
+        harness.mutate { $0.setGroupColor(groupID, color: teal) }
+
+        #expect(harness.outline.reloadDataCallCount == 0)
+        #expect(harness.outline.insertedItemCalls.isEmpty)
+        #expect(harness.outline.removedItemCalls.isEmpty)
+        #expect(harness.outline.reloadedRowCount == expected.count)
+        var reloaded = IndexSet()
+        for set in harness.outline.reloadedRowIndexSets { reloaded.formUnion(set) }
+        #expect(reloaded == expected)
+
+        // And the rows really carry the colour, header and sessions alike.
+        let header = try #require(
+            harness.outline.view(atColumn: 0, row: harness.controller.row(forGroup: groupID),
+                                 makeIfNecessary: true) as? GroupRowView)
+        #expect(header.edgeColor != nil)
+        let firstSession = harness.store.state.sessions(in: groupID)[0].id
+        let row = try #require(
+            Self.sessionRow(harness, at: harness.controller.row(forSession: firstSession)))
+        #expect(row.edgeColor != nil)
+        #expect(row.colourEdgeLayer.frame.minX == 0)
+    }
+
+    @Test("A rename or a collapse still reloads only the header — the colour shadow is precise")
+    func otherGroupChangesStillReloadOneRow() {
+        let harness = Self.makeHarness()
+        let groupID = harness.store.state.orderedGroups[0].id
+
+        harness.outline.resetCounters()
+        harness.mutate { $0.renameGroup(groupID, name: "Northwind Trading Co") }
+        #expect(harness.outline.reloadedRowCount == 1)
+
+        // Setting the same colour twice is a no-op the second time: the store diffs to nothing.
+        let teal = GroupPalette.swatches[0].rgb
+        harness.mutate { $0.setGroupColor(groupID, color: teal) }
+        harness.outline.resetCounters()
+        harness.mutate { $0.setGroupColor(groupID, color: teal) }
+        #expect(harness.outline.reloadedRowCount == 0)
+
+        // A collapse of a coloured group is one row, not thirteen — its sessions stop being rows.
+        harness.outline.resetCounters()
+        harness.mutate { $0.setGroupCollapsed(groupID, true) }
+        #expect(harness.outline.reloadedRowCount == 1)
+    }
+
+    @Test("Colouring a collapsed group touches only its header; expanding shows the coloured rows")
+    func collapsedGroupColourReachesItsRowsOnExpand() throws {
+        let harness = Self.makeHarness()
+        // Playground is collapsed in the fixture.
+        let groupID = harness.store.state.orderedGroups[4].id
+        #expect(harness.store.state.groups[groupID]?.isCollapsed == true)
+
+        harness.outline.resetCounters()
+        harness.mutate { $0.setGroupColor(groupID, color: GroupPalette.swatches[5].rgb) }
+        #expect(harness.outline.reloadedRowCount == 1, "a collapsed group's sessions are not rows")
+
+        harness.mutate { $0.setGroupCollapsed(groupID, false) }
+        let session = harness.store.state.sessions(in: groupID)[0].id
+        let row = try #require(Self.sessionRow(harness, at: harness.controller.row(forSession: session)))
+        #expect(row.edgeColor != nil)
+    }
+
+    @Test("Clearing a group's colour repaints the whole group back to no edge")
+    func clearingTheColourRepaintsTheGroup() throws {
+        let harness = Self.makeHarness()
+        let groupID = harness.store.state.orderedGroups[0].id
+        harness.mutate { $0.setGroupColor(groupID, color: GroupPalette.swatches[0].rgb) }
+
+        harness.outline.resetCounters()
+        harness.mutate { $0.setGroupColor(groupID, color: nil) }
+        #expect(harness.outline.reloadedRowCount == 13)
+
+        let session = harness.store.state.sessions(in: groupID)[0].id
+        let row = try #require(Self.sessionRow(harness, at: harness.controller.row(forSession: session)))
+        #expect(row.edgeColor?.alpha == 0)
+    }
+
+    @Test("A session created in a coloured group comes up with the edge already on")
+    func newSessionInAColouredGroupGetsTheEdge() throws {
+        let harness = Self.makeHarness()
+        let groupID = harness.store.state.orderedGroups[0].id
+        harness.mutate { $0.setGroupColor(groupID, color: GroupPalette.swatches[0].rgb) }
+
+        var created: SessionID?
+        harness.mutate { created = $0.createSession(groupID: groupID, cwd: "~/dev/northwind").id }
+        let id = try #require(created)
+        let row = try #require(Self.sessionRow(harness, at: harness.controller.row(forSession: id)))
+        #expect(row.edgeColor?.alpha == 1)
+    }
+
     // MARK: - Collapse
 
     @Test("Collapsing through the controller persists into the store and hides the rows")
@@ -621,6 +725,33 @@ struct SidebarViewControllerTests {
         let model = SidebarRowAdapter.groupModel(state.groups[groupID]!, in: state)
         #expect(model.color == nil)
         #expect(model.color != Theme.default.groupEdgeDefault)
+
+        // Same rule on the session rows, which carry the group's colour so the edge spans the group.
+        let session = state.sessions(in: groupID)[0]
+        #expect(SidebarRowAdapter.sessionModel(session, in: state).groupColor == nil)
+    }
+
+    @Test("A session row model carries its group's colour, not its own (TKZ-48)")
+    func sessionModelCarriesTheGroupColour() {
+        var state = AppState.fixture
+        let groupID = state.orderedGroups[0].id
+        let other = state.orderedGroups[1].id
+        let violet = GroupPalette.swatches[3].rgb
+        state.setGroupColor(groupID, color: violet)
+
+        for session in state.sessions(in: groupID) {
+            #expect(SidebarRowAdapter.sessionModel(session, in: state).groupColor == violet)
+        }
+        // Colouring one group leaves its neighbour on its own colour.
+        let outsider = state.sessions(in: other)[0]
+        #expect(SidebarRowAdapter.sessionModel(outsider, in: state).groupColor == state.groups[other]?.color)
+        #expect(SidebarRowAdapter.sessionModel(outsider, in: state).groupColor != violet)
+
+        // Clearing it drops the edge on every row in the group, not just the header.
+        state.setGroupColor(groupID, color: nil)
+        for session in state.sessions(in: groupID) {
+            #expect(SidebarRowAdapter.sessionModel(session, in: state).groupColor == nil)
+        }
     }
 
     @Test("The account chip is hidden on the default account and short-labelled on any other")

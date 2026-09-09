@@ -264,6 +264,19 @@ public final class SidebarViewController: NSViewController {
     private var shadowGroups: [GroupID] = []
     private var shadowSessions: [GroupID: [SessionID]] = [:]
 
+    /// The colour each group's rows were last rendered with (TKZ-48).
+    ///
+    /// `ChangeSet.groups` names a group but not *which* field changed, and since the colour edge now
+    /// runs through the group's session rows too, a colour change has to reload them while a rename
+    /// or a collapse must still reload only the header — the tests count reloaded rows. Hence a
+    /// shadow, like `shadowGroups`/`shadowSessions`.
+    ///
+    /// `applyGroups` is the only writer for an existing group's entry. `applyStructure` merely adds
+    /// entries for new groups and drops them for removed ones: it runs *before* `applyGroups` in
+    /// `apply(_:)`, and deliveries are coalesced per run-loop turn, so a blanket refresh there would
+    /// hide a colour change that arrived in the same change set as a structural one.
+    private var shadowGroupColors: [GroupID: RGB?] = [:]
+
     private var isApplyingStoreSelection = false
     private var isApplyingStoreCollapse = false
     private var appliedSelection: SessionID?
@@ -363,7 +376,11 @@ public final class SidebarViewController: NSViewController {
         outline.reloadData()
         shadowGroups = store.state.orderedGroups.map(\.id)
         shadowSessions = [:]
-        for id in shadowGroups { shadowSessions[id] = store.state.sessions(in: id).map(\.id) }
+        shadowGroupColors = [:]
+        for id in shadowGroups {
+            shadowSessions[id] = store.state.sessions(in: id).map(\.id)
+            shadowGroupColors[id] = store.state.groups[id]?.color
+        }
         syncExpansion(for: shadowGroups)
         syncSelectionToOutline(scroll: false)
         updateSummary()
@@ -418,6 +435,19 @@ public final class SidebarViewController: NSViewController {
             if row >= 0 { settled.insert(row) }
         }
         rows.formUnion(settled)
+        // A colour change also repaints the group's session rows — they carry the same edge, so the
+        // stripe would otherwise stop at the header until something else touched them. Resolved
+        // after `syncExpansion`, for the same reason the headers are.
+        for id in ids {
+            let color = store.state.groups[id]?.color
+            // `RGB??` against `RGB?`: a group we have never rendered counts as changed.
+            guard shadowGroupColors[id] != color else { continue }
+            shadowGroupColors[id] = color
+            for session in store.state.sessions(in: id) {
+                let row = self.row(forSession: session.id)
+                if row >= 0 { rows.insert(row) }
+            }
+        }
         if !rows.isEmpty {
             outline.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
         }
@@ -528,6 +558,11 @@ public final class SidebarViewController: NSViewController {
 
         shadowGroups = newGroups
         shadowSessions = newSessions
+        // Only add and drop keys — never refresh an existing one. See `shadowGroupColors`.
+        shadowGroupColors = shadowGroupColors.filter { survivingGroups.contains($0.key) }
+        for groupID in newGroups where !shadowGroupColors.keys.contains(groupID) {
+            shadowGroupColors[groupID] = state.groups[groupID]?.color
+        }
 
         // A group that was just inserted has no expansion state yet.
         syncExpansion(for: newGroups)

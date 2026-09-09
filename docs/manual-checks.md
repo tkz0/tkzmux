@@ -240,6 +240,17 @@ the title line; account chip; summary strip.
 Then drag the split to the **240 pt minimum**: titles must truncate without badges moving off the row.
 Also check the collapsed-group chevron (`▸`, 9 pt) — it reads as a small dot in the offscreen render.
 
+**4ax. Group colour (TKZ-48)**
+With two groups and a few sessions each: right-click a group header → **Group color ▸** → *Teal*.
+The header **and every session row in that group** show one continuous 2.5 pt stripe at x = 0 — no
+gap between rows, none over the neighbouring group. Right-click a *session row* in the other group →
+the same submenu → *Amber*: that whole group's stripe changes, and the selection does not move.
+Re-open the menu: exactly one item carries a checkmark. Choose **None** → the stripe disappears and
+nothing reflows. Collapse and re-expand a coloured group, and add and remove a session in it — the
+stripe stays continuous. Quit and relaunch: both colours come back from `state.json` and the
+checkmark still lands on the right swatch. Finally drag the split to 240 pt: the stripe stays at
+x = 0 and nothing shifts.
+
 **4b. Sidebar pulse cost**
 ≥10 `working` rows visible, Activity Monitor 60 s. **Pass**: ≤1 % CPU; ~0 % when the window is fully
 covered. **Not measured yet** — do not quote a number until it is.
@@ -289,6 +300,21 @@ What still needs a real login, because it needs a screen and a mouse:
 
 Known gap: the palette has no `didResignKey` observer, so clicking the main window hides it without
 firing `onDismiss`. If "click outside dismisses" is wanted, say so.
+
+**4e. Group colour from the right-click palette (TKZ-48)**
+With at least two groups and a few sessions each:
+1. Right-click a group header → *Group color ▸* → **Teal**. The header **and every session row in
+   that group** carry one unbroken 2.5 pt stripe down the left edge; the neighbouring group is
+   untouched, and nothing reflows.
+2. Right-click a **session row** in the other group → the same submenu → **Amber**. That group's
+   whole stripe turns amber — the picker always acts on the group, never on the one row.
+3. Re-open the submenu: the current colour carries a checkmark. Pick **None** → the stripe
+   disappears, again with no layout shift.
+4. Collapse and re-expand a coloured group, then add and remove a session in it. The stripe stays
+   continuous, and a freshly launched row comes up already coloured.
+5. Quit and relaunch: both colours come back from `state.json`, and re-opening the submenu still
+   marks the right swatch (matching is on 8-bit channels for exactly this reason).
+6. Check the stripe on the `.light` preset — every swatch must stay visible on a near-white sidebar.
 
 ---
 

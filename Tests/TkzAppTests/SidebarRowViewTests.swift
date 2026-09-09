@@ -77,6 +77,14 @@ struct SidebarRowViewTests {
         a.count == b.count && zip(a, b).allSatisfy { abs($0 - $1) < 0.002 }
     }
 
+    /// The RGBA bytes at one pixel. Used by the group-edge tests, which have to compare what two
+    /// *different* row views actually painted rather than what their layers were told to paint.
+    static func pixel(_ rep: NSBitmapImageRep, x: Int, y: Int) throws -> [UInt8] {
+        let data = try #require(rep.bitmapData)
+        let offset = y * rep.bytesPerRow + x * (rep.bitsPerPixel / 8)
+        return (0..<4).map { data[offset + $0] }
+    }
+
     static func sessionRow(
         _ model: SidebarSessionRowModel,
         theme: Theme = .default,
@@ -452,6 +460,53 @@ struct SidebarRowViewTests {
         // …and reuse clears it, so a recycled header cannot show the previous group's colour.
         coloured.prepareForReuse()
         #expect(Self.components(coloured.edgeColor).last == 0)
+    }
+
+    @Test("A session row carries its group's colour edge, with the header's geometry (TKZ-48)")
+    func sessionEdgeReflectsTheGroupColour() {
+        let plain = Self.sessionRow(SidebarSessionRowModel(title: "aira", groupColor: nil))
+        #expect(Self.components(plain.edgeColor).last == 0, "an uncoloured group must not borrow groupEdgeDefault")
+        #expect(plain.colourEdgeLayer.frame.width == CGFloat(SidebarMetrics.groupEdgeWidth))
+        #expect(plain.colourEdgeLayer.frame.height == plain.bounds.height)
+        #expect(plain.colourEdgeLayer.frame.minX == 0)
+
+        let teal = GroupPalette.swatches[0].rgb
+        let coloured = Self.sessionRow(SidebarSessionRowModel(title: "aira", groupColor: teal))
+        #expect(Self.approxEqual(Self.components(coloured.edgeColor), Self.components(teal.cgColor)))
+        #expect(coloured.colourEdgeLayer.frame == plain.colourEdgeLayer.frame)
+
+        // The selection rect is inset by 5 pt, so a selected row cannot paint over the edge.
+        let selected = Self.sessionRow(
+            SidebarSessionRowModel(title: "aira", isSelected: true, groupColor: teal))
+        #expect(selected.selectionBackgroundLayer.frame.minX > CGFloat(SidebarMetrics.groupEdgeWidth))
+
+        coloured.prepareForReuse()
+        #expect(Self.components(coloured.edgeColor).last == 0)
+    }
+
+    @Test("The edge is one stripe: a header and its session rows paint the same leftmost pixels")
+    func groupEdgeIsContinuousAcrossTheGroup() throws {
+        let amber = try #require(GroupPalette.swatches.first { $0.slug == "amber" }).rgb
+        let header = Self.groupRow(SidebarGroupRowModel(name: "aira", color: amber, sessionCount: 2))
+        let row = Self.sessionRow(SidebarSessionRowModel(title: "session summary", groupColor: amber))
+
+        let headerPixels = try Self.render(header, scale: 2)
+        let rowPixels = try Self.render(row, scale: 2)
+        // x = 2 is inside the 2.5 pt edge at 2x (5 device pixels); mid-height avoids nothing in
+        // particular, but keeps the sample away from any rounding at the extremes.
+        let fromHeader = try Self.pixel(headerPixels, x: 2, y: headerPixels.pixelsHigh / 2)
+        let fromRow = try Self.pixel(rowPixels, x: 2, y: rowPixels.pixelsHigh / 2)
+        #expect(fromHeader == fromRow, "the stripe changes colour between the header and its rows")
+
+        let (r, g, b) = amber.bytes
+        #expect(fromHeader[0] == r)
+        #expect(fromHeader[1] == g)
+        #expect(fromHeader[2] == b)
+        #expect(fromHeader[3] == 255)
+
+        // Beyond the edge the two rows are of course different — this is not a blank-bitmap pass.
+        let outsideHeader = try Self.pixel(headerPixels, x: 60, y: headerPixels.pixelsHigh / 2)
+        #expect(outsideHeader[3] == 0 || outsideHeader != fromHeader)
     }
 
     @Test("The group name is uppercased and the chevron follows isCollapsed")
