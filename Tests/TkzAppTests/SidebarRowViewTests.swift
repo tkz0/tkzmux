@@ -359,7 +359,7 @@ struct SidebarRowViewTests {
 
     // MARK: Theme-driven colours
 
-    @Test("The dot colour is the theme token for every status, in every preset")
+    @Test("The dot colour is the theme token for every status that draws one, in every preset")
     func dotColoursComeFromTheTheme() {
         for theme in Theme.allPresets {
             for status in SidebarStatus.allCases {
@@ -367,24 +367,43 @@ struct SidebarRowViewTests {
                 let dot = row.statusDot
                 switch status {
                 case .working:
+                    #expect(!dot.isHidden, "\(theme.preset) working")
                     #expect(Self.approxEqual(Self.components(dot.fillColor),
                                              Self.components(theme.working.cgColor)),
                             "\(theme.preset) working")
                 case .waiting:
+                    #expect(!dot.isHidden, "\(theme.preset) waiting")
                     #expect(Self.approxEqual(Self.components(dot.fillColor),
                                              Self.components(theme.waiting.cgColor)),
                             "\(theme.preset) waiting")
                 case .idle:
-                    #expect(Self.approxEqual(Self.components(dot.fillColor),
-                                             Self.components(theme.idle.cgColor)),
-                            "\(theme.preset) idle")
+                    // 2026-09-09: idle draws nothing at all — and clears its colour, so no stale
+                    // token is left behind on the layer.
+                    #expect(dot.isHidden, "\(theme.preset) idle")
+                    #expect(dot.fillColor == nil, "\(theme.preset) idle")
                 case .done:
+                    #expect(!dot.isHidden, "\(theme.preset) done")
                     #expect(Self.approxEqual(Self.components(dot.fillColor),
                                              Self.components(theme.accent.cgColor)),
                             "\(theme.preset) done")
                 }
             }
         }
+    }
+
+    @Test("A row recycled from working to idle loses its dot, not just its pulse")
+    func recycledRowHidesTheDot() {
+        let row = Self.sessionRow(SidebarSessionRowModel(title: "s", status: .working))
+        #expect(!row.statusDot.isHidden)
+        row.prepareForReuse()
+        #expect(row.statusDot.isHidden)
+        #expect(row.statusDot.fillColor == nil)
+
+        // The same through `configure`, which is the path the outline view actually takes.
+        let reconfigured = Self.sessionRow(SidebarSessionRowModel(title: "s", status: .waiting))
+        #expect(!reconfigured.statusDot.isHidden)
+        reconfigured.configure(SidebarSessionRowModel(title: "t", status: .idle), theme: .default)
+        #expect(reconfigured.statusDot.isHidden)
     }
 
     @Test("A non-default preset renders different colours — the views are not hardcoded to 2c")
