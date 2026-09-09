@@ -472,6 +472,48 @@ struct MainWindowControllerTests {
         #expect(harness.store.state.groups.count == before + 1)
     }
 
+    @Test("A name makes a bucket group; an empty one makes nothing")
+    func createGroupFromName() throws {
+        let harness = Self.makeHarness()
+        defer { harness.tearDown() }
+        let before = harness.store.state.groups.count
+
+        let id = try #require(harness.controller.createGroup(named: "  Work  "))
+        let group = try #require(harness.store.state.groups[id])
+        #expect(group.name == "Work")
+        #expect(group.repoRoot == nil, "a group made by name is a bucket")
+        #expect(harness.store.state.groups.count == before + 1)
+
+        #expect(harness.controller.createGroup(named: "   ") == nil)
+        #expect(harness.store.state.groups.count == before + 1)
+
+        // Names are not deduped — unlike repoRoot, a name is not an identity.
+        #expect(harness.controller.createGroup(named: "Work") != id)
+        #expect(harness.store.state.groups.count == before + 2)
+    }
+
+    @Test("＋ New group asks for a name; cancelling creates nothing")
+    func newGroupPromptsForAName() throws {
+        let harness = Self.makeHarness()
+        defer { harness.tearDown() }
+        let before = harness.store.state.groups.count
+
+        harness.controller.groupNamePrompt = { "Scratch" }
+        harness.controller.presentNewGroupPanel()
+        #expect(harness.store.state.groups.count == before + 1)
+        let group = try #require(harness.store.state.orderedGroups.last)
+        #expect(group.name == "Scratch")
+        #expect(group.repoRoot == nil)
+
+        harness.controller.groupNamePrompt = { nil }
+        harness.controller.presentNewGroupPanel()
+        #expect(harness.store.state.groups.count == before + 1, "cancel creates nothing")
+
+        harness.controller.groupNamePrompt = { "" }
+        harness.controller.presentNewGroupPanel()
+        #expect(harness.store.state.groups.count == before + 1, "an empty name creates nothing")
+    }
+
     @Test("The sidebar's ＋ New group footer reaches the window controller")
     func newGroupFooterIsWired() {
         let harness = Self.makeHarness()

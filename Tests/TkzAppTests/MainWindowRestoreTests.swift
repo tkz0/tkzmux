@@ -204,6 +204,39 @@ struct MainWindowRestoreTests {
         #expect(harness.controller.statusBar.model.notice?.hasPrefix("Resumed 2") == true)
     }
 
+    @Test("Set Repo… attaches a folder to a bucket group, and one folder roots one group")
+    func setGroupRepo() throws {
+        var state = AppState()
+        let bucket = state.addGroup(name: "Work")
+        let other = state.addGroup(name: "Taken", repoRoot: "/tmp/tkzmux-tests/taken")
+        let harness = MainWindowControllerTests.makeHarness(state)
+        defer { harness.tearDown() }
+        let controller = harness.controller
+
+        func repoItem(_ id: GroupID) throws -> NSMenuItem {
+            let menu = try #require(controller.sidebar.contextMenu(forGroup: id))
+            return try #require(menu.items.first { $0.identifier == MainWindowController.ContextItemID.groupRepo })
+        }
+
+        let item = try repoItem(bucket.id)
+        #expect(item.title == "Set Repo\u{2026}", "a bucket has no repo yet")
+        #expect(try repoItem(other.id).title == "Change Repo\u{2026}")
+
+        controller.folderPrompt = { _ in URL(fileURLWithPath: "/tmp/tkzmux-tests/work", isDirectory: true) }
+        _ = item.target?.perform(item.action, with: item)
+        harness.store.flush()
+        #expect(harness.store.state.groups[bucket.id]?.repoRoot == "/tmp/tkzmux-tests/work")
+        #expect(try repoItem(bucket.id).title == "Change Repo\u{2026}")
+
+        // The folder that already roots "Taken" is refused, with a notice.
+        controller.folderPrompt = { _ in URL(fileURLWithPath: "/tmp/tkzmux-tests/taken", isDirectory: true) }
+        let again = try repoItem(bucket.id)
+        _ = again.target?.perform(again.action, with: again)
+        harness.store.flush()
+        #expect(harness.store.state.groups[bucket.id]?.repoRoot == "/tmp/tkzmux-tests/work")
+        #expect(controller.statusBar.model.notice?.contains("Taken") == true)
+    }
+
     // MARK: - Another repo, auto-resume
 
     @Test("In another repo… makes a group for the folder and starts claude in it")

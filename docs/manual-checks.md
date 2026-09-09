@@ -342,7 +342,7 @@ files. What is left is the ticket's acceptance list, which needs a display and r
 Keep Console.app open on subsystem `se.tkz.tkzmux`, category `launch`, for every step — each
 start/reopen logs its cwd, `CLAUDE_CONFIG_DIR` and command (docs/perf.md → *Launch audit*).
 
-**6a. New worktree.** Select a repo group (＋ New group on a real repo group if it is not there yet),
+**6a. New worktree.** Select a repo group (⌘N → *In another repo…* on a real repo if it is not there yet),
 ⌘N → *New worktree (claude -w)*. **Pass**: `<repo>/.claude/worktrees/<name>` exists within a few
 seconds, the row shows the `WT` badge and the worktree name as its title, and Claude's auto-name
 replaces the title later. **Fail**: no badge (the descriptor's cwd was not under
