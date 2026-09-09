@@ -1,0 +1,95 @@
+Sources/TkzCore/Reducers.swift
+  s_4d3ecc1a3238bb::t_7a38b3983adddf 361-364
+  s_4d3ecc1a3238bb::t_20979a20a11246 375-397
+Sources/tkzmux-hook/LaunchCommand.swift
+  s_4d3ecc1a3238bb::t_1abfdf609871bf 37
+Tests/ClaudeBridgeTests/StatuslineTests.swift
+  s_76f99bfd6442d5::t_f983e8d3d90f52 515,560
+  s_76f99bfd6442d5::t_b23114ae343b7f 1-514,516-559,561-584
+README.md
+  s_76f99bfd6442d5::t_7572e2187f53f6 133-134,151-155,170-187,209-211
+  s_76f99bfd6442d5::t_7d4bd259ef3f74 135
+Tests/TkzAppTests/StatuslineConsentTests.swift
+  s_76f99bfd6442d5::t_b750167c40b7cf 1-61,71-178
+  s_76f99bfd6442d5::t_0aab9d60ee105c 62-70
+Sources/Persistence/PersistedState.swift
+  s_4d3ecc1a3238bb::t_7a38b3983adddf 65-66,68,70,73,78,169-171,215
+Sources/tkzmux-hook/Json.swift
+  s_4d3ecc1a3238bb::t_e84f353ce6a7a2 268-290
+  s_4d3ecc1a3238bb::t_ddbe5b9b1bd0ed 34-44
+Tests/ClaudeBridgeTests/StatuslineReaderTests.swift
+  s_76f99bfd6442d5::t_8303a906d3bbdd 1-379
+Tests/TkzAppTests/MainMenuTests.swift
+  s_76f99bfd6442d5::t_11bd3e57032d4a 192
+Sources/TkzApp/MainWindowController.swift
+  s_4d3ecc1a3238bb::t_32ffbabcca08cd 796-801,864-971,1769
+  s_4d3ecc1a3238bb::t_62dd3387b8c683 29
+Sources/tkzmux-hook/main.swift
+  s_4d3ecc1a3238bb::t_3f57940b4e76e1 30-36
+Tests/ClaudeBridgeTests/QuotaReconcilerTests.swift
+  s_76f99bfd6442d5::t_3fddcf9d9a6e4c 1-145,150-303
+  s_76f99bfd6442d5::t_f983e8d3d90f52 146-149
+Sources/ClaudeBridge/StatuslineReader.swift
+  s_4d3ecc1a3238bb::t_bbd2f44c015b31 1-456
+Sources/ClaudeBridge/StatuslineInstaller.swift
+  s_4d3ecc1a3238bb::t_bbff2259072af5 1-160,165-234
+  s_76f99bfd6442d5::t_c7e0e18bf91b41 161-164
+Sources/ClaudeBridge/ShimInstaller.swift
+  s_4d3ecc1a3238bb::t_6dd1b9dd79a5fb 175,216
+Sources/TkzApp/MainMenu.swift
+  s_4d3ecc1a3238bb::t_6bbbfd2212fe6f 157
+Sources/TkzApp/AppDelegate.swift
+  s_4d3ecc1a3238bb::t_460fe4d3122246 100-103
+Sources/TkzCore/AppStore.swift
+  s_4d3ecc1a3238bb::t_7a38b3983adddf 131
+docs/shortcuts.md
+  s_76f99bfd6442d5::t_e6160e1618534a 30
+Sources/tkzmux-hook/SettingsMerge.swift
+  s_4d3ecc1a3238bb::t_e810ab3f725bf7 189-197
+  s_4d3ecc1a3238bb::t_36123ccbd1ffb7 120
+  s_4d3ecc1a3238bb::t_854b2e5bc2e844 9
+  s_4d3ecc1a3238bb::t_082c7e45db72bf 117-119,121-188,198-214
+Sources/ClaudeBridge/QuotaReconciler.swift
+  s_4d3ecc1a3238bb::t_d7235e2e4c2434 1-201,206-207
+  s_76f99bfd6442d5::t_967f4c7f33dff7 202-205
+Sources/tkzmux-hook/StatuslineCommand.swift
+  s_4d3ecc1a3238bb::t_b863bcc5138f94 199,201-213,215
+  s_4d3ecc1a3238bb::t_11e202133bc637 1-198,200,214,216-274,277-629
+  s_4d3ecc1a3238bb::t_537466a8506ae2 275-276
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_4d3ecc1a3238bb::t_6bbbfd2212fe6f 49-51,126-127,171
+Sources/TkzCore/AppState.swift
+  s_4d3ecc1a3238bb::t_7a38b3983adddf 34-37,50-51,64
+Sources/TkzCore/FixtureState.swift
+  s_4d3ecc1a3238bb::t_2a47cce80f81bd 31
+Sources/tkzmux-hook/Debug.swift
+  s_4d3ecc1a3238bb::t_f66dfd274797e9 20-26
+Sources/TkzCore/Models.swift
+  s_4d3ecc1a3238bb::t_2a47cce80f81bd 527,649,652,695,738-739,801,910-911
+Sources/TkzApp/ClaudeIntegration.swift
+  s_4d3ecc1a3238bb::t_a6874802888310 38-44,120-125,212,229,233-280,283-287,289-291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "3a0ea10bbf8edbf30272dc824c366040eb8dfadb",
+  "prompts": {},
+  "sessions": {
+    "s_4d3ecc1a3238bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "423a1256-95ce-4655-bdab-d305a2e85830",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    },
+    "s_76f99bfd6442d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b206a081-79ba-4f03-b71f-cbd4c73330c1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
