@@ -261,3 +261,81 @@ private final class Counter: @unchecked Sendable {
     for line in 0..<3000 { session.write(ptyText: "line \(line)\r\n") }
     #expect(session.scrollbackRows > 2000)
 }
+
+// MARK: - Scroll metrics (TKZ-45)
+//
+// The scroll indicator's whole input. libghostty offers no change notification for scroll state, so
+// these pin the numbers the view's geometry is derived from — and in particular that the alternate
+// screen reports its own rows rather than the primary's scrollback.
+
+/// Scrolls the viewport by `rows` (negative is up) — the same call `MouseEncoder.wheel` makes.
+private func scrollViewport(_ session: TerminalSession, rows: Int) {
+    session.withTerminal { terminal in
+        var behavior = GhosttyTerminalScrollViewport()
+        behavior.tag = GHOSTTY_SCROLL_VIEWPORT_DELTA
+        behavior.value.delta = rows
+        ghostty_terminal_scroll_viewport(terminal, behavior)
+    }
+}
+
+@Test func aFreshSessionHasNothingToScroll() throws {
+    let (session, _) = try makeSession(cols: 40, rows: 10)
+    let metrics = session.scrollMetrics
+    #expect(metrics.total == 10)
+    #expect(metrics.visible == 10)
+    #expect(metrics.offset == 0)
+    #expect(metrics.isAlternateScreen == false)
+    // Everything fits, so the view draws no thumb at all.
+    #expect(metrics.isScrollable == false)
+    #expect(metrics.scrollableRows == 0)
+}
+
+@Test func scrollbackGrowsTheTotalAndPinsTheViewportToTheBottom() throws {
+    let (session, _) = try makeSession(cols: 40, rows: 10)
+    for line in 0..<200 { session.write(ptyText: "line \(line)\r\n") }
+
+    let metrics = session.scrollMetrics
+    #expect(metrics.total == 201)
+    #expect(metrics.visible == 10)
+    #expect(metrics.isScrollable)
+    // Following the active area: the viewport sits at the very bottom of the scrollable area.
+    #expect(metrics.offset == metrics.scrollableRows)
+}
+
+@Test func scrollingUpMovesTheOffsetAndNothingElse() throws {
+    let (session, _) = try makeSession(cols: 40, rows: 10)
+    for line in 0..<200 { session.write(ptyText: "line \(line)\r\n") }
+    let before = session.scrollMetrics
+
+    scrollViewport(session, rows: -10)
+
+    let after = session.scrollMetrics
+    #expect(after.offset == before.offset - 10)
+    #expect(after.total == before.total)
+    #expect(after.visible == before.visible)
+}
+
+/// Claude Code's TUI lives on the alternate screen, which has no scrollback — the acceptance
+/// criterion is that it shows no thumb.
+///
+/// Note *why* it reports `total == visible`: it is describing the alternate screen's own rows, not
+/// the primary's. Reading `ACTIVE_SCREEN` rather than inferring the screen from `total == len`
+/// costs one O(1) get and removes the guess.
+@Test func theAlternateScreenReportsItsOwnRowsAndIsFlaggedAsSuch() throws {
+    let (session, _) = try makeSession(cols: 40, rows: 10)
+    for line in 0..<200 { session.write(ptyText: "line \(line)\r\n") }
+    scrollViewport(session, rows: -10)
+    let primary = session.scrollMetrics
+
+    session.write(ptyText: "\u{1b}[?1049h")
+    let alternate = session.scrollMetrics
+    #expect(alternate.isAlternateScreen)
+    #expect(alternate.total == 10)
+    #expect(alternate.visible == 10)
+    #expect(alternate.isScrollable == false)
+
+    // Leaving it restores the primary screen's position exactly, so the thumb comes back where the
+    // user left it rather than snapped to the bottom.
+    session.write(ptyText: "\u{1b}[?1049l")
+    #expect(session.scrollMetrics == primary)
+}

@@ -514,3 +514,91 @@ func setSelection(
         throw RenderError(result: Int32(result.rawValue), operation: "ghostty_terminal_set(SELECTION)")
     }
 }
+
+// MARK: - Scroll metrics (TKZ-45)
+//
+// The builder polls `DATA_SCROLLBAR` because libghostty offers no change notification for scroll
+// state. Where that read sits — and what it is careful *not* to do — is the whole design.
+
+@Test func theBuilderPollsScrollMetricsIntoTheSurface() throws {
+    let fixture = try SurfaceFixture(cols: 20, rows: 4)
+    #expect(fixture.surface.scrollMetrics == .empty, "nothing until the first update")
+
+    try fixture.update()
+    #expect(fixture.surface.scrollMetrics.visible == 4)
+    #expect(fixture.surface.scrollMetrics.total == 4)
+    #expect(fixture.surface.scrollMetrics.isAlternateScreen == false)
+
+    fixture.write("a\r\nb\r\nc\r\nd\r\ne\r\nf\r\n")
+    try fixture.update()
+    #expect(fixture.surface.scrollMetrics.total > 4, "scrollback must grow the total")
+}
+
+/// The load-bearing one. Scrolled into history, new child output grows `total` and moves the thumb
+/// while every *visible* cell stays clean — so a read behind the builder's `dirty == .none` guard
+/// would freeze the thumb exactly when it is carrying the most information.
+@Test func scrollMetricsAreRefreshedOnACleanTick() throws {
+    let fixture = try SurfaceFixture(cols: 20, rows: 4)
+    for line in 0..<50 { fixture.write("line \(line)\r\n") }
+    try fixture.update()
+
+    // Scroll into history, then settle: the next tick has nothing to rebuild.
+    fixture.session.withTerminal { terminal in
+        var behavior = GhosttyTerminalScrollViewport()
+        behavior.tag = GHOSTTY_SCROLL_VIEWPORT_DELTA
+        behavior.value.delta = -20
+        ghostty_terminal_scroll_viewport(terminal, behavior)
+    }
+    try fixture.update()
+    let settled = try fixture.update()
+    #expect(settled.dirty == .none, "precondition: the tick under test is a clean one")
+    let before = fixture.surface.scrollMetrics
+
+    // Output that lands *below* the viewport: the total grows, the visible cells do not change.
+    for line in 0..<10 { fixture.write("more \(line)\r\n") }
+    let update = try fixture.update()
+
+    #expect(update.dirty == .none, "no visible cell changed — this is the case that matters")
+    #expect(fixture.surface.scrollMetrics.total > before.total,
+            "the poll must sit ahead of the dirty guard, or the thumb freezes")
+}
+
+/// The thumb is a `CALayer`, not GPU content. Marking the surface dirty for one would leave
+/// `renderNow`'s `needsUpdate = surface.needsDisplay` handoff permanently true and pin the display
+/// link at 120 Hz — M1.6's idle guarantee, lost to an overlay.
+@Test func aMovedThumbNeverRequestsAFrame() throws {
+    let fixture = try SurfaceFixture(cols: 20, rows: 4)
+    for line in 0..<50 { fixture.write("line \(line)\r\n") }
+    try fixture.update()
+
+    fixture.session.withTerminal { terminal in
+        var behavior = GhosttyTerminalScrollViewport()
+        behavior.tag = GHOSTTY_SCROLL_VIEWPORT_DELTA
+        behavior.value.delta = -20
+        ghostty_terminal_scroll_viewport(terminal, behavior)
+    }
+    // The viewport moved, so this one legitimately redraws. Settle first, then take the baseline.
+    try fixture.update()
+    try fixture.update()
+    fixture.surface.clearNeedsDisplay()
+    let revision = fixture.surface.revision
+    let scrolled = fixture.surface.scrollMetrics
+
+    // Now a pure scroll-metrics change with no cell change at all.
+    for line in 0..<10 { fixture.write("more \(line)\r\n") }
+    try fixture.update()
+
+    #expect(fixture.surface.scrollMetrics.total > scrolled.total, "precondition: the metrics moved")
+    #expect(fixture.surface.needsDisplay == false, "a moved thumb must not ask for a frame")
+    #expect(fixture.surface.revision == revision, "and must not count as an instance-data rebuild")
+}
+
+@Test func detachClearsTheScrollMetrics() throws {
+    let fixture = try SurfaceFixture(cols: 20, rows: 4)
+    for line in 0..<50 { fixture.write("line \(line)\r\n") }
+    try fixture.update()
+    #expect(fixture.surface.scrollMetrics.isScrollable)
+
+    fixture.surface.detach()
+    #expect(fixture.surface.scrollMetrics == .empty)
+}
