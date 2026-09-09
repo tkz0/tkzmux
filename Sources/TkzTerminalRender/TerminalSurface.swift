@@ -113,6 +113,12 @@ public final class TerminalSurface {
 
     public var isAttached: Bool { session != nil }
 
+    /// This surface's instance buffers, created by the renderer on first encode and dropped by
+    /// `detach()`. Per surface rather than per renderer so N panes in one tick do not contend for
+    /// one ring's slots — and so a pane's buffers are sized to that pane, not to the widest one on
+    /// screen (see `FrameRing`).
+    public var frameRing: FrameRing?
+
     // MARK: Grid state
 
     public private(set) var columns: Int = 0
@@ -210,6 +216,9 @@ public final class TerminalSurface {
     public func detach() {
         releaseHandles()
         session = nil
+        // Load-bearing for "an unattached terminal costs only IO": a hidden tab's panes must give
+        // their instance buffers back, not merely stop drawing.
+        frameRing = nil
         columns = 0
         rowCount = 0
         backgroundCells.removeAll(keepingCapacity: false)

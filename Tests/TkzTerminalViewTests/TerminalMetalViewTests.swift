@@ -111,6 +111,64 @@ struct TerminalMetalViewTests {
         #expect(visibleRelay.signalCount == visibleBaseline + 1)
     }
 
+    // MARK: Focus (TKZ-36)
+
+    // Click-to-focus (`mouseDown` making itself first responder) is asserted at the window level,
+    // in `MainWindowControllerTests`, where a click on a pane has to end up as `focusedTerminal`
+    // in the store. It is deliberately *not* asserted here: this suite creates no window on
+    // purpose, and a synthetic `NSWindow` off-screen does not run the responder chain the way a
+    // real one does — an earlier attempt passed or failed depending on AppKit's own re-assertions
+    // and cost 30 s a run.
+
+    // MARK: Synchronous resize (TKZ-36)
+
+    /// A divider drag is not a *window* resize, so `inLiveResize` stays false and the asynchronous
+    /// branch of `setFrameSize` runs — Core Animation then stretches the previous texture over the
+    /// new bounds for the length of the drag. `beginSynchronousResize` is what the split container
+    /// brackets a drag with to get the transactional path instead.
+    @Test("a synchronous resize renders inside setFrameSize, like a live resize")
+    func synchronousResizeRendersImmediately() throws {
+        guard let (_, view) = try makeView() else { return }
+        let session = try makeSession()
+        view.show(session)
+
+        // Without it the grid is coalesced to the next tick — `resizeCoalesces` is that case.
+        let asyncBaseline = view.gridResizeCount
+        view.setFrameSize(NSSize(width: 700, height: 560))
+        #expect(view.gridResizeCount == asyncBaseline)
+
+        view.beginSynchronousResize()
+        #expect(view.isSynchronousResizing)
+        // The link must be parked for the same reason a live resize parks it: two paths calling
+        // `nextDrawable()` against a 3-drawable pool deadlock.
+        #expect(view.frameDriver.demand.isLiveResizing)
+
+        // With it, the grid follows the frame inside `setFrameSize` instead of waiting for a tick.
+        let baseline = view.gridResizeCount
+        view.setFrameSize(NSSize(width: 640, height: 520))
+        #expect(view.gridResizeCount > baseline, "a synchronous resize must apply in place")
+        #expect(view.currentGridSize == view.gridSizeForBounds())
+
+        view.endSynchronousResize()
+        #expect(!view.isSynchronousResizing)
+        #expect(!view.frameDriver.demand.isLiveResizing)
+    }
+
+    @Test("ending a synchronous resize inside a window drag leaves the window drag alone")
+    func synchronousResizeNestedInALiveResize() throws {
+        guard let (_, view) = try makeView() else { return }
+        view.show(try makeSession())
+
+        view.viewWillStartLiveResize()
+        #expect(view.frameDriver.demand.isLiveResizing)
+        view.beginSynchronousResize()
+        view.endSynchronousResize()
+        // The window is still being dragged: its transaction must survive the divider's.
+        #expect(view.frameDriver.demand.isLiveResizing)
+        view.viewDidEndLiveResize()
+        #expect(!view.frameDriver.demand.isLiveResizing)
+    }
+
     // MARK: Resize coalescing
 
     @Test("N setFrameSize calls in one tick produce exactly one grid resize")

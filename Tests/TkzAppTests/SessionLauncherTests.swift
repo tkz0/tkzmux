@@ -270,6 +270,24 @@ struct SessionLauncherTests {
         #expect(h.session(id)?.claudeSessionId == "abc-123")
     }
 
+    /// The regression this whole rebase was about: a boot command must reach only the row's
+    /// focused pane. Putting it in the shared `reopen` environment instead would have run
+    /// `claude --resume` in every pane's `.zlogin`, once per pane.
+    @Test("resume: a split row's boot command reaches only the focused pane")
+    func resumeSplitRowBootsOnlyTheFocusedPane() throws {
+        let h = try Self.makeHarness()
+        defer { h.tree.tearDown() }
+        let id = Self.restoredRow(h, claudeSessionId: "abc-123")
+        let first = TerminalID(uuid: id.uuid)
+        h.store.update { _ = $0.splitPane(first, axis: .vertical) }
+        h.store.flush()
+
+        #expect(h.launcher.resume(id) == .success(.resumed(claudeSessionId: "abc-123")))
+        h.store.flush()
+        #expect(h.host.opened.count == 2, "both panes get a shell")
+        #expect(h.host.bootCommands == ["claude --resume abc-123"], "typed into exactly one pane")
+    }
+
     @Test("resume: a row whose shell is already up gets the command typed directly")
     func resumeIntoLiveShell() throws {
         let h = try Self.makeHarness()

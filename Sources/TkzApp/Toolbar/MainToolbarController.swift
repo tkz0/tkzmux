@@ -29,7 +29,7 @@ public extension NSToolbarItem.Identifier {
 /// whenever the selection changes.
 @MainActor
 public final class MainToolbarController: NSObject, NSToolbarDelegate {
-    /// The four right-hand buttons, in order. Only ``terminal`` is available in v1.
+    /// The four right-hand buttons, in order. The browser is still later work.
     public enum ViewButton: Int, CaseIterable, Sendable {
         case terminal = 0   // >_
         case browser = 1    // ◍
@@ -47,15 +47,18 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
 
         var label: String {
             switch self {
-            case .terminal: "New terminal"
+            // Deliberately "session": this button makes a whole new row running a bare shell, not
+            // another terminal inside this one. ⌘T is the latter (TKZ-36), and the two would
+            // otherwise read as the same verb.
+            case .terminal: "New shell session"
             case .browser: "Browser"
             case .splitV: "Split vertically"
             case .splitH: "Split horizontally"
             }
         }
 
-        /// v1 ships the terminal only; design.md marks the other three as later work.
-        var isAvailableInV1: Bool { self == .terminal }
+        /// The browser pane is still later work; the two splits landed in TKZ-36.
+        var isAvailableInV1: Bool { self != .browser }
     }
 
     /// Tooltip on every button that v1 does not implement.
@@ -63,8 +66,12 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
 
     public let toolbar: NSToolbar
 
-    /// Invoked when the enabled `>_` button is clicked.
+    /// Invoked when the `>_` button is clicked: a new bare-shell *session row*.
     public var onNewTerminal: (() -> Void)?
+    /// `◫` — split the selected session's focused pane side by side.
+    public var onSplitVertically: (() -> Void)?
+    /// `⬓` — split it stacked.
+    public var onSplitHorizontally: (() -> Void)?
     /// Invoked on every keystroke in the search field, with the current query.
     public var onSearchChanged: ((String) -> Void)?
     /// Invoked when the user presses Return in the search field.
@@ -150,14 +157,16 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
 
     // MARK: Actions
 
-    /// Runs the action behind one cluster button, ignoring the three that v1 does not implement.
+    /// Runs the action behind one cluster button, ignoring any the app does not implement yet.
     /// The `@objc` click handler funnels through here; tests drive it directly because a
     /// `.momentary` `NSSegmentedControl` does not keep `selectedSegment` outside a real click.
     func activate(_ button: ViewButton) {
         guard button.isAvailableInV1 else { return }
         switch button {
         case .terminal: onNewTerminal?()
-        case .browser, .splitV, .splitH: break
+        case .splitV: onSplitVertically?()
+        case .splitH: onSplitHorizontally?()
+        case .browser: break
         }
     }
 

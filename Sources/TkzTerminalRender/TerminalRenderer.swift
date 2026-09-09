@@ -86,18 +86,9 @@ public final class TerminalRenderer {
     private let rectPipeline: MTLRenderPipelineState
     private let glyphPipeline: MTLRenderPipelineState
 
-    /// 3-deep ring: the CPU may be writing frame N+2's buffers while the GPU still reads frame N's.
-    private static let ringDepth = 3
-    private let inflight = DispatchSemaphore(value: TerminalRenderer.ringDepth)
-    private var slots: [FrameSlot]
-    private var slotIndex = 0
-
-    private final class FrameSlot {
-        var background: MTLBuffer?
-        var glyphs: MTLBuffer?
-        var rectsBelow: MTLBuffer?
-        var rectsAbove: MTLBuffer?
-    }
+    // The instance-buffer ring lives on the `TerminalSurface`, not here: one ring per renderer
+    // would make N panes in one tick contend for N of its 3 slots, and a fourth pane would block
+    // the main thread on the GPU (see `FrameRing`).
 
     // MARK: - Init
 
@@ -161,7 +152,6 @@ public final class TerminalRenderer {
                 fragment: try function(TKZ_FN_GLYPH_FRAGMENT),
                 blending: true))
 
-        slots = (0..<TerminalRenderer.ringDepth).map { _ in FrameSlot() }
     }
 
     /// The hand-built `default.metallib` inside the `.app` if it has our entry points, else the
@@ -315,9 +305,10 @@ public final class TerminalRenderer {
         // One `replace(region:)` per atlas per frame, before anything is encoded.
         glyphCache.flushUploads()
 
-        inflight.wait()
-        slotIndex = (slotIndex + 1) % TerminalRenderer.ringDepth
-        let slot = slots[slotIndex]
+        // Lazily, because a `TerminalSurface` has no `MTLDevice` of its own: it holds the ring,
+        // the renderer creates it on first encode.
+        let ring = surface.frameRing ?? { let fresh = FrameRing(); surface.frameRing = fresh; return fresh }()
+        let slot = ring.acquire()
 
         let backgroundBuffer = upload(surface.backgroundCells, into: &slot.background)
         let glyphBuffer = upload(glyphs, into: &slot.glyphs)
@@ -329,7 +320,7 @@ public final class TerminalRenderer {
         // and with `maximumDrawableCount = 2` a couple of those make `nextDrawable()` block for
         // about a second each — which looks exactly like a frozen window.
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
-            inflight.signal()
+            ring.release()
             stats.framesSkipped += 1
             return RenderOutcome(didEncode: false, commandBuffer: nil, update: update,
                                  glyphCount: glyphs.count,
@@ -338,7 +329,7 @@ public final class TerminalRenderer {
         stats.drawableRequests += 1
         let (target, drawable) = acquire()
         guard let target else {
-            inflight.signal()
+            ring.release()
             stats.framesSkipped += 1
             return RenderOutcome(didEncode: false, commandBuffer: nil, update: update,
                                  glyphCount: glyphs.count,
@@ -354,7 +345,7 @@ public final class TerminalRenderer {
         pass.colorAttachments[0].storeAction = .store
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
-            inflight.signal()
+            ring.release()
             stats.framesSkipped += 1
             return RenderOutcome(didEncode: false, commandBuffer: nil, update: update,
                                  glyphCount: glyphs.count,
@@ -390,8 +381,7 @@ public final class TerminalRenderer {
 
         encoder.endEncoding()
 
-        let semaphore = inflight
-        commandBuffer.addCompletedHandler { _ in semaphore.signal() }
+        commandBuffer.addCompletedHandler { [ring] _ in ring.release() }
         if presentViaCommandBuffer, let drawable { commandBuffer.present(drawable) }
         commandBuffer.commit()
 

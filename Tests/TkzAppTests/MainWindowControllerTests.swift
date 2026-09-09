@@ -27,61 +27,84 @@ struct MainWindowControllerTests {
     // MARK: - Doubles
 
     /// Records what the window asked of the terminal half.
+    ///
+    /// The host is keyed by `TerminalID` since TKZ-36, but almost every assertion in these suites
+    /// is about a *row*. Both are recorded, and the `SessionID`-shaped accessors are the ones the
+    /// tests read: a row created by these harnesses has exactly one pane, whose uuid **is** the
+    /// row's (`Session.init`, and `Migrations.liftV1ToV2` for anything restored), so the mapping
+    /// is the real invariant rather than a convenience. A test that genuinely cares about panes
+    /// reads `openedTerminals` / `shownTerminals`.
     @MainActor
     final class SpyTerminalHost: TerminalHost {
         struct Opened: Equatable {
             var id: SessionID
+            var terminal: TerminalID
             var cwd: String
             var env: [String: String]
         }
 
         struct Restored: Equatable {
             var id: SessionID
+            var terminal: TerminalID
             var cwd: String
             var env: [String: String]
             var snapshot: Data
         }
 
-        private(set) var shown: [SessionID?] = []
+        private(set) var shownTerminals: [Set<TerminalID>] = []
         private(set) var closed: [(id: SessionID, signal: Int32)] = []
         private(set) var opened: [Opened] = []
         private(set) var restored: [Restored] = []
-        private(set) var discarded: [SessionID] = []
-        private(set) var ran: [(id: SessionID, command: String)] = []
+        private(set) var discardedTerminals: [TerminalID] = []
+        private(set) var ranTerminals: [(id: TerminalID, command: String)] = []
         /// Set to make the next `open` throw, so the failure path can be asserted.
         var openError: (any Error)?
         /// Set to make the next `restore` throw (a snapshot that no longer decodes).
         var restoreError: (any Error)?
-        /// `.ghsnap` files "on disk", by id — what `savedSnapshot` answers from.
+        /// `.ghsnap` files "on disk", by row — what `savedSnapshot` answers from.
         var savedSnapshots: [SessionID: Data] = [:]
-        /// The live grids: every id opened or restored on this host. `snapshot` answers for these;
-        /// `discard` and the eviction inside a reopen remove them.
-        private(set) var held: Set<SessionID> = []
-        let events: AsyncStream<(SessionID, TerminalEvent)>
-        private let continuation: AsyncStream<(SessionID, TerminalEvent)>.Continuation
+        /// The live grids: every terminal opened or restored on this host. `snapshot` answers for
+        /// these; `discard` and the eviction inside a reopen remove them.
+        private(set) var heldTerminals: Set<TerminalID> = []
+        private(set) var visibleTerminalIDs: Set<TerminalID> = []
+        let events: AsyncStream<(TerminalID, TerminalEvent)>
+        private let continuation: AsyncStream<(TerminalID, TerminalEvent)>.Continuation
 
         init() {
-            var escapee: AsyncStream<(SessionID, TerminalEvent)>.Continuation!
+            var escapee: AsyncStream<(TerminalID, TerminalEvent)>.Continuation!
             events = AsyncStream { escapee = $0 }
             continuation = escapee
         }
 
-        func open(_ id: SessionID, cwd: String, env: [String: String], size: TerminalSize) throws -> pid_t {
+        func open(
+            _ id: TerminalID, session: SessionID, cwd: String, env: [String: String],
+            size: TerminalSize
+        ) throws -> pid_t {
             if let openError { throw openError }
-            opened.append(Opened(id: id, cwd: cwd, env: env))
+            opened.append(Opened(id: session, terminal: id, cwd: cwd, env: env))
             evict(id)
-            held.insert(id)
+            heldTerminals.insert(id)
             return 4242
         }
 
-        /// The real host drops a session it already holds under `id` before adopting the new one,
-        /// and that detaches the surface if it was the visible one. Modelled here so a reopen of
-        /// the selected row that forgets to re-show it fails a test rather than a user.
-        private func evict(_ id: SessionID) {
-            held.remove(id)
-            if visibleSessionID == id { visibleSessionID = nil }
+        /// The real host drops a terminal it already holds under `id` before adopting the new one,
+        /// and that detaches its surface. Modelled here so a reopen of the selected row that
+        /// forgets to re-show it fails a test rather than a user.
+        private func evict(_ id: TerminalID) {
+            heldTerminals.remove(id)
+            visibleTerminalIDs.remove(id)
         }
-        func run(_ id: SessionID, command: String) { ran.append((id, command)) }
+        func run(_ id: TerminalID, command: String) { ranTerminals.append((id, command)) }
+        func writeInput(_ id: TerminalID, _ data: Data) { wrote.append((id, data)) }
+        private(set) var wrote: [(id: TerminalID, data: Data)] = []
+        func contains(_ id: TerminalID) -> Bool { heldTerminals.contains(id) }
+        func show(_ attachments: [TerminalID: any TerminalPaneSurface]) {
+            // The real host attaches nothing for a terminal it has never opened, which is what a
+            // row restored from `state.json` looks like. The spy has to model that, or the
+            // window's empty-state logic would be tested against a host that can show anything.
+            visibleTerminalIDs = Set(attachments.keys.filter(heldTerminals.contains))
+            shownTerminals.append(visibleTerminalIDs)
+        }
         /// Every command handed to a shell this host spawned, as `TKZMUX_BOOT_COMMAND` in the
         /// spawn environment. Both `open` and `restore` are read: whether a resume goes through
         /// one or the other depends on whether the row had a snapshot, so a test that watched only
@@ -93,46 +116,84 @@ struct MainWindowControllerTests {
         /// command when it spawns the shell and the typed path when the row's shell was already
         /// up, so a mixed set of rows legitimately produces some of each.
         var commandsIssued: [String] { bootCommands + ran.map(\.command) }
-        private(set) var visibleSessionID: SessionID?
-        func show(_ id: SessionID?) {
-            shown.append(id)
-            // The real host attaches nothing for an id it has never opened, which is what a row
-            // restored from `state.json` looks like. The spy has to model that, or the window's
-            // empty-state logic would be tested against a host that can show anything.
-            visibleSessionID = id.flatMap { held.contains($0) ? $0 : nil }
+        func resize(_ id: TerminalID, _ size: TerminalSize) { resized.append((id, size)) }
+        private(set) var resized: [(id: TerminalID, size: TerminalSize)] = []
+        func close(_ id: TerminalID, signal: Int32) {
+            closed.append((SessionID(uuid: id.uuid), signal))
         }
-        func resize(_ id: SessionID, _ size: TerminalSize) {}
-        func close(_ id: SessionID, signal: Int32) { closed.append((id, signal)) }
-        /// The live grid, for a held id; the real host throws `unknownSession` otherwise.
-        func snapshot(_ id: SessionID) throws -> Data {
-            guard held.contains(id) else { throw TerminalHostError.unknownSession(id.rawValue) }
+        /// The live grid, for a held terminal; the real host throws `unknownSession` otherwise.
+        func snapshot(_ id: TerminalID) throws -> Data {
+            guard heldTerminals.contains(id) else {
+                throw TerminalHostError.unknownSession(id.rawValue)
+            }
             return Data("live:\(id.rawValue)".utf8)
         }
-        func restore(_ id: SessionID, from data: Data, cwd: String, env: [String: String]) throws -> pid_t {
+        func restore(
+            _ id: TerminalID, session: SessionID, from data: Data, cwd: String,
+            env: [String: String]
+        ) throws -> pid_t {
             if let restoreError { throw restoreError }
-            restored.append(Restored(id: id, cwd: cwd, env: env, snapshot: data))
+            restored.append(
+                Restored(id: session, terminal: id, cwd: cwd, env: env, snapshot: data))
             evict(id)
-            held.insert(id)
+            heldTerminals.insert(id)
             return 4343
         }
-        func savedSnapshot(_ id: SessionID) -> Data? { savedSnapshots[id] }
-        func discard(_ id: SessionID) {
-            discarded.append(id)
-            held.remove(id)
-            savedSnapshots[id] = nil
-            if visibleSessionID == id { visibleSessionID = nil }
+        func savedSnapshot(_ id: TerminalID) -> Data? { savedSnapshots[SessionID(uuid: id.uuid)] }
+        func discard(_ id: TerminalID) {
+            discardedTerminals.append(id)
+            heldTerminals.remove(id)
+            savedSnapshots[SessionID(uuid: id.uuid)] = nil
+            visibleTerminalIDs.remove(id)
+        }
+
+        /// Gives a *row* a terminal, the way the launcher does: its first leaf carries the row's
+        /// own uuid. Almost every test here means "make this row have a shell", not "open this
+        /// particular pane".
+        @discardableResult
+        func openRow(_ id: SessionID, cwd: String = "/tmp") throws -> pid_t {
+            try open(
+                TerminalID(uuid: id.uuid), session: id, cwd: cwd, env: [:],
+                size: TerminalSize(rows: 24, cols: 80))
         }
 
         /// Pushes an event as if a child had produced it.
-        func emit(_ event: TerminalEvent, for id: SessionID) { continuation.yield((id, event)) }
+        func emit(_ event: TerminalEvent, for id: SessionID) {
+            continuation.yield((TerminalID(uuid: id.uuid), event))
+        }
+        func emit(_ event: TerminalEvent, forTerminal id: TerminalID) {
+            continuation.yield((id, event))
+        }
 
+        // MARK: Row-shaped views, for the assertions
+
+        var shown: [SessionID?] {
+            shownTerminals.map { $0.first.map { SessionID(uuid: $0.uuid) } }
+        }
+        var visibleSessionID: SessionID? { visibleTerminalIDs.first.map { SessionID(uuid: $0.uuid) } }
+        var held: Set<SessionID> { Set(heldTerminals.map { SessionID(uuid: $0.uuid) }) }
+        var discarded: [SessionID] { discardedTerminals.map { SessionID(uuid: $0.uuid) } }
+        var ran: [(id: SessionID, command: String)] {
+            ranTerminals.map { (SessionID(uuid: $0.id.uuid), $0.command) }
+        }
         var lastShown: SessionID?? { shown.last }
         var closedIDs: [SessionID] { closed.map(\.id) }
     }
 
-    /// Stands in for `TerminalMetalView`: focusable, layer-backed, nothing else.
-    final class FakeTerminalView: NSView {
+    /// Stands in for `TerminalMetalView`: focusable, and a `TerminalPaneSurface` that records
+    /// what was attached to it. Everything the host asks of a surface is answered here, so the
+    /// whole suite still runs with no GPU.
+    final class FakeTerminalView: NSView, TerminalPaneSurface {
         override var acceptsFirstResponder: Bool { true }
+
+        private(set) var attached: TerminalSession?
+        private(set) var cursorSuppressed = false
+        var onGridResize: ((TerminalSize) -> Void)?
+        var grid = TerminalSize(rows: 40, cols: 120)
+
+        func show(_ session: TerminalSession?) { attached = session }
+        func setCursorSuppressed(_ suppressed: Bool) { cursorSuppressed = suppressed }
+        func gridSizeForBounds() -> TerminalSize { grid }
     }
 
     // MARK: - Harness
@@ -165,6 +226,27 @@ struct MainWindowControllerTests {
         }
     }
 
+    /// A harness whose panes each get their own `FakeTerminalView`, so a split has two real
+    /// (GPU-free) surfaces rather than one view and a stand-in.
+    static func makeSplitHarness(_ state: AppState = .fixture) -> Harness {
+        _ = NSApplication.shared
+        let store = AppStore(state: state)
+        let host = SpyTerminalHost()
+        let first = FakeTerminalView(frame: NSRect(x: 0, y: 0, width: 900, height: 700))
+        var vended = false
+        let controller = MainWindowController(
+            store: store, host: host,
+            terminalViewFactory: { _ in
+                defer { vended = true }
+                return vended
+                    ? FakeTerminalView(frame: NSRect(x: 0, y: 0, width: 450, height: 700)) : first
+            },
+            theme: .default)
+        let harness = Harness(store: store, controller: controller, host: host, terminalView: first)
+        harness.layout()
+        return harness
+    }
+
     static func makeHarness(_ state: AppState = .fixture) -> Harness {
         _ = NSApplication.shared
         let store = AppStore(state: state)
@@ -176,6 +258,267 @@ struct MainWindowControllerTests {
             store: store, controller: controller, host: host, terminalView: view)
         harness.layout()
         return harness
+    }
+
+    // MARK: - Panes (TKZ-36)
+
+    /// Polls a condition, flushing the store each turn, for up to two seconds.
+    @MainActor
+    private static func settle(
+        _ harness: Harness, until predicate: () -> Bool
+    ) async -> Bool {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while ContinuousClock.now < deadline {
+            harness.store.flush()
+            if predicate() { return true }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        harness.store.flush()
+        return predicate()
+    }
+
+    /// Gives a row a terminal and selects it, which is the precondition for every split test.
+    @MainActor
+    private static func selectedRowWithAShell(_ harness: Harness) throws -> (SessionID, TerminalID) {
+        let id = try #require(harness.store.state.orderedSessions.first?.id)
+        let terminal = try #require(harness.store.state.sessions[id]?.focusedTerminalID)
+        _ = try harness.host.openRow(id)
+        harness.mutate {
+            // A row with a shell has live state; `setPanePid` below writes into it, and without it
+            // that mutation is a no-op that delivers nothing.
+            $0.setLive(LiveSessionState(shellPid: 1, status: .idle), for: id)
+            $0.select(id)
+        }
+        return (id, terminal)
+    }
+
+    @Test("A split builds an NSSplitView with both panes, on the right axis")
+    func splitBuildsASplitView() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (_, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        harness.layout()
+        let other = try #require(second)
+
+        let container = harness.controller.paneContainer
+        #expect(Set(container.terminalIDs) == [first, other])
+        let firstView = try #require(container.paneView(for: first))
+        let split = try #require(firstView.superview as? NSSplitView)
+        #expect(split.isVertical, "a horizontal PaneAxis is side-by-side, i.e. a vertical divider")
+        #expect(split.arrangedSubviews.count == 2)
+
+        // ⇧⌘D stacks instead.
+        var third: TerminalID?
+        harness.store.updating { third = $0.splitPane(other, axis: .vertical) }
+        harness.store.flush()
+        harness.layout()
+        let stacked = try #require(third)
+        let stackedView = try #require(container.paneView(for: stacked))
+        #expect((stackedView.superview as? NSSplitView)?.isVertical == false)
+    }
+
+    /// The anti-flash guard: splitting must not re-create the view of the pane that was already
+    /// there. A new view means a detached and re-attached surface, i.e. a full rebuild of a grid
+    /// the user did not touch.
+    @Test("Splitting reuses the existing pane's view rather than rebuilding it")
+    func splittingReusesTheExistingPaneView() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (_, first) = try Self.selectedRowWithAShell(harness)
+
+        let before = try #require(harness.controller.paneContainer.paneView(for: first))
+        harness.store.updating { _ = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        harness.layout()
+
+        let after = try #require(harness.controller.paneContainer.paneView(for: first))
+        #expect(before === after)
+    }
+
+    /// The regression this guards: `launchSize(for:)` used to measure the *first* pane's view for
+    /// every terminal, so every ⌘D opened a full-width shell that reflowed on its first frame.
+    ///
+    /// Asserted through the projection rather than a laid-out view on purpose — that is the order
+    /// `SessionLauncher.addTerminal` runs in. The store delivers change sets on the next turn of
+    /// the run loop, so the tree has the new leaf and the container has not rebuilt yet.
+    @Test("A split pane opens at its own grid, not the window's")
+    func aSplitPaneOpensAtItsOwnGrid() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        // A test has no renderer, so it supplies the cell metrics the render context would.
+        harness.controller.launchCellMetrics = { (width: 8, height: 16) }
+        let (_, first) = try Self.selectedRowWithAShell(harness)
+
+        let whole = try #require(harness.controller.projectedLaunchSize(for: first))
+        #expect(whole.cols > 2 && whole.rows > 2, "the container must have real bounds")
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        let other = try #require(second)
+
+        let sideBySide = try #require(harness.controller.projectedLaunchSize(for: other))
+        #expect(sideBySide.rows == whole.rows, "a side-by-side split does not change the height")
+        #expect(abs(Int(sideBySide.cols) - Int(whole.cols) / 2) <= 1)
+        #expect(sideBySide.cellWidthPx == 8 && sideBySide.cellHeightPx == 16)
+
+        // ⇧⌘D halves the rows instead, and only within the pane it split.
+        harness.store.flush()
+        harness.layout()
+        var third: TerminalID?
+        harness.store.updating { third = $0.splitPane(other, axis: .vertical) }
+        let stacked = try #require(third)
+        let below = try #require(harness.controller.projectedLaunchSize(for: stacked))
+        #expect(abs(Int(below.rows) - Int(whole.rows) / 2) <= 1)
+        #expect(below.cols == sideBySide.cols)
+    }
+
+    @Test("Both panes of a split are attached, and closing one detaches only that one")
+    func bothPanesAreAttached() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (_, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        let other = try #require(second)
+        // The launcher spawns a split pane's shell; the store-only mutation above did not, so
+        // stand in for it before asserting on what is attached.
+        _ = try harness.host.open(
+            other, session: try #require(harness.store.state.sessionID(owning: other)),
+            cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.mutate { $0.setPanePid(other, pid: 99) }   // what the launcher does after opening
+
+        #expect(harness.host.visibleTerminalIDs == [first, other])
+
+        harness.mutate { _ = $0.closePane(other) }
+        #expect(harness.host.visibleTerminalIDs == [first])
+        #expect(harness.controller.paneContainer.paneView(for: other) == nil)
+    }
+
+    /// A zoomed tab shows one pane; its siblings are detached and cost only IO.
+    @Test("Zooming shows one pane and detaches the rest")
+    func zoomShowsOnePane() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        let other = try #require(second)
+        _ = try harness.host.open(
+            other, session: id, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.mutate { $0.setPanePid(other, pid: 99) }
+        #expect(harness.host.visibleTerminalIDs.count == 2)
+
+        harness.mutate { $0.zoomPane(other, in: id) }
+        #expect(harness.host.visibleTerminalIDs == [other])
+        #expect(harness.controller.paneContainer.terminalIDs == [other])
+
+        harness.mutate { $0.zoomPane(other, in: id) }
+        #expect(harness.host.visibleTerminalIDs.count == 2)
+    }
+
+    /// The view→store half of focus: clicking a pane has to come back as `focusedTerminal`.
+    /// This is the assertion `TerminalMetalViewTests` deliberately does not make.
+    @Test("Making a pane first responder records it as the focused terminal")
+    func clickingAPaneRecordsFocus() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        let other = try #require(second)
+        _ = try harness.host.open(
+            other, session: id, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.mutate { $0.focusPane(first) }
+        #expect(harness.store.state.sessions[id]?.focusedTerminalID == first)
+
+        let otherView = try #require(harness.controller.paneContainer.paneView(for: other))
+        _ = harness.window.makeFirstResponder(otherView)
+        harness.store.flush()
+        #expect(harness.store.state.sessions[id]?.focusedTerminalID == other)
+    }
+
+    /// A store-driven focus change must move the keyboard too — the `layout` branch passes
+    /// `focusTerminal: false` so a click is not fought, which means a *command* has to say so.
+    @Test("focusPane moves the first responder")
+    func focusPaneMovesTheKeyboard() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        let other = try #require(second)
+        _ = try harness.host.open(
+            other, session: id, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.mutate { $0.focusPane(first) }
+
+        harness.controller.focusPane(other)
+        let otherView = try #require(harness.controller.paneContainer.paneView(for: other))
+        #expect(harness.window.firstResponder === otherView)
+    }
+
+    /// A pane whose shell exits closes that leaf; the row survives on the rest.
+    @Test("An exiting pane closes its leaf, and only the last one takes the row with it")
+    func exitClosesOneLeaf() async throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        let other = try #require(second)
+        _ = try harness.host.open(
+            other, session: id, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.layout()
+
+        // The event pump is a Task; wait for the effect rather than for a fixed interval, or the
+        // test is a race that usually wins.
+        harness.host.emit(.exited(.exited(code: 0)), forTerminal: other)
+        var closed = await Self.settle(harness) {
+            harness.store.state.sessions[id]?.terminalIDs == [first]
+        }
+        #expect(closed, "the exiting pane's leaf was not closed")
+        #expect(harness.store.state.sessions[id] != nil, "the row must survive its second pane")
+
+        harness.host.emit(.exited(.exited(code: 0)), forTerminal: first)
+        closed = await Self.settle(harness) { harness.store.state.sessions[id] == nil }
+        #expect(closed, "the last pane must take the row with it")
+    }
+
+    /// Store→view: the dividers follow the model's ratios, and an unrelated delivery does not
+    /// re-place one the user has since dragged. That is the snap-back bug `MainSplitViewController`
+    /// documents, in its pane-shaped form.
+    @Test("Ratios are applied once, and an unrelated change does not re-place a divider")
+    func ratiosAreAppliedOnce() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        harness.store.updating { _ = $0.splitPane(first, axis: .horizontal, ratio: 0.25) }
+        harness.store.flush()
+        harness.layout()
+        let placed = harness.controller.paneContainer.appliedRatioCount
+        #expect(placed > 0)
+
+        // Something else about the row changes: a status flip, not a layout change.
+        harness.mutate { $0.setStatus(.working, for: id) }
+        #expect(harness.controller.paneContainer.appliedRatioCount == placed)
+
+        // A real ratio change does place it again.
+        harness.mutate { $0.setRatio(above: first, to: 0.6) }
+        #expect(harness.controller.paneContainer.appliedRatioCount > placed)
     }
 
     // MARK: - Structure
@@ -377,13 +720,12 @@ struct MainWindowControllerTests {
         // The row has to have a terminal behind it: from M5.1 a row can exist in the store with no
         // surface (that is what a restored `state.json` row is), and the window shows the empty
         // state for those rather than focusing a grid that is not there.
-        _ = try harness.host.open(
-            target, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        _ = try harness.host.openRow(target)
         harness.mutate { $0.select(target) }
 
         #expect(harness.host.lastShown == .some(target))
         #expect(harness.window.firstResponder === harness.terminalView)
-        #expect(harness.terminalView.isHidden == false)
+        #expect(harness.controller.paneContainer.isHidden == false)
     }
 
     @Test("Sidebar selection is the same path: it goes through the store to show()")
@@ -394,8 +736,7 @@ struct MainWindowControllerTests {
         // Start from nothing selected, so the ⌘1 below is a real change and not a no-op.
         harness.mutate { $0.select(nil) }
         let expected = try #require(SidebarRowAdapter.session(atVisibleIndex: 1, in: harness.store.state))
-        _ = try harness.host.open(
-            expected, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        _ = try harness.host.openRow(expected)
 
         // ⌘1 — the sidebar's own command, exactly what the menu dispatches.
         harness.controller.dispatcher.perform(.selectSession(1))
@@ -416,22 +757,22 @@ struct MainWindowControllerTests {
         // of a row restored from `state.json` (M5.1). The detail half must say so rather than show
         // a blank grid.
         #expect(harness.controller.detail.emptyState.isHidden == false)
-        #expect(harness.terminalView.isHidden)
+        #expect(harness.controller.paneContainer.isHidden)
         #expect(harness.controller.detail.emptyStateMessage == EmptyStateView.notRunningMessage)
 
         harness.mutate { $0.select(nil) }
         #expect(harness.controller.detail.emptyState.isHidden == false)
-        #expect(harness.terminalView.isHidden)
+        #expect(harness.controller.paneContainer.isHidden)
         #expect(harness.host.lastShown == .some(nil))
         #expect(harness.controller.detail.emptyStateMessage == EmptyStateView.noSelectionMessage)
         #expect(EmptyStateView.noSelectionMessage == "No session selected \u{00B7} \u{2318}N")
 
         // A row the host has actually opened shows the terminal.
         let target = try #require(harness.store.state.orderedSessions.first?.id)
-        _ = try harness.host.open(target, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        _ = try harness.host.openRow(target)
         harness.mutate { $0.select(target) }
         #expect(harness.controller.detail.emptyState.isHidden)
-        #expect(harness.terminalView.isHidden == false)
+        #expect(harness.controller.paneContainer.isHidden == false)
     }
 
     // MARK: - Status bar contents

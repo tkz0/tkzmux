@@ -27,6 +27,7 @@ import Testing
         #expect(change.structure == false)
         #expect(change.selection == false)
         #expect(change.usage == false)
+        #expect(change.layout.isEmpty)
     }
 
     @Test func liveStateChangesNeverGoStructural() {
@@ -41,6 +42,76 @@ import Testing
         let change = probe.last
         #expect(change.sessions == [sessionA])
         #expect(change.structure == false)
+        #expect(change.layout.isEmpty)
+    }
+
+    // MARK: Layout granularity (TKZ-36)
+
+    /// Every tree-shape mutation names the session in **both** buckets, and none of them is
+    /// structural: the sidebar's rows have not moved, only the split container's shape.
+    @Test func everyLayoutMutationSetsTheLayoutBucketAndIsNotStructural() throws {
+        let probe = Probe()
+        let store = probe.store
+        let root = store.state.sessions[sessionA]!.focusedTerminalID
+
+        var second: TerminalID?
+        store.updating { second = $0.splitPane(root, axis: .horizontal) }
+        store.flush()
+        #expect(probe.last.layout == [sessionA])
+        #expect(probe.last.sessions == [sessionA])
+        #expect(probe.last.structure == false)
+        let other = try #require(second)
+
+        for mutate in [
+            { (state: inout AppState) in state.setRatio(above: root, to: 0.3) },
+            { (state: inout AppState) in state.focusPane(root) },
+            { (state: inout AppState) in state.zoomPane(root, in: self.sessionA) },
+            { (state: inout AppState) in state.equalizeSplits(in: self.sessionA) },
+            { (state: inout AppState) in _ = state.addTab(to: self.sessionA) },
+            { (state: inout AppState) in _ = state.closePane(other) },
+        ] {
+            store.update(mutate)
+            store.flush()
+            #expect(probe.last.layout == [sessionA])
+            #expect(probe.last.structure == false)
+        }
+    }
+
+    /// The one that protects the split container: a pane's cwd follows the shell on every `cd`, so
+    /// treating it as a layout change would rebuild `NSSplitView`s — and re-attach surfaces —
+    /// every time the user walks a directory tree.
+    @Test func aPaneCwdOrPidIsLiveStateAndNeverLayout() throws {
+        let probe = Probe()
+        let store = probe.store
+        let root = store.state.sessions[sessionA]!.focusedTerminalID
+        store.update { $0.setLive(LiveSessionState(), for: sessionA) }
+        store.flush()
+
+        store.update { $0.setPaneCwd(root, path: "/somewhere/else") }
+        store.flush()
+        #expect(probe.last.sessions == [sessionA])
+        #expect(probe.last.layout.isEmpty)
+
+        store.update { $0.setPanePid(root, pid: 999) }
+        store.flush()
+        #expect(probe.last.sessions == [sessionA])
+        #expect(probe.last.layout.isEmpty)
+    }
+
+    /// A row that appears or disappears needs its container built or torn down, so it is a layout
+    /// change as well as a structural one.
+    @Test func addingOrRemovingASessionIsALayoutChange() {
+        let probe = Probe()
+        let store = probe.store
+        var created: SessionID?
+        store.updating { created = $0.createSession(groupID: group0, cwd: "/tmp").id }
+        store.flush()
+        #expect(probe.last.layout == [created!])
+        #expect(probe.last.structure)
+
+        store.update { $0.removeSession(created!) }
+        store.flush()
+        #expect(probe.last.layout == [created!])
     }
 
     /// TKZ-17 acceptance: reordering is structural.

@@ -116,6 +116,7 @@ public enum MainMenu {
         main.addItem(submenu(applicationMenu(appName: appName, shortcuts: shortcuts, dispatcher: dispatcher)))
         main.addItem(submenu(fileMenu(shortcuts: shortcuts, dispatcher: dispatcher)))
         main.addItem(submenu(viewMenu(shortcuts: shortcuts, dispatcher: dispatcher)))
+        main.addItem(submenu(terminalMenu(shortcuts: shortcuts, dispatcher: dispatcher)))
         main.addItem(submenu(sessionMenu(shortcuts: shortcuts, dispatcher: dispatcher)))
         main.addItem(submenu(windowMenu()))
 
@@ -188,6 +189,32 @@ public enum MainMenu {
         menu.addItem(command(.openFolder, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(.separator())
         menu.addItem(command(.closeTerminal, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.closeSession, shortcuts: shortcuts, dispatcher: dispatcher))
+        return menu
+    }
+
+    /// Panes and tabs (TKZ-36). A submenu of its own rather than more rows in View, because these
+    /// are the terminal's verbs, and `MainMenuTests` requires every action to have an item
+    /// somewhere — the menu is meant to be an honest inventory of what the app can do.
+    private static func terminalMenu(
+        shortcuts: [ShortcutAction: Shortcut], dispatcher: MenuDispatcher
+    ) -> NSMenu {
+        let menu = NSMenu(title: "Terminal")
+        menu.addItem(command(.newTerminal, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(.separator())
+        menu.addItem(command(.splitVertically, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.splitHorizontally, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(.separator())
+        menu.addItem(command(.focusPaneLeft, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.focusPaneRight, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.focusPaneUp, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.focusPaneDown, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(.separator())
+        menu.addItem(command(.equalizeSplits, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.zoomPane, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(.separator())
+        menu.addItem(command(.previousTab, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.nextTab, shortcuts: shortcuts, dispatcher: dispatcher))
         return menu
     }
 
@@ -231,8 +258,8 @@ public enum MainMenu {
         menu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)),
                      keyEquivalent: "")
         menu.addItem(.separator())
-        // **No key equivalent**: ⌘W belongs to `closeTerminal` (design.md → Shortcuts). Two items
-        // with the same equivalent are resolved by menu order, and the window's would shadow it.
+        // **No key equivalent**: ⌘W belongs to `closeTerminal`. Two items with the same
+        // equivalent are resolved by menu order, and the window's would shadow it.
         menu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)),
                      keyEquivalent: "")
         return menu

@@ -342,11 +342,40 @@ struct ShortcutsTableTests {
         for n in 1...9 {
             #expect(ShortcutsTable.defaults[.selectSession(n)] == Shortcut("\(n)", .command))
         }
-        // ⌘T / ⌘D are reserved and next/previous have no cmux default — override-only.
+        // next/previous still have no cmux default — override-only.
         #expect(ShortcutsTable.defaults[.nextSession] == nil)
         #expect(ShortcutsTable.defaults[.previousSession] == nil)
-        #expect(!ShortcutsTable.defaults.values.contains { $0 == Shortcut("t", .command) })
-        #expect(!ShortcutsTable.defaults.values.contains { $0 == Shortcut("d", .command) })
+        // ⌘T and ⌘D were held for the terminal from M2.4; TKZ-36 is where they were spent.
+        #expect(ShortcutsTable.defaults[.newTerminal] == Shortcut("t", .command))
+        #expect(ShortcutsTable.defaults[.splitVertically] == Shortcut("d", .command))
+        #expect(ShortcutsTable.defaults[.splitHorizontally] == Shortcut("d", [.shift, .command]))
+        #expect(ShortcutsTable.defaults[.closeSession] == Shortcut("w", [.shift, .command]))
+        #expect(ShortcutsTable.defaults[.zoomPane] == Shortcut("\r", [.shift, .command]))
+        #expect(ShortcutsTable.defaults[.equalizeSplits] == Shortcut("=", [.control, .command]))
+        #expect(ShortcutsTable.defaults[.focusPaneLeft]?.modifiers == [.option, .command])
+        #expect(ShortcutsTable.defaults[.nextTab] == Shortcut("]", [.shift, .command]))
+        #expect(ShortcutsTable.defaults[.previousTab] == Shortcut("[", [.shift, .command]))
+    }
+
+    /// No two actions may share a chord, in the defaults *or* under the fixture's overrides.
+    ///
+    /// `MainMenuTests` guards the defaults through the menu, but the fixture is the one place a
+    /// collision can be introduced without any menu being built — and a shadowed binding under
+    /// `TKZMUX_FIXTURE` is exactly the kind of thing nobody notices. ⌥⌘↓ used to be the fixture's
+    /// example override for `nextSession`; it is `focusPaneDown` now.
+    @Test func noTwoActionsShareAChord() throws {
+        for (label, table) in [
+            ("defaults", ShortcutsTable.defaults),
+            ("fixture", ShortcutsTable.resolved(state: AppState.fixture)),
+        ] {
+            var seen: [Shortcut: ShortcutAction] = [:]
+            for (action, shortcut) in table.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                if let other = seen[shortcut] {
+                    Issue.record("\(label): \(action) and \(other) both use \(shortcut.displayString)")
+                }
+                seen[shortcut] = action
+            }
+        }
     }
 
     @Test func keyEquivalentsAreLowercaseWithAnExplicitShiftBit() throws {
@@ -359,11 +388,12 @@ struct ShortcutsTableTests {
     }
 
     @Test func appStateOverridesWin() throws {
-        // The fixture rebinds ⌘N → ⌘T and ⌘B → ⌃⌘S, and adds next/previous.
+        // The fixture rebinds ⌘N → ⌃⌘N and ⌘B → ⌃⌘S, and adds next/previous. (It used ⌘T and
+        // ⌥⌘↓ until TKZ-36 spent both on the terminal.)
         let table = ShortcutsTable.resolved(state: AppState.fixture)
-        #expect(table[.newSession] == Shortcut("t", .command))
+        #expect(table[.newSession] == Shortcut("n", [.control, .command]))
         #expect(table[.toggleSidebar] == Shortcut("s", [.control, .command]))
-        #expect(table[.nextSession]?.modifiers == [.option, .command])
+        #expect(table[.nextSession]?.modifiers == [.control, .command])
         #expect(table[.nextSession]?.keyEquivalent == String(UnicodeScalar(UInt32(NSDownArrowFunctionKey))!))
         #expect(table[.previousSession]?.keyEquivalent == String(UnicodeScalar(UInt32(NSUpArrowFunctionKey))!))
         // Everything not overridden keeps its cmux default.

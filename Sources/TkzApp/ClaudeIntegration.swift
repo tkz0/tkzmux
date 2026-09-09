@@ -420,7 +420,14 @@ public final class ClaudeIntegration {
         for _ in 0..<8 {
             guard current > 1 else { return nil }
             if let id = pidToSession[current], store.state.sessions[id]?.live != nil { return id }
-            if let match = sessions.first(where: { $0.live?.pid == current || $0.live?.shellPid == current }) {
+            // `panePids` is what makes this work for a `claude` started in a split pane: without
+            // it the walk climbs to that pane's shell, which no row's `shellPid` names, and falls
+            // through to nil. Only reachable when the shim did not run — a `claude` invoked around
+            // the wrapper — since the shim's `launch` frame binds the row directly.
+            if let match = sessions.first(where: {
+                $0.live?.pid == current || $0.live?.shellPid == current
+                    || $0.live?.panePids.values.contains(current) == true
+            }) {
                 return match.id
             }
             guard let parent = ProcessTree.parent(of: current), parent != current else { return nil }

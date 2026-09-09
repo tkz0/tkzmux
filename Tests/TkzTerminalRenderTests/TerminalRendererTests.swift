@@ -263,6 +263,92 @@ struct TerminalRendererGoldenTests {
     }
 }
 
+// MARK: - Several surfaces at once (TKZ-36)
+
+/// Split panes mean N surfaces encoded per tick through one renderer. These are the properties
+/// that had to survive that, and the one that had to change.
+@Suite(.serialized)
+struct TerminalRendererMultiSurfaceTests {
+
+    /// Builds `count` independent surfaces over one renderer, the way N panes do.
+    private func makeSurfaces(_ count: Int, on fixture: RendererFixture) throws
+        -> [(session: TerminalSession, surface: TerminalSurface)]
+    {
+        try (0..<count).map { _ in
+            let session = try GoldenScreen.makeSession()
+            let surface = TerminalSurface()
+            try surface.attach(session)
+            return (session, surface)
+        }
+    }
+
+    /// The idle guarantee is per surface, not per renderer: one dirty pane and one quiet one in the
+    /// same tick must encode exactly one frame and ask for exactly one drawable. A "fix" that
+    /// force-encoded every attached surface whenever any of them was dirty would fail here.
+    @Test("a dirty pane and a quiet pane in one tick encode one frame between them")
+    func theIdleGuaranteeIsPerSurface() throws {
+        guard let fixture = try RendererFixture() else { return }
+        let panes = try makeSurfaces(2, on: fixture)
+
+        // Settle both, so neither is dirty merely from being attached.
+        for pane in panes {
+            let outcome = try fixture.renderer.render(surface: pane.surface, to: fixture.texture)
+            outcome.commandBuffer?.waitUntilCompleted()
+        }
+        fixture.renderer.resetStats()
+
+        panes[0].session.write(ptyText: "only this pane changed")
+        for pane in panes {
+            _ = try fixture.renderer.render(surface: pane.surface, to: fixture.texture)
+        }
+
+        let stats = fixture.renderer.stats
+        #expect(stats.framesEncoded == 1)
+        #expect(stats.framesSkipped == 1)
+        #expect(stats.drawableRequests == 1, "the quiet pane must not even ask for a target")
+    }
+
+    /// The reason the ring moved onto the surface. With one shared 3-deep ring the fourth
+    /// `render` in a tick blocks the **main thread** until the GPU retires frame N-3, so the
+    /// failure mode is a stall rather than a wrong value — hence the time limit.
+    @Test("four panes encode in one tick without waiting on the GPU", .timeLimit(.minutes(1)))
+    func fourPanesDoNotStall() throws {
+        guard let fixture = try RendererFixture() else { return }
+        let panes = try makeSurfaces(4, on: fixture)
+        fixture.renderer.resetStats()
+
+        // No `waitUntilCompleted` anywhere: nothing has retired when the fourth encode begins.
+        for pane in panes {
+            let outcome = try fixture.renderer.render(surface: pane.surface, to: fixture.texture)
+            #expect(outcome.didEncode)
+        }
+        #expect(fixture.renderer.stats.framesEncoded == 4)
+
+        for pane in panes { pane.surface.detach() }
+    }
+
+    /// Each surface owns its buffers, and `detach` gives them back — which is what keeps "an
+    /// unattached terminal costs only IO" true when a hidden tab's panes are torn down.
+    @Test("each surface owns its ring, and detaching frees it")
+    func everySurfaceOwnsItsRing() throws {
+        guard let fixture = try RendererFixture() else { return }
+        let panes = try makeSurfaces(2, on: fixture)
+        for pane in panes {
+            let outcome = try fixture.renderer.render(surface: pane.surface, to: fixture.texture)
+            outcome.commandBuffer?.waitUntilCompleted()
+        }
+
+        let a = try #require(panes[0].surface.frameRing)
+        let b = try #require(panes[1].surface.frameRing)
+        #expect(a !== b)
+        #expect(a.byteCount > 0)
+
+        panes[0].surface.detach()
+        #expect(panes[0].surface.frameRing == nil)
+        #expect(panes[1].surface.frameRing != nil, "detaching one pane must not disturb the other")
+    }
+}
+
 // MARK: - The idle guarantee
 
 @Suite(.serialized)

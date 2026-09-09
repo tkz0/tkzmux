@@ -81,7 +81,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let host = controller.host as? TerminalViewHost {
                     // M5.2: snapshots whose row is gone (`Remove` while the app was not running,
                     // a hand-edited state.json) are deleted now. TKZ-29 left this to this ticket.
-                    Self.housekeepSnapshots(host.snapshots, keeping: Set(store.state.sessions.keys.map(\.rawValue)))
+                    // Every leaf of every tab, not just the row ids: a `.ghsnap` belongs to a
+                    // *terminal* (TKZ-36), and a background tab's panes have one on disk long
+                    // before they are restored. On a file migrated from schema v1 this set is
+                    // byte-identical to the old `sessions.keys`, which is the cheapest possible
+                    // proof that the v1→v2 lift kept every snapshot addressable.
+                    Self.housekeepSnapshots(
+                        host.snapshots,
+                        keeping: Set(
+                            store.state.sessions.values.flatMap(\.terminalIDs).map(\.rawValue)))
                     let integration = ClaudeIntegration(
                         store: store, directory: host.tkzmuxDirectory,
                         installer: Self.makeShimInstaller(directory: host.tkzmuxDirectory))

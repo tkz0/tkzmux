@@ -113,19 +113,28 @@ struct MainToolbarTests {
         #expect(seen == ["tkz"])
     }
 
-    @Test func exactlyOneClusterButtonIsEnabled() throws {
+    @Test func onlyTheBrowserButtonIsStillDisabled() throws {
         let controller = MainToolbarController()
         let item = try #require(Self.item(controller, .tkzViewCluster))
         let control = try #require(item.view as? NSSegmentedControl)
 
         #expect(control.segmentCount == 4)
+        // TKZ-36 turned the two splits on; the browser pane is still later work.
         let enabled = (0..<control.segmentCount).filter { control.isEnabled(forSegment: $0) }
-        #expect(enabled == [MainToolbarController.ViewButton.terminal.rawValue])
+        #expect(
+            enabled == [
+                MainToolbarController.ViewButton.terminal.rawValue,
+                MainToolbarController.ViewButton.splitV.rawValue,
+                MainToolbarController.ViewButton.splitH.rawValue,
+            ])
 
-        // The three unavailable ones say so.
-        for button in MainToolbarController.ViewButton.allCases where button != .terminal {
-            #expect(control.toolTip(forSegment: button.rawValue) == MainToolbarController.unavailableTooltip)
-        }
+        // The one unavailable button says so.
+        #expect(
+            control.toolTip(forSegment: MainToolbarController.ViewButton.browser.rawValue)
+                == MainToolbarController.unavailableTooltip)
+        #expect(
+            control.toolTip(forSegment: MainToolbarController.ViewButton.splitV.rawValue)
+                == MainToolbarController.ViewButton.splitV.label)
         #expect(control.toolTip(forSegment: 0) == MainToolbarController.ViewButton.terminal.label)
 
         // The glyphs are the design's.

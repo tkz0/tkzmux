@@ -117,18 +117,25 @@ struct PerSessionCacheEvictionTests {
     /// Minimal host: `remove` only needs `discard`.
     @MainActor
     private final class SpyHost: TerminalHost {
-        var discarded: [SessionID] = []
-        func open(_ id: SessionID, cwd: String, env: [String: String], size: TerminalSize) throws -> pid_t { 1 }
-        func run(_ id: SessionID, command: String) {}
-        func show(_ id: SessionID?) {}
-        var visibleSessionID: SessionID? { nil }
-        func resize(_ id: SessionID, _ size: TerminalSize) {}
-        func close(_ id: SessionID, signal: Int32) {}
-        func snapshot(_ id: SessionID) throws -> Data { Data() }
-        func restore(_ id: SessionID, from: Data, cwd: String, env: [String: String]) throws -> pid_t { 1 }
-        func savedSnapshot(_ id: SessionID) -> Data? { nil }
-        func discard(_ id: SessionID) { discarded.append(id) }
-        var events: AsyncStream<(SessionID, TerminalEvent)> { AsyncStream { $0.finish() } }
+        var discarded: [TerminalID] = []
+        func open(
+            _ id: TerminalID, session: SessionID, cwd: String, env: [String: String],
+            size: TerminalSize
+        ) throws -> pid_t { 1 }
+        func run(_ id: TerminalID, command: String) {}
+        func writeInput(_ id: TerminalID, _ data: Data) {}
+        func show(_ attachments: [TerminalID: any TerminalPaneSurface]) {}
+        var visibleTerminalIDs: Set<TerminalID> { [] }
+        func resize(_ id: TerminalID, _ size: TerminalSize) {}
+        func close(_ id: TerminalID, signal: Int32) {}
+        func snapshot(_ id: TerminalID) throws -> Data { Data() }
+        func restore(
+            _ id: TerminalID, session: SessionID, from: Data, cwd: String, env: [String: String]
+        ) throws -> pid_t { 1 }
+        func savedSnapshot(_ id: TerminalID) -> Data? { nil }
+        func discard(_ id: TerminalID) { discarded.append(id) }
+        func contains(_ id: TerminalID) -> Bool { false }
+        var events: AsyncStream<(TerminalID, TerminalEvent)> { AsyncStream { $0.finish() } }
     }
 }
 
