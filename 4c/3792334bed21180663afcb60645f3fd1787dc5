@@ -1,0 +1,40 @@
+Sources/TkzApp/MainWindowController.swift
+  s_9ff1385c73901e::t_d23856e7872d16 90-104,415,424-430
+  s_9ff1385c73901e::t_3ae534baaf61d7 123-126,138-139,158,160,174-177,301-340,388,394,405,471-479,482-483,537-538,541-544,546
+  s_9ff1385c73901e::t_2d0a603707f93b 1427,1431,1433-1434,1436-1437,1441-1448,1471-1477
+  s_9ff1385c73901e::t_6d03992a30e20f 1293-1305
+  s_9ff1385c73901e::t_a3deeaec743e88 358-359,484,819-822,869-874,876-878,887-888,893-980
+  s_9ff1385c73901e::t_6cab59dba35ea4 461-470,480-481,533-536,539-540
+  s_9ff1385c73901e::t_92a982c4365902 431,485,981
+Sources/TkzApp/Panes/PaneContainerView.swift
+  s_9ff1385c73901e::t_5eb1de4cfaca8e 1-15,17-139,141-146,148-174,176-181,185,187-194,197-225,228-231,233-245,253,256-267
+  s_9ff1385c73901e::t_6907434db37759 16
+  s_9ff1385c73901e::t_10dc17cae2ee51 140,147,175,182-184,186,195-196,226-227,232,246-252,254-255
+Sources/TkzApp/Panes/PaneModels.swift
+  s_9ff1385c73901e::t_a13c78f34b5074 6,34-45
+  s_9ff1385c73901e::t_6907434db37759 8
+  s_9ff1385c73901e::t_a985b779716187 1-5,7,9-33,46
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_9ff1385c73901e::t_9d4ea095a4da3d 223-243,257-264,271-335,337-357,359-463
+  s_9ff1385c73901e::t_8382f8e92bc63b 265-270
+  s_9ff1385c73901e::t_5ad62fc975ce57 336
+  s_9ff1385c73901e::t_6cab59dba35ea4 669,701,706,716
+  s_9ff1385c73901e::t_6d03992a30e20f 358
+  s_9ff1385c73901e::t_c49d764f5dec29 464
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4c3792334bed21180663afcb60645f3fd1787dc5",
+  "prompts": {},
+  "sessions": {
+    "s_9ff1385c73901e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61938abb-1f1a-4c4a-9b4c-5c1ba9f40598",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}

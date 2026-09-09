@@ -1,0 +1,50 @@
+Sources/TkzApp/MainWindowController.swift
+  s_9ff1385c73901e::t_a80ce9ed59a47a 795-801
+  s_9ff1385c73901e::t_384a91c94bf7aa 2389-2390,2418-2492
+Tests/TkzAppTests/NewSessionMenuTests.swift
+  s_9ff1385c73901e::t_693e0f13d62e36 345,348-378,391-392,394,396
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_9ff1385c73901e::t_e6c0f6e62ff24d 335-349,428,430
+  s_9ff1385c73901e::t_80b81e3b4ee98b 71-74,116,136,195,364,408-409,421-426
+  s_9ff1385c73901e::t_09abc4bf268043 427,429
+Tests/TkzAppTests/MainMenuTests.swift
+  s_9ff1385c73901e::t_693e0f13d62e36 66-73
+Sources/TkzApp/Toolbar/MainToolbarController.swift
+  s_9ff1385c73901e::t_a80ce9ed59a47a 32,50-53,60-61,69,71-74,160,167-169
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_9ff1385c73901e::t_80b81e3b4ee98b 97-101,112,114,127
+docs/shortcuts.md
+  s_9ff1385c73901e::t_440184d4220122 20-21,31-38,47,50-59
+  s_9ff1385c73901e::t_aa2323425c18d8 60
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_9ff1385c73901e::t_6fe9fe94545ae3 733-769,775
+Sources/TkzApp/MainMenu.swift
+  s_9ff1385c73901e::t_6a742b4b8a9ed3 119,192-217,261-262
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_9ff1385c73901e::t_dfd476e9cb6a29 34-37,39-41,47-48,67-85,146-152,167,171-173,176-179,195-206,220-221,236-246
+Tests/TkzAppTests/MainToolbarTests.swift
+  s_9ff1385c73901e::t_693e0f13d62e36 116,122,124-137
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_9ff1385c73901e::t_2cf929d0eb7870 259-273,443-444,446-449,453-454
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_9ff1385c73901e::t_80b81e3b4ee98b 64,66
+Sources/TkzCore/FixtureState.swift
+  s_9ff1385c73901e::t_0e9854f2dc3988 206-208
+  s_9ff1385c73901e::t_a80ce9ed59a47a 210-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "faa99cca2ee09a5eadb65daf9ab34b66615a69c8",
+  "prompts": {},
+  "sessions": {
+    "s_9ff1385c73901e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61938abb-1f1a-4c4a-9b4c-5c1ba9f40598",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}

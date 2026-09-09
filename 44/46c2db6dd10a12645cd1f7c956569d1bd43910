@@ -1,0 +1,23 @@
+docs/shortcuts.md
+  s_9ff1385c73901e::t_0d23d3d8995216 61-66
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_9ff1385c73901e::t_456b758f8e2154 336-372
+Sources/TkzApp/MainWindowController.swift
+  s_9ff1385c73901e::t_484d5ef7e63cbe 367-370,574,1763-1777,1779-1814
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4446c2db6dd10a12645cd1f7c956569d1bd43910",
+  "prompts": {},
+  "sessions": {
+    "s_9ff1385c73901e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61938abb-1f1a-4c4a-9b4c-5c1ba9f40598",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
