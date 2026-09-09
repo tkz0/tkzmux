@@ -1,0 +1,143 @@
+CLAUDE.md
+  s_a25edcde2318f7::t_a91a15cad99c44 10-11
+  s_a25edcde2318f7::t_11bb7d8badc9fc 50
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_a25edcde2318f7::t_f244aea5f65d06 403
+  s_a25edcde2318f7::t_f1dfc5f59142e8 62-65,106,122,180,286-294,402,404,406
+  s_a25edcde2318f7::t_00187149e4db9c 330
+  s_a25edcde2318f7::t_d4e1c09582b01a 405
+Sources/TkzApp/MainWindowController.swift
+  s_a25edcde2318f7::t_4143ed7d13520e 1878-1881,1887-1922
+  s_a25edcde2318f7::t_1f82b06d2169a4 1587-1590
+  s_a25edcde2318f7::t_f1b52ea4b38c03 396-404,409-410
+  s_a25edcde2318f7::t_87ae5018a1d16c 430-432
+  s_a25edcde2318f7::t_e18f58e1ea5140 368-375
+  s_a25edcde2318f7::t_d6b76d1c6d6b1f 1760-1775,1777-1783,1787,1793-1811
+  s_a25edcde2318f7::t_64b632f9febfd4 31
+  s_a25edcde2318f7::t_0ec2f00e881a9f 408
+  s_a25edcde2318f7::t_a273c1acb16a8a 415-429,436
+  s_a25edcde2318f7::t_6c02815e63ccc1 437
+  s_a25edcde2318f7::t_879deacb34ced9 1716
+  s_a25edcde2318f7::t_f58b08947e7ae1 1776,1784-1786,1788-1792
+  s_a25edcde2318f7::t_077871fbd67fa9 1581-1586,1591-1599
+  s_9ff1385c73901e::t_641868cbabebc8 1923
+Sources/ClaudeBridge/ProcessLiveness.swift
+  s_a25edcde2318f7::t_7558fedc25abcd 57-70,72,75,78-82
+Sources/TkzApp/ClaudeIntegration.swift
+  s_a25edcde2318f7::t_1a8418491a52c7 48-53
+  s_a25edcde2318f7::t_ac9339129a4027 284-293
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_a25edcde2318f7::t_186230e9db79f5 138,145,152,157
+  s_a25edcde2318f7::t_b3ec135a0fecc8 98-107,115-119
+  s_a25edcde2318f7::t_ba7910a74b7f97 120
+Tests/TkzAppTests/MainWindowCompressionTests.swift
+  s_a25edcde2318f7::t_b9ee663c96d279 42-44,54
+  s_a25edcde2318f7::t_e20fde2b171ad7 1-41,45-53,55-98
+Tests/TkzAppTests/TerminalHostTests.swift
+  s_a25edcde2318f7::t_80400256865537 453-456,460-476
+  s_a25edcde2318f7::t_c928286b6b1d9e 457-459
+Sources/ClaudeBridge/ClaudeSessionWatcher.swift
+  s_a25edcde2318f7::t_b272b270170b72 253
+  s_a25edcde2318f7::t_da9068e092ba87 252
+  s_a25edcde2318f7::t_0bd31a81582ef8 363-378,381,384,386
+  s_a25edcde2318f7::t_d5a7d71bc0fb23 161-167
+  s_a25edcde2318f7::t_6708c0b0855ecf 62-65,105,111,383,440
+  s_a25edcde2318f7::t_f95d8b6cf6fc77 263-265,267
+  s_a25edcde2318f7::t_765edcc377e332 433-439,441-445
+  s_a25edcde2318f7::t_980b3343383cf0 266
+  s_a25edcde2318f7::t_f496263817310a 379-380,382,385
+Tests/TkzAppTests/SessionMemoryTests.swift
+  s_a25edcde2318f7::t_af05fdb73da055 1-19,35,40,49,52-53,55-73,75-89,92-101,117,119-121,125-126,136-138,184-202,217-222,225-228
+  s_a25edcde2318f7::t_472acdef49a3bf 74
+  s_a25edcde2318f7::t_d0712fdeb9e458 90-91
+  s_a25edcde2318f7::t_fcb172651f0ae7 102-107,109-112,114,122-124,127-135
+  s_a25edcde2318f7::t_25b936b9026e9b 223-224
+  s_a25edcde2318f7::t_ca41894e2bb1df 108,113,115-116,118
+  s_a25edcde2318f7::t_4413e20938e74d 203-216
+  s_a25edcde2318f7::t_408c6414de8f61 20-34,36-39,41-48,50-51,54
+  s_a25edcde2318f7::t_fc205e34573316 139-183
+Tests/TkzAppTests/SessionMemoryBadgeTests.swift
+  s_a25edcde2318f7::t_15fba30f50819c 1-17,20-22,24,28-97
+  s_a25edcde2318f7::t_a184cf97088c18 18-19,23,25-27
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_a25edcde2318f7::t_00187149e4db9c 275,277-316
+  s_a25edcde2318f7::t_fe4ea1c72e3835 274,276
+Sources/TkzCore/Models.swift
+  s_a25edcde2318f7::t_84d3440d5cf61e 355-360
+Sources/TkzApp/TerminalHost.swift
+  s_a25edcde2318f7::t_95fea45873c37b 896
+  s_a25edcde2318f7::t_c8c9b825242ae1 233-244
+  s_a25edcde2318f7::t_87e9a377b311f2 456-458
+  s_a25edcde2318f7::t_e7e706b6e9c238 537
+  s_a25edcde2318f7::t_b3177755559fcb 534-536
+  s_a25edcde2318f7::t_c397810c531bfb 818-821
+  s_a25edcde2318f7::t_9e7a94ae2a2771 851-854
+  s_a25edcde2318f7::t_433dad8a006ae6 168-174,176
+  s_a25edcde2318f7::t_47273ee4fd103f 597-616
+Tests/ClaudeBridgeTests/ClaudeSessionWatcherTests.swift
+  s_a25edcde2318f7::t_76d11bbba312fe 416-464
+Tests/TkzAppTests/SessionKillTests.swift
+  s_a25edcde2318f7::t_94156f42827fdf 1-141,168-184
+  s_a25edcde2318f7::t_34c9b2c62740aa 142-167
+scripts/test-memory-probe.sh
+  s_a25edcde2318f7::t_ee2f88245ec1a1 113-117
+  s_a25edcde2318f7::t_58e8eca6b9973d 1-28,33-37,40-49,53,56-58,60-112,118-152
+  s_a25edcde2318f7::t_778080726b5c15 38-39
+  s_a25edcde2318f7::t_bff2bed5d68c47 50-52,54-55,59
+  s_a25edcde2318f7::t_6ae5dbd41bcfde 29-32
+Sources/TkzApp/SessionLauncher.swift
+  s_a25edcde2318f7::t_dd71c3604b44b8 69-72
+  s_a25edcde2318f7::t_4fd2b7d9352efd 263-266
+Tests/TkzAppTests/PerSessionCacheEvictionTests.swift
+  s_a25edcde2318f7::t_3c44fb36a00b51 24-31,40,42,60-61
+  s_a25edcde2318f7::t_755195a5c8a578 16
+  s_a25edcde2318f7::t_43fe021d2651d2 1-15,17-23,32-39,41,43-59,62-107
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_a25edcde2318f7::t_eb8ff011aa7361 80-86,101-102,113
+Sources/GitStatus/GitStatusService.swift
+  s_a25edcde2318f7::t_e28541b0238850 54-60,62-72,75-77
+  s_a25edcde2318f7::t_7eaf64a49baf14 413-414
+  s_a25edcde2318f7::t_41fc8041715018 78
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_a25edcde2318f7::t_914a1732902f0e 63-64,68-86
+  s_9ff1385c73901e::t_ffac3d8c6438be 87
+Sources/TkzApp/DevWindowController.swift
+  s_a25edcde2318f7::t_e18a2281810bb7 604,606-618
+  s_a25edcde2318f7::t_587ff6563caabf 601-603,605,619-620
+Sources/TkzApp/SessionMemory.swift
+  s_a25edcde2318f7::t_9dcde34f39ab5f 1-28,35,37-38,43,48-53,59,62-82,87,89-96,98-100,102-104,112-123,125-127,130-154
+  s_a25edcde2318f7::t_e912de74d5d808 39-42
+  s_a25edcde2318f7::t_40016ea679e21e 29-34,36,44-47,54-58,60-61
+  s_a25edcde2318f7::t_fac5a46325c73f 83-86,88
+  s_a25edcde2318f7::t_6f94cf872cac46 97,101,105-111,124,128-129
+docs/perf.md
+  s_a25edcde2318f7::t_137f01bef85adf 791-792,794-808
+  s_a25edcde2318f7::t_5bab4171a901de 33-36
+  s_a25edcde2318f7::t_78c4e207e46be6 267-268
+  s_a25edcde2318f7::t_1ec820c716e3d4 682-760,783-790,793,809-812
+  s_a25edcde2318f7::t_d64c6b7ad9ca6f 761-782
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "23895368f811e90d83813c0975a71dbe9546ed44",
+  "prompts": {},
+  "sessions": {
+    "s_9ff1385c73901e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61938abb-1f1a-4c4a-9b4c-5c1ba9f40598",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    },
+    "s_a25edcde2318f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f72d389-3f97-4a53-9ab6-d679a69a2868",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
