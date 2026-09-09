@@ -16,18 +16,26 @@
 name: Release
 
 on:
-  # Manual only, deliberately. TKZ-42 is optional and `make dist` from the development Mac is the
-  # primary release path -- that is what shipped v0.1.0. None of the seven secrets in
-  # docs/release.md are configured, so a tag trigger just produces a red X on a public repo:
-  # v0.1.0 fired this and died at the tap clone (exit 128, no HOMEBREW_TAP_TOKEN), *after* the
-  # local release had already published successfully. A workflow that fails on every release is
-  # worse than one that does not run.
+  # A pushed v* tag is the release trigger. Two deliberate escape hatches:
   #
-  # To turn CI releases on: add the secrets, then restore
-  #   push:
-  #     tags: ['v*']
-  # above this block. Everything below is written and YAML-valid but has never executed.
+  # `[skip release]` in the annotated tag message -- the gate job stands down, leaving the tag to
+  # a hand-cut `make dist`. Needed because scripts/make-dist.sh refuses to build unless the tag is
+  # already on origin, so a local release must push the tag, which would otherwise start a runner
+  # that races it for `gh release create`.
+  #
+  # workflow_dispatch with dry_run -- builds, signs, notarizes and publishes a *draft* release,
+  # and skips the cask bump. This is how the three credentials (.p12, notarytool profile, tap PAT)
+  # are proven after a rotation without publishing anything a user could install. A draft is never
+  # marked Latest, so the cask's `livecheck strategy :github_latest` cannot see it either.
+  # See docs/release.md -> "CI secrets and rotation".
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Draft release, no cask bump -- credential smoke test'
+        type: boolean
+        default: false
+  push:
+    tags: ['v*']
 
 # scripts/make-dist.sh creates the GitHub release and uploads the assets via `gh`.
 permissions:
@@ -42,7 +50,53 @@ env:
   TAP_CHECKOUT: homebrew-tap
 
 jobs:
+  # A cheap Linux gate, so a tag meant for a hand-cut release does not spend a macOS runner only
+  # to collide with it. The tag message is read over the API on purpose: actions/checkout peels an
+  # annotated tag into a lightweight one (see "Fetch tags" below), so reading it back with
+  # `git tag -l --format='%(contents)'` from a checkout yields an empty string and the escape
+  # hatch would silently never fire. This also avoids cloning the repo just to read one message.
+  gate:
+    runs-on: ubuntu-latest
+    # Reads two refs; it has no business inheriting the workflow's contents: write.
+    permissions:
+      contents: read
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # A manual dispatch is always deliberate; only a tag push can be waved off.
+          if [[ "$EVENT_NAME" != "push" ]]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          REF="repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME"
+          KIND="$(gh api "$REF" --jq .object.type)"
+          SHA="$(gh api "$REF" --jq .object.sha)"
+          # An annotated tag carries its own message. A LIGHTWEIGHT tag has nowhere to put one --
+          # it is just a name on a commit -- so fall back to that commit's message rather than
+          # letting the hatch silently do nothing. v0.1.0 was lightweight despite the runbook's
+          # `git tag -a` example, so this is the likely mistake, not a hypothetical one.
+          if [[ "$KIND" == "tag" ]]; then
+            MSG="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$SHA" --jq .message)"
+          else
+            MSG="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA" --jq .commit.message)"
+          fi
+          echo "$GITHUB_REF_NAME is a ${KIND/commit/lightweight} tag"
+          if grep -qF '[skip release]' <<<"$MSG"; then
+            echo "$GITHUB_REF_NAME says [skip release] -- leaving this tag to a local make dist"
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
     runs-on: macos-26
     timeout-minutes: 90
 
@@ -154,12 +208,26 @@ jobs:
       # sha256 it just produced. That ordering matters: the cask's `url` points at a release asset,
       # so the cask must not move until the assets are published. Deriving the version a second
       # time here would risk disagreeing with the one stamped into the app, so it is not done.
+      #
+      # The dry_run branch is shell, not a ${{ a && b || c }} expression: that idiom collapses to
+      # `c` whenever `b` is falsy, and the value wanted here on a dry run is the empty string --
+      # so the expression form would hand the smoke test the real tap and bump the cask to a
+      # draft release's URL, which is exactly what dry_run exists to prevent.
       - name: make dist
         env:
           SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
           GH_TOKEN: ${{ github.token }}
           TAP_DIR: ${{ runner.temp }}/${{ env.TAP_CHECKOUT }}
-        run: make dist
+          # Short-circuits to "false" on a tag push without ever touching the `inputs` context,
+          # which is documented as available to workflow_dispatch/workflow_call only. No `||`
+          # branch, so the falsy-value trap described above does not apply here.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          if [[ "$DRY_RUN" == "true" ]]; then
+            export DIST_DRAFT=1
+            unset TAP_DIR          # a draft release must not move the cask
+          fi
+          make dist
 
       - name: Upload the release artifacts
         if: always()

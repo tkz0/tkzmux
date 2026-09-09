@@ -3,13 +3,11 @@
 How a tkzmux build gets from this repo onto someone else's Mac: version stamping (M6.1),
 hardened runtime + notarization (M6.2), and `make dist` (M6.3).
 
-> **Status: the signed path is UNVERIFIED on this machine.** As of 2026-09-08
-> `security find-identity -v -p codesigning` reports `0 valid identities found`, there is no
-> Apple Developer Program enrolment and no `notarytool` keychain profile. Everything below that
-> touches a Developer ID identity, the hardened runtime, `--timestamp`, notarization, stapling
-> or `spctl` has been written against Apple's documented behaviour and has **not** been executed
-> end to end. The ad-hoc path (`make app` with the default `SIGN_IDENTITY=-`) *is* verified and
-> is deliberately unchanged by M6.
+> **Status:** the signed path is verified end to end. v0.1.0 was cut with `make dist` from the
+> development Mac on 2026-09-09 — Developer ID identity, hardened runtime, `--timestamp`,
+> notarization, stapling and `spctl` all exercised — and installs through the Homebrew cask as
+> *accepted, source=Notarized Developer ID*. The ad-hoc path (`make app` with the default
+> `SIGN_IDENTITY=-`) is unchanged and still the default for local builds.
 
 ---
 
@@ -128,6 +126,22 @@ git tag -a v0.1.0 -m 'tkzmux 0.1.0'
 git push origin v0.1.0
 SIGN_IDENTITY="Developer ID Application: … (TEAMID)" make dist
 ```
+
+Pushing that tag also starts `.github/workflows/release.yml`, which runs this same `make dist`
+on a runner — and the two would race for `gh release create`. **CI owns a pushed `v*` tag.** To
+cut a release by hand instead, put `[skip release]` in the tag message — or, for a lightweight
+tag, in the tagged commit's message:
+
+```sh
+git tag -a v0.1.2 -m 'tkzmux 0.1.2 [skip release]'
+```
+
+The gate job reads it over the API and stands down, leaving the tag to the local `make dist`
+above. Everything else is identical — same script, same asset name. A *lightweight* tag
+(`git tag v0.1.2`, no `-a`/`-m`) has nowhere to carry a message of its own, which is why the gate
+falls back to the commit; v0.1.0 was lightweight, so that fallback is the likely path rather than
+an edge case. If a CI release fails partway instead, delete the partial release (§7) and run
+`make dist` locally for the same tag.
 
 `make dist` (`scripts/make-dist.sh`) refuses to build anything until all of these hold, and
 reports *every* violation at once rather than one per round trip:
@@ -289,10 +303,10 @@ It needs seven repository secrets (Settings › Secrets and variables › Action
 (`swift build` + `swift test`) needs **none**, deliberately, so it stays runnable from a fork's
 pull request.
 
-Both workflows share the status caveat at the top of this page and add one of their own: neither
-has ever been executed. The YAML parses, but that the `macos-26` label exists, that
-`/Applications/Xcode_26.1.app` is on the image, and whether `-downloadComponent` needs `sudo`
-(both are tried) are all unverified until the first tag is pushed.
+`ci.yml` runs on every push and has been green for a while, which is what proves the `macos-26`
+label and `/Applications/Xcode_26.1.app` (Xcode 26.1.1 on the image, symlinked at that path).
+`release.yml` is triggered by a pushed `v*` tag, and by a manual dispatch — see *Verifying the
+credentials* below for the dry run that exercises it without publishing.
 
 | Secret | What it is |
 |---|---|
@@ -369,7 +383,32 @@ Two runner-side steps have no equivalent on a laptop and are easy to lose in a r
 | `ASC_API_ISSUER_ID` | only if the Apple Developer team changes | Copy the new UUID from App Store Connect. |
 | `HOMEBREW_TAP_TOKEN` | at expiry — fine-grained PATs allow at most one year, so this **will** need rotating; also on any suspected leak | Generate a replacement with the same single-repository scope, update the secret, delete the old token. Symptom of an expiry: the tap-checkout step fails with a 404 on `tkz0/homebrew-tap`, before anything is built. |
 
-Verify a rotation by pushing a throwaway prerelease tag (`v0.0.1-rc1`) and watching the run: a bad
-`.p12` fails at *Import the Developer ID signing identity*, bad ASC credentials fail at *Store
-notarytool credentials*, and a bad PAT fails at the tap checkout — all three before the long
-build. Delete the test tag and its release afterwards (§7).
+### Verifying the credentials
+
+Do not verify a rotation by cutting a real release. Push a throwaway prerelease tag whose message
+opts out of the tag trigger, then dispatch the workflow against it with `dry_run`:
+
+```sh
+git tag -a v0.0.1-rc1 -m 'CI smoke test [skip release]'
+git push origin v0.0.1-rc1
+gh workflow run release.yml --ref v0.0.1-rc1 -f dry_run=true
+gh run watch
+```
+
+The push proves the `[skip release]` gate in passing — the gate job reports `proceed=false` and
+the macOS job is skipped — so no second throwaway tag is needed to test it.
+
+`dry_run` sets `DIST_DRAFT=1` and clears `TAP_DIR`, so the run builds, signs, notarizes and
+staples for real but publishes a **draft** release and leaves the cask alone. A draft is never
+marked *Latest*, so `livecheck strategy :github_latest` cannot see it and no user can install it.
+
+The three credentials fail early and distinguishably, all before the long build: a bad PAT at
+*Clone the Homebrew tap*, a bad `.p12` at *Import the Developer ID signing identity*, bad ASC
+credentials at *Store notarytool credentials*. Afterwards:
+
+```sh
+gh release delete v0.0.1-rc1 --yes
+git push origin :v0.0.1-rc1 && git tag -d v0.0.1-rc1
+```
+
+and confirm `tkz0/homebrew-tap` gained no commit.
