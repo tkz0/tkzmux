@@ -46,6 +46,8 @@ Sources/TkzApp/Sidebar/SidebarViewController.swift
   s_b429ceceeb9461::t_ac55a2a6b17166 561-562,564-565
   s_b429ceceeb9461::t_963edef41a2f13 438-442,444-450
   s_b429ceceeb9461::t_4f049d3eb367d7 563
+docs/design.md
+  s_998c04c05df7df::t_b45fc44597f0c2 187
 ---
 {
   "schema_version": "authorship/3.0.0",
