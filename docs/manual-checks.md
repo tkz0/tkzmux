@@ -468,7 +468,17 @@ headless session can do: it needs an Apple Developer account, a keychain, a GitH
 Mac that has never seen the app. The order is a **gate chain** — each step's artefact is the next
 step's input, so do not skip ahead. `docs/release.md` is the runbook; this is the checklist.
 
-**Status 2026-09-09:** **8a–8d are done and verified.** `security find-identity -v -p codesigning` reports *1 valid identity*; `make app` with a real identity passes all 15 checks; `make notarize` returned `Accepted`, stapled, and `spctl` says *accepted, source=Notarized Developer ID*; and a zipped, quarantined copy is accepted with no user interaction, which is the part that matters for a download. Remaining: **8c** (a real Claude session inside the hardened build — a headless launch with the SwiftPM resource bundles hidden exited 0 with no denials in the log, so no entitlements are expected, but that is not the same as real use), and **8e onward** (first release, public repo, tap, clean machine).
+**Status 2026-09-09:** **8a–8d are done and verified.** `security find-identity -v -p codesigning`
+reports *1 valid identity*; `make app` with a real identity passes all 15 checks; **8c passed** —
+a real Claude Code session in the hardened build behaves exactly as unsigned, so **no entitlements
+file is needed**; `make notarize` returned `Accepted`, stapled, and `spctl` says *accepted,
+source=Notarized Developer ID*; and a zipped, quarantined copy is accepted with no user
+interaction, which is the part that matters for a download. Remaining: **8e onward** — first
+release, public repo, tap, clean machine.
+
+8c also found and fixed a real bug that had nothing to do with signing: managed sessions inherited
+the launching Claude Code session's `CLAUDE_CODE_*` markers, which silently disabled transcript
+saving and the green `working` dot. See 8c.
 
 **8a. Apple Developer prerequisites** (one-off, ~30 min plus Apple's enrolment wait).
 
@@ -516,13 +526,34 @@ out. **Fail**: `TeamIdentifier=not set` means the ad-hoc path ran — check the 
 Then confirm `make app` with no variable still prints `Signature=adhoc`, i.e. the ad-hoc path is
 untouched.
 
-**8c. Hardened-runtime smoke test** (TKZ-38). The entitlements question is answered here, not by
-reading. Launch the *signed* bundle and run a **full Claude Code session** in it: open a terminal,
-start `claude`, let a hook fire, watch the sidebar status change, resize the window.
+**8c. Hardened-runtime smoke test** (TKZ-38) — **PASSED 2026-09-09.** The entitlements question is
+answered here, not by reading. Launch the *signed* bundle and run a **full Claude Code session** in
+it: open a terminal, start `claude`, let a hook fire, watch the sidebar status change, resize the
+window, start a second session, then quit and relaunch.
 **Pass**: identical to an unsigned build — Metal renders, the pty spawns, hooks arrive.
 **Fail**: a crash or a `Metal`/`mmap`/`fork` denial in Console means a hardened-runtime
 restriction bit us and `Resources/tkzmux.entitlements` is needed after all. Record which
 entitlement in `docs/release.md`; do not add one pre-emptively.
+**Result**: no denials, no crash, no entitlements needed — **`Resources/tkzmux.entitlements` does
+not exist and should not be created**. Metal, the pty, `fork`/`exec`, hooks, notifications, the
+launcher and state restore all behave exactly as unsigned.
+
+Also run this inside a tkzmux terminal, every time:
+
+```sh
+env | grep CLAUDE_CODE      # must print nothing
+```
+
+**Pass**: no output. **Fail**: any `CLAUDE_CODE_*` variable means the session inherited the
+identity of a Claude Code session that tkzmux was launched from — `open tkzmux.app` propagates the
+caller's environment, and tkzmux is a Claude Code session manager, so this is the normal way to
+start it. The damage is quiet and easy to misread: Claude Code announces *"Transcript saving is off
+— inherited CLAUDE_CODE_CHILD_SESSION marker"*, and because it believes it is a child session it
+never publishes `~/.claude/sessions/<pid>.json`, whose `status: busy` is the **only** source of the
+green `working` dot. Hooks are a separate path, so NEEDS YOU and the done tint keep working and the
+row simply never turns green — it reads as a colour bug. `TerminalEnvironment.strippedKeys` +
+`strippedKeyPrefixes` fix it; this check is the regression guard. (Found exactly this way while
+running the notarized build, 2026-09-09.)
 
 **8d. Notarization** (TKZ-38). `make notarize` — expect Apple to take 2–15 min.
 **Pass**: `notarytool` status `Accepted`; `stapler validate build/tkzmux.app` passes;
