@@ -262,6 +262,11 @@ extension AppState {
         groups[id]?.name = trimmed
     }
 
+    /// Attaches (or clears) a group's repo. `nil` turns a repo group back into a bucket.
+    public mutating func setGroupRepoRoot(_ id: GroupID, path: String?) {
+        groups[id]?.repoRoot = path
+    }
+
     public mutating func setGroupColor(_ id: GroupID, color: RGB?) {
         groups[id]?.color = color
     }

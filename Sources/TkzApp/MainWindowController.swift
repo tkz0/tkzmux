@@ -512,15 +512,35 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     // MARK: New group
 
-    /// "＋ New group": a folder picker; the chosen folder becomes a group (see ``createGroup(from:)``).
+    /// Overrides the new-group name sheet: returns the name, or nil for cancel. Tests set it —
+    /// a sheet needs a key window and a run loop.
+    public var groupNamePrompt: (() -> String?)?
+
+    /// "＋ New group": asks for a name (see ``createGroup(named:)``). The group starts as a
+    /// bucket; *Set Repo…* on its context menu attaches a repo afterwards.
     public func presentNewGroupPanel() {
-        presentFolderPanel(prompt: "Add group",
-                           message: "Choose a folder. It becomes a group, and its sessions start there.") { [weak self] url in
-            self?.createGroup(from: url)
+        if let groupNamePrompt {
+            guard let answer = groupNamePrompt() else { return }
+            createGroup(named: answer)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "New Group"
+        alert.informativeText = "Name it. To give it a repo, right-click the group and pick Set Repo\u{2026}"
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.placeholderString = "Group name"
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            self.createGroup(named: field.stringValue)
+            self.focusTerminalIfSessionShown()
         }
     }
 
-    /// "In another repo…" (M5.2): the same picker, and the new group's first session starts at
+    /// "In another repo…" (M5.2): a folder picker, and the new group's first session starts at
     /// once — `claude` in the chosen folder. Choosing a folder that already roots a group launches
     /// into that group.
     public func presentAnotherRepoPanel() {
@@ -563,15 +583,36 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     @discardableResult
     public func createGroup(from folder: URL) -> GroupID? {
         let path = folder.standardizedFileURL.path
-        if let existing = store.state.groups.values.first(where: {
-            $0.repoRoot.map { ($0 as NSString).expandingTildeInPath } == path
-        }) {
-            return existing.id
-        }
+        if let existing = group(rootedAt: path) { return existing.id }
         let name = folder.lastPathComponent.isEmpty ? path : folder.lastPathComponent
         var created: GroupID?
         store.update { state in
             created = state.addGroup(name: name, repoRoot: path).id
+        }
+        return created
+    }
+
+    /// The group rooted at `path`, if any. One folder roots at most one group — the rule
+    /// ``createGroup(from:)`` and *Set Repo…* both keep. Paths are stored as written, so the
+    /// stored root is tilde-expanded before the comparison.
+    func group(rootedAt path: String) -> Group? {
+        // `orderedGroups`, not `groups.values`: a dictionary's first match is not stable, and this
+        // decides which group "In another repo…" lands in.
+        store.state.orderedGroups.first {
+            $0.repoRoot.map { ($0 as NSString).expandingTildeInPath } == path
+        }
+    }
+
+    /// Adds a bucket group with `name` (it comes up expanded, as every new group does). An empty
+    /// or whitespace-only name creates nothing, the same as cancelling. Names are not deduped —
+    /// unlike `repoRoot`, a name is not an identity.
+    @discardableResult
+    public func createGroup(named name: String) -> GroupID? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        var created: GroupID?
+        store.update { state in
+            created = state.addGroup(name: trimmed).id
         }
         return created
     }
@@ -1320,6 +1361,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         resumeAll.identifier = ContextItemID.resumeAll
         menu.addItem(resumeAll)
+        // A group made by name is a bucket: the two `claude` rows on its ＋ menu stay disabled
+        // ("no repo — add one to this group first") until a folder is attached here.
+        let repo = contextItem(
+            group.repoRoot == nil ? "Set Repo\u{2026}" : "Change Repo\u{2026}",
+            action: #selector(contextSetGroupRepo(_:)), id: id.rawValue)
+        repo.identifier = ContextItemID.groupRepo
+        menu.addItem(repo)
         return menu
     }
 
@@ -1330,6 +1378,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         public static let remove = NSUserInterfaceItemIdentifier("tkzmux.context.remove")
         public static let newSession = NSUserInterfaceItemIdentifier("tkzmux.context.newSession")
         public static let resumeAll = NSUserInterfaceItemIdentifier("tkzmux.context.resumeAll")
+        public static let groupRepo = NSUserInterfaceItemIdentifier("tkzmux.context.groupRepo")
     }
 
     private func contextItem(_ title: String, action: Selector, id: String) -> NSMenuItem {
@@ -1370,6 +1419,22 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     @objc private func contextResumeAll(_ sender: Any?) {
         guard let id = groupID(from: sender) else { return }
         resumeAll(inGroup: id)
+    }
+
+    @objc private func contextSetGroupRepo(_ sender: Any?) {
+        guard let id = groupID(from: sender) else { return }
+        presentFolderPanel(prompt: "Set repo",
+                           message: "Choose the repo this group's sessions start in.") {
+            [weak self] url in
+            guard let self else { return }
+            let path = url.standardizedFileURL.path
+            if let other = self.group(rootedAt: path), other.id != id {
+                self.showNotice("\u{201C}\(other.name)\u{201D} is already rooted there",
+                                for: .seconds(4))
+                return
+            }
+            self.store.update { $0.setGroupRepoRoot(id, path: path) }
+        }
     }
 
     // MARK: - Presets
