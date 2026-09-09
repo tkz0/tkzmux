@@ -56,6 +56,76 @@ private func hostEnvironment(home: String) -> [String: String] {
         #expect(env["TERMINFO_DIRS"] == nil)
     }
 
+    /// tkzmux manages Claude Code sessions, so it gets launched from inside one — and `open
+    /// tkzmux.app` propagates the caller's environment. An inherited `CLAUDE_CODE_CHILD_SESSION`
+    /// turns transcript saving off in every managed session and stops Claude Code publishing the
+    /// descriptor whose `status: busy` is the only source of the green `working` status.
+    /// Found running the notarized build, 2026-09-09.
+    @Test func stripsInheritedClaudeCodeSessionMarkers() throws {
+        let home = try tempDir("claude-markers")
+        defer { try? FileManager.default.removeItem(at: home) }
+        var host = hostEnvironment(home: home.path)
+        for key in [
+            "CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT",
+            "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT",
+            "CLAUDE_CODE_BRIDGE_SESSION_ID", "CLAUDE_CODE_MESSAGING_SOCKET",
+            "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_EXECPATH",
+            "CLAUDE_CODE_SOMETHING_INVENTED_LATER",
+        ] { host[key] = "should-not-survive" }
+
+        let env = TerminalEnvironment.make(
+            sessionID: "S1",
+            tkzmuxDir: home.appending(path: "support"),
+            baseEnvironment: host,
+            home: home.path
+        )
+
+        #expect(env.keys.filter { $0.hasPrefix("CLAUDE_CODE_") } == [])
+        #expect(env["CLAUDECODE"] == nil)
+        #expect(env["CLAUDE_PID"] == nil)
+        #expect(env["CLAUDE_EFFORT"] == nil)
+        // The session still gets everything it is supposed to have.
+        #expect(env["TKZMUX_SESSION_ID"] == "S1")
+        #expect(env["TERM"] == "xterm-ghostty")
+    }
+
+    /// The one CLAUDE_* variable that must survive: design.md → *Accounts are generic* says an
+    /// inherited config dir is left alone so the environment decides the account. Stripping it by
+    /// an over-broad `CLAUDE_` prefix would silently move sessions to the wrong Claude account.
+    @Test func keepsInheritedClaudeConfigDir() throws {
+        let home = try tempDir("config-dir")
+        defer { try? FileManager.default.removeItem(at: home) }
+        var host = hostEnvironment(home: home.path)
+        host["CLAUDE_CONFIG_DIR"] = "\(home.path)/.claude-work"
+        host["CLAUDE_CODE_CHILD_SESSION"] = "should-not-survive"
+
+        let env = TerminalEnvironment.make(
+            sessionID: "S1",
+            tkzmuxDir: home.appending(path: "support"),
+            baseEnvironment: host,
+            home: home.path
+        )
+        #expect(env["CLAUDE_CONFIG_DIR"] == "\(home.path)/.claude-work")
+        #expect(env["CLAUDE_CODE_CHILD_SESSION"] == nil)
+    }
+
+    /// A chosen account still wins over whatever the host had.
+    @Test func chosenAccountOverridesInheritedConfigDir() throws {
+        let home = try tempDir("config-dir-override")
+        defer { try? FileManager.default.removeItem(at: home) }
+        var host = hostEnvironment(home: home.path)
+        host["CLAUDE_CONFIG_DIR"] = "\(home.path)/.claude-inherited"
+
+        let env = TerminalEnvironment.make(
+            sessionID: "S1",
+            accountConfigDir: "\(home.path)/.claude-chosen",
+            tkzmuxDir: home.appending(path: "support"),
+            baseEnvironment: host,
+            home: home.path
+        )
+        #expect(env["CLAUDE_CONFIG_DIR"] == "\(home.path)/.claude-chosen")
+    }
+
     @Test func keepsPathExactlyAsInherited() throws {
         let home = try tempDir("path")
         defer { try? FileManager.default.removeItem(at: home) }

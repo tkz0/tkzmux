@@ -18,7 +18,29 @@ public enum TerminalEnvironment {
     /// Variables the host terminal may have set that must not leak into the session: the session id
     /// belongs to whoever spawned *us*, and `TERMINFO_DIRS` could point ncurses at a different
     /// (older) xterm-ghostty than the one we ship.
-    public static let strippedKeys = ["TERM_SESSION_ID", "TERMINFO_DIRS"]
+    public static let strippedKeys = [
+        "TERM_SESSION_ID", "TERMINFO_DIRS",
+        // Claude Code stamps its own child processes with these. tkzmux manages Claude Code
+        // sessions, so it is routinely launched *from* one — and `open tkzmux.app` propagates the
+        // caller's environment, as does running the binary from such a shell. Inheriting them
+        // hands every managed session the identity of the session that started tkzmux.
+        "CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT",
+    ]
+
+    /// Any variable with one of these prefixes is stripped too, so a marker introduced by a future
+    /// Claude Code version is covered without a code change here.
+    ///
+    /// Why this matters beyond tidiness (found 2026-09-09, running the notarized build for M6.6):
+    /// an inherited `CLAUDE_CODE_CHILD_SESSION` makes Claude Code announce *"Transcript saving is
+    /// off — inherited CLAUDE_CODE_CHILD_SESSION marker"* and, believing it is a child of another
+    /// session, it never publishes the `~/.claude/sessions/<pid>.json` descriptor. That descriptor's
+    /// `status: busy` is the **only** source of the `working` status, so rows never turn green.
+    /// Hooks are a separate path and keep working, which is why NEEDS YOU and the done tint looked
+    /// fine and only the green pulse was missing — a confusing symptom for an environment leak.
+    ///
+    /// `CLAUDE_CONFIG_DIR` deliberately does **not** match: design.md → *Accounts are generic* says
+    /// an inherited config dir is left alone so the environment can choose the account.
+    public static let strippedKeyPrefixes = ["CLAUDE_CODE_"]
 
     /// The terminfo database shipped with tkzmux (`terminfo/78/xterm-ghostty`, `terminfo/67/ghostty`),
     /// or nil if it is missing.
@@ -66,6 +88,10 @@ public enum TerminalEnvironment {
     ) -> [String: String] {
         var env = baseEnvironment
         for key in strippedKeys { env.removeValue(forKey: key) }
+        // `filter` first: removing while iterating `env.keys` would mutate the collection underneath.
+        for key in env.keys.filter({ name in strippedKeyPrefixes.contains(where: name.hasPrefix) }) {
+            env.removeValue(forKey: key)
+        }
 
         let userHome = home ?? baseEnvironment["HOME"] ?? NSHomeDirectory()
 
