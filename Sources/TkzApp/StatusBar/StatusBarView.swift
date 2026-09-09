@@ -1,8 +1,9 @@
 // StatusBarView.swift — the 30 pt strip along the bottom of the main window.
 //
-// design.md → App architecture → Status bar:
-//   `⎇ branch` · `WT` · model badge · `+142 −38 · 12 files` · `↑0 ↓2` · ports · `Context 62%` ·
+// The line, as the artboards draw it:
+//   `⎇ branch` · `WT` · model badge · `+142 −38 · 12 files` · `↑0 ↓2`   …   ports · `Context 62%` ·
 //   `Usage 5% · resets 4d 12h`
+// The group from the ports onward sits flush right (2c.1); the rest flows from the left edge.
 //
 // One `NSView` with a custom `draw(_:)` and **no subviews**. Reasons:
 //   * the separator between two segments must not exist when either side is missing, which is much
@@ -40,21 +41,25 @@ enum StatusSegment: Equatable, Sendable {
     case runs([StatusRun])
     /// A rounded badge — the `WT` marker and the model name.
     case pill(text: String, foreground: RGB, background: RGB)
+    /// `Context ▬▬▬▬ 62%`: a label, a 44 × 4 pt bar filled to `fraction`, and the number after it.
+    case meter(label: StatusRun, fraction: Double, fill: RGB, track: RGB, value: StatusRun)
 
     /// The segment's text with no styling; used for the accessibility value and by tests.
     var plainText: String {
         switch self {
         case .runs(let runs): runs.map(\.text).joined()
         case .pill(let text, _, _): text
+        case .meter(let label, _, _, _, let value): label.text + value.text
         }
     }
 
-    /// Every colour the segment paints text with, in order. Lets a test assert that `+142` really
+    /// Every colour the segment paints with, in order. Lets a test assert that `+142` really
     /// uses the `diffAdd` token rather than something that merely looks green.
     var colors: [RGB] {
         switch self {
         case .runs(let runs): runs.map(\.color)
         case .pill(_, let fg, let bg): [fg, bg]
+        case .meter(let label, _, let fill, let track, let value): [label.color, fill, track, value.color]
         }
     }
 }
@@ -70,12 +75,19 @@ struct StatusItem: Equatable, Sendable {
     /// `false` = glued to the previous item with a single space instead of ` · `. The port list is
     /// one visual group (`:5101 :64566`) made of independently clickable items.
     var separated: Bool = true
+    /// `true` = part of the group that sits flush right (ports, context, usage, resets), the way
+    /// the artboards place it. Everything else flows from the left edge.
+    var trailing: Bool = false
 
-    init(_ segment: StatusSegment, tooltip: String? = nil, url: URL? = nil, separated: Bool = true) {
+    init(
+        _ segment: StatusSegment, tooltip: String? = nil, url: URL? = nil,
+        separated: Bool = true, trailing: Bool = false
+    ) {
         self.segment = segment
         self.tooltip = tooltip
         self.url = url
         self.separated = separated
+        self.trailing = trailing
     }
 }
 
@@ -99,6 +111,10 @@ public final class StatusBarView: NSView {
     /// A segment that does not fit is drawn truncated only if at least this much room is left;
     /// below that it is dropped entirely (a two-character stub reads as damage, not as data).
     private static let minTruncatedWidth: CGFloat = 30
+    /// The meter bar: 44 × 4 pt, fully rounded, 5 pt from the label and from the number.
+    static let meterWidth: CGFloat = 44
+    static let meterHeight: CGFloat = 4
+    static let meterGap: CGFloat = 5
 
     public var model: StatusBarModel {
         didSet { if model != oldValue { invalidate() } }
@@ -170,8 +186,9 @@ public final class StatusBarView: NSView {
             }
             out.append(StatusItem(
                 .runs([
-                    StatusRun(text: "\u{2387} ", color: theme.foregroundDim),   // ⎇
-                    StatusRun(text: branch, color: theme.foreground),
+                    // The artboards draw the whole segment in the WT lavender, not in the body text.
+                    StatusRun(text: "\u{2387} ", color: theme.wtText),   // ⎇
+                    StatusRun(text: branch, color: theme.wtText),
                 ]),
                 tooltip: tooltip))
         }
@@ -187,7 +204,7 @@ public final class StatusBarView: NSView {
             // No dedicated badge token exists; `border` is the design's low-alpha overlay and is
             // defined for every preset (see DESIGN.MD DELTA in the ticket report).
             out.append(StatusItem(
-                .pill(text: name, foreground: theme.foregroundMuted, background: theme.border),
+                .pill(text: name, foreground: theme.statusBarText, background: theme.border),
                 tooltip: "Model \(name)"))
         }
 
@@ -207,7 +224,7 @@ public final class StatusBarView: NSView {
         if let files = model.diffFiles {
             out.append(StatusItem(
                 .runs([
-                    StatusRun(text: "\(files) file\(files == 1 ? "" : "s")", color: theme.foregroundMuted)
+                    StatusRun(text: "\(files) file\(files == 1 ? "" : "s")", color: theme.statusBarText)
                 ]),
                 tooltip: "\(files) file\(files == 1 ? "" : "s") changed in the working tree"))
         }
@@ -225,11 +242,11 @@ public final class StatusBarView: NSView {
         } else {
             var sync: [StatusRun] = []
             if let ahead = model.ahead {
-                sync.append(StatusRun(text: "\u{2191}\(ahead)", color: theme.foregroundMuted))  // ↑
+                sync.append(StatusRun(text: "\u{2191}\(ahead)", color: theme.statusBarText))  // ↑
             }
             if let behind = model.behind {
-                if !sync.isEmpty { sync.append(StatusRun(text: " ", color: theme.foregroundMuted)) }
-                sync.append(StatusRun(text: "\u{2193}\(behind)", color: theme.foregroundMuted))  // ↓
+                if !sync.isEmpty { sync.append(StatusRun(text: " ", color: theme.statusBarText)) }
+                sync.append(StatusRun(text: "\u{2193}\(behind)", color: theme.statusBarText))  // ↓
             }
             if !sync.isEmpty {
                 let target = model.upstream.map { " \($0)" } ?? " upstream"
@@ -251,29 +268,26 @@ public final class StatusBarView: NSView {
                 if let owner = model.portOwners[port], !owner.isEmpty { tooltip += " — \(owner)" }
                 tooltip += "\nOpen http://localhost:\(port)"
                 out.append(StatusItem(
-                    .runs([StatusRun(text: ":\(port)", color: theme.foregroundMuted)]),
+                    .runs([StatusRun(text: ":\(port)", color: theme.statusBarText)]),
                     tooltip: tooltip,
                     url: URL(string: "http://localhost:\(port)"),
-                    separated: index == 0))
+                    separated: index == 0,
+                    trailing: true))
             }
         }
 
         if let context = model.contextPercent {
             out.append(StatusItem(
-                .runs([
-                    StatusRun(text: "Context ", color: theme.foregroundDim),
-                    StatusRun(text: "\(context)%", color: theme.foreground),
-                ]),
-                tooltip: "\(context)% of the model's context window used"))
+                meter("Context ", percent: context, fill: theme.contextMeter, theme: theme),
+                tooltip: "\(context)% of the model's context window used",
+                trailing: true))
         }
 
         if let usage = model.usagePercent {
             out.append(StatusItem(
-                .runs([
-                    StatusRun(text: "Usage ", color: theme.foregroundDim),
-                    StatusRun(text: "\(usage)%", color: theme.foreground),
-                ]),
-                tooltip: model.usageTooltip ?? "\(usage)% of the seven-day quota used"))
+                meter("Usage ", percent: usage, fill: theme.usageMeter, theme: theme),
+                tooltip: model.usageTooltip ?? "\(usage)% of the seven-day quota used",
+                trailing: true))
         }
 
         if let resets = model.usageResetsIn {
@@ -284,10 +298,23 @@ public final class StatusBarView: NSView {
                         color: theme.foregroundDim
                     )
                 ]),
-                tooltip: model.usageResetsAtText.map { "Quota window resets \($0)" }))
+                tooltip: model.usageResetsAtText.map { "Quota window resets \($0)" },
+                trailing: true))
         }
 
         return out
+    }
+
+    /// A percentage as the artboards draw it: the label in the base text, a bar, the number in the
+    /// terminal foreground. The number is what is *reported*; the bar clamps to 0…100 % so a stray
+    /// 104 % from a reader does not paint outside its track.
+    private static func meter(_ label: String, percent: Int, fill: RGB, theme: Theme) -> StatusSegment {
+        .meter(
+            label: StatusRun(text: label, color: theme.statusBarText),
+            fraction: min(max(Double(percent) / 100, 0), 1),
+            fill: fill,
+            track: theme.meterTrack,
+            value: StatusRun(text: "\(percent)%", color: theme.terminalForeground))
     }
 
     /// The PR pill: `#123` plus the one marker that matters most — a draft is a draft whatever the
@@ -308,7 +335,7 @@ public final class StatusBarView: NSView {
             color = theme.diffRemove
         } else {
             marker = "\u{25CF}"
-            color = theme.foregroundMuted
+            color = theme.statusBarText
         }
 
         var lines = ["Pull request #\(pr.number)"]
@@ -373,12 +400,17 @@ public final class StatusBarView: NSView {
         placement().first { $0.frame.contains(point) }?.item
     }
 
+    /// Lays the line out. The trailing group (ports, context, usage, resets) sits flush right and
+    /// the rest flows from the left, as on the artboards; the two never touch because the leading
+    /// group's usable width stops one separator short of the trailing group. When the trailing
+    /// group does not fit whole — a very narrow window — the entire line flows left to right and
+    /// truncates as before, so nothing is ever drawn half right-aligned.
     private func computePlacement() -> [PlacedItem] {
         let items = currentItems
         guard !items.isEmpty else { return [] }
 
+        let minX = bounds.minX + Self.insetX
         let maxX = bounds.maxX - Self.insetX
-        var x = bounds.minX + Self.insetX
         let dotWidth = attributed(
             [StatusRun(text: Self.separator, color: theme.foregroundDim)], font: textFont
         ).size().width
@@ -386,6 +418,31 @@ public final class StatusBarView: NSView {
             [StatusRun(text: " ", color: theme.foregroundDim)], font: textFont
         ).size().width
 
+        let leading = items.filter { !$0.trailing }
+        let trailing = items.filter(\.trailing)
+        if !trailing.isEmpty {
+            var trailingWidth: CGFloat = 0
+            for (index, item) in trailing.enumerated() {
+                if index > 0 { trailingWidth += item.separated ? dotWidth : spaceWidth }
+                trailingWidth += width(of: item.segment)
+            }
+            let gap = leading.isEmpty ? 0 : dotWidth
+            let trailingMinX = maxX - trailingWidth
+            if trailingMinX - gap >= minX {
+                return flow(leading, from: minX, to: trailingMinX - gap, dotWidth: dotWidth, spaceWidth: spaceWidth)
+                    + flow(trailing, from: trailingMinX, to: maxX, dotWidth: dotWidth, spaceWidth: spaceWidth)
+            }
+        }
+        return flow(items, from: minX, to: maxX, dotWidth: dotWidth, spaceWidth: spaceWidth)
+    }
+
+    /// Places `items` left to right between `minX` and `maxX`, separators between neighbours only,
+    /// truncating the first item that does not fit and dropping the rest.
+    private func flow(
+        _ items: [StatusItem], from minX: CGFloat, to maxX: CGFloat,
+        dotWidth: CGFloat, spaceWidth: CGFloat
+    ) -> [PlacedItem] {
+        var x = minX
         var out: [PlacedItem] = []
         for (index, item) in items.enumerated() {
             let isDot = item.separated
@@ -393,7 +450,9 @@ public final class StatusBarView: NSView {
             let width = self.width(of: item.segment)
             let remaining = maxX - x - separatorWidth
 
-            if width <= remaining {
+            // The trailing group's `minX` is the right edge minus a sum of these same widths, so
+            // allow a rounding hair before calling the last item "does not fit".
+            if width <= remaining + 0.01 {
                 var separatorX: CGFloat?
                 if index > 0 {
                     separatorX = x
@@ -509,7 +568,26 @@ public final class StatusBarView: NSView {
         case .pill(let text, let fg, _):
             attributed([StatusRun(text: text, color: fg)], font: pillFont).size().width
                 + 2 * Self.pillPadX
+        case .meter(let label, _, _, _, let value):
+            attributed([label], font: textFont).size().width
+                + Self.meterGap + Self.meterWidth + Self.meterGap
+                + attributed([value], font: textFont).size().width
         }
+    }
+
+    /// Where a meter's track and fill land when the item is drawn at `x`. Shared by `draw` and
+    /// the pixel tests, so what is asserted is what is painted.
+    func meterRects(_ segment: StatusSegment, at x: CGFloat) -> (track: NSRect, fill: NSRect)? {
+        guard case .meter(let label, let fraction, _, _, _) = segment else { return nil }
+        let labelWidth = attributed([label], font: textFont).size().width
+        let track = NSRect(
+            x: x + labelWidth + Self.meterGap,
+            y: ((bounds.height - Self.meterHeight) / 2).rounded(),
+            width: Self.meterWidth,
+            height: Self.meterHeight)
+        var fill = track
+        fill.size.width = (Self.meterWidth * CGFloat(min(max(fraction, 0), 1))).rounded()
+        return (track, fill)
     }
 
     private func draw(_ segment: StatusSegment, at x: CGFloat) {
@@ -517,6 +595,20 @@ public final class StatusBarView: NSView {
         case .runs(let runs):
             let string = attributed(runs, font: textFont)
             drawText(string, at: x, width: string.size().width)
+
+        case .meter(let label, _, let fill, let track, let value):
+            guard let rects = meterRects(segment, at: x) else { return }
+            let labelString = attributed([label], font: textFont)
+            drawText(labelString, at: x, width: labelString.size().width)
+            let radius = Self.meterHeight / 2
+            track.nsColor.setFill()
+            NSBezierPath(roundedRect: rects.track, xRadius: radius, yRadius: radius).fill()
+            if rects.fill.width > 0 {
+                fill.nsColor.setFill()
+                NSBezierPath(roundedRect: rects.fill, xRadius: radius, yRadius: radius).fill()
+            }
+            let valueString = attributed([value], font: textFont)
+            drawText(valueString, at: rects.track.maxX + Self.meterGap, width: valueString.size().width)
 
         case .pill(let text, let fg, let bg):
             let string = attributed([StatusRun(text: text, color: fg)], font: pillFont)

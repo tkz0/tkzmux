@@ -521,15 +521,52 @@ struct SidebarRowViewTests {
                                   Self.components(light.needsYouBadgeLayer.backgroundColor)))
         #expect(try Self.pixels(Self.render(dark, scale: 2)) != Self.pixels(Self.render(light, scale: 2)))
 
-        // The group name colour is derived from tokens too — it must invert for the light preset.
-        let darkTitle = GroupRowView.groupTitleColor(.midnightIndigo)
-        let lightTitle = GroupRowView.groupTitleColor(.light)
-        #expect(darkTitle != lightTitle)
-        // …and it reproduces the design's #ccd1e8 for 2c to within one 8-bit unit per channel.
-        let target = RGB(hex: 0xccd1e8)
-        #expect(abs(darkTitle.r - target.r) * 255 <= 1.5)
-        #expect(abs(darkTitle.g - target.g) * 255 <= 1.5)
-        #expect(abs(darkTitle.b - target.b) * 255 <= 1.5)
+        // The group name reads its own token, so it inverts for the light preset too.
+        let darkGroup = Self.groupRow(SidebarGroupRowModel(name: "tkzmux"), theme: .midnightIndigo)
+        let lightGroup = Self.groupRow(SidebarGroupRowModel(name: "tkzmux"), theme: .light)
+        #expect(Self.approxEqual(Self.components(darkGroup.nameTextLayer.foregroundColor),
+                                 Self.components(Theme.midnightIndigo.groupHeaderText.cgColor)))
+        #expect(Self.approxEqual(Self.components(lightGroup.nameTextLayer.foregroundColor),
+                                 Self.components(Theme.light.groupHeaderText.cgColor)))
+        #expect(!Self.approxEqual(Self.components(darkGroup.nameTextLayer.foregroundColor),
+                                  Self.components(lightGroup.nameTextLayer.foregroundColor)))
+    }
+
+    @Test("The summary strip draws neutral words with a status-coloured dot before each count")
+    func summaryStripUsesTheDotsForColour() throws {
+        for theme in Theme.allPresets {
+            let strip = SummaryStripView(frame: NSRect(
+                x: 0, y: 0, width: SidebarMetrics.sidebarWidth, height: SummaryStripView.height))
+            strip.configure(SidebarSummaryModel(working: 5, needAttention: 2), theme: theme)
+            strip.layoutSubtreeIfNeeded()
+
+            #expect(Self.approxEqual(Self.components(strip.workingDotLayer.backgroundColor),
+                                     Self.components(theme.working.cgColor)), "\(theme.preset)")
+            #expect(Self.approxEqual(Self.components(strip.waitingDotLayer.backgroundColor),
+                                     Self.components(theme.waiting.cgColor)), "\(theme.preset)")
+            for label in [strip.workingTextLayer, strip.waitingTextLayer] {
+                let attributed = try #require(label.string as? NSAttributedString)
+                let color = try #require(
+                    attributed.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
+                #expect(Self.approxEqual(Self.components(color.cgColor),
+                                         Self.components(theme.summaryText.cgColor)), "\(theme.preset)")
+            }
+            #expect(strip.workingTextLayer.string as? NSAttributedString != nil)
+            #expect((strip.workingTextLayer.string as? NSAttributedString)?.string == "5 WORKING")
+            #expect((strip.waitingTextLayer.string as? NSAttributedString)?.string == "2 NEED YOU")
+
+            // 7 pt dots, each immediately before its words, both inside the strip.
+            let d = StatusDotLayer.diameter
+            #expect(strip.workingDotLayer.frame.size == CGSize(width: d, height: d))
+            #expect(strip.waitingDotLayer.frame.size == CGSize(width: d, height: d))
+            #expect(strip.workingDotLayer.frame.maxX < strip.workingTextLayer.frame.minX)
+            #expect(strip.workingTextLayer.frame.maxX < strip.waitingDotLayer.frame.minX)
+            #expect(strip.waitingDotLayer.frame.maxX < strip.waitingTextLayer.frame.minX)
+            #expect(strip.waitingTextLayer.frame.maxX <= strip.bounds.width)
+            #expect(strip.workingDotLayer.frame.minX >= 0)
+            // The spoken form is unchanged.
+            #expect(strip.summaryText == "5 working · 2 need you")
+        }
     }
 
     // MARK: Group row

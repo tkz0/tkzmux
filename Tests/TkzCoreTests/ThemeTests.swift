@@ -41,6 +41,18 @@ import Testing
         #expect(theme.foregroundMuted.contrastRatio(against: bg) >= 4.5, "\(theme.preset) foregroundMuted")
     }
 
+    @Test(arguments: Theme.allPresets)
+    func secondaryTextIsReadable(theme: Theme) {
+        // The sidebar is translucent in 1a/1b and `contrastRatio` ignores alpha, so composite first.
+        let sidebar = theme.sidebarBackground.over(theme.windowBackground)
+        #expect(theme.groupHeaderText.contrastRatio(against: sidebar) >= 4.5, "\(theme.preset) groupHeaderText")
+        #expect(theme.summaryText.contrastRatio(against: sidebar) >= 4.5, "\(theme.preset) summaryText")
+        // 1b's artboard draws the status bar text at 4.1:1; every light scheme has that weakness.
+        let minimum = theme.isDark ? 4.5 : 4.0
+        #expect(theme.statusBarText.contrastRatio(against: theme.statusBarBackground) >= minimum,
+                "\(theme.preset) statusBarText")
+    }
+
     // MARK: Terminal palette
 
     @Test(arguments: Theme.allPresets)
@@ -103,12 +115,22 @@ import Testing
 
     // MARK: Spot checks against the artboards
 
-    @Test func midnightIndigoMatchesArtboard2c() {
+    @Test func midnightIndigoMatchesArtboard2c1() {
         let t = Theme.midnightIndigo
-        #expect(t.windowBackground.hexString == "#141624")
-        #expect(t.titlebar.hexString == "rgba(31,34,54,.95)")
-        #expect(t.sidebarBackground.hexString == "#1a1d31")
-        #expect(t.terminalBackground.hexString == "#0e101c")
+        #expect(t.windowBackground.hexString == "#1a1d30")
+        #expect(t.titlebar.hexString == "rgba(38,42,64,.95)")
+        #expect(t.sidebarBackground.hexString == "#20243a")
+        #expect(t.terminalBackground.hexString == "#171a2b")
+        #expect(t.statusBarBackground.hexString == "#262a42")
+        #expect(t.foreground.hexString == "#dde2f5")
+        #expect(t.terminalForeground.hexString == "#d6dbf0")
+        #expect(t.foregroundMuted.hexString == "#98a0c2")
+        #expect(t.groupHeaderText.hexString == "#ccd1e8")
+        #expect(t.summaryText.hexString == "#b6bcd8")
+        #expect(t.statusBarText.hexString == "#a8b0d0")
+        #expect(t.meterTrack.hexString == "rgba(255,255,255,.16)")
+        #expect(t.contextMeter.hexString == "#4ade80")
+        #expect(t.usageMeter.hexString == "#8b93f8")
         #expect(t.accent.hexString == "#8b93f8")
         #expect(t.selection.hexString == "rgba(139,147,248,.22)")
         #expect(t.diffRemove.hexString == "#f28b8b")   // design.md used to say #f07a7a (that is 2a's)
@@ -121,6 +143,27 @@ import Testing
         #expect(t.foreground.hexString == "#26292e")
         #expect(t.idle.hexString == "rgba(0,0,0,.22)")
         #expect(t.needsYouText.hexString == "#b06e10")
+        #expect(t.groupHeaderText.hexString == "#5f646d")
+        #expect(t.statusBarText.hexString == "#6e7481")
+        #expect(t.meterTrack.hexString == "rgba(0,0,0,.12)")
+        #expect(t.usageMeter.hexString == "#3a66b5")
+    }
+
+    @Test(arguments: Theme.allPresets)
+    func metersFollowTheArtboards(theme: Theme) {
+        // Every artboard fills the context bar with its working green and the usage bar with its
+        // blue, on a translucent track that lightens a dark bar and darkens a light one.
+        #expect(theme.contextMeter == theme.working)
+        #expect(theme.usageMeter != theme.contextMeter)
+        #expect(theme.meterTrack.a < 1)
+        #expect(theme.meterTrack.a >= 0.1)
+        let over = theme.meterTrack.over(theme.statusBarBackground)
+        #expect(theme.isDark
+                ? over.relativeLuminance > theme.statusBarBackground.relativeLuminance
+                : over.relativeLuminance < theme.statusBarBackground.relativeLuminance,
+                "\(theme.preset) track does not stand off the bar")
+        #expect(theme.contextMeter.contrastRatio(against: over) >= 2, "\(theme.preset) context fill")
+        #expect(theme.usageMeter.contrastRatio(against: over) >= 2, "\(theme.preset) usage fill")
     }
 
     // MARK: RGB
@@ -138,8 +181,8 @@ import Testing
 
     // MARK: design.md table
 
-    /// Prints the token table for docs/design.md from the real structs so the doc cannot drift from the code.
-    /// Run with `swift test --filter ThemeTests/printsDesignTable` and paste the output.
+    /// Prints the token table from the real structs, one column per preset.
+    /// Run with `swift test --filter ThemeTests/printsDesignTable` to eyeball the values.
     @Test func printsDesignTable() {
         let presets = Theme.allPresets
         var lines: [String] = []
@@ -180,7 +223,7 @@ extension Theme {
 
     var columnTitle: String {
         switch preset {
-        case .midnightIndigo: "2c Midnight indigo (default)"
+        case .midnightIndigo: "2c.1 Midnight indigo (default)"
         case .graphite: "2a Graphite"
         case .warmCharcoal: "2b Warm charcoal"
         case .dark: "1a Dark"

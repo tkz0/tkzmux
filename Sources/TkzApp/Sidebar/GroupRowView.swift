@@ -16,11 +16,8 @@
 // triangles, whose ink fills roughly half the em box — and at 9 pt that read as a dot rather than a
 // direction.
 //
-// **Token gap.** The design's group name colour is `#ccd1e8`, which no `Theme` token carries. It is
-// not hardcoded here — a literal would be light-on-light in the `.light` preset. It is derived as
-// `foreground` mixed 38 % toward `foregroundMuted`, which reproduces the 2c value to within one
-// 8-bit unit per channel (#cdd2e7 vs #ccd1e8) and stays correct in every preset. See the
-// DESIGN.MD DELTA in the ticket report proposing a `groupTitle` token.
+// The name is drawn in `Theme.groupHeaderText`, a token of its own since 2c.1 (it used to be
+// derived by mixing `foreground` toward `foregroundMuted`, which only ever matched one artboard).
 
 import AppKit
 import TkzCore
@@ -146,7 +143,7 @@ public final class GroupRowView: NSTableCellView {
         chevronLayer.strokeColor = theme.foregroundDim.cgColor
 
         nameLayer.string = model.name.uppercased()
-        nameLayer.foregroundColor = Self.groupTitleColor(theme).cgColor
+        nameLayer.foregroundColor = theme.groupHeaderText.cgColor
 
         let count = "\(model.sessionCount)"
         countLayer.string = count
@@ -155,11 +152,6 @@ public final class GroupRowView: NSTableCellView {
 
         addLayer.string = "＋"
         addLayer.foregroundColor = theme.foregroundDim.cgColor
-    }
-
-    /// The design's `#ccd1e8` group-name colour, expressed in tokens so all five presets work.
-    static func groupTitleColor(_ theme: Theme) -> RGB {
-        theme.foreground.mixed(with: theme.foregroundMuted, amount: 0.38)
     }
 
     // MARK: Test hooks (internal — see SessionRowView)
