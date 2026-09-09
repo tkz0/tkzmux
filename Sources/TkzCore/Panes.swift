@@ -173,6 +173,26 @@ extension PaneNode {
     }
 }
 
+extension PaneNode {
+    /// Whether two trees have the same **shape**: the same leaves under the same axes, in the same
+    /// order. The divider ratios do not count.
+    ///
+    /// This is what the split container asks before rebuilding its view tree. A ratio is placed by
+    /// `applyRatios` inside the views that already exist; rebuilding for one would detach every
+    /// surface and take the focused view out of the window, which drops the first responder.
+    public func hasSameShape(as other: PaneNode) -> Bool {
+        switch (self, other) {
+        case (.leaf(let a), .leaf(let b)):
+            return a.id == b.id
+        case (.split(let a), .split(let b)):
+            return a.axis == b.axis && a.first.hasSameShape(as: b.first)
+                && a.second.hasSameShape(as: b.second)
+        default:
+            return false
+        }
+    }
+}
+
 extension PaneSplit {
     /// Splits `rect` into the first and second child's rectangles, y-up (see `PaneNode.frames`).
     ///
@@ -345,6 +365,12 @@ public struct Tab: Hashable, Sendable, Identifiable {
     public var visibleTerminalIDs: [TerminalID] {
         if let zoomedLeaf, root.contains(zoomedLeaf) { return [zoomedLeaf] }
         return root.leafIDs
+    }
+
+    /// Whether `other` would build the same view tree: same tab, same zoom, same tree shape.
+    /// The focused leaf and the ratios are not part of it — both change without any view moving.
+    public func hasSameShape(as other: Tab) -> Bool {
+        id == other.id && zoomedLeaf == other.zoomedLeaf && root.hasSameShape(as: other.root)
     }
 }
 
