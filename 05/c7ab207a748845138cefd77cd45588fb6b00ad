@@ -1,0 +1,30 @@
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_9b9fa0a65a26af::t_7091cbd32ac7fc 362,370,375,380-383,385,394-406
+  s_9b9fa0a65a26af::t_b4c19eb48a3c85 407-408
+Sources/TkzCore/Theme.swift
+  s_9b9fa0a65a26af::t_6545fc0ba1b4e1 42
+Sources/TkzApp/Sidebar/StatusDotView.swift
+  s_9b9fa0a65a26af::t_f719684bd45136 28,50,132,136,138-141,143,149
+  s_9b9fa0a65a26af::t_6b8a8723a6e2d2 29-31
+docs/design.md
+  s_9b9fa0a65a26af::t_c124e86a56b692 187,243
+  s_9b9fa0a65a26af::t_4c87226e5e9c4f 211
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_9b9fa0a65a26af::t_6b8a8723a6e2d2 32-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "05c7ab207a748845138cefd77cd45588fb6b00ad",
+  "prompts": {},
+  "sessions": {
+    "s_9b9fa0a65a26af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "025b175a-42ed-43ab-ab99-944f777ed140",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
