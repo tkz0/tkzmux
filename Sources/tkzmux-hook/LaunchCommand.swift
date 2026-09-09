@@ -34,12 +34,7 @@ func runLaunch(_ args: [String]) {
     }
 
     let sid = envString("TKZMUX_SESSION_ID") ?? ""
-    let configDir: String
-    if let claudeConfigDir = envString("CLAUDE_CONFIG_DIR"), !claudeConfigDir.isEmpty {
-        configDir = claudeConfigDir
-    } else {
-        configDir = (envString("HOME") ?? "") + "/.claude"
-    }
+    let configDir = claudeConfigDirectory()
 
     let frame = buildLaunchFrame(sid: sid, pid: pid, cwd: cwd, configDir: configDir, argv: argv)
     sendFrame(frame)

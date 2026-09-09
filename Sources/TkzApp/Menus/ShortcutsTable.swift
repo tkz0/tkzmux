@@ -46,6 +46,9 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     public static let copyLastMessage = ShortcutAction("copyLastMessage")
     /// No key: deletes `bin/` and `zsh/` under Application Support so new shells are plain (M3.3).
     public static let removeShellIntegration = ShortcutAction("removeShellIntegration")
+    /// No key: installs (or removes) tkzmux's `statusLine` command in `~/.claude/settings.json`,
+    /// which is what fills the Context / model / Usage segments (TKZ-32). Always behind consent.
+    public static let statusLineIntegration = ShortcutAction("statusLineIntegration")
     /// ⌘R — `claude --resume` the selected row's conversation in its directory (M5.2).
     public static let resumeSession = ShortcutAction("resumeSession")
     /// No key: resume every resumable row in the selected session's group (M5.2).
@@ -131,8 +134,8 @@ public enum ShortcutsTable {
             .newSession, .searchSessions, .commandPalette, .toggleSidebar, .renameSession,
             .closeTerminal, .jumpToNeedsYou, .notifications, .settings,
             .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
-            .removeShellIntegration, .resumeSession, .resumeAllInGroup, .managePresets,
-            .toggleAutoResume,
+            .removeShellIntegration, .statusLineIntegration, .resumeSession, .resumeAllInGroup,
+            .managePresets, .toggleAutoResume,
         ] + (1...9).map { ShortcutAction.selectSession($0) }
 
     /// design.md → Decisions → Shortcuts, verbatim, plus ⇧⌘C (M3.4) and ⌘R (M5.2), which that
@@ -176,6 +179,7 @@ public enum ShortcutsTable {
         case .previousSession: "Previous Session"
         case .copyLastMessage: "Copy Last Message"
         case .removeShellIntegration: "Remove Shell Integration"
+        case .statusLineIntegration: "Status Line Integration\u{2026}"
         case .resumeSession: "Resume Session"
         case .resumeAllInGroup: "Resume All in Group"
         case .managePresets: "Manage Presets\u{2026}"

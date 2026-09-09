@@ -31,6 +31,17 @@ extension JSONValue {
         return nil
     }
 
+    var asString: String? {
+        if case .string(let s) = self { return s }
+        return nil
+    }
+
+    /// Numbers are stored as their source text; this is the only place they become a `Double`.
+    var asNumber: Double? {
+        if case .number(let raw) = self { return Double(raw) }
+        return nil
+    }
+
     func get(_ key: String) -> JSONValue? {
         asObject?.first(where: { $0.key == key })?.value
     }
@@ -251,6 +262,29 @@ func jsonSerialize(_ value: JSONValue) -> String {
         return b ? "true" : "false"
     case .null:
         return "null"
+    }
+}
+
+/// Two-space-indented serialization, for documents a human reads and diffs — `settings.json`.
+/// The compact form above is right for `--settings` on a command line and wrong for a file.
+func jsonSerializePretty(_ value: JSONValue, indent: Int = 0) -> String {
+    let pad = String(repeating: " ", count: indent * 2)
+    let inner = String(repeating: " ", count: (indent + 1) * 2)
+    switch value {
+    case .object(let pairs):
+        guard !pairs.isEmpty else { return "{}" }
+        let body = pairs
+            .map { "\(inner)\"\(jsonEscape($0.key))\": \(jsonSerializePretty($0.value, indent: indent + 1))" }
+            .joined(separator: ",\n")
+        return "{\n" + body + "\n" + pad + "}"
+    case .array(let items):
+        guard !items.isEmpty else { return "[]" }
+        let body = items
+            .map { "\(inner)\(jsonSerializePretty($0, indent: indent + 1))" }
+            .joined(separator: ",\n")
+        return "[\n" + body + "\n" + pad + "]"
+    default:
+        return jsonSerialize(value)
     }
 }
 

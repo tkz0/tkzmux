@@ -27,6 +27,13 @@ case "settings-merge":
     let arg = args.count > 2 ? args[2] : nil
     exit(runSettingsMerge(arg: arg))
 
+case "statusline-settings":
+    exit(runStatuslineSettings(Array(args.dropFirst(2))))
+
+case "statusline":
+    // Never returns: it exits with the wrapped command's status, or 0. Outside the < 20 ms budget.
+    runStatusline()
+
 default:
     let event = args[1]
     let (stdinBytes, hitCap) = readStdin()

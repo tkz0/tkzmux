@@ -524,7 +524,7 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
 
     /// The account key: the basename of the config dir **minus its leading dot**, so
     /// `~/.claude` → `"claude"` and `~/.claude-work` → `"claude-work"`. That is the spelling
-    /// `Account.key`, `Session.accountKey` and the `dash-usage-<key>.json` filenames all use, and
+    /// `Account.key`, `Session.accountKey` and the `statusline/usage-<key>.json` filenames all use, and
     /// the join key for `descriptor.accountKey == session.accountKey` in M3.
     public var accountKey: String {
         let basename = (configDir as NSString).lastPathComponent
@@ -646,10 +646,10 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
 
 /// One Claude account = one `CLAUDE_CONFIG_DIR`.
 public struct Account: Hashable, Sendable, Codable, Identifiable {
-    /// Basename of `configDir` (`claude`, `claude-work`); also the `dash-usage-<key>.json` suffix.
+    /// Basename of `configDir` (`claude`, `claude-work`); also the `statusline/usage-<key>.json` suffix.
     public var key: String
     public var configDir: String
-    /// Display label. Comes from config (`dash-accounts.json` overlay), never hard-coded.
+    /// Display label. Derived from the account's own identity at runtime, never hard-coded.
     public var label: String
     /// Plan name reported by the usage file, e.g. from `account.plan`.
     public var plan: String?
@@ -692,7 +692,7 @@ extension Account {
     }
 }
 
-/// One quota window from `~/.claude/dash-usage-<key>.json` (`five_hour` / `seven_day`).
+/// One quota window from `<support>/statusline/usage-<key>.json` (`five_hour` / `seven_day`).
 public struct UsageWindow: Hashable, Sendable, Codable {
     /// 0…100.
     public var usedPercentage: Double
@@ -735,7 +735,8 @@ public struct UsageWindow: Hashable, Sendable, Codable {
     }
 }
 
-/// The whole `dash-usage-<key>.json` document, keyed in `AppState.usage` by `accountKey`.
+/// The whole `usage-<key>.json` document, keyed in `AppState.usage` by `accountKey`. Written by
+/// `tkzmux-hook statusline`, reconciled and published by `StatuslineReader` (TKZ-32).
 public struct UsageSnapshot: Hashable, Sendable, Codable {
     public var accountKey: String
     public var updatedAt: Date?
@@ -797,7 +798,7 @@ public struct UsageSnapshot: Hashable, Sendable, Codable {
     }
 }
 
-/// ISO-8601 with fractional seconds, the format the dash files use. A single shared formatter;
+/// ISO-8601 with fractional seconds, the format the sidecars use. A single shared formatter;
 /// `ISO8601DateFormatter` is not `Sendable`, so it is created per call (these parses are rare).
 enum ISO8601 {
     static func date(from text: String) -> Date? {
@@ -906,8 +907,8 @@ public struct PRInfo: Hashable, Sendable, Codable {
 
 // MARK: - Statusline sidecar
 
-/// `~/.claude/dash-sessions/<session_id>.json`, the tkzmux-owned statusline contract in
-/// design.md → *Claude integration → Per-session sidecar*. snake_case on the wire.
+/// `<support>/statusline/context-<session_id>.json`, the tkzmux-owned statusline contract
+/// written by `tkzmux-hook statusline` (TKZ-32). snake_case on the wire.
 public struct SessionSidecar: Hashable, Sendable, Codable {
     public struct Model: Hashable, Sendable, Codable {
         public var id: String?

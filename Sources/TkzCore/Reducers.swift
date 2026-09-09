@@ -363,6 +363,10 @@ extension AppState {
         autoResumeOnLaunch = enabled
     }
 
+    public mutating func setStatuslineOffered(_ offered: Bool) {
+        statuslineOffered = offered
+    }
+
     // MARK: Accounts, usage, presets
 
     public mutating func setAccount(_ account: Account) {
@@ -371,6 +375,29 @@ extension AppState {
 
     public mutating func setUsage(_ snapshot: UsageSnapshot) {
         usage[snapshot.accountKey] = snapshot
+    }
+
+    /// Drops an account's quota entirely: its sidecar was deleted, aged into a ghost, or every
+    /// window in it has expired. Holding the last known percentage instead would be worse than the
+    /// empty badge — a stale quota reading looks exactly like a current one.
+    public mutating func clearUsage(for accountKey: String) {
+        usage[accountKey] = nil
+    }
+
+    /// The per-session statusline sidecar (context %, model, PR), joined on Claude's own session id
+    /// rather than on ours: the sidecar is written by a statusline that knows nothing about tkzmux
+    /// rows. A session that has since been resumed under a new conversation id simply stops matching.
+    public mutating func setSessionSidecar(_ sidecar: SessionSidecar) {
+        guard let id = sessions.values.first(where: { $0.claudeSessionId == sidecar.sessionId })?.id
+        else { return }
+        updateLive(id) { $0.context = sidecar }
+    }
+
+    public mutating func clearSessionSidecar(claudeSessionId: String) {
+        guard let id = sessions.values
+            .first(where: { $0.live?.context?.sessionId == claudeSessionId })?.id
+        else { return }
+        updateLive(id) { $0.context = nil }
     }
 
     @discardableResult
