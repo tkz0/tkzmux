@@ -30,17 +30,28 @@ driven; parts are stubs (see *Known gaps*). Use it if it helps you, fork it if i
 
 ## Install
 
-A Homebrew cask is planned:
-
 ```sh
 brew tap tkz0/tap
-brew trust tkz0/tap          # Homebrew 6 refuses untrusted third-party casks
-brew install --cask tkzmux   # not published yet — see below
+brew trust --cask tkz0/tap/tkzmux
+brew install --cask tkzmux
 ```
 
-**This does not work today.** The tap and the first tagged release do not exist at the time of
-writing; the command is recorded here because it is the intended distribution channel, and this line
-will stop carrying a warning when the first release is out. Until then, build from source.
+**Why the `brew trust` step?** Since Homebrew 6.0, a cask from a third-party tap is not loaded until
+you trust it — casks are executable Ruby, not metadata, and Homebrew runs them with your privileges.
+Only Homebrew's own taps are trusted by default, so this applies to every third-party tap, not just
+this one. Skip it and `brew tap` fails with `Cannot tap tkz0/tap: invalid syntax in tap!`, which
+looks like a broken cask and is really the trust refusal.
+
+`--cask tkz0/tap/tkzmux` trusts exactly this one cask. `brew trust tkz0/tap` would trust the whole
+tap including anything added to it later, which is a lot to grant a stranger's repo — see
+[Tap Trust](https://docs.brew.sh/Tap-Trust).
+
+The app is signed with a Developer ID and notarized by Apple, so it opens with no Gatekeeper prompt
+and needs no `xattr` incantation. Verify it yourself:
+
+```sh
+spctl -a -vv /Applications/tkzmux.app   # accepted, source=Notarized Developer ID
+```
 
 ## Build from source
 

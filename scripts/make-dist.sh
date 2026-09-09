@@ -128,7 +128,7 @@ NOTES="$DIST_DIR/notes.md"
   # ("Refusing to load cask … from untrusted tap") until the tap is trusted, and the refusal
   # surfaces as "Cannot tap …: invalid syntax in tap!", which reads like a broken cask.
   echo "brew tap tkz0/tap"
-  echo "brew trust tkz0/tap          # Homebrew 6 refuses untrusted third-party casks"
+  echo "brew trust --cask tkz0/tap/tkzmux   # Homebrew 6 will not load an untrusted third-party cask"
   echo "brew install --cask tkzmux"
   echo '```'
   echo

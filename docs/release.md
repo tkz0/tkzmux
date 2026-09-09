@@ -230,7 +230,7 @@ macOS 26 or newer.
 
 ```sh
 brew style Casks/tkzmux.rb                         # must be clean before pushing a bump
-brew trust tkz0/tap                                # see below — once per machine
+brew trust --cask tkz0/tap/tkzmux                  # see below — once per machine
 brew install --cask tkz0/tap/tkzmux
 brew audit --cask --strict --online tkz0/tap/tkzmux
 ```

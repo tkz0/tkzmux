@@ -597,7 +597,7 @@ fetches its asset unauthenticated.
 2. `scripts/bump-cask.sh 0.1.0 <sha256>` with `TAP_DIR=~/dev/homebrew-tap`.
 3. `brew audit --cask --strict --online tkz0/tap/tkzmux` and `brew style tkz0/tap`.
    **Pass**: both clean. `--online` can only pass once the release actually exists.
-4. `brew tap tkz0/tap && brew trust tkz0/tap && brew install --cask tkzmux`.
+4. `brew tap tkz0/tap && brew trust --cask tkz0/tap/tkzmux && brew install --cask tkzmux`.
    **`brew trust` is not optional on Homebrew 6** — an untrusted third-party tap refuses to load
    its casks, and the refusal surfaces as `Cannot tap …: invalid syntax in tap!`, which reads like
    a broken cask and is not one.
@@ -611,7 +611,7 @@ user account on this Mac is enough; a second Mac or a VM is better. The account 
 Homebrew and Claude Code — **no JetBrains Mono, no Claude Dash shim, one `~/.claude` account, a
 cold keychain**. That is the whole point: the development Mac has all four and hides the gaps.
 
-* `brew tap tkz0/tap && brew trust tkz0/tap && brew install --cask tkzmux`, then open from
+* `brew tap tkz0/tap && brew trust --cask tkz0/tap/tkzmux && brew install --cask tkzmux`, then open from
   Launchpad. Follow the README's install block **verbatim** — this account is the only chance to
   catch a missing step in it, and the trust step is exactly the kind that gets left out.
   **Pass**: it opens. No Gatekeeper prompt, no "unidentified developer", **no manual `xattr -d
