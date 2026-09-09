@@ -2,8 +2,6 @@
 
 Native macOS Claude Code session manager (personal cmux replacement). Swift 6.2, AppKit-first, own Metal renderer, **libghostty-vt** as the only third-party dependency, vendored as a prebuilt xcframework. Pure SwiftPM, no `.xcodeproj`; the `.app` is assembled by `make app`. macOS 26+, arm64 only.
 
-The architecture is in **`docs/design.md`**. Read the section a ticket points to before writing code.
-
 ## Commands
 
 ```sh
@@ -49,7 +47,6 @@ Tests: one target per Swift library module under `Tests/<Module>Tests`, using Sw
 - Swift 6 strict concurrency stays on (tools-version 6.2 default). Do not add `-strict-concurrency=minimal` or `@unchecked Sendable` to make warnings go away.
 - No SwiftUI on hot paths; no `@Observable` for the store (explicit change sets).
 - No third-party dependencies beyond libghostty-vt. No Sparkle, Sentry, telemetry.
-- **Never copy code from cmux** (GPL-3). Ghostty (MIT) may be read for reference; libghostty-vt is used only through its public C API from the files listed in `docs/design.md` → *Spike checklist*.
+- **Never copy code from cmux** (GPL-3). Ghostty (MIT) may be read for reference; libghostty-vt is used only through its public C API, never forked or patched.
 - No personal names or account labels in code; they come from config.
 - Keep `tkzmux-hook` free of Foundation.
-- When a spike (M1.1–M1.3) settles an open question, write the result back into `docs/design.md`.

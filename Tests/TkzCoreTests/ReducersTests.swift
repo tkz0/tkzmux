@@ -332,6 +332,14 @@ import Testing
         state.setGroupDefaultAccount(a.id, accountKey: "claude-work")
         #expect(state.groups[a.id]?.defaultAccountKey == "claude-work")
         #expect(state.group(forRepoRoot: "/a")?.id == a.id)
+
+        // A bucket becomes a repo group and back again.
+        state.setGroupRepoRoot(b.id, path: "/b")
+        #expect(state.groups[b.id]?.repoRoot == "/b")
+        state.setGroupRepoRoot(b.id, path: nil)
+        #expect(state.groups[b.id]?.repoRoot == nil)
+        state.setGroupRepoRoot(.generate(), path: "/nowhere")  // unknown id is a no-op
+        #expect(state.groups.count == 2)
     }
 
     @Test func moveGroupRenumbers() {

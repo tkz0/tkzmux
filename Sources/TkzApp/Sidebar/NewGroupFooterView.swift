@@ -52,7 +52,7 @@ public final class NewGroupFooterView: NSView {
         button.setButtonType(.momentaryChange)
         button.target = self
         button.action = #selector(clicked)
-        button.toolTip = "New group from a folder"
+        button.toolTip = "New group"
         button.setAccessibilityLabel(Self.title)
         addSubview(button)
 

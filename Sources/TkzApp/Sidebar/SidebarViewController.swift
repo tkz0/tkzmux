@@ -191,7 +191,7 @@ public final class SidebarViewController: NSViewController {
     /// Invoked by a group header's `＋`. M2.4 replaces this with the new-session menu.
     public var onNewSession: (@MainActor (GroupID) -> Void)?
 
-    /// Invoked by the "＋ New group" footer. The assembler opens the folder picker.
+    /// Invoked by the "＋ New group" footer. The assembler asks for the group's name.
     public var onNewGroup: (@MainActor () -> Void)? {
         didSet { footer.onNewGroup = onNewGroup }
     }
