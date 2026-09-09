@@ -1,0 +1,24 @@
+docs/release.md
+  s_9d7ae90754b850::t_0f2e91ee7f4fd0 132-133,139-144,397-399
+  s_9d7ae90754b850::t_22288710f0345b 6-10,130-131,134-138,145,306-309,386-396,400-414
+.github/workflows/release.yml
+  s_9d7ae90754b850::t_7ca5aa89afadb2 78-84,86-87,89
+  s_9d7ae90754b850::t_61f36c93bd8ddb 19,21-30,32-38,53-59,63-77,85,88,90-96,98-99,211-215,225-230
+  s_9d7ae90754b850::t_0f2e91ee7f4fd0 60-62,221-224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "87c402b459544e619721244b88e0b11b24f81fff",
+  "prompts": {},
+  "sessions": {
+    "s_9d7ae90754b850": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2421cdfd-a5d4-4965-b500-cfe8766008cd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
