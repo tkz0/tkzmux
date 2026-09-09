@@ -1,0 +1,79 @@
+Tests/TkzAppTests/StatusBarInteractionTests.swift
+  s_9b085ffa215a02::t_9efeeb99b82029 180-212,214-222
+  s_9b085ffa215a02::t_a3ee65dffdce26 213
+Sources/TkzApp/Sidebar/GroupRowView.swift
+  s_9b085ffa215a02::t_4ad0f0336c7e26 146
+  s_9b085ffa215a02::t_3e6d4209bf995c 19-20
+Sources/TkzCore/Theme.swift
+  s_9b085ffa215a02::t_3e8134d7cad8d8 266-268
+  s_9b085ffa215a02::t_64da43d369e0d0 363-365
+  s_9b085ffa215a02::t_e2f66a9f90abf7 156,158-159,163-166,172-174
+  s_9b085ffa215a02::t_8fb80b36a0319e 1,4,6
+  s_9b085ffa215a02::t_0ae1ce4fe4b494 222-224
+  s_9b085ffa215a02::t_5802d4033d4c8e 219-221
+  s_9b085ffa215a02::t_1dc45b14cf5408 32-35
+  s_9b085ffa215a02::t_9b1ad4787a5af0 269-271
+  s_9b085ffa215a02::t_d0e04dfc393bdc 360-362
+  s_9b085ffa215a02::t_55283f996a3304 316-318
+  s_9b085ffa215a02::t_95261526f62f5b 175-177
+  s_9b085ffa215a02::t_826c20f5cd3037 313-315
+  s_9b085ffa215a02::t_0f27c2365e9567 37-40
+  s_9b085ffa215a02::t_927a31c69a44b5 36
+Tests/TkzAppTests/StatusBarViewTests.swift
+  s_9b085ffa215a02::t_cef53076ac8381 213-214,218-221,225-258
+  s_9b085ffa215a02::t_4660090f721caa 193-204,209-212
+  s_9b085ffa215a02::t_b0ffbb3165c64c 205-208
+  s_9b085ffa215a02::t_0b6d486c3ed474 215-217,222-224
+Sources/TkzApp/StatusBar/StatusBarView.swift
+  s_9b085ffa215a02::t_49055b9f896cd7 338
+  s_9b085ffa215a02::t_546e1a83d13e48 571-574,578-592,599-611
+  s_9b085ffa215a02::t_1ac5e8123ada89 3-4,6
+  s_9b085ffa215a02::t_3ce4ec2636ae92 301-302
+  s_9b085ffa215a02::t_1a5b4ae6a54e63 44-45,52,56,62
+  s_9b085ffa215a02::t_57af96f973d13f 308-319
+  s_9b085ffa215a02::t_410a9e19e2d668 282-283
+  s_9b085ffa215a02::t_ab226524b2225b 453-455
+  s_9b085ffa215a02::t_700482b957ca4f 289-290
+  s_9b085ffa215a02::t_27e5e7fe024cbf 207
+  s_9b085ffa215a02::t_7865281e97d9ca 271
+  s_9b085ffa215a02::t_216ce2adcc97f1 227
+  s_9b085ffa215a02::t_4e85a641000ab2 78-85,90
+  s_9b085ffa215a02::t_ffe603dc48567f 114-117
+  s_9b085ffa215a02::t_ebb5e6930ad87e 189-191
+  s_9b085ffa215a02::t_31ff450dcc111e 245,248-249
+  s_9b085ffa215a02::t_992d21447a27f4 274-275
+  s_9b085ffa215a02::t_6e8523fb5baec6 281,288
+  s_9b085ffa215a02::t_40e1e13ab99056 403-407,412,421-445
+  s_9b085ffa215a02::t_7572170c03ef00 612
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_9b085ffa215a02::t_cec1743b2e5314 524-569
+Tests/TkzCoreTests/ThemeTests.swift
+  s_9b085ffa215a02::t_c5a55ee7215403 44-55
+  s_9b085ffa215a02::t_a1875b67a2d76e 184-185
+  s_9b085ffa215a02::t_0d23ae5e73a018 226
+  s_9b085ffa215a02::t_619700017f1b06 131-133
+  s_9b085ffa215a02::t_e8f578c3c31a43 146-147
+  s_9b085ffa215a02::t_8f5e3d54b32d03 148-166
+  s_9b085ffa215a02::t_f0880b6129c6e1 118,120-130
+Sources/TkzApp/Sidebar/SummaryStripView.swift
+  s_9b085ffa215a02::t_1d574ade1f39b0 1,3,5-8,10-12,22,25-29,35-38,47-49,94-96,102-103,115,123-142,144-155
+  s_9b085ffa215a02::t_f90dd55e77e44f 104-105,109-114
+  s_9b085ffa215a02::t_a75d12f67f8a0b 88-89
+  s_9b085ffa215a02::t_561c5b68a250b9 116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "3ef6ab870570d34dc79e172432ef6fc3c0e95a16",
+  "prompts": {},
+  "sessions": {
+    "s_9b085ffa215a02": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8ce105b2-52b1-4906-b9c9-3975b037bfdb",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
