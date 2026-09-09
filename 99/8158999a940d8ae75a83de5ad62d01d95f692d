@@ -1,0 +1,41 @@
+Tests/ClaudeBridgeTests/ZshWrapperTests.swift
+  s_f3ea62d75bb8d3::t_2d0e06cf9ca353 244-268,271-282,284-302,304
+  s_f3ea62d75bb8d3::t_80f88ec85de366 283,303
+  s_f3ea62d75bb8d3::t_a46aeef47f3a31 269-270
+Sources/TkzApp/SessionLauncher.swift
+  s_f3ea62d75bb8d3::t_69188e6b738953 101-102,122-123,146-148,162-163,339-341,348-351
+  s_f3ea62d75bb8d3::t_650bd740d7cada 212-215,217-219,223-227
+Sources/ClaudeBridge/Resources/zsh/zlogin
+  s_f3ea62d75bb8d3::t_41f36a38ab517d 20-42
+Tests/TkzAppTests/TerminalHostTests.swift
+  s_f3ea62d75bb8d3::t_db30beafdd7826 24
+  s_f3ea62d75bb8d3::t_bf6403555e2b8c 249-250,252-257,262-269,271-274,282-284,288
+docs/perf.md
+  s_f3ea62d75bb8d3::t_1f5aa5b9eb5900 347-353
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_f3ea62d75bb8d3::t_1569cf29413674 97,253,265-267,281-282,284,331
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_f3ea62d75bb8d3::t_6d7f57c875b95a 92-95
+  s_f3ea62d75bb8d3::t_0475c6b0f9a846 85-91
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_f3ea62d75bb8d3::t_6d7f57c875b95a 204-206,506,511
+  s_f3ea62d75bb8d3::t_48aa11101eaacb 181,496
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_f3ea62d75bb8d3::t_48aa11101eaacb 69-70,79-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "998158999a940d8ae75a83de5ad62d01d95f692d",
+  "prompts": {},
+  "sessions": {
+    "s_f3ea62d75bb8d3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cc15d709-0b66-42da-b04a-a5b2d52cb9c0",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
