@@ -780,19 +780,42 @@ struct SidebarViewControllerTests {
         }
     }
 
-    @Test("The account chip is hidden on the default account and short-labelled on any other")
+    @Test("The account chip is hidden on the default account and names the account on any other")
     func accountChipDependsOnAccount() {
         let state = AppState.fixture
         let alt = state.sessions[Fixture.sessionID(0)]!
-        #expect(SidebarRowAdapter.accountLabel(for: alt, in: state) == "CA")  // "Claude (alt)"
+        // The leading `claude` is dropped: every account is `~/.claude-…`, so it says nothing and
+        // initials would make every chip start with `C`.
+        #expect(SidebarRowAdapter.accountLabel(for: alt, in: state) == "ALT")  // "Claude (alt)"
         // `~/.claude` never gets a chip: for the one plan everybody has, it would say nothing.
         let main = state.sessions[Fixture.sessionID(5)]!
         #expect(SidebarRowAdapter.accountLabel(for: main, in: state) == nil)
+        #expect(SidebarRowAdapter.accountTooltip(for: main, in: state) == nil)
 
-        // A second account the store has never heard of still gets a chip, derived from its key.
+        // A second account the store has never heard of still gets a chip, derived from its key —
+        // and a tooltip, which is all there is to say about an account nothing else knows.
         var unknown = alt
         unknown.accountKey = "claude-review"
-        #expect(SidebarRowAdapter.accountLabel(for: unknown, in: state) == "CR")
+        #expect(SidebarRowAdapter.accountLabel(for: unknown, in: state) == "REVIE")
+        #expect(SidebarRowAdapter.accountTooltip(for: unknown, in: state) == "claude-review")
+
+        // What is left is truncated, not reduced to initials: a configured "Ada Industries" has to
+        // read as ADA, not as AI.
+        #expect(SidebarRowAdapter.shortLabel("Ada Industries") == "ADA")
+        #expect(SidebarRowAdapter.shortLabel("claude-work-personal") == "WORK")
+        // …and a name with no `claude` in it at all is left alone.
+        #expect(SidebarRowAdapter.shortLabel("work") == "WORK")
+        // The bare product name is all there is to go on when that is the whole name.
+        #expect(SidebarRowAdapter.shortLabel("claude") == "CLAUD")
+        #expect(SidebarRowAdapter.shortLabel("   ") == nil)
+
+        // The tooltip is where the full name and the config dir live, since the chip holds five
+        // characters.
+        #expect(
+            SidebarRowAdapter.accountTooltip(for: alt, in: state)
+                == "Claude (alt) (claude-work) \u{2014} ~/.claude-work")
+        #expect(SidebarRowAdapter.sessionModel(alt, in: state).accountTooltip
+            == SidebarRowAdapter.accountTooltip(for: alt, in: state))
 
         // The chip colour is the documented, process-independent derivation.
         #expect(

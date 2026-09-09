@@ -156,7 +156,9 @@ struct MainWindowRestoreTests {
         #expect(item(restored, MainWindowController.ContextItemID.resume)?.isEnabled == true)
         #expect(item(restored, MainWindowController.ContextItemID.remove)?.isEnabled == true)
         #expect(item(restored, MainWindowController.ContextItemID.rename) != nil)
-        #expect(restored.items.count == 6, "Resume, Rename, separator, Remove, separator, Group color")
+        #expect(
+            restored.items.count == 7,
+            "Resume, Rename, separator, Remove, separator, Group color, Default account")
 
         // ids[0]: a live shell, still resumable (no Claude bound).
         let live = try #require(harness.controller.sidebar.contextMenu(forSession: ids[0]))
@@ -352,6 +354,88 @@ struct MainWindowRestoreTests {
         _ = clear.target?.perform(clear.action, with: clear)
         harness.store.flush()
         #expect(harness.store.state.groups[group]?.color == nil)
+    }
+
+    // MARK: Group default account
+
+    /// The submenu that makes the account a property of the group. Its whole point is that it
+    /// **persists** and does not leak into another group, so this drives it through the store.
+    @Test("Default account lists the accounts, writes the group, and survives a reopen")
+    func groupDefaultAccountMenu() throws {
+        let (harness, ids, group) = Self.makeRestoredHarness()
+        defer { harness.tearDown() }
+        harness.mutate {
+            $0.setAccount(Account(key: "claude", configDir: "~/.claude", label: "Claude"))
+            $0.setAccount(Account(key: "claude-alt", configDir: "~/.claude-alt", label: "claude-alt"))
+        }
+
+        func submenu(_ menu: NSMenu) throws -> NSMenu {
+            try #require(menu.items.first { $0.identifier == MainWindowController.ContextItemID.groupAccount }?.submenu)
+        }
+
+        let opened = try submenu(try #require(harness.controller.sidebar.contextMenu(forGroup: group)))
+        #expect(opened.items.count == 4, "two accounts, a separator, None")
+        #expect(opened.items[0].identifier == MainWindowController.ContextItemID.groupAccountRow("claude"))
+        #expect(opened.items[0].title == "Claude")
+        #expect(opened.items[1].identifier == MainWindowController.ContextItemID.groupAccountRow("claude-alt"))
+        #expect(opened.items[1].toolTip == "~/.claude-alt", "each row names the config dir it means")
+
+        // Nothing is set yet: None carries the mark and no account does.
+        #expect(harness.store.state.groups[group]?.defaultAccountKey == nil)
+        let none = try #require(opened.items.first { $0.identifier == MainWindowController.ContextItemID.groupAccountNone })
+        #expect(none.state == .on)
+        #expect(opened.items.filter { $0.state == .on }.count == 1)
+
+        // Pick one.
+        let pick = try #require(opened.items.first {
+            $0.identifier == MainWindowController.ContextItemID.groupAccountRow("claude-alt")
+        })
+        _ = pick.target?.perform(pick.action, with: pick)
+        harness.store.flush()
+        #expect(harness.store.state.groups[group]?.defaultAccountKey == "claude-alt")
+        // The ＋ menu was re-scoped in the same breath, so it does not show the old checkmark.
+        #expect(harness.controller.newSessionMenu.effectiveAccountKey == "claude-alt")
+
+        // Re-opening marks it, and only it. New sessions in the group inherit it.
+        let reopened = try submenu(try #require(harness.controller.sidebar.contextMenu(forGroup: group)))
+        let marked = reopened.items.filter { $0.state == .on }
+        #expect(marked.count == 1)
+        #expect(marked.first?.identifier == MainWindowController.ContextItemID.groupAccountRow("claude-alt"))
+        harness.mutate { _ = $0.createSession(groupID: group, cwd: NSTemporaryDirectory()) }
+        #expect(harness.store.state.sessions(in: group).last?.accountKey == "claude-alt")
+        // The rows that were already running are left alone — their pty already has its own
+        // CLAUDE_CONFIG_DIR, and re-labelling them would be a lie.
+        #expect(harness.store.state.sessions[ids[0]]?.accountKey == "claude")
+
+        // The same submenu hangs off a session row, and acts on that row's group.
+        let fromRow = try submenu(try #require(harness.controller.sidebar.contextMenu(forSession: ids[0])))
+        let clear = try #require(fromRow.items.first { $0.identifier == MainWindowController.ContextItemID.groupAccountNone })
+        _ = clear.target?.perform(clear.action, with: clear)
+        harness.store.flush()
+        #expect(harness.store.state.groups[group]?.defaultAccountKey == nil)
+    }
+
+    /// A default naming a config dir that has gone away: the group is still pointing at it, so the
+    /// menu says so instead of showing a list with nothing marked.
+    @Test("A default account that is no longer configured shows as not found")
+    func groupDefaultAccountMissing() throws {
+        let (harness, _, group) = Self.makeRestoredHarness()
+        defer { harness.tearDown() }
+        harness.mutate {
+            $0.setAccount(Account(key: "claude", configDir: "~/.claude", label: "Claude"))
+            $0.setGroupDefaultAccount(group, accountKey: "claude-gone")
+        }
+
+        let menu = try #require(harness.controller.sidebar.contextMenu(forGroup: group))
+        let submenu = try #require(
+            menu.items.first { $0.identifier == MainWindowController.ContextItemID.groupAccount }?.submenu)
+        let missing = try #require(
+            submenu.items.first { $0.identifier == MainWindowController.ContextItemID.groupAccountMissing })
+        #expect(missing.state == .on)
+        #expect(!missing.isEnabled)
+        #expect(missing.title.contains("claude-gone"))
+        #expect(missing.title.contains("not found"))
+        #expect(submenu.items.filter { $0.state == .on }.count == 1)
     }
 
     /// The same submenu on a session row — it acts on the group the session lives in.

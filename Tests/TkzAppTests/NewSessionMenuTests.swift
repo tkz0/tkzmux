@@ -98,28 +98,101 @@ struct NewSessionMenuTests {
         #expect(none.submenu?.items.first?.identifier == NewSessionMenu.ItemID.managePresets)
     }
 
-    @Test func accountSubmenuDefaultsToTheGroupsAccount() throws {
+    @Test func accountSubmenuIsTheGroupsDefault() throws {
         let menu = Self.menu(for: Self.northwind)
         #expect(menu.effectiveAccountKey == "claude-work")
         let account = try #require(Self.item(menu, NewSessionMenu.ItemID.account))
-        #expect(account.title == "Account: Claude (alt)")
+        #expect(account.title == "Default account: Claude (alt)")
         let rows = try #require(account.submenu?.items)
-        #expect(rows.map { $0.representedObject as? String } == ["claude", "claude-work"])
+        #expect(rows.compactMap { $0.representedObject as? String } == ["claude", "claude-work"])
         #expect(Self.text(rows[0]).hasPrefix("Claude   "))
         #expect(Self.text(rows[1]).hasPrefix("Claude (alt)   "))
         #expect(rows.first { $0.representedObject as? String == "claude-work" }?.state == .on)
         #expect(rows.first { $0.representedObject as? String == "claude" }?.state == .off)
-        // Each row names the config dir it means, and which one is the group's default.
+        // Each row names the config dir it means. It no longer says "group default" in words —
+        // the checkmark *is* the group default now.
         #expect(Self.text(rows[1]).contains("~/.claude-work"))
-        #expect(Self.text(rows[1]).contains("group default"))
+        #expect(!Self.text(rows[1]).contains("group default"))
 
-        // Picking one overrides the group default until the menu is re-scoped.
-        var picked: String?
-        menu.onSelectAccount = { picked = $0 }
-        menu.selectAccount("claude")
-        #expect(picked == "claude")
+        // Picking one reports the group it belongs to. The menu does not move its own checkmark:
+        // the store is the source of truth, and the assembler re-configures it.
+        var picked: [(GroupID, String?)] = []
+        menu.onSelectAccount = { picked.append(($0, $1)) }
+        #expect(menu.performItem(NewSessionMenu.ItemID.accountRow("claude")))
+        #expect(picked.count == 1)
+        #expect(picked.first?.0 == Self.northwind)
+        #expect(picked.first?.1 == "claude")
+        #expect(menu.effectiveAccountKey == "claude-work")
+    }
+
+    /// The regression this ticket exists for: the account picked in one group used to be a sticky
+    /// per-menu override that then won in *every* other group.
+    @Test func theAccountPickedInOneGroupDoesNotFollowTheUserIntoAnother() throws {
+        var state = AppState.fixture
+        let menu = NewSessionMenu()
+        // Stand in for `MainWindowController.setGroupDefaultAccount`: write the group, re-scope.
+        menu.onSelectAccount = { groupID, key in
+            state.setGroupDefaultAccount(groupID, accountKey: key)
+            menu.configure(state: state, groupID: groupID)
+        }
+
+        menu.configure(state: state, groupID: Self.toolbox)
         #expect(menu.effectiveAccountKey == "claude")
-        #expect(menu.worktreeLaunch()?.accountKey == "claude")
+        #expect(menu.performItem(NewSessionMenu.ItemID.accountRow("claude-work")))
+        #expect(state.groups[Self.toolbox]?.defaultAccountKey == "claude-work")
+        #expect(menu.worktreeLaunch()?.accountKey == "claude-work")
+
+        // Northwind is untouched, and scoping the same menu object to it says so.
+        menu.configure(state: state, groupID: Self.northwind)
+        #expect(menu.effectiveAccountKey == "claude-work")
+        menu.configure(state: state, groupID: Self.scheduled)
+        #expect(menu.effectiveAccountKey == "claude")
+    }
+
+    @Test func noneClearsTheGroupsDefault() throws {
+        let menu = Self.menu(for: Self.northwind)
+        var picked: [(GroupID, String?)] = []
+        menu.onSelectAccount = { picked.append(($0, $1)) }
+        let none = try #require(Self.item(menu, NewSessionMenu.ItemID.accountNone))
+        // The row says what clearing it means, rather than leaving the user to guess.
+        #expect(Self.text(none).contains("CLAUDE_CONFIG_DIR left unset"))
+        #expect(none.state == .off)
+        #expect(menu.performItem(NewSessionMenu.ItemID.accountNone))
+        #expect(picked.count == 1)
+        #expect(picked.first?.0 == Self.northwind)
+        #expect(picked.first?.1 == nil)
+
+        // A group with no default checks None and nothing else, and leaves CLAUDE_CONFIG_DIR to
+        // the user's shell (`Launch.accountKey == nil`).
+        var cleared = AppState.fixture
+        cleared.setGroupDefaultAccount(Self.northwind, accountKey: nil)
+        menu.configure(state: cleared, groupID: Self.northwind)
+        #expect(menu.effectiveAccountKey == nil)
+        #expect(menu.worktreeLaunch()?.accountKey == nil)
+        let parent = try #require(Self.item(menu, NewSessionMenu.ItemID.account))
+        #expect(parent.title == "Default account: none")
+        let rows = try #require(parent.submenu?.items)
+        #expect(rows.filter { $0.state == .on }.map(\.identifier) == [NewSessionMenu.ItemID.accountNone])
+    }
+
+    /// A default pointing at a config dir that has been deleted: the group really is still pointing
+    /// at it, so say so rather than showing a list with nothing marked.
+    @Test func aDefaultAccountThatNoLongerExistsStaysVisible() throws {
+        var state = AppState.fixture
+        state.setGroupDefaultAccount(Self.toolbox, accountKey: "claude-gone")
+        let menu = NewSessionMenu()
+        menu.configure(state: state, groupID: Self.toolbox)
+
+        let parent = try #require(Self.item(menu, NewSessionMenu.ItemID.account))
+        #expect(parent.title == "Default account: claude-gone")
+        let rows = try #require(parent.submenu?.items)
+        let missing = try #require(rows.first { $0.identifier == NewSessionMenu.ItemID.accountMissing })
+        #expect(missing.state == .on)
+        #expect(!missing.isEnabled)
+        #expect(Self.text(missing).contains("not found"))
+        #expect(rows.filter { $0.state == .on }.count == 1)
+        // And the launch still names it — a resume must stay on the account it was started with.
+        #expect(menu.worktreeLaunch()?.accountKey == "claude-gone")
     }
 
     @Test func contentFollowsTheSelectedGroup() throws {
@@ -135,7 +208,7 @@ struct NewSessionMenuTests {
         #expect(menu.worktreeLaunch()?.cwd == "~/dev/toolbox")
         #expect(menu.effectiveAccountKey == "claude")
         let account = try #require(Self.item(menu, NewSessionMenu.ItemID.account))
-        #expect(account.title == "Account: Claude")
+        #expect(account.title == "Default account: Claude")
 
         // No group at all is still an explanation, not an empty menu.
         menu.configure(state: Self.state, groupID: nil)

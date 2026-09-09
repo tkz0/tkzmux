@@ -2,7 +2,8 @@
 //
 // `ClaudeBridge` ships two services that each know one thing: `HookServer` (frames from
 // `tkzmux-hook`) and `ClaudeSessionWatcher` (descriptor files). Neither knows what a `Session` is.
-// (`UsageReader` and the per-session sidecar reader are M3.5 / TKZ-25, still in the backlog.)
+// (`UsageReader` and the per-session sidecar reader are M3.5 / TKZ-25, still in the backlog; the
+// account-label half of TKZ-25 is here, in `accountLabels(home:fileManager:)`.)
 // This type is the one place where their facts are attributed to rows and posted into the store,
 // and it holds the two pieces of state that belong to neither the services nor `AppState`:
 //
@@ -96,11 +97,14 @@ public final class ClaudeIntegration {
         // looks like a config dir, plus whatever the store already knows, plus the account of every
         // persisted row (a resume must find its descriptor in *that* account's `sessions/`).
         let discovered = Self.discoverAccounts(home: home)
+        let labels = Self.accountLabels(home: home)
         var accounts = store.state.accounts
         for account in discovered where accounts[account.key] == nil { accounts[account.key] = account }
         for session in store.state.sessions.values where accounts[session.accountKey] == nil {
             if let dir = Account.configDirectory(forKey: session.accountKey, home: home) {
-                accounts[session.accountKey] = Account(key: session.accountKey, configDir: dir, label: session.accountKey)
+                accounts[session.accountKey] = Account(
+                    key: session.accountKey, configDir: dir,
+                    label: labels[session.accountKey] ?? session.accountKey)
             }
         }
         var configDirs: [String] = []
@@ -140,12 +144,16 @@ public final class ClaudeIntegration {
     /// `~/.claude` (always) and every `~/.claude-*` directory that carries `settings.json`,
     /// `sessions/` or `.claude.json` — the discovery rule sketched for M3.5, brought forward
     /// because a second account that is never watched is a second account whose sessions never
-    /// get a status, a title or a badge. Labels are the keys until the label overlay (TKZ-25)
-    /// exists; nothing here names a particular account.
+    /// get a status, a title or a badge. Nothing here names a particular account: the names come
+    /// from ``accountLabels(home:fileManager:)``, and a key with no entry there is its own label.
     public static func discoverAccounts(home: String, fileManager: FileManager = .default) -> [Account] {
+        let labels = accountLabels(home: home, fileManager: fileManager)
         var out: [Account] = []
         let primary = (home as NSString).appendingPathComponent(".claude")
-        out.append(Account(key: Account.defaultKey, configDir: primary, label: Account.defaultKey))
+        out.append(
+            Account(
+                key: Account.defaultKey, configDir: primary,
+                label: labels[Account.defaultKey] ?? Account.defaultKey))
         let entries = (try? fileManager.contentsOfDirectory(atPath: home)) ?? []
         for name in entries.sorted() where name.hasPrefix(".claude-") {
             let path = (home as NSString).appendingPathComponent(name)
@@ -154,7 +162,38 @@ public final class ClaudeIntegration {
             let markers = ["settings.json", "sessions", ".claude.json"]
             guard markers.contains(where: { fileManager.fileExists(atPath: (path as NSString).appendingPathComponent($0)) }) else { continue }
             let key = Account.key(forConfigDirectory: path)
-            out.append(Account(key: key, configDir: path, label: key))
+            out.append(Account(key: key, configDir: path, label: labels[key] ?? key))
+        }
+        return out
+    }
+
+    /// The account-label overlay: `~/.claude/dash-accounts.json`, shape
+    /// `{"labels": {"<account key>": "<display name>"}}`.
+    ///
+    /// This is the only place a **human-written** account name comes from, and CLAUDE.md is
+    /// explicit that names belong in config rather than in code — so the file is read and no name
+    /// is ever spelled out here. It is read from the *primary* config dir, not per-account: the
+    /// point is one table naming all of them, and an account cannot name itself before it is
+    /// discovered.
+    ///
+    /// Written by another program, so decoding is forgiving in the same way the descriptor is: a
+    /// missing file, a torn write or a non-string value yields no overlay at all, and every key
+    /// then falls back to being its own label. Empty and whitespace-only names are dropped —
+    /// a blank chip would be worse than `ALT`.
+    public static func accountLabels(
+        home: String, fileManager: FileManager = .default
+    ) -> [String: String] {
+        let path = (home as NSString)
+            .appendingPathComponent(".claude/dash-accounts.json")
+        guard let data = fileManager.contents(atPath: path),
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let labels = root["labels"] as? [String: Any]
+        else { return [:] }
+        var out: [String: String] = [:]
+        for (key, value) in labels {
+            guard let name = value as? String else { continue }
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { out[key] = trimmed }
         }
         return out
     }
@@ -171,9 +210,13 @@ public final class ClaudeIntegration {
         let key = Account.key(forConfigDirectory: standardized)
         guard !key.isEmpty else { return }
         let known = store.state.accounts[key]
+        // Only a *new* account needs a name looked up. This method runs on every launch frame and
+        // every descriptor update — several times a minute per session — and `accountLabels` reads
+        // and parses a file, so it must not be on that path for an account we already know.
+        let label = known == nil ? (Self.accountLabels(home: home)[key] ?? key) : key
         store.update { state in
             if known == nil {
-                state.setAccount(Account(key: key, configDir: standardized, label: key))
+                state.setAccount(Account(key: key, configDir: standardized, label: label))
             }
             state.setSessionAccount(id, key: key)
         }

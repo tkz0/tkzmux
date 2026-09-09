@@ -43,7 +43,9 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         /// The directory to start in, **verbatim from the model** — tilde expansion is the real
         /// launcher's job, not the menu's.
         public let cwd: String
-        /// `CLAUDE_CONFIG_DIR` selection: the preset's account, else the menu's, else the group's.
+        /// `CLAUDE_CONFIG_DIR` selection: the preset's own account, else the group's default.
+        /// `nil` — a group with no default — leaves `CLAUDE_CONFIG_DIR` unset, so the user's shell
+        /// decides; see ``effectiveAccountKey``.
         public let accountKey: String?
         public let groupID: GroupID
         /// The preset behind this launch, when there is one.
@@ -96,6 +98,13 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         public static let presetRow = NSUserInterfaceItemIdentifier("tkzmux.newSession.preset")
         public static let managePresets = NSUserInterfaceItemIdentifier("tkzmux.newSession.managePresets")
         public static let accountRow = NSUserInterfaceItemIdentifier("tkzmux.newSession.accountRow")
+        /// One account row, addressed by `Account.key`.
+        public static func accountRow(_ key: String) -> NSUserInterfaceItemIdentifier {
+            NSUserInterfaceItemIdentifier(accountRow.rawValue + "." + key)
+        }
+        public static let accountNone = NSUserInterfaceItemIdentifier("tkzmux.newSession.accountNone")
+        /// The group's default names an account that is not in `state.accounts` any more.
+        public static let accountMissing = NSUserInterfaceItemIdentifier("tkzmux.newSession.accountMissing")
     }
 
     /// The row with this identifier, in the menu or in one of its submenus.
@@ -124,16 +133,14 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     public var accounts: [String: Account] = [:]
     public var theme: Theme
 
-    /// The account the user picked in the submenu this session. `nil` = follow the group's default,
-    /// which is what makes the checkmark move when the selected group changes.
-    public private(set) var selectedAccountKey: String?
-
     /// Where a resolved launch goes. Unset = ``logStub`` (this ticket's deliverable).
     public var onLaunch: ((Launch) -> Void)?
     /// “In another repo…” — the assembler opens the repo picker / `NSOpenPanel`.
     public var onChooseAnotherRepo: (() -> Void)?
-    /// The Account submenu changed. The store update is the assembler's call.
-    public var onSelectAccount: ((String) -> Void)?
+    /// The Account submenu picked a **default for one group** — `nil` clears it. The store update
+    /// is the assembler's call, and it must re-``configure(state:groupID:)`` afterwards: ``group``
+    /// is a value copy, so the next `menuNeedsUpdate` would otherwise rebuild from the old one.
+    public var onSelectAccount: ((GroupID, String?) -> Void)?
     /// "Manage presets…" — the assembler opens the presets sheet (M5.2).
     public var onManagePresets: (() -> Void)?
 
@@ -158,7 +165,6 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         group = groupID.flatMap { state.groups[$0] }
         presets = state.presets
         accounts = state.accounts
-        if let key = selectedAccountKey, accounts[key] == nil { selectedAccountKey = nil }
         rebuild()
     }
 
@@ -167,15 +173,15 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         configure(state: state, groupID: state.selectedSession?.groupID ?? state.orderedGroups.first?.id)
     }
 
-    /// The account a launch will use when the preset does not override it.
+    /// The account a launch will use when the preset does not override it: **the group's default**,
+    /// and nothing else. There is deliberately no per-menu override — one used to live here, and
+    /// because it was never cleared it followed the user into every other group's menu.
+    ///
+    /// `nil` (a group with no default) stays `nil` rather than collapsing to `Account.defaultKey`:
+    /// `SessionLauncher.environment` leaves `CLAUDE_CONFIG_DIR` unset for a `nil` key, which is how
+    /// a group opts out and lets the user's shell rc pick the account.
     public var effectiveAccountKey: String? {
-        selectedAccountKey ?? group?.defaultAccountKey
-    }
-
-    public func selectAccount(_ key: String?) {
-        selectedAccountKey = key
-        rebuild()
-        if let key { onSelectAccount?(key) }
+        group?.defaultAccountKey
     }
 
     // MARK: Menu construction
@@ -283,10 +289,20 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         return item
     }
 
+    /// "Default account ▸": which account **every new session in this group** gets.
+    ///
+    /// Picking a row writes `Group.defaultAccountKey` through ``onSelectAccount``, so it persists to
+    /// `state.json` and stays with the group. The checkmark therefore *is* the group default and no
+    /// row has to say so in words.
+    ///
+    /// Changing it affects new sessions only: a running one already has `CLAUDE_CONFIG_DIR` in its
+    /// child environment, and its `Session.accountKey` follows what the process actually reports
+    /// (`ClaudeIntegration.learnAccount`), not what was asked for.
     private func accountItem(group: Group) -> NSMenuItem {
-        let current = effectiveAccountKey
-        let label = current.flatMap { accounts[$0]?.label ?? $0 } ?? "Default"
-        let item = NSMenuItem(title: "Account: \(label)", action: nil, keyEquivalent: "")
+        let current = group.defaultAccountKey
+        let known = current.flatMap { accounts[$0] }
+        let label = current.map { known?.label ?? $0 } ?? "none"
+        let item = NSMenuItem(title: "Default account: \(label)", action: nil, keyEquivalent: "")
         item.identifier = ItemID.account
         let submenu = NSMenu()
         submenu.autoenablesItems = false
@@ -296,17 +312,36 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
                 title: account?.label ?? key, action: #selector(selectAccountItem(_:)), keyEquivalent: "")
             row.target = self
             row.representedObject = key
-            row.identifier = NSUserInterfaceItemIdentifier(ItemID.accountRow.rawValue + "." + key)
+            row.identifier = ItemID.accountRow(key)
             row.state = key == current ? .on : .off
-            // Name the target: which config dir this account means, and which one the group defaults to.
-            var detail = account?.configDir ?? key
-            if key == group.defaultAccountKey { detail += " \u{2014} group default" }
-            row.attributedTitle = attributed(title: row.title, hint: nil, detail: detail, enabled: true)
+            // Name the target: which config dir this account means.
+            row.attributedTitle = attributed(
+                title: row.title, hint: nil, detail: account?.configDir ?? key, enabled: true)
             submenu.addItem(row)
         }
         if accounts.isEmpty {
             submenu.addItem(disabled(title: "No accounts configured"))
         }
+        // A default whose config dir has gone away stays visible and checked. Leaving every row
+        // unchecked would read as "no default", when the group really is still pointing at that
+        // key — and only the user can decide where to point it instead.
+        if let current, known == nil {
+            let missing = disabled(title: current)
+            missing.state = .on
+            missing.identifier = ItemID.accountMissing
+            missing.attributedTitle = attributed(
+                title: current, hint: nil, detail: "not found", enabled: false)
+            submenu.addItem(missing)
+        }
+        submenu.addItem(.separator())
+        let none = NSMenuItem(title: "None", action: #selector(selectNoAccountItem), keyEquivalent: "")
+        none.target = self
+        none.identifier = ItemID.accountNone
+        none.state = current == nil ? .on : .off
+        none.attributedTitle = attributed(
+            title: "None", hint: nil,
+            detail: "inherit \u{2014} CLAUDE_CONFIG_DIR left unset", enabled: true)
+        submenu.addItem(none)
         item.submenu = submenu
         return item
     }
@@ -392,7 +427,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             accountKey: effectiveAccountKey, groupID: group.id)
     }
 
-    /// Account precedence: the preset's own key, else the menu's selection, else the group default.
+    /// Account precedence: the preset's own key, else the group's default.
     /// `nil` when the menu is not scoped to a group — a launch must always name the group it lands in.
     public func launch(for preset: Preset, repoRoot: String? = nil) -> Launch? {
         guard let group else { return nil }
@@ -458,7 +493,13 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     }
 
     @objc private func selectAccountItem(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        selectAccount(key)
+        guard let key = sender.representedObject as? String, let group else { return }
+        onSelectAccount?(group.id, key)
+    }
+
+    /// "None": clear the group's default, so `CLAUDE_CONFIG_DIR` is left unset again.
+    @objc private func selectNoAccountItem() {
+        guard let group else { return }
+        onSelectAccount?(group.id, nil)
     }
 }

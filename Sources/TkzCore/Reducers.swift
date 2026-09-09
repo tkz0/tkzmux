@@ -373,8 +373,25 @@ extension AppState {
         accounts[account.key] = account
     }
 
+    /// Publishes a usage snapshot, and takes the plan and the *fallback* name it carries.
+    ///
+    /// `dash-usage-<key>.json` names its account and plan, which is worth having: an account nobody
+    /// has named reads better as its usage file's name than as `claude-alt`. But that name is
+    /// **generated**, so it must not overwrite one a human wrote in `dash-accounts.json` — hence
+    /// the `label == key` guard, which is precisely "this account still has no name of its own"
+    /// (`ClaudeIntegration.accountLabels` is the configured source).
+    ///
+    /// Relabels an account the state already knows; never invents one. Discovery is
+    /// `ClaudeIntegration`'s job, and a usage file for a config dir that is not there is not
+    /// evidence that it is.
     public mutating func setUsage(_ snapshot: UsageSnapshot) {
         usage[snapshot.accountKey] = snapshot
+        guard var account = accounts[snapshot.accountKey] else { return }
+        if account.label == account.key, let label = snapshot.label, !label.isEmpty {
+            account.label = label
+        }
+        if let plan = snapshot.plan, !plan.isEmpty { account.plan = plan }
+        accounts[snapshot.accountKey] = account
     }
 
     /// Drops an account's quota entirely: its sidecar was deleted, aged into a ghost, or every

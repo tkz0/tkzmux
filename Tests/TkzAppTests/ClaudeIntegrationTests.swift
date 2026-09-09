@@ -156,7 +156,7 @@ struct ClaudeIntegrationTests {
         let discovered = ClaudeIntegration.discoverAccounts(home: home.path)
         #expect(discovered.map(\.key) == ["claude", "claude-home", "claude-work"])
         #expect(discovered.first?.configDir == home.path + "/.claude")
-        #expect(discovered.map(\.label) == discovered.map(\.key), "labels are the keys until the overlay exists")
+        #expect(discovered.map(\.label) == discovered.map(\.key), "no overlay file: every key is its own label")
 
         let h = Self.makeHarness(home: home.path)
         // A persisted row on an account the file system does not show is still watched.
@@ -168,6 +168,54 @@ struct ClaudeIntegrationTests {
             home.path + "/.claude-elsewhere",
         ])
         #expect(h.store.state.accounts["claude-elsewhere"]?.configDir == home.path + "/.claude-elsewhere")
+    }
+
+    /// `~/.claude/dash-accounts.json` is where an account's *name* comes from. Names must never be
+    /// spelled out in code (CLAUDE.md), so this is the file that makes the chip read `WORK` instead
+    /// of `CW` — and the file is written by another program, so a bad one must cost nothing.
+    @Test("accounts take their names from the dash-accounts.json overlay, forgivingly")
+    func accountLabelOverlay() throws {
+        let fm = FileManager.default
+        let home = URL(filePath: NSTemporaryDirectory())
+            .appending(path: "tkzci-labels-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? fm.removeItem(at: home) }
+        try fm.createDirectory(at: home.appending(path: ".claude/sessions"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: home.appending(path: ".claude-work/sessions"), withIntermediateDirectories: true)
+        let overlay = home.appending(path: ".claude/dash-accounts.json")
+
+        // No file at all: every key is its own label.
+        #expect(ClaudeIntegration.accountLabels(home: home.path).isEmpty)
+
+        try Data(#"{"labels": {"claude": "Private", "claude-work": "Day job", "blank": "  "}}"#.utf8)
+            .write(to: overlay)
+        let labels = ClaudeIntegration.accountLabels(home: home.path)
+        #expect(labels == ["claude": "Private", "claude-work": "Day job"], "a blank name is no name")
+
+        let discovered = ClaudeIntegration.discoverAccounts(home: home.path)
+        #expect(discovered.map(\.key) == ["claude", "claude-work"])
+        #expect(discovered.map(\.label) == ["Private", "Day job"])
+        // Which is the whole point: the chip stops being an initial.
+        var session = Session(groupID: .generate(), cwd: "~", accountKey: "claude-work")
+        var state = AppState()
+        for account in discovered { state.setAccount(account) }
+        state.sessions[session.id] = session
+        #expect(SidebarRowAdapter.accountLabel(for: session, in: state) == "DAY")
+        #expect(
+            SidebarRowAdapter.accountTooltip(for: session, in: state)
+                == "Day job (claude-work) \u{2014} \(home.path)/.claude-work")
+
+        // An account the overlay does not mention keeps its key, and a key with no overlay entry
+        // still gets a chip from the key itself.
+        session.accountKey = "claude-unnamed"
+        #expect(SidebarRowAdapter.accountLabel(for: session, in: state) == "UNNAM")
+
+        // A torn write, a wrong shape and a wrong type are each "no overlay", never a crash.
+        for bad in [#"{"labels": {"claude": "#, #"{"labels": [1, 2]}"#, #"{}"#, #"not json"#] {
+            try Data(bad.utf8).write(to: overlay)
+            #expect(ClaudeIntegration.accountLabels(home: home.path).isEmpty)
+        }
+        try Data(#"{"labels": {"claude": 7, "claude-work": "Day job"}}"#.utf8).write(to: overlay)
+        #expect(ClaudeIntegration.accountLabels(home: home.path) == ["claude-work": "Day job"])
     }
 
     @Test("a launch frame or descriptor from an unknown config dir registers the account and corrects the row")
@@ -193,7 +241,7 @@ struct ClaudeIntegrationTests {
         #expect(h.integration.watchedConfigDirs.contains("/tmp/nowhere/.claude-second"))
         // A row on a non-default account gets a chip; a row on `~/.claude` never does.
         let chip = SidebarRowAdapter.accountLabel(for: h.store.state.sessions[h.session]!, in: h.store.state)
-        #expect(chip == "CS")
+        #expect(chip == "SECON")
     }
 
     @Test("a restored row (no live state) is never an attribution target")
