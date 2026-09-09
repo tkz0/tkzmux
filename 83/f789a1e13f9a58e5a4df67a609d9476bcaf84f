@@ -15,6 +15,7 @@ Sources/TkzApp/MainWindowController.swift
   s_f25fc60f32c7bb::t_783725807e0d3d 632-634,1556,1590,1665-1743,1760-1769
   s_f25fc60f32c7bb::t_694c2673d5890f 1270-1274,1280-1282
   s_f25fc60f32c7bb::t_bc60c44d6a3b33 1551-1553
+  s_a25edcde2318f7::t_cf00dabe63a073 1560-1561
 Sources/TkzCore/Reducers.swift
   s_f25fc60f32c7bb::t_58b88587225da4 376,378-382,390-392
   s_f25fc60f32c7bb::t_3d8a056f8e6fc1 377,383-386,389,393-394
@@ -54,6 +55,14 @@ Tests/TkzAppTests/GitIntegrationTests.swift
   "base_commit_sha": "83f789a1e13f9a58e5a4df67a609d9476bcaf84f",
   "prompts": {},
   "sessions": {
+    "s_a25edcde2318f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f72d389-3f97-4a53-9ab6-d679a69a2868",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    },
     "s_f25fc60f32c7bb": {
       "agent_id": {
         "tool": "claude",
