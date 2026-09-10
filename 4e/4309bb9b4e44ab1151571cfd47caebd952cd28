@@ -1,0 +1,33 @@
+docs/release.md
+  s_4604a36f81c834::t_68a5ab19a27653 394-395
+  s_4604a36f81c834::t_75ea5a67fe455c 34-38,45,51-53
+  s_4604a36f81c834::t_da7710f8c58677 335-342,345-348,353-356,359,364-386
+  s_4604a36f81c834::t_22371f34710330 442-444
+  s_4604a36f81c834::t_a5dde73fba95d9 139-140
+  s_4604a36f81c834::t_a020cbb971fafd 39-41,44
+.github/workflows/release.yml
+  s_4604a36f81c834::t_8eb7bc668dc9bc 90-93
+  s_4604a36f81c834::t_51c37a4237f3f1 184-187,197
+  s_4604a36f81c834::t_1c46fc52775edf 130-135,140-144,148
+  s_4604a36f81c834::t_9fc5f46ed3b81a 262
+  s_4604a36f81c834::t_4b8409a8cba9bf 21
+  s_4604a36f81c834::t_4ac76d84013ce5 22-24
+  s_4604a36f81c834::t_ecb9c0f8260c2b 188-196
+  s_4604a36f81c834::t_b2dc13106bb2b6 206-208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4e4309bb9b4e44ab1151571cfd47caebd952cd28",
+  "prompts": {},
+  "sessions": {
+    "s_4604a36f81c834": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa9699a4-480d-4da0-b7f3-1605c4cdc58a",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
