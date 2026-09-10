@@ -162,6 +162,26 @@ if ((${#shaders[@]})); then
 fi
 shopt -u nullglob
 
+# App icon (TKZ-49). Resources/AppIcon.icon is an Icon Composer document (Claude Design artboard
+# 3a; it opens in /Applications/Xcode.app/Contents/Applications/Icon Composer.app). actool compiles
+# it into Assets.car, which macOS 26 renders as a Liquid Glass icon — a legacy .icns would be put
+# on Tahoe's gray "non-conforming icon" tile instead. actool also emits a flat AppIcon.icns
+# (pre-rendered, 16–256 px) that CFBundleIconFile points at. Both Info.plist keys are the .icon
+# file stem — that is what actool's own partial plist asks for — so the names must match. Like
+# the shader step this needs Xcode (actool ships with Xcode itself, no extra component), and
+# like everything else in Resources it has to land BEFORE codesign.
+echo "==> compiling Resources/AppIcon.icon"
+rm -rf build/icon && mkdir -p build/icon
+xcrun actool Resources/AppIcon.icon --compile build/icon \
+  --output-format human-readable-text --notices --warnings --errors \
+  --output-partial-info-plist build/icon/partial.plist \
+  --app-icon AppIcon --include-all-app-icons \
+  --enable-on-demand-resources NO --development-region en \
+  --target-device mac --minimum-deployment-target 26.0 --platform macosx
+cp build/icon/Assets.car "$CONTENTS/Resources/Assets.car"
+cp build/icon/AppIcon.icns "$CONTENTS/Resources/AppIcon.icns"
+rm -rf build/icon
+
 # Signing (TKZ-38). Two rules that are easy to get wrong:
 #
 # 1. INSIDE-OUT, never `--deep`. Contents/MacOS/tkzmux-hook is a second Mach-O inside the
@@ -191,6 +211,13 @@ codesign -dv "$APP" 2>&1 | grep -E '^(Identifier|Signature|TeamIdentifier)=' || 
 echo "==> verifying"
 fail=0
 check() { if eval "$2" >/dev/null 2>&1; then echo "    ok   $1"; else echo "    FAIL $1"; fail=1; fi; }
+# `assetutil --info` prints a JSON array with one record per rendition; the app icon is the one
+# named AppIcon. Captured and string-matched, not piped into `grep -q` (SIGPIPE, see below).
+assets_car_lists_appicon() {
+  local out
+  out="$(assetutil --info "$1" 2>&1)" || return 1
+  [[ "$out" == *'"Name" : "AppIcon"'* ]]
+}
 check "codesign --verify --deep --strict"   "codesign --verify --deep --strict '$APP'"
 # The bundle check above passes even when the helper is unsigned (it is sealed as a resource);
 # notarization would not. Verify the nested Mach-O in its own right.
@@ -211,6 +238,13 @@ check "4 dereferenced .ttf + OFL.txt in Resources/Fonts" \
 check "terminfo/78/xterm-ghostty resolves" \
   "TERMINFO='$CONTENTS/Resources/terminfo' infocmp xterm-ghostty"
 check "default.metallib present"           "[[ -s '$CONTENTS/Resources/default.metallib' ]]"
+check "Assets.car present"                 "[[ -s '$CONTENTS/Resources/Assets.car' ]]"
+check "Assets.car lists AppIcon"           "assets_car_lists_appicon '$CONTENTS/Resources/Assets.car'"
+check "AppIcon.icns present"               "[[ -s '$CONTENTS/Resources/AppIcon.icns' ]]"
+check "CFBundleIconName = AppIcon" \
+  "[[ \"\$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' '$CONTENTS/Info.plist')\" == AppIcon ]]"
+check "CFBundleIconFile = AppIcon" \
+  "[[ \"\$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' '$CONTENTS/Info.plist')\" == AppIcon ]]"
 check "no unsealed contents at app root"   "[[ \$(ls -A '$APP' | grep -cv '^Contents\$') -eq 0 ]]"
 # The two signed-build predicates below capture codesign's output and match it in the shell
 # rather than piping into `grep -q`. That is not a style preference: `grep -q` exits at its first

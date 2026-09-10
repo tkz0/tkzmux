@@ -82,6 +82,11 @@ xcodebuild -downloadComponent MetalToolchain
 (`swift run tkzmux` does not need it: outside the bundle the renderer falls back to compiling the
 shader source at launch, which only costs a slower start.)
 
+`make app` also compiles the app icon, `Resources/AppIcon.icon`, into `Assets.car` with Xcode's
+`actool` (part of Xcode itself, no extra download). The `.icon` is an Icon Composer document —
+open it in Icon Composer, which ships inside Xcode.app under `Contents/Applications`, to tweak the
+layers or the glass settings.
+
 Signing is one variable — `SIGN_IDENTITY="Developer ID Application: …" make app`. A default build is
 ad-hoc signed, which `codesign -dv build/tkzmux.app` reports as `Signature=adhoc`.
 

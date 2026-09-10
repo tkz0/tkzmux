@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Claude spark from artboard 3a: six arms centred at design (356,172) -> canvas (696,358),
+       same 824/448 rescale as prompt.svg. -->
+  <g transform="translate(696 358)" fill="none" stroke="#e28666" stroke-width="48" stroke-linecap="round">
+    <line x1="0" y1="-107" x2="0" y2="107"/>
+    <line x1="-92" y1="-53" x2="92" y2="53"/>
+    <line x1="-92" y1="53" x2="92" y2="-53"/>
+  </g>
+</svg>
