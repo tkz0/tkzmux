@@ -1,0 +1,40 @@
+Tests/TkzAppTests/StatusBarInteractionTests.swift
+  s_579dab237716d6::t_8752785df800af 65-67,72-75,77,80-91,94-95,97,102-103,105,107-133,200-217
+  s_579dab237716d6::t_3934d8adc1b794 218
+Sources/TkzCore/Theme.swift
+  s_579dab237716d6::t_9603eded00e55d 61-68,210-211,267-268,328-329,389-390,452-453
+Sources/GitStatus/PRLookup.swift
+  s_579dab237716d6::t_95249a21b4e8e4 63-67,73,107,109
+Sources/TkzApp/StatusBar/StatusBarView.swift
+  s_579dab237716d6::t_24c6457c4112f6 681-689
+  s_579dab237716d6::t_6ef4b01947ca0e 4-5,37-44,54-55,63,74,77-82,136-138,341-344,348,350-357,359-368,371,378-380,385-388,609-610,614-630,678-680,690-696
+Tests/GitStatusTests/PRLookupTests.swift
+  s_579dab237716d6::t_8752785df800af 125-173
+Tests/TkzAppTests/GitIntegrationTests.swift
+  s_579dab237716d6::t_8752785df800af 134-176
+README.md
+  s_579dab237716d6::t_f8b59187d6a1ec 107-110,121,220-223
+Sources/TkzApp/GitIntegration.swift
+  s_579dab237716d6::t_95249a21b4e8e4 16,42-46,130-132,227-232,234-235,241,250-270,274,276-281
+  s_579dab237716d6::t_d29d95a5094d28 211,213-216,221-222
+  s_579dab237716d6::t_9b15edc967f518 217-220
+  s_579dab237716d6::t_790f9fc0cf23ff 19-21
+Tests/TkzCoreTests/ThemeTests.swift
+  s_579dab237716d6::t_66a0e1f8c805a5 54-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3f87be89b8c68fbc0bf4fc20f97c923b35e9ebf5",
+  "prompts": {},
+  "sessions": {
+    "s_579dab237716d6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3ff59562-7fe7-4991-baff-d96787f5b08b",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
