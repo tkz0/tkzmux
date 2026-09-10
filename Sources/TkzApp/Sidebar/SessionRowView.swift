@@ -68,10 +68,6 @@ public final class SessionRowView: NSTableCellView {
     private lazy var memoryBadge = SidebarBadgeLayer(font: badgeFont)
     private lazy var needsYouBadge = SidebarBadgeLayer(font: badgeFont)
     private lazy var accountChip = SidebarBadgeLayer(font: badgeFont)
-    /// The terminal count, shown only when a row has more than one (TKZ-36). On the *title* line,
-    /// left of NEEDS YOU: the detail line already gives its right-hand side to the account chip,
-    /// and a row with several panes is usually one whose branch name is worth reading.
-    private lazy var terminalsBadge = SidebarBadgeLayer(font: badgeFont)
 
     /// The status dot. Public so the controller can park its pulse; `setOccluded(_:)` below is the
     /// preferred entry point.
@@ -113,7 +109,6 @@ public final class SessionRowView: NSTableCellView {
     private var memoryBadgeWidth: CGFloat = 0
     private var needsYouBadgeWidth: CGFloat = 0
     private var accountChipWidth: CGFloat = 0
-    private var terminalsBadgeWidth: CGFloat = 0
     /// What ``refreshAccountTooltip()`` last registered, so it can skip the churn.
     private var registeredTooltipRect: NSRect?
     private var registeredTooltipText: String?
@@ -133,7 +128,6 @@ public final class SessionRowView: NSTableCellView {
         root.addSublayer(memoryBadge)
         root.addSublayer(needsYouBadge)
         root.addSublayer(accountChip)
-        root.addSublayer(terminalsBadge)
         root.addSublayer(statusDot)
         root.addSublayer(closeLayer)
         apply()
@@ -192,7 +186,6 @@ public final class SessionRowView: NSTableCellView {
         memoryBadge.isHidden = true
         needsYouBadge.isHidden = true
         accountChip.isHidden = true
-        terminalsBadge.isHidden = true
         removeAllToolTips()
         registeredTooltipRect = nil
         registeredTooltipText = nil
@@ -332,21 +325,6 @@ public final class SessionRowView: NSTableCellView {
             accountChipWidth = 0
         }
 
-        // One terminal is the norm and says nothing; the badge appears only when a row holds
-        // more than one. Same recipe as the account chip: muted foreground on 18 % of itself.
-        if model.terminalCount > 1 {
-            let tint = theme.foregroundMuted
-            terminalsBadge.isHidden = false
-            terminalsBadgeWidth = terminalsBadge.configure(
-                text: "\(model.terminalCount)",
-                foreground: tint,
-                background: RGB(r: tint.r, g: tint.g, b: tint.b, a: 0.18)
-            )
-        } else {
-            terminalsBadge.isHidden = true
-            terminalsBadgeWidth = 0
-        }
-
         statusDot.configure(status: model.status, theme: theme)
     }
 
@@ -361,7 +339,6 @@ public final class SessionRowView: NSTableCellView {
     var memoryBadgeLayer: CALayer { memoryBadge }
     var needsYouBadgeLayer: CALayer { needsYouBadge }
     var accountChipLayer: CALayer { accountChip }
-    var terminalsBadgeLayer: CALayer { terminalsBadge }
     var selectionBackgroundLayer: CALayer { selectionLayer }
     var colourEdgeLayer: CALayer { edgeLayer }
     var titleFontForMeasurement: NSFont { titleFont }
@@ -405,8 +382,8 @@ public final class SessionRowView: NSTableCellView {
             y: ((h - Self.closeSize) / 2).rounded(),
             width: Self.closeSize, height: Self.closeSize)
 
-        // Title line: NEEDS YOU is right-aligned, the terminal count sits inside it, and the
-        // title gets what is left.
+        // Title line: NEEDS YOU is right-aligned and the title gets what is left. (The pane count
+        // that used to sit inside NEEDS YOU went with the other row counters, 2026-09-10.)
         var titleRight = w - Self.rightInset - closeReserve
         if !needsYouBadge.isHidden {
             let x = w - Self.rightInset - closeReserve - needsYouBadgeWidth
@@ -414,16 +391,6 @@ public final class SessionRowView: NSTableCellView {
                 x: x,
                 y: Self.titleLineY + (Self.titleLineHeight - badgeH) / 2,
                 width: needsYouBadgeWidth,
-                height: badgeH
-            )
-            titleRight = x - Self.badgeGap
-        }
-        if !terminalsBadge.isHidden {
-            let x = titleRight - terminalsBadgeWidth
-            terminalsBadge.frame = CGRect(
-                x: x,
-                y: Self.titleLineY + (Self.titleLineHeight - badgeH) / 2,
-                width: terminalsBadgeWidth,
                 height: badgeH
             )
             titleRight = x - Self.badgeGap

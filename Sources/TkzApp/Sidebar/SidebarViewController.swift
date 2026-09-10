@@ -601,17 +601,9 @@ public final class SidebarViewController: NSViewController {
 
         outline.endUpdates()
 
-        // A group whose rows came or went shows a different count in its header, but the group
-        // *value* did not change, so `change.groups` never names it. Reload those headers here
-        // (GUI pass 2026-09-08: "ACME LEDGER 0" over a freshly launched row).
-        var countChanged = IndexSet()
-        for groupID in newGroups where (shadowSessions[groupID] ?? []).count != (newSessions[groupID] ?? []).count {
-            let row = row(forGroup: groupID)
-            if row >= 0 { countChanged.insert(row) }
-        }
-        if !countChanged.isEmpty {
-            outline.reloadData(forRowIndexes: countChanged, columnIndexes: IndexSet(integer: 0))
-        }
+        // Nothing in a header depends on how many rows sit under it any more — the session count
+        // went with the other row counters (2026-09-10) — so a group whose rows came or went
+        // needs no reload of its own; `change.groups` covers a header whose *value* changed.
 
         shadowGroups = newGroups
         shadowSessions = newSessions

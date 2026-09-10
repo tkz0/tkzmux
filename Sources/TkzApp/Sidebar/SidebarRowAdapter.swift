@@ -62,8 +62,7 @@ public enum SidebarRowAdapter {
             needsAttention: session.needsAttention,
             isSelected: state.selection == session.id,
             groupColor: state.groups[session.groupID]?.color,
-            memoryBadge: memoryBadge(for: session),
-            terminalCount: session.terminalCount
+            memoryBadge: memoryBadge(for: session)
         )
     }
 
@@ -95,10 +94,7 @@ public enum SidebarRowAdapter {
         SidebarGroupRowModel(
             name: group.name,
             color: group.color,
-            isCollapsed: group.isCollapsed,
-            sessionCount: state.sessions.values.reduce(into: 0) { count, session in
-                if session.groupID == group.id { count += 1 }
-            }
+            isCollapsed: group.isCollapsed
         )
     }
 

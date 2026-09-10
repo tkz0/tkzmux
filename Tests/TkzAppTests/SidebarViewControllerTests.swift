@@ -220,13 +220,12 @@ struct SidebarViewControllerTests {
         #expect(harness.outline.insertedItemCalls.map(\.rows).reduce(0) { $0 + $1.count } == 5)
         #expect(harness.outline.insertedItemCalls.allSatisfy { $0.parent?.groupID == groupID })
         #expect(harness.outline.numberOfRows == before + 5)
-        // The group's header shows a count, and the group *value* did not change — so the header
-        // row must be reloaded explicitly (GUI pass 2026-09-08: "ACME LEDGER 0" over a live row).
+        // The header shows nothing that depends on its row count (the count itself went on
+        // 2026-09-10), so only the five new rows are reloaded — by the `sessions` half of the
+        // change set — and the header is not touched.
         let header = harness.controller.row(forGroup: groupID)
-        #expect(harness.outline.reloadedRowIndexSets.contains { $0.contains(header) })
-        // The five new rows are reloaded by the `sessions` half of the change set as before; the
-        // header is the one extra row.
-        #expect(harness.outline.reloadedRowCount == 6)
+        #expect(!harness.outline.reloadedRowIndexSets.contains { $0.contains(header) })
+        #expect(harness.outline.reloadedRowCount == 5)
     }
 
     @Test("Removing five sessions goes through removeItems, not reloadData")
@@ -581,7 +580,7 @@ struct SidebarViewControllerTests {
         #expect(harness.store.state.groups[playground]?.isCollapsed == true)
     }
 
-    @Test("A collapsed group's header shows the collapsed chevron and the full session count")
+    @Test("A collapsed group's header shows the collapsed chevron and its name")
     func groupHeaderReflectsCollapseState() throws {
         let harness = Self.makeHarness()
         let playgroundRow = harness.controller.row(forGroup: harness.store.state.orderedGroups[4].id)
@@ -756,7 +755,6 @@ struct SidebarViewControllerTests {
         let group = state.orderedGroups[0]
         let groupModel = SidebarRowAdapter.groupModel(group, in: state)
         #expect(groupModel.name == group.name)  // not uppercased here
-        #expect(groupModel.sessionCount == 12)
         #expect(groupModel.color == group.color)
     }
 

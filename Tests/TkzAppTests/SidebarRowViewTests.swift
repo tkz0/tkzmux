@@ -137,7 +137,7 @@ struct SidebarRowViewTests {
     func rendersHeadlesslyAtBothScales() throws {
         let views: [NSView] = [
             Self.sessionRow(Self.sample),
-            Self.groupRow(SidebarGroupRowModel(name: "tkzmux", color: RGB(hex: 0x41c6a8), sessionCount: 3)),
+            Self.groupRow(SidebarGroupRowModel(name: "tkzmux", color: RGB(hex: 0x41c6a8))),
             {
                 let strip = SummaryStripView(frame: NSRect(
                     x: 0, y: 0, width: SidebarMetrics.sidebarWidth, height: SummaryStripView.height))
@@ -397,7 +397,7 @@ struct SidebarRowViewTests {
     func sessionRowsIndentUnderTheirGroup() {
         let group = GroupRowView()
         group.configure(SidebarGroupRowModel(name: "Northwind Trading", color: nil,
-                                             isCollapsed: false, sessionCount: 12),
+                                             isCollapsed: false),
                         theme: .midnightIndigo)
         group.frame = CGRect(x: 0, y: 0, width: SidebarMetrics.sidebarWidth,
                              height: SidebarMetrics.groupRowHeight)
@@ -615,7 +615,7 @@ struct SidebarRowViewTests {
     @Test("The edge is one stripe: a header and its session rows paint the same leftmost pixels")
     func groupEdgeIsContinuousAcrossTheGroup() throws {
         let amber = try #require(GroupPalette.swatches.first { $0.slug == "amber" }).rgb
-        let header = Self.groupRow(SidebarGroupRowModel(name: "aira", color: amber, sessionCount: 2))
+        let header = Self.groupRow(SidebarGroupRowModel(name: "aira", color: amber))
         let row = Self.sessionRow(SidebarSessionRowModel(title: "session summary", groupColor: amber))
 
         let headerPixels = try Self.render(header, scale: 2)
@@ -639,11 +639,11 @@ struct SidebarRowViewTests {
 
     @Test("The group name is uppercased and the chevron follows isCollapsed")
     func groupNameAndChevron() throws {
-        let expanded = Self.groupRow(SidebarGroupRowModel(name: "tkzmux", isCollapsed: false, sessionCount: 3))
+        let expanded = Self.groupRow(SidebarGroupRowModel(name: "tkzmux", isCollapsed: false))
         #expect(expanded.nameTextLayer.string as? String == "TKZMUX")
         #expect(expanded.chevronPointsRight == false)
 
-        let collapsed = Self.groupRow(SidebarGroupRowModel(name: "tkzmux", isCollapsed: true, sessionCount: 3))
+        let collapsed = Self.groupRow(SidebarGroupRowModel(name: "tkzmux", isCollapsed: true))
         #expect(collapsed.chevronPointsRight)
 
         // The reason it is a stroked path and not a `▾` glyph: it has to be *visible*. The old
@@ -655,7 +655,7 @@ struct SidebarRowViewTests {
 
         // A long group name truncates rather than running under the ＋ button.
         let long = Self.groupRow(
-            SidebarGroupRowModel(name: String(repeating: "long-group-name ", count: 6), sessionCount: 12),
+            SidebarGroupRowModel(name: String(repeating: "long-group-name ", count: 6)),
             width: SidebarMetrics.sidebarMinWidth)
         #expect(long.nameTextLayer.truncationMode == .end)
         #expect(long.nameTextLayer.frame.maxX <= long.addButton.frame.minX)
@@ -711,7 +711,7 @@ struct SidebarRowViewTests {
             entries.append(Entry(view: Self.sessionRow(model, theme: theme), height: SessionRowView.rowHeight))
         }
 
-        group(SidebarGroupRowModel(name: "tkzmux", color: theme.groupEdgeDefault, sessionCount: 3))
+        group(SidebarGroupRowModel(name: "tkzmux", color: theme.groupEdgeDefault))
         session(SidebarSessionRowModel(
             title: "sidebar outline view", branch: "tkz-19-sidebar", isWorktree: true, status: .working,
             accountLabel: "PR", accountColor: SidebarSessionRowModel.accountChipColor(forKey: "private"),
@@ -723,7 +723,7 @@ struct SidebarRowViewTests {
         session(SidebarSessionRowModel(
             title: "a session whose title is far too long to fit in the sidebar",
             branch: "feature/really-long-branch-name", isWorktree: true, status: .idle))
-        group(SidebarGroupRowModel(name: "acme-ledger", color: nil, isCollapsed: true, sessionCount: 2))
+        group(SidebarGroupRowModel(name: "acme-ledger", color: nil, isCollapsed: true))
         session(SidebarSessionRowModel(title: "restored session", branch: "develop", status: .idle))
 
         let summary = SummaryStripView(frame: NSRect(
@@ -767,42 +767,22 @@ struct SidebarRowViewTests {
             try png.write(to: url.appendingPathComponent("sidebar-rows.png"))
         }
     }
-    // MARK: - Terminal count badge (TKZ-36)
+    // MARK: - No counters on rows (2026-09-10)
 
-    @Test func aSinglePaneRowShowsNoTerminalBadge() {
-        let row = Self.sessionRow(SidebarSessionRowModel(title: "one", terminalCount: 1))
-        #expect(row.terminalsBadgeLayer.isHidden)
-    }
-
-    @Test func aSplitRowShowsItsTerminalCount() {
-        let row = Self.sessionRow(SidebarSessionRowModel(title: "three", terminalCount: 3))
-        row.layout()
-        #expect(!row.terminalsBadgeLayer.isHidden)
-        #expect(row.terminalsBadgeLayer.frame.width > 0)
-        #expect(row.terminalsBadgeLayer.frame.maxX <= row.bounds.width)
-    }
-
-    /// Both badges share the title line: the count sits inside NEEDS YOU, and the title gives way
-    /// to both rather than running underneath them.
-    @Test func theCountAndNeedsYouShareTheTitleLine() {
+    /// The group header's session count and the row's pane count both went as noise. What is left
+    /// on the title line is NEEDS YOU, and the title runs up to it — or to the `＋` on a header.
+    @Test func rowsCarryNoCounters() {
         let row = Self.sessionRow(
-            SidebarSessionRowModel(
-                title: "a very long session title indeed", needsAttention: true, terminalCount: 4))
+            SidebarSessionRowModel(title: "a very long session title indeed", needsAttention: true))
         row.layout()
-        let count = row.terminalsBadgeLayer.frame
         let needsYou = row.needsYouBadgeLayer.frame
-        #expect(!count.isEmpty)
         #expect(!needsYou.isEmpty)
-        #expect(count.maxX <= needsYou.minX)
-        #expect(row.titleTextLayer.frame.maxX <= count.minX)
-    }
+        #expect(row.titleTextLayer.frame.maxX <= needsYou.minX)
 
-    /// A recycled row must not carry the previous row's badge.
-    @Test func reuseClearsTheTerminalBadge() {
-        let row = Self.sessionRow(SidebarSessionRowModel(title: "three", terminalCount: 3))
-        #expect(!row.terminalsBadgeLayer.isHidden)
-        row.prepareForReuse()
-        #expect(row.terminalsBadgeLayer.isHidden)
+        let header = Self.groupRow(SidebarGroupRowModel(name: "tkzmux"))
+        header.layout()
+        #expect(header.nameTextLayer.frame.maxX <= header.addButton.frame.minX)
+        #expect(header.layer?.sublayers?.count == 4, "edge, chevron, name, ＋ — nothing else")
     }
 }
 
