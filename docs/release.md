@@ -191,7 +191,8 @@ Knobs:
 | `DIST_DRAFT=1` | create the GitHub release as a draft |
 | `TAP_DIR` | if set *and* `scripts/bump-cask.sh` exists, bump the cask after the release |
 
-Release notes come from `git log <prev-tag>..HEAD --oneline`; on the very first release there is
+Release notes come from `git log <prev-tag>..HEAD --oneline --no-merges` (merge commits such as
+"Merge pull request #N" are skipped); on the very first release there is
 no previous tag (`git describe --tags --abbrev=0 HEAD^` fails, and on a root commit there is no
 `HEAD^` at all), so the range falls back to plain `HEAD` — root commit included.
 
