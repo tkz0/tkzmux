@@ -94,11 +94,6 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
     /// transparent, exactly as on the header; it is never `Theme.groupEdgeDefault`.
     public var groupColor: RGB?
 
-    /// How many terminals the session has, across every tab. The row shows a small count badge
-    /// when it is more than 1 — a split or an extra tab is otherwise invisible from the sidebar,
-    /// and "why is this row busy?" has a different answer when it holds four shells (TKZ-36).
-    public var terminalCount: Int
-
     public init(
         title: String,
         branch: String? = nil,
@@ -110,8 +105,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         needsAttention: Bool = false,
         isSelected: Bool = false,
         groupColor: RGB? = nil,
-        memoryBadge: String? = nil,
-        terminalCount: Int = 1
+        memoryBadge: String? = nil
     ) {
         self.title = title
         self.branch = branch
@@ -124,7 +118,6 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         self.isSelected = isSelected
         self.groupColor = groupColor
         self.memoryBadge = memoryBadge
-        self.terminalCount = terminalCount
     }
 }
 
@@ -173,15 +166,10 @@ public struct SidebarGroupRowModel: Hashable, Sendable {
     /// outline view owns the actual expansion.
     public var isCollapsed: Bool
 
-    /// Number of sessions in the group, shown dimmed at the trailing edge. Useful mainly when the
-    /// group is collapsed; it is drawn unconditionally so the row does not reflow on collapse.
-    public var sessionCount: Int
-
-    public init(name: String, color: RGB? = nil, isCollapsed: Bool = false, sessionCount: Int = 0) {
+    public init(name: String, color: RGB? = nil, isCollapsed: Bool = false) {
         self.name = name
         self.color = color
         self.isCollapsed = isCollapsed
-        self.sessionCount = sessionCount
     }
 }
 

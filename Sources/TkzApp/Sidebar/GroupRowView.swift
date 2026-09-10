@@ -1,7 +1,7 @@
 // GroupRowView — the 28 pt sidebar group header (M2.3 / TKZ-19).
 //
 //     ┌────────────────────────────────────────────────────┐
-//     ║ ▾  TKZMUX                                    3  ＋  │   28 pt
+//     ║ ▾  TKZMUX                                       ＋  │   28 pt
 //     └────────────────────────────────────────────────────┘
 //      ↑ 2.5 pt colour edge (CALayer; fully transparent when the group has no colour)
 //
@@ -32,13 +32,13 @@ public final class GroupRowView: NSTableCellView {
     private static let nameLeft: CGFloat = 25
     private static let rightInset: CGFloat = 8
     private static let addButtonSize: CGFloat = 18
-    private static let countGap: CGFloat = 8
+    /// Between the name's right edge and the `＋`.
+    private static let nameGap: CGFloat = 8
     private static let minNameWidth: CGFloat = 24
 
     // MARK: Fonts
 
     private let nameFont = Theme.Fonts.ui(Theme.Fonts.ui.caption, weight: .semibold)
-    private let countFont = Theme.Fonts.ui(Theme.Fonts.ui.caption)
     private let addFont = Theme.Fonts.ui(12)
 
     // MARK: Layers & subviews
@@ -49,7 +49,6 @@ public final class GroupRowView: NSTableCellView {
     private lazy var chevronLayer = SidebarLayers.chevron(
         side: Self.chevronSide, lineWidth: Self.chevronLineWidth)
     private lazy var nameLayer = SidebarLayers.text(nameFont, color: NSColor.clear.cgColor)
-    private lazy var countLayer = SidebarLayers.text(countFont, color: NSColor.clear.cgColor, alignment: .right)
     private lazy var addLayer = SidebarLayers.text(addFont, color: NSColor.clear.cgColor, alignment: .center)
 
     /// The transparent hit target over the `＋` glyph. Its target/action is this view; the work is
@@ -63,7 +62,6 @@ public final class GroupRowView: NSTableCellView {
 
     private var model = SidebarGroupRowModel(name: "")
     private var theme: Theme = .default
-    private var countWidth: CGFloat = 0
 
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -73,7 +71,6 @@ public final class GroupRowView: NSTableCellView {
         root.addSublayer(edgeLayer)
         root.addSublayer(chevronLayer)
         root.addSublayer(nameLayer)
-        root.addSublayer(countLayer)
         root.addSublayer(addLayer)
 
         addButton.isBordered = false
@@ -108,7 +105,6 @@ public final class GroupRowView: NSTableCellView {
         onAdd = nil
         model = SidebarGroupRowModel(name: "")
         nameLayer.string = nil
-        countLayer.string = nil
         edgeLayer.backgroundColor = NSColor.clear.cgColor
     }
 
@@ -144,11 +140,6 @@ public final class GroupRowView: NSTableCellView {
 
         nameLayer.string = model.name.uppercased()
         nameLayer.foregroundColor = theme.groupHeaderText.cgColor
-
-        let count = "\(model.sessionCount)"
-        countLayer.string = count
-        countLayer.foregroundColor = theme.foregroundDim.cgColor
-        countWidth = SidebarLayers.width(of: count, font: countFont) + 1
 
         addLayer.string = "＋"
         addLayer.foregroundColor = theme.foregroundDim.cgColor
@@ -193,20 +184,13 @@ public final class GroupRowView: NSTableCellView {
         addLayer.frame = SidebarLayers.centredLine(
             x: buttonFrame.minX, width: btn, in: h, font: addFont)
 
-        let countRight = addButton.frame.minX - 4
-        let countHeight = (countFont.ascender - countFont.descender).rounded(.up)
-        countLayer.frame = CGRect(
-            x: countRight - countWidth,
-            y: ((h - countHeight) / 2).rounded(),
-            width: countWidth,
-            height: countHeight
-        )
-
+        // The name takes everything up to the `＋`. There used to be a session count in between;
+        // it went with the other row counters (2026-09-10: "they're just noise").
         let nameHeight = (nameFont.ascender - nameFont.descender).rounded(.up)
         nameLayer.frame = CGRect(
             x: Self.nameLeft,
             y: ((h - nameHeight) / 2).rounded(),
-            width: max(Self.minNameWidth, countLayer.frame.minX - Self.countGap - Self.nameLeft),
+            width: max(Self.minNameWidth, buttonFrame.minX - Self.nameGap - Self.nameLeft),
             height: nameHeight
         )
     }

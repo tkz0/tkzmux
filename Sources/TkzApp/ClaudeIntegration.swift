@@ -52,6 +52,16 @@ public final class ClaudeIntegration {
     var pidToSession: [pid_t: SessionID] = [:]
     /// The whole last Stop message per session (see the file header). Internal for the same reason.
     var fullMessages: [SessionID: String] = [:]
+    /// `payload.transcript_path` from the last attributed hook frame per session — where Claude
+    /// keeps the conversation the first-prompt card (design 2c.5) reads. Process state like
+    /// `fullMessages`: a restored row has none and falls back to `TranscriptReader.locate`.
+    var transcriptPaths: [SessionID: String] = [:]
+    /// The last good `TranscriptReader` result per session, so reopening the card is instant and a
+    /// torn read never blanks it. Same lifecycle as `fullMessages`.
+    var transcriptSummaries: [SessionID: TranscriptSummary] = [:]
+    /// Transcript reads happen here, never on the main queue: a `/loop` transcript is tens of
+    /// megabytes and even the capped head+tail read is two file seeks and a JSON pass.
+    private let transcriptQueue = DispatchQueue(label: "se.tkz.tkzmux.transcript", qos: .userInitiated)
     /// Descriptors no row owns — a cmux window, Terminal.app, VS Code. M5.3's Elsewhere group reads
     /// these; until then they are only kept so the join can be inspected.
     public private(set) var externalDescriptors: [DescriptorKey: DescriptorState] = [:]
@@ -331,6 +341,8 @@ public final class ClaudeIntegration {
     /// seen, for as long as it runs. `pidToSession` is small but has the same shape.
     public func forget(_ id: SessionID) {
         fullMessages.removeValue(forKey: id)
+        transcriptPaths.removeValue(forKey: id)
+        transcriptSummaries.removeValue(forKey: id)
         pidToSession = pidToSession.filter { $0.value != id }
     }
 
@@ -358,13 +370,14 @@ public final class ClaudeIntegration {
         switch frame {
         case .launch(let launch):
             bind(launch)
-        case .hook(let event, let ppid, let fullMessage, _):
+        case .hook(let event, let ppid, let fullMessage, _, let transcriptPath):
             guard let id = sessionID(forHook: event, ppid: ppid) else {
                 logger.info("unattributed hook \(String(describing: event.kind), privacy: .public) sid=\(event.sessionID?.rawValue ?? "-", privacy: .public) ppid=\(ppid)")
                 return
             }
             logger.info("hook \(String(describing: event.kind), privacy: .public) → \(id.rawValue, privacy: .public)")
             if event.kind == .stop, let fullMessage { fullMessages[id] = fullMessage }
+            if let transcriptPath, !transcriptPath.isEmpty { transcriptPaths[id] = transcriptPath }
             let attended = event.kind == .stop && isSessionAttended(id)
             store.update { state in
                 let now = Date()
@@ -484,5 +497,68 @@ public final class ClaudeIntegration {
     /// The complete last Stop message, falling back to the 4 KiB the store keeps.
     public func lastMessage(for id: SessionID) -> String? {
         fullMessages[id] ?? store.state.sessions[id]?.live?.lastStopMessage
+    }
+
+    // MARK: Transcript (design 2c.5)
+
+    /// Where this row's Claude conversation is on disk: the path the hooks named, or — for a row
+    /// that has no live Claude and so never will — the file under its account's `projects/` that
+    /// carries its persisted `claudeSessionId`.
+    public func transcriptPath(for id: SessionID) -> String? {
+        if let path = transcriptPaths[id] { return path }
+        guard let session = store.state.sessions[id], let claudeID = session.claudeSessionId else { return nil }
+        let configDir = store.state.accounts[session.accountKey]?.configDir
+            ?? Account.configDirectory(forKey: session.accountKey, home: home)
+        guard let configDir else { return nil }
+        return TranscriptReader.locate(sessionId: claudeID, configDir: configDir)
+    }
+
+    /// The last summary read for this row, if any — what the card shows while a fresh read runs.
+    public func cachedTranscriptSummary(for id: SessionID) -> TranscriptSummary? {
+        transcriptSummaries[id]
+    }
+
+    /// Reads the row's transcript off the main queue and hands back a summary on it. A row with no
+    /// transcript, or one whose file cannot be read, yields what the hooks know: the last Stop
+    /// message as the recap. A torn or empty read keeps the previous summary rather than blanking.
+    public func loadTranscriptSummary(
+        for id: SessionID, completion: @escaping @MainActor @Sendable (TranscriptSummary) -> Void
+    ) {
+        let path = transcriptPath(for: id)
+        let box = WeakBox()
+        box.value = self
+        transcriptQueue.async {
+            let fresh = path.flatMap { try? TranscriptReader.read(path: $0) }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self = box.value else { return }
+                    var summary = fresh ?? self.transcriptSummaries[id] ?? TranscriptSummary()
+                    if fresh?.isEmpty == true, let previous = self.transcriptSummaries[id] { summary = previous }
+                    self.mergeStopMessage(into: &summary, for: id)
+                    self.transcriptSummaries[id] = summary
+                    completion(summary)
+                }
+            }
+        }
+    }
+
+    /// The hook's `last_assistant_message` is newer than an `away_summary` written before it, and
+    /// it is all a transcript-less row has — so it wins over an older or missing recap, but never
+    /// over a newer `away_summary`, which is Claude's considered summary rather than its last line.
+    private func mergeStopMessage(into summary: inout TranscriptSummary, for id: SessionID) {
+        guard let message = lastMessage(for: id), !message.isEmpty else { return }
+        let stopAt = store.state.sessions[id]?.live?.lastStopAt
+        switch summary.recapSource {
+        case .awaySummary:
+            if let recapAt = summary.recapAt, let stopAt, stopAt > recapAt.addingTimeInterval(1) {
+                summary.recap = message
+                summary.recapAt = stopAt
+                summary.recapSource = .stopMessage
+            }
+        case .assistantText, .stopMessage, nil:
+            summary.recap = message
+            summary.recapAt = stopAt ?? summary.recapAt
+            summary.recapSource = .stopMessage
+        }
     }
 }

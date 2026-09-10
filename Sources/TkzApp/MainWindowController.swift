@@ -321,6 +321,18 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     let chrome: ChromeViewController
     /// Hold ⌘ alone for two seconds and this lists the shortcuts.
     let cheatSheet: CheatSheetOverlayController
+    /// ⌥⌘P — the selected session's first prompt and Claude's recap, as a glass card over the
+    /// terminal (design 2c.5).
+    public let promptCard: PromptCardController
+    /// The other way onto the card: scrolling up in the focused terminal peeks it. One policy for
+    /// the window — it only ever describes the selected row's focused pane, and is reset when
+    /// that changes.
+    private var scrollReveal = ScrollRevealPolicy()
+    /// May a scroll peek the card right now? macOS delivers a wheel to the window under the
+    /// pointer even while another app is active, and the terminal scrolls on it — but a floating
+    /// panel popping over someone else's window is not what "scrolled up a bit" means. Injected,
+    /// like `isSessionAttended`, so the headless tests need no key window.
+    var canPeek: () -> Bool = { false }
     let detail: DetailViewController
     /// The pane tree. `paneContainer.paneView(for:)` is the per-pane view; `terminalView` below
     /// is the focused one, which is what almost every caller means.
@@ -457,6 +469,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         self.splitViewController = splitViewController
         let cheatSheet = CheatSheetOverlayController(theme: theme)
         self.cheatSheet = cheatSheet
+        self.promptCard = PromptCardController(theme: theme)
         self.chrome = ChromeViewController(
             splitViewController: splitViewController, overlay: cheatSheet.view, theme: theme)
 
@@ -496,6 +509,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         wireToolbar()
         wirePalette()
         wireCheatSheet()
+        wirePromptCard()
         wireTabStrip()
         registerMenuHandlers()
         observeStore()
@@ -903,6 +917,61 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// The card's data comes from `claude` (set later by `AppDelegate`); only the notice is wired
+    /// here. Until the coordinator exists the card shows its empty states.
+    private func wirePromptCard() {
+        promptCard.onCopied = { [weak self] notice in self?.showNotice(notice, for: .seconds(2)) }
+        canPeek = { [weak self] in self?.window.isKeyWindow ?? false }
+    }
+
+    /// ⌥⌘P. Toggles the card for the selected row, top-centred over the detail area.
+    public func toggleFirstPromptCard() {
+        guard let id = store.state.selection else {
+            showNotice("No session selected", for: .seconds(2))
+            return
+        }
+        promptCard.toggle(for: id, over: detailAnchor())
+    }
+
+    /// The detail area in screen coordinates — what the card centres itself over.
+    private func detailAnchor() -> NSRect? {
+        let detailView = detail.view
+        return detailView.window.map {
+            $0.convertToScreen(detailView.convert(detailView.bounds, to: nil))
+        }
+    }
+
+    /// A scroll signal from pane `id`. Only the selected row's focused pane drives the policy, and
+    /// only a row with a Claude conversation gets a peek: a plain shell has no prompt to show and
+    /// a card saying so on every scroll would be noise.
+    func terminalScrolled(
+        _ id: TerminalID, _ transition: (inout ScrollRevealPolicy) -> ScrollRevealPolicy.Effect?
+    ) {
+        guard let selection = store.state.selection,
+            let session = store.state.sessions[selection],
+            session.focusedTerminalID == id
+        else { return }
+        guard let effect = transition(&scrollReveal) else { return }
+        switch effect {
+        case .reveal:
+            guard session.claudeSessionId != nil else { return }
+            guard canPeek() else {
+                // Not ours to show right now. Forget the reveal rather than remember it, so the
+                // next scroll once the window is key is judged afresh instead of "already shown".
+                _ = scrollReveal.reset()
+                return
+            }
+            promptCard.peek(for: selection, over: detailAnchor())
+        case .conceal:
+            promptCard.endPeek()
+        }
+    }
+
+    /// A key went to the terminal: on the alternate screen that ends a peek.
+    private func terminalKeyTyped() {
+        if scrollReveal.keyTyped() == .conceal { promptCard.endPeek() }
+    }
+
     private func wireTabStrip() {
         detail.tabStrip.onSelectTab = { [weak self] index in
             guard let self, let id = store.state.selection,
@@ -963,6 +1032,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             default:
                 self.cheatSheet.keyDown(event.modifierFlags)
                 if self.handleCommandKey(event) { return nil }
+                // A plain key in a pane: the user is back at the prompt (see `ScrollRevealPolicy`).
+                if !event.modifierFlags.contains(.command), self.focusedPane != nil {
+                    self.terminalKeyTyped()
+                }
             }
             return event
         }
@@ -1163,6 +1236,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         pane.input.mouseHandler = pane.mouse
         pane.mouse.attach(to: metal)
         pane.mouse.sendBytes = { [weak host] bytes in host?.writeInput(id, Data(bytes)) }
+        // Both scroll signals the first-prompt card peeks on: the viewport position on the primary
+        // screen, the wheel itself on the alternate one (design 2c.5, `ScrollRevealPolicy`).
+        metal.onScrollMetricsChanged = { [weak self] metrics in
+            self?.terminalScrolled(id) { $0.metrics(metrics) }
+        }
+        pane.mouse.onWheelRows = { [weak self] rows in
+            self?.terminalScrolled(id) { $0.wheel(rows: rows) }
+        }
         // `onGridResize` is installed by `TerminalHost.show` on attach, not here: that is the one
         // place the view↔terminal pairing is known.
         return pane
@@ -1254,6 +1335,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             host.closeAll(signal: SIGHUP)
         }
         cheatSheet.stop()
+        promptCard.dismiss()
         if let commandKeyMonitor {
             NSEvent.removeMonitor(commandKeyMonitor)
             self.commandKeyMonitor = nil
@@ -1290,6 +1372,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // shell exits — so the worktree list is re-read on Claude's exit, not only the shell's.
             claude.onClaudeExited = { [weak self] id in self?.launcher.noteExit(id) }
             claude.onStop = { [weak self] id in self?.git?.sessionDidStop(id) }
+            promptCard.summaryProvider = { id, done in
+                // The last read first, so a reopened card never flashes "Loading…"; the fresh
+                // read follows and only re-renders if something changed.
+                if let cached = claude.cachedTranscriptSummary(for: id) { done(cached) }
+                claude.loadTranscriptSummary(for: id, completion: done)
+            }
+            promptCard.transcriptPathProvider = { id in claude.transcriptPath(for: id) }
         }
     }
 
@@ -1534,6 +1623,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         if change.selection {
             applySelection(focusTerminal: true)
             updateToolbarTitle()
+            // The card is about one row; another row is a different question.
+            promptCard.dismiss()
+            _ = scrollReveal.reset()
         }
         if change.chrome {
             applySidebarVisible(store.state.sidebarVisible)
@@ -2782,6 +2874,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         dispatcher.setHandler(.renameSession) { [weak self] in self?.renameSelectedSession() }
         dispatcher.setHandler(.copyLastMessage) { [weak self] in self?.copyLastMessage() }
+        dispatcher.setHandler(.showFirstPrompt) { [weak self] in self?.toggleFirstPromptCard() }
         dispatcher.setHandler(.removeShellIntegration) { [weak self] in self?.removeShellIntegration() }
         dispatcher.setHandler(.statusLineIntegration) { [weak self] in self?.statusLineIntegration() }
         // M5.2

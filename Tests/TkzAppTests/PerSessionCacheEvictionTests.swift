@@ -10,6 +10,7 @@
 // the choke point these assertions go through.
 
 import AppKit
+import ClaudeBridge
 import Foundation
 import Testing
 import TkzCore
@@ -47,6 +48,27 @@ struct PerSessionCacheEvictionTests {
         // Falls back to the store's truncated copy — which for a removed row is nothing.
         #expect(claude.lastMessage(for: id) != long)
         #expect(claude.pidToSession.values.contains(id) == false)
+    }
+
+    /// The first-prompt card's caches have the same shape as `fullMessages` — a path and a
+    /// summary per session id, kept for as long as the app runs — and leave by the same door.
+    @Test("removing a session drops its transcript path and cached summary")
+    func removeDropsTranscriptCaches() throws {
+        let store = AppStore(state: .fixture)
+        let groupID = try #require(store.state.orderedGroups.first?.id)
+        var created: Session?
+        store.update { created = $0.createSession(groupID: groupID, cwd: "/tmp") }
+        let id = try #require(created?.id)
+
+        let claude = Self.makeClaude(store)
+        claude.transcriptPaths[id] = "/tmp/nowhere/t.jsonl"
+        claude.transcriptSummaries[id] = TranscriptSummary(firstPrompt: "hello")
+        #expect(claude.transcriptPath(for: id) == "/tmp/nowhere/t.jsonl")
+        #expect(claude.cachedTranscriptSummary(for: id)?.firstPrompt == "hello")
+
+        claude.forget(id)
+        #expect(claude.transcriptPath(for: id) == nil)
+        #expect(claude.cachedTranscriptSummary(for: id) == nil)
     }
 
     @Test("forget also unbinds the pid, so a reused pid cannot resolve to a dead row")

@@ -241,6 +241,7 @@ public enum MainMenu {
         menu.addItem(command(.renameSession, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.jumpToNeedsYou, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.copyLastMessage, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.showFirstPrompt, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(.separator())
         menu.addItem(command(.previousSession, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.nextSession, shortcuts: shortcuts, dispatcher: dispatcher))
