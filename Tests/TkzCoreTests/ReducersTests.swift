@@ -721,6 +721,98 @@ import Testing
     }
 }
 
+/// The "Starting Claude…" fact: set by a boot-command launch, cleared by whichever signal says
+/// Claude is up (or gone) first. Only the store side; the 2 s / give-up timing is the AppKit
+/// edge's (`StartupOverlayPolicy`).
+@Suite struct ClaudeStartupTests {
+    let now = Fixture.now
+
+    func makeState() -> (AppState, SessionID, TerminalID) {
+        var state = AppState()
+        let group = state.addGroup(name: "g")
+        let session = state.createSession(groupID: group.id, cwd: "/tmp")
+        let terminal = TerminalID(uuid: session.id.uuid)
+        state.setLive(LiveSessionState(shellPid: 1, panePids: [terminal: 1]), for: session.id)
+        state.beginClaudeStartup(session.id, terminal: terminal, command: "claude -w x", now: now)
+        return (state, session.id, terminal)
+    }
+
+    @Test func beginRecordsThePaneTheCommandAndTheTime() {
+        let (state, id, terminal) = makeState()
+        #expect(
+            state.sessions[id]?.live?.claudeStartup
+                == ClaudeStartup(terminal: terminal, command: "claude -w x", startedAt: now))
+        // No status of its own: the row is a plain idle shell until Claude says otherwise.
+        #expect(state.sessions[id]?.status == .idle)
+    }
+
+    @Test func beginNeedsALiveRow() {
+        var state = AppState()
+        let group = state.addGroup(name: "g")
+        let session = state.createSession(groupID: group.id, cwd: "/tmp")
+        state.sessions[session.id]?.live = nil
+        state.beginClaudeStartup(
+            session.id, terminal: TerminalID(uuid: session.id.uuid), command: "claude", now: now)
+        #expect(state.sessions[session.id]?.live == nil)
+    }
+
+    @Test func sessionStartEndsIt() {
+        var (state, id, _) = makeState()
+        state.applyHook(.init(kind: .sessionStart, claudeSessionId: "new"), to: id, now: now)
+        #expect(state.sessions[id]?.live?.claudeStartup == nil)
+    }
+
+    @Test func aLiveDescriptorEndsIt() {
+        var (state, id, _) = makeState()
+        state.applyDescriptor(
+            ClaudeSessionInfo(configDir: "/x/.claude", pid: 9, sessionId: "abc", status: .idle),
+            alive: true, to: id, now: now)
+        #expect(state.sessions[id]?.live?.claudeStartup == nil)
+    }
+
+    /// A stale descriptor from before a crash, matched to a resumed row by its conversation id,
+    /// says nothing about the Claude that is starting now.
+    @Test func aDeadDescriptorDoesNotEndIt() {
+        var (state, id, _) = makeState()
+        state.applyDescriptor(
+            ClaudeSessionInfo(configDir: "/x/.claude", pid: 9, sessionId: "abc", status: .idle),
+            alive: false, to: id, now: now)
+        #expect(state.sessions[id]?.live?.claudeStartup != nil)
+    }
+
+    @Test func otherHooksLeaveItAlone() {
+        for kind in [HookEvent.Kind.userPromptSubmit, .stop, .notification, .sessionEnd] {
+            var (state, id, _) = makeState()
+            state.applyHook(.init(kind: kind), to: id, now: now)
+            #expect(state.sessions[id]?.live?.claudeStartup != nil, "\(kind)")
+        }
+    }
+
+    @Test func closingTheBootPaneEndsItAndClosingAnotherDoesNot() throws {
+        var (state, id, terminal) = makeState()
+        let split = state.splitPane(terminal, axis: .horizontal)
+        let other = try #require(split)
+        let closedOther = state.closePane(other)
+        #expect(closedOther)
+        #expect(state.sessions[id]?.live?.claudeStartup?.terminal == terminal)
+
+        let splitAgain = state.splitPane(terminal, axis: .horizontal)
+        let another = try #require(splitAgain)
+        let closedBoot = state.closePane(terminal)
+        #expect(closedBoot)
+        #expect(state.sessions[id]?.live?.claudeStartup == nil)
+        #expect(state.sessions[id]?.terminalIDs == [another])
+    }
+
+    @Test func endIsANoOpWhenNothingIsPending() {
+        var (state, id, _) = makeState()
+        state.endClaudeStartup(id)
+        let before = state
+        state.endClaudeStartup(id)
+        #expect(state == before)
+    }
+}
+
 @Suite struct FixtureTests {
     /// TKZ-19 exercises row-granular reloads against this; it must stay big and varied.
     @Test func isBigEnoughAndCoversEveryState() {

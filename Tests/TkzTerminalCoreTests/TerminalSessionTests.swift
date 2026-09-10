@@ -137,6 +137,21 @@ private func makeSession(cols: UInt16 = 80, rows: UInt16 = 24) throws -> (Termin
     #expect(events.contains(.progress(state: .remove, value: nil)))
 }
 
+/// The exact bytes the ZDOTDIR `.zlogin` emits around the boot command — BEL-terminated, no
+/// percentage — must come through as the events the window's "Starting Claude…" overlay reads.
+/// If this ever fails, a launch that dies back to the prompt keeps its overlay for the give-up.
+@Test func theBootCommandProgressBracketBecomesEvents() async throws {
+    let (session, _) = try makeSession()
+    session.write(ptyText: "\u{1b}]9;4;3\u{7}")
+    session.write(ptyText: "\u{1b}]9;4;0\u{7}")
+
+    let events = await drain(session)
+    #expect(events == [
+        .progress(state: .indeterminate, value: nil),
+        .progress(state: .remove, value: nil),
+    ])
+}
+
 @Test func osc52ClipboardWriteBecomesAnEvent() async throws {
     let (session, _) = try makeSession()
     let payload = Data("hello clipboard".utf8).base64EncodedString()

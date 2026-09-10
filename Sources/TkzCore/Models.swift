@@ -432,6 +432,9 @@ public struct LiveSessionState: Hashable, Sendable {
     /// decision that cwd is process state holds for panes too, so a reopened pane starts in the
     /// row's resume directory.
     public var paneCwds: [TerminalID: String]
+    /// The Claude launch this row is waiting on, while the boot command is still starting up —
+    /// what the pane's "Starting Claude…" overlay reads. Process state, never persisted.
+    public var claudeStartup: ClaudeStartup?
 
     public init(
         pid: pid_t? = nil,
@@ -454,7 +457,8 @@ public struct LiveSessionState: Hashable, Sendable {
         isDone: Bool = false,
         shellCwd: String? = nil,
         panePids: [TerminalID: pid_t] = [:],
-        paneCwds: [TerminalID: String] = [:]
+        paneCwds: [TerminalID: String] = [:],
+        claudeStartup: ClaudeStartup? = nil
     ) {
         self.pid = pid
         self.shellPid = shellPid
@@ -477,6 +481,27 @@ public struct LiveSessionState: Hashable, Sendable {
         self.shellCwd = shellCwd
         self.panePids = panePids
         self.paneCwds = paneCwds
+        self.claudeStartup = claudeStartup
+    }
+}
+
+/// The Claude launch a row is waiting on: the boot command `.zlogin` is running, until Claude is
+/// up (a descriptor binds, or `SessionStart` arrives) or the command returns to the prompt (the
+/// OSC 9;4 *remove* `.zlogin` emits after it). Only launches that carry a boot command record
+/// one — a bare shell (⌘T, ⌘D, `.shell`) never does. Drives the pane's "Starting Claude…"
+/// overlay; the give-up delay lives at the AppKit edge (`StartupOverlayPolicy`).
+public struct ClaudeStartup: Hashable, Sendable {
+    /// The pane the command runs in — the row's first leaf for a new row, the focused pane for a
+    /// resume.
+    public var terminal: TerminalID
+    /// The command as it rides in `TKZMUX_BOOT_COMMAND`, for the overlay's caption.
+    public var command: String
+    public var startedAt: Date
+
+    public init(terminal: TerminalID, command: String, startedAt: Date) {
+        self.terminal = terminal
+        self.command = command
+        self.startedAt = startedAt
     }
 }
 

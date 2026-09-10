@@ -283,11 +283,35 @@ private func runInteractiveLoginShell(
     #expect(result.stdout.contains(shim.path), "\(result.stdout)")
 }
 
+/// The command is bracketed in OSC 9;4 progress — *indeterminate* before, *remove* after — so
+/// tkzmux knows when it has returned. That "remove" is what takes the "Starting Claude…" overlay
+/// down when a launch fails straight back to the prompt; nothing else says so.
+@Test func bootCommandIsBracketedInProgressReports() throws {
+    let fixture = try makeWrapperFixture()
+    let result = try runInteractiveLoginShell(
+        fixture,
+        extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- BOOT-RAN", "TKZMUX_OSC7_TO_STDOUT": "1"])
+    let start = "\u{1b}]9;4;3\u{07}"
+    let remove = "\u{1b}]9;4;0\u{07}"
+    let out = result.stdout
+    let startAt = try #require(out.range(of: start)?.lowerBound)
+    let ranAt = try #require(out.range(of: "BOOT-RAN")?.lowerBound)
+    let removeAt = try #require(out.range(of: remove)?.lowerBound)
+    #expect(startAt < ranAt && ranAt < removeAt, "\(out)")
+
+    // Piped stdout without the override: no escape bytes at all.
+    let quiet = try runInteractiveLoginShell(
+        fixture, extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- BOOT-RAN"])
+    #expect(quiet.stdout.contains("BOOT-RAN"))
+    #expect(!quiet.stdout.contains("\u{1b}]9;4;"))
+}
+
 /// A `.shell` session carries no command, and the block must then do nothing at all.
 @Test func noBootCommandIsANoOp() throws {
     let fixture = try makeWrapperFixture()
-    let result = try runInteractiveLoginShell(fixture)
+    let result = try runInteractiveLoginShell(fixture, extraEnv: ["TKZMUX_OSC7_TO_STDOUT": "1"])
     #expect(!result.stdout.contains("BOOT-RAN"))
+    #expect(!result.stdout.contains("\u{1b}]9;4;"))
     let markers = (try? String(contentsOf: fixture.log, encoding: .utf8)) ?? ""
     #expect(markers.split(separator: "\n").map(String.init) == ["zshenv", "zprofile", "zshrc", "zlogin"])
 }

@@ -95,7 +95,7 @@ public final class SessionLauncher {
     /// Selection is what makes the terminal visible — the window's store observer calls
     /// `host.show`. Nothing here shows anything.
     @discardableResult
-    public func start(_ spec: Spec) -> Result<SessionID, Failure> {
+    public func start(_ spec: Spec, now: Date = Date()) -> Result<SessionID, Failure> {
         let cwd = Paths.expandingTilde(spec.cwd, home: home)
         guard isDirectory(cwd) else { return .failure(.missingDirectory(cwd)) }
 
@@ -125,6 +125,12 @@ public final class SessionLauncher {
             $0.setLive(
                 LiveSessionState(shellPid: pid, status: .idle, panePids: [terminal: pid]),
                 for: id)
+            // A command means Claude is on its way: the pane shows "Starting Claude…" until a
+            // descriptor or `SessionStart` says it arrived (`.shell` carries none, and shows
+            // nothing).
+            if !spec.command.isEmpty {
+                $0.beginClaudeStartup(id, terminal: terminal, command: spec.command, now: now)
+            }
             $0.select(id)
         }
 
@@ -159,7 +165,7 @@ public final class SessionLauncher {
     /// disk, because snapshot housekeeping keeps every leaf of every tab.
     @discardableResult
     public func reopen(
-        _ id: SessionID, bootCommand: String? = nil
+        _ id: SessionID, bootCommand: String? = nil, now: Date = Date()
     ) -> Result<ReopenOutcome, Failure> {
         guard let session = store.state.sessions[id] else { return .failure(.unknownSession) }
         if session.live != nil { return .success(.alreadyRunning) }
@@ -210,6 +216,10 @@ public final class SessionLauncher {
         store.update {
             $0.setLive(
                 LiveSessionState(shellPid: shellPid, status: .idle, panePids: pids), for: id)
+            // The boot command went to the focused pane, so that is where Claude is starting.
+            if let bootCommand, !bootCommand.isEmpty, pids[focused] != nil {
+                $0.beginClaudeStartup(id, terminal: focused, command: bootCommand, now: now)
+            }
         }
         logLaunch(kind: "reopen", id: id, cwd: cwd, env: env, command: "")
         return .success(.reopened(directory: cwd, restoredContent: restoredContent))

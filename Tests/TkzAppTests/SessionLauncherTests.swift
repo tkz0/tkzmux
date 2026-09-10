@@ -288,6 +288,59 @@ struct SessionLauncherTests {
         #expect(h.host.bootCommands == ["claude --resume abc-123"], "typed into exactly one pane")
     }
 
+    /// The overlay's fact follows the boot command: wherever `TKZMUX_BOOT_COMMAND` goes, that
+    /// pane is "starting Claude"; a shell that gets no command is not.
+    @Test("start and resume record a Claude startup on the pane that got the boot command")
+    func claudeStartupFollowsTheBootCommand() throws {
+        let h = try Self.makeHarness()
+        defer { h.tree.tearDown() }
+        let now = Date(timeIntervalSince1970: 1_788_944_400)
+
+        // A new row with a command: its one pane.
+        let started = try h.launcher.start(
+            NewSessionMenu.Launch(kind: .worktree, command: "claude -w feature", cwd: h.tree.repo, accountKey: nil, groupID: h.group),
+            now: now
+        ).get()
+        h.store.flush()
+        #expect(
+            h.session(started)?.live?.claudeStartup
+                == ClaudeStartup(
+                    terminal: TerminalID(uuid: started.uuid), command: "claude -w feature",
+                    startedAt: now))
+
+        // A bare shell: nothing.
+        let shell = try h.launcher.start(
+            NewSessionMenu.Launch(kind: .shell, command: "", cwd: h.tree.repo, accountKey: nil, groupID: h.group), now: now
+        ).get()
+        h.store.flush()
+        #expect(h.session(shell)?.live?.claudeStartup == nil)
+
+        // A split adds a shell, never a launch.
+        let split = try h.launcher.addTerminal(to: started, splitting: .horizontal).get()
+        h.store.flush()
+        #expect(h.session(started)?.live?.claudeStartup?.terminal == TerminalID(uuid: started.uuid))
+        #expect(split != TerminalID(uuid: started.uuid))
+
+        // A resume of a restored split row: the focused pane, and only it.
+        let restored = Self.restoredRow(h, claudeSessionId: "abc-123")
+        let first = TerminalID(uuid: restored.uuid)
+        var second: TerminalID?
+        h.store.update { second = $0.splitPane(first, axis: .vertical) }
+        h.store.flush()
+        let focused = try #require(second)
+        #expect(h.session(restored)?.focusedTerminalID == focused, "a split focuses the new pane")
+        #expect(h.launcher.resume(restored) == .success(.resumed(claudeSessionId: "abc-123")))
+        h.store.flush()
+        #expect(h.session(restored)?.live?.claudeStartup?.terminal == focused)
+        #expect(h.session(restored)?.live?.claudeStartup?.command == "claude --resume abc-123")
+
+        // A plain reopen carries no command, so it records nothing.
+        let plain = Self.restoredRow(h, claudeSessionId: nil)
+        _ = h.launcher.reopen(plain)
+        h.store.flush()
+        #expect(h.session(plain)?.live?.claudeStartup == nil)
+    }
+
     @Test("resume: a row whose shell is already up gets the command typed directly")
     func resumeIntoLiveShell() throws {
         let h = try Self.makeHarness()

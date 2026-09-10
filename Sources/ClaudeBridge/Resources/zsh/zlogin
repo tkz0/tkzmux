@@ -37,6 +37,14 @@ if [[ -n "${TKZMUX_BOOT_COMMAND:-}" ]]; then
     unset TKZMUX_BOOT_COMMAND
     # Into the history, so the command behaves like one that was typed and Up repeats it.
     print -s -- "$__tkzmux_boot_command"
+    # Bracketed in OSC 9;4 progress (indeterminate, then remove) so tkzmux can tell when the
+    # command has *returned* -- the only signal for a launch that fails straight back to the
+    # prompt (`claude: command not found`), and what takes the "Starting Claude…" overlay down
+    # in that case. Only to a terminal, like the OSC 7 in .zshrc; TKZMUX_OSC7_TO_STDOUT is the
+    # tests' way to see it. The guards sit on their own lines so the command's exit status is
+    # its own.
+    if [[ -t 1 || -n "${TKZMUX_OSC7_TO_STDOUT:-}" ]]; then printf '\e]9;4;3\a'; fi
     eval "$__tkzmux_boot_command"
+    if [[ -t 1 || -n "${TKZMUX_OSC7_TO_STDOUT:-}" ]]; then printf '\e]9;4;0\a'; fi
     unset __tkzmux_boot_command
 fi
