@@ -13,10 +13,12 @@
 //   |---|---|
 //   | git   | FSEvents on the repo (300 ms debounce, ≤ 1 / 2 s), after each Stop hook, on selection if > 10 s old |
 //   | ports | on selection, after each Stop hook, and every 10 s **while selected** |
-//   | PR    | on selection and on a branch change; `PRLookup` itself throttles to 5 min and caches failures for 10 |
+//   | PR    | on selection, on a branch change, after each Stop hook (≥ 15 s apart, any row), and every 5 min for every row whose PR is open; `PRLookup` throttles and caches failures for 10 |
 //
 // Non-selected rows are deliberately cheap: their git comes from the file system telling us it
-// changed, and their ports only from a Stop. Nothing here polls every row.
+// changed, and their ports only from a Stop. The one thing polled across rows is the PR of a row
+// whose PR is known to be open — a merge happens in the browser and nothing local announces it —
+// and `PRLookup` caps that at one `gh` call per row per 5 min.
 //
 // Every service callback arrives on that service's own queue and is hopped onto the main queue
 // with `DispatchQueue.main.async` + `MainActor.assumeIsolated` (FIFO, unlike an unstructured
@@ -36,6 +38,11 @@ public final class GitIntegration {
     /// How often the selected row's ports are re-scanned. A scan of a 30-process tree is
     /// microseconds (TKZ-28), so the interval is about not waking the process, not about cost.
     public static let portInterval: TimeInterval = 10
+
+    /// How old a cached PR answer may be before a Stop hook asks `gh` again. A turn that ran
+    /// `gh pr create` ends with a Stop, so this is how long a new PR takes to appear; a burst of
+    /// short turns still costs at most one `gh` call per this interval per row.
+    public static let stopLookupMaxAge: TimeInterval = 15
 
     /// The directory each session is currently tracked at, so a `cd` (OSC 7) or a bound descriptor
     /// re-targets the watcher instead of silently reporting the wrong repo.
@@ -120,6 +127,9 @@ public final class GitIntegration {
         syncTracking()
         service.refresh(id)
         scanPorts(for: id)
+        // The PR too, whether or not the row is selected: `gh pr create` changes nothing in the
+        // working tree, so the git refresh above would never re-ask on its own.
+        requestPullRequest(for: id, maxAge: Self.stopLookupMaxAge)
     }
 
     /// The row is gone: stop watching its directory and drop its cached PR.
@@ -198,28 +208,37 @@ public final class GitIntegration {
     // MARK: Git
 
     private func applySummary(_ summary: GitSummary?, to id: SessionID) {
+        let previousBranch = store.state.sessions[id]?.live?.git?.branch
         store.update { $0.setGitSummary(summary, for: id) }
-        // A branch change is the other thing that must re-ask for a PR; `PRLookup` compares the
-        // branch it last looked up and does nothing when it is the same.
-        if store.state.selection == id { requestPullRequest(for: id) }
+        // A branch change is the other thing that must re-ask for a PR — for *any* row, because a
+        // turn that ran `git checkout -b` and `gh pr create` ends with a Stop whose lookup still
+        // named the old branch; the summary that lands a moment later carries the new one.
+        // `PRLookup` compares the branch it last looked up and does nothing when it is the same.
+        // A row's *first* summary is not a change: a fresh unselected row waits for a Stop or a
+        // selection, as before, rather than costing a `gh` call just for being launched.
+        let branchChanged = previousBranch != nil && summary?.branch != previousBranch
+        if store.state.selection == id || branchChanged {
+            requestPullRequest(for: id)
+        }
     }
 
     // MARK: Pull requests
 
-    /// Sidecar first, `gh` second (design.md → *Git integration → PR*). When the statusline sidecar
-    /// already carries a `pr` block there is nothing to ask `gh` about, which also means the whole
-    /// `gh` path stays unused for anyone running the sidecar.
-    private func requestPullRequest(for id: SessionID) {
+    /// The sidecar seeds, `gh` decides. The statusline sidecar's `pr` block only ever describes an
+    /// *open* PR (`tkzmux-hook` stamps it `OPEN`) and the file freezes when Claude exits, so it
+    /// is a fine first answer — the badge shows before `gh` has run, or when `gh` is not installed
+    /// — but not the last word: once a lookup has landed, a stale sidecar must not flip a merged
+    /// PR back to open. Hence: seed only while nothing has been looked up, then always ask.
+    private func requestPullRequest(for id: SessionID, maxAge: TimeInterval? = nil) {
         guard let session = store.state.sessions[id], let live = session.live else { return }
-        if let fromSidecar = live.context?.pr {
-            service.setPullRequest(fromSidecar, for: id)
-            return
+        if Self.shouldSeedFromSidecar(git: live.git, sidecar: live.context), let seed = live.context?.pr {
+            service.setPullRequest(seed, for: id)
         }
         guard let branch = live.git?.branch, !branch.isEmpty else { return }
         // Keyed by the checkout, not the pane's subdirectory: `PRLookup` re-runs `gh` when the
         // directory it last looked up changes, and every pane of one checkout has the same PR.
         let directory = service.repoInfo(for: id)?.toplevel ?? tracked[id] ?? session.effectiveCwd
-        prLookup.lookup(for: id, directory: directory, branch: branch) { pr in
+        prLookup.lookup(for: id, directory: directory, branch: branch, maxAge: maxAge) { pr in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { [weak self] in
                     self?.service.setPullRequest(pr, for: id)
@@ -228,15 +247,38 @@ public final class GitIntegration {
         }
     }
 
+    /// The sidecar's PR is worth writing only while nothing has been looked up: `git.pr` is what
+    /// `gh` last said (or what the sidecar seeded), and once it exists it is the fresher of the two.
+    static func shouldSeedFromSidecar(git: GitSummary?, sidecar: SessionSidecar?) -> Bool {
+        sidecar?.pr != nil && git?.pr == nil
+    }
+
+    /// The rows the 10 s tick re-asks about: the selected one (so a row you sit on learns of a
+    /// review), plus every live row whose PR is still open — a merge happens in the browser, on
+    /// no schedule of ours, and a row you are not looking at must turn purple too. Rows with no
+    /// PR or a merged one cost nothing here; `PRLookup`'s own throttle caps the rest at one `gh`
+    /// call per row per 5 min.
+    static func rowsNeedingPRRefresh(in state: AppState) -> [SessionID] {
+        var out: [SessionID] = []
+        if let selected = state.selection { out.append(selected) }
+        for (id, session) in state.sessions where id != state.selection {
+            guard let pr = session.live?.git?.pr else { continue }
+            if pr.state?.uppercased() == "OPEN" { out.append(id) }
+        }
+        return out
+    }
+
     // MARK: Ports
 
     private func scanSelectedPorts() {
-        guard let id = store.state.selection else { return }
-        scanPorts(for: id)
+        if let id = store.state.selection { scanPorts(for: id) }
         // The same tick carries the PR's "every 5 min" refresh. `PRLookup` throttles to 5 minutes
-        // itself, so a 10 s tick costs at most one `gh` call per 5 min — and without this a row you
-        // sit on with no git change and no Stop would never learn that its PR was approved.
-        requestPullRequest(for: id)
+        // itself, so a 10 s tick costs at most one `gh` call per 5 min per row — and without this
+        // a row with no git change and no Stop would never learn that its PR was approved or
+        // merged.
+        for id in Self.rowsNeedingPRRefresh(in: store.state) {
+            requestPullRequest(for: id)
+        }
     }
 
     /// Scans off the main actor — libproc is fast but it is still a syscall per file descriptor of

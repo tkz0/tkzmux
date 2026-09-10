@@ -1,8 +1,8 @@
 // StatusBarView.swift — the 30 pt strip along the bottom of the main window.
 //
 // The line, as the artboards draw it:
-//   `⎇ branch` · `WT` · model badge · `+142 −38 · 12 files` · `↑0 ↓2`   …   ports · `Context 62%` ·
-//   `Usage 5% · resets 4d 12h`
+//   `⎇ branch` · `WT` · model badge · `+142 −38 · 12 files` · `↑0 ↓2` · `⇅ #418`   …   ports ·
+//   `Context 62%` · `Usage 5% · resets 4d 12h`
 // The group from the ports onward sits flush right (2c.1); the rest flows from the left edge.
 //
 // One `NSView` with a custom `draw(_:)` and **no subviews**. Reasons:
@@ -34,6 +34,14 @@ struct StatusRun: Equatable, Sendable {
     var color: RGB
 }
 
+/// A small symbol drawn inline before a run of text — the PR badge's pull-request / merge glyph.
+/// An SF Symbol name rather than an image: the app bundles no assets, and a name is a value the
+/// content tests can compare.
+struct StatusIcon: Equatable, Sendable {
+    var symbolName: String
+    var color: RGB
+}
+
 /// One logical item on the strip. Segments are joined by ` · ` **only between the ones that are
 /// actually drawn**, which is what makes a `nil` field collapse without leaving a stray separator.
 enum StatusSegment: Equatable, Sendable {
@@ -43,6 +51,8 @@ enum StatusSegment: Equatable, Sendable {
     case pill(text: String, foreground: RGB, background: RGB)
     /// `Context ▬▬▬▬ 62%`: a label, a 44 × 4 pt bar filled to `fraction`, and the number after it.
     case meter(label: StatusRun, fraction: Double, fill: RGB, track: RGB, value: StatusRun)
+    /// A symbol and the text after it, 4 pt apart (2c.1: the pull-request glyph and `#418`).
+    case iconRuns(icon: StatusIcon, runs: [StatusRun])
 
     /// The segment's text with no styling; used for the accessibility value and by tests.
     var plainText: String {
@@ -50,6 +60,7 @@ enum StatusSegment: Equatable, Sendable {
         case .runs(let runs): runs.map(\.text).joined()
         case .pill(let text, _, _): text
         case .meter(let label, _, _, _, let value): label.text + value.text
+        case .iconRuns(_, let runs): runs.map(\.text).joined()
         }
     }
 
@@ -60,7 +71,14 @@ enum StatusSegment: Equatable, Sendable {
         case .runs(let runs): runs.map(\.color)
         case .pill(_, let fg, let bg): [fg, bg]
         case .meter(let label, _, let fill, let track, let value): [label.color, fill, track, value.color]
+        case .iconRuns(let icon, let runs): [icon.color] + runs.map(\.color)
         }
+    }
+
+    /// The symbol an `.iconRuns` segment draws; `nil` for every other kind.
+    var iconName: String? {
+        if case .iconRuns(let icon, _) = self { return icon.symbolName }
+        return nil
     }
 }
 
@@ -115,6 +133,9 @@ public final class StatusBarView: NSView {
     static let meterWidth: CGFloat = 44
     static let meterHeight: CGFloat = 4
     static let meterGap: CGFloat = 5
+    /// The PR badge's glyph: 11 pt square, 4 pt before the number (2c.1).
+    static let iconSize: CGFloat = 11
+    static let iconGap: CGFloat = 4
 
     public var model: StatusBarModel {
         didSet { if model != oldValue { invalidate() } }
@@ -317,40 +338,53 @@ public final class StatusBarView: NSView {
             value: StatusRun(text: "\(percent)%", color: theme.terminalForeground))
     }
 
-    /// The PR pill: `#123` plus the one marker that matters most — a draft is a draft whatever the
-    /// review says, then the review decision, then plain `●` for an open PR nobody has looked at.
+    /// The PR badge as 2c.1 draws it: the pull-request glyph and `#418`, both in one colour that
+    /// says what the PR *is* — open (green), merged (purple, and the merge glyph), closed (the
+    /// remove red) or a draft (dimmed). The review decision no longer colours the badge; it is in
+    /// the tooltip, as is the URL a click opens.
     private static func prItem(_ pr: PRInfo, theme: Theme) -> StatusItem {
         let state = pr.state?.uppercased()
         let decision = pr.reviewDecision?.uppercased()
-        let marker: String
+        let symbol: String
         let color: RGB
-        if pr.isDraft {
-            marker = "draft"
-            color = theme.foregroundDim
-        } else if decision == "APPROVED" {
-            marker = "\u{2713}"                                  // ✓
-            color = theme.diffAdd
-        } else if decision == "CHANGES_REQUESTED" {
-            marker = "\u{25CF}"                                  // ●
+        let stateText: String
+        switch state {
+        case "MERGED":
+            symbol = Self.mergedSymbol
+            color = theme.prMerged
+            stateText = "Merged"
+        case "CLOSED":
+            symbol = Self.openSymbol
             color = theme.diffRemove
-        } else {
-            marker = "\u{25CF}"
-            color = theme.statusBarText
+            stateText = "Closed"
+        default:
+            symbol = Self.openSymbol
+            if pr.isDraft {
+                color = theme.foregroundDim
+                stateText = "Draft"
+            } else {
+                color = theme.prOpen
+                stateText = "Open"
+            }
         }
 
-        var lines = ["Pull request #\(pr.number)"]
-        if let state, !state.isEmpty { lines.append("State \(state)") }
-        if pr.isDraft { lines.append("Draft") }
+        var lines = ["Pull request #\(pr.number)", stateText]
         if let decision, !decision.isEmpty {
             lines.append("Review \(decision.replacingOccurrences(of: "_", with: " ").lowercased())")
         }
         if let url = pr.url, !url.isEmpty { lines.append(url) }
 
         return StatusItem(
-            .pill(text: "#\(pr.number) \(marker)", foreground: color, background: theme.border),
+            .iconRuns(
+                icon: StatusIcon(symbolName: symbol, color: color),
+                runs: [StatusRun(text: "#\(pr.number)", color: color)]),
             tooltip: lines.joined(separator: "\n"),
             url: pr.url.flatMap(URL.init(string:)))
     }
+
+    /// SF Symbols standing in for GitHub's `git-pull-request` and `git-merge` octicons.
+    static let openSymbol = "arrow.triangle.pull"
+    static let mergedSymbol = "arrow.triangle.merge"
 
     /// The segments alone — what the content tests assert against, and what the accessibility
     /// value is built from.
@@ -572,7 +606,26 @@ public final class StatusBarView: NSView {
             attributed([label], font: textFont).size().width
                 + Self.meterGap + Self.meterWidth + Self.meterGap
                 + attributed([value], font: textFont).size().width
+        case .iconRuns(_, let runs):
+            Self.iconSize + Self.iconGap + attributed(runs, font: textFont).size().width
         }
+    }
+
+    /// The glyph for an `.iconRuns` segment, tinted. Built per draw: the image is tiny, and caching
+    /// it would mean invalidating on every theme change for no measurable gain.
+    private func iconImage(_ icon: StatusIcon) -> NSImage? {
+        let configuration = NSImage.SymbolConfiguration(pointSize: Self.iconSize, weight: .medium)
+            .applying(.init(paletteColors: [icon.color.nsColor]))
+        return NSImage(systemSymbolName: icon.symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration)
+    }
+
+    /// Where an `.iconRuns` glyph lands when the item is drawn at `x`: an `iconSize` square on the
+    /// band's optical middle.
+    func iconRect(at x: CGFloat) -> NSRect {
+        NSRect(
+            x: x, y: ((bounds.height - Self.iconSize) / 2).rounded(),
+            width: Self.iconSize, height: Self.iconSize)
     }
 
     /// Where a meter's track and fill land when the item is drawn at `x`. Shared by `draw` and
@@ -622,6 +675,25 @@ public final class StatusBarView: NSView {
             bg.nsColor.setFill()
             NSBezierPath(roundedRect: rect, xRadius: Self.pillRadius, yRadius: Self.pillRadius).fill()
             drawText(string, at: rect.minX + Self.pillPadX, width: textWidth, font: pillFont)
+
+        case .iconRuns(let icon, let runs):
+            let rect = iconRect(at: x)
+            if let image = iconImage(icon), image.size.width > 0, image.size.height > 0 {
+                // Symbols are taller than wide (`arrow.triangle.pull` is 10 × 15): fit inside the
+                // square, centred, rather than stretch to it.
+                let scale = min(rect.width / image.size.width, rect.height / image.size.height)
+                let size = NSSize(width: image.size.width * scale, height: image.size.height * scale)
+                let fitted = NSRect(
+                    x: rect.midX - size.width / 2, y: rect.midY - size.height / 2,
+                    width: size.width, height: size.height)
+                image.draw(in: fitted, from: .zero, operation: .sourceOver, fraction: 1)
+            } else {
+                // No such symbol on this system: a filled dot in the same colour, never a gap.
+                icon.color.nsColor.setFill()
+                NSBezierPath(ovalIn: rect.insetBy(dx: 2.5, dy: 2.5)).fill()
+            }
+            let string = attributed(runs, font: textFont)
+            drawText(string, at: x + Self.iconSize + Self.iconGap, width: string.size().width)
         }
     }
 

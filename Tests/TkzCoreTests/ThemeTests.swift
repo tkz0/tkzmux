@@ -51,6 +51,12 @@ import Testing
         let minimum = theme.isDark ? 4.5 : 4.0
         #expect(theme.statusBarText.contrastRatio(against: theme.statusBarBackground) >= minimum,
                 "\(theme.preset) statusBarText")
+        // The PR badge is text on the same strip: open green and merged purple must read there.
+        #expect(theme.prOpen.contrastRatio(against: theme.statusBarBackground) >= minimum,
+                "\(theme.preset) prOpen")
+        #expect(theme.prMerged.contrastRatio(against: theme.statusBarBackground) >= minimum,
+                "\(theme.preset) prMerged")
+        #expect(theme.prOpen != theme.prMerged, "\(theme.preset) open and merged must differ")
         // The pane header's two lines, on both of its backgrounds (2c.3).
         #expect(theme.foreground.contrastRatio(against: theme.paneHeaderBackground) >= 4.5,
                 "\(theme.preset) pane title")
