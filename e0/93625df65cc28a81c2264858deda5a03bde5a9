@@ -1,0 +1,31 @@
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_6cbfa11bbbbfc6::t_00dd6a8763c936 772,776-778,782-783
+  s_6cbfa11bbbbfc6::t_6cb35d2d9bca9d 773-775,779-781
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_6cbfa11bbbbfc6::t_d7cd35cc207421 114
+  s_6cbfa11bbbbfc6::t_35fcdce78fb82f 100-113,115-116
+Sources/TkzApp/MainWindowController.swift
+  s_6cbfa11bbbbfc6::t_e3e2856c994803 713-714
+  s_6cbfa11bbbbfc6::t_366632e37845d8 784,1791-1796,1799-1802,1804-1813
+  s_6cbfa11bbbbfc6::t_5de8b62e8397aa 2144-2146
+  s_6cbfa11bbbbfc6::t_dbd0bdbe0e8912 744,748-783
+  s_6cbfa11bbbbfc6::t_1592c656820b53 785
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_6cbfa11bbbbfc6::t_adb64d8da87fcc 276-353
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "e093625df65cc28a81c2264858deda5a03bde5a9",
+  "prompts": {},
+  "sessions": {
+    "s_6cbfa11bbbbfc6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c9cea2d-30e0-41ce-97ed-6d41da9b4378",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
