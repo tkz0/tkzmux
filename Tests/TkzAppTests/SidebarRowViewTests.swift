@@ -90,7 +90,9 @@ struct SidebarRowViewTests {
         theme: Theme = .default,
         width: Double = SidebarMetrics.sidebarWidth
     ) -> SessionRowView {
-        let row = SessionRowView(frame: NSRect(x: 0, y: 0, width: width, height: SessionRowView.rowHeight))
+        // Sized the way the outline view would size it: 44, or 59 when the detail line wraps.
+        let height = SessionRowView.height(for: model, width: width)
+        let row = SessionRowView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         row.configure(model, theme: theme)
         return row
     }
@@ -118,17 +120,172 @@ struct SidebarRowViewTests {
 
     // MARK: Geometry
 
-    @Test("Row heights are exactly the design's 28 pt / 44 pt")
+    @Test("Row heights are exactly the design's 28 pt / 44 pt, and 59 pt for a wrapped detail line")
     func rowHeights() {
         #expect(GroupRowView.rowHeight == 28)
         #expect(SessionRowView.rowHeight == 44)
         #expect(SidebarMetrics.groupRowHeight == 28)
         #expect(SidebarMetrics.sessionRowHeight == 44)
+        #expect(SidebarMetrics.sessionRowWrappedHeight == 59)
         // The outline view returns these; a row view must also actually be that tall.
         let session = Self.sessionRow(Self.sample)
         #expect(session.bounds.height == 44)
+        #expect(SessionRowView.height(for: Self.sample, width: SidebarMetrics.sidebarWidth) == 44)
         let group = Self.groupRow(SidebarGroupRowModel(name: "tkzmux"))
         #expect(group.bounds.height == 28)
+        // A row whose `…/folder · ⎇ branch` does not fit is exactly one detail line taller.
+        let wrapped = Self.sessionRow(Self.wrappingSample, width: SidebarMetrics.sidebarMinWidth)
+        #expect(wrapped.bounds.height == 59)
+        #expect(SessionRowView.height(for: Self.wrappingSample, width: SidebarMetrics.sidebarMinWidth) == 59)
+    }
+
+    /// A Claude-named row with a long branch: `…/reporting · ⎇ feature/reporting-scheduler-rewrite WT`
+    /// cannot fit 240 pt on one line.
+    static let wrappingSample = SidebarSessionRowModel(
+        title: "Move reporting onto the new scheduler",
+        branch: "feature/reporting-scheduler-rewrite",
+        directory: "reporting",
+        isWorktree: true,
+        status: .working
+    )
+
+    // MARK: The `…/folder` subtitle (design 2c.1)
+
+    @Test("The folder subtitle exists only when the model carries a directory")
+    func directoryIsConditional() {
+        let without = Self.sessionRow(SidebarSessionRowModel(title: "reporting", branch: "main"))
+        #expect(without.directoryTextLayer.isHidden)
+        #expect(without.separatorTextLayer.isHidden)
+        #expect(without.bounds.height == 44)
+
+        let with = Self.sessionRow(SidebarSessionRowModel(
+            title: "Fix the rounding bug", branch: "main", directory: "reporting"))
+        #expect(with.directoryTextLayer.isHidden == false)
+        #expect(with.directoryTextLayer.string as? String == "\u{2026}/reporting")
+        #expect(with.separatorTextLayer.isHidden == false)
+        #expect(with.separatorTextLayer.string as? String == "\u{00B7}")
+        #expect(with.separatorTextLayer.opacity == 0.5)
+        // Same line, in design order: folder, separator, branch — all on the detail line.
+        let folder = with.directoryTextLayer.frame
+        let separator = with.separatorTextLayer.frame
+        let branch = with.branchTextLayer.frame
+        #expect(folder.minY == branch.minY)
+        #expect(separator.minY == branch.minY)
+        #expect(folder.maxX <= separator.minX)
+        #expect(separator.maxX <= branch.minX)
+        #expect(with.bounds.height == 44)
+        // The subtitle is drawn in the detail font, in the muted colour, like the branch.
+        #expect(with.directoryTextLayer.fontSize == with.detailFontForMeasurement.pointSize)
+        #expect(Self.approxEqual(
+            Self.components(with.directoryTextLayer.foregroundColor),
+            Self.components(with.branchTextLayer.foregroundColor)))
+
+        // No branch: the folder stands alone, no separator, nothing to wrap.
+        let alone = Self.sessionRow(SidebarSessionRowModel(
+            title: "Fix the rounding bug", directory: "reporting"), width: SidebarMetrics.sidebarMinWidth)
+        #expect(alone.directoryTextLayer.isHidden == false)
+        #expect(alone.separatorTextLayer.isHidden)
+        #expect(alone.bounds.height == 44)
+    }
+
+    @Test("When `…/folder · ⎇ branch WT` does not fit, the branch moves to a second line")
+    func detailLineWrapsBySegment() {
+        let model = Self.wrappingSample
+        let width = SidebarMetrics.sidebarMinWidth
+        #expect(SessionRowView.detailWraps(for: model, width: width))
+        let row = Self.sessionRow(model, width: width)
+        #expect(row.bounds.height == 59)
+
+        let title = row.titleTextLayer.frame
+        let folder = row.directoryTextLayer.frame
+        let branch = row.branchTextLayer.frame
+        let badge = row.worktreeBadgeLayer.frame
+        // Title where it always is (22 pt down from the top), folder under it, branch under that.
+        #expect(title.minY == row.bounds.height - 22)
+        #expect(folder.minY == row.bounds.height - 38)
+        #expect(branch.minY == folder.minY - 15)
+        #expect(branch.minY == 6)
+        #expect(badge.minY == branch.minY)
+        #expect(folder.minX == branch.minX)
+        // The separator has no place on the wrapped form.
+        #expect(row.separatorTextLayer.isHidden)
+        // The folder is whole — it is never the part that truncates.
+        let natural = SidebarLayers.width(of: "\u{2026}/reporting", font: row.detailFontForMeasurement)
+        #expect(folder.width >= natural)
+        // Everything stays inside the row.
+        #expect(folder.maxX <= row.bounds.width)
+        #expect(branch.maxX <= row.bounds.width)
+        #expect(badge.maxX <= row.bounds.width)
+        #expect(badge.minX >= branch.maxX)
+
+        // The same model in a much wider row fits on one line again.
+        #expect(SessionRowView.detailWraps(for: model, width: 600) == false)
+        let wide = Self.sessionRow(model, width: 600)
+        #expect(wide.bounds.height == 44)
+        #expect(wide.separatorTextLayer.isHidden == false)
+        #expect(wide.branchTextLayer.frame.minY == wide.directoryTextLayer.frame.minY)
+    }
+
+    @Test("Hovering never changes a row's height or its wrap decision")
+    func hoverDoesNotChangeTheHeight() {
+        // A model that *just* fits: the `×` reserve would tip it over if it counted.
+        let width = SidebarMetrics.sidebarWidth
+        var model = SidebarSessionRowModel(title: "Named by Claude", branch: "b", directory: "d", isWorktree: true)
+        var branch = "feature/x"
+        while !SessionRowView.detailWraps(for: model, width: width) {
+            branch += "x"
+            model.branch = branch
+        }
+        // One character back: fits unhovered, and would not once 24 pt are taken by the `×`.
+        model.branch = String(branch.dropLast())
+        #expect(SessionRowView.detailWraps(for: model, width: width) == false)
+        let row = Self.sessionRow(model, width: width)
+        #expect(row.bounds.height == 44)
+        let before = row.branchTextLayer.frame.minY
+        row.setHovered(true)
+        row.layoutSubtreeIfNeeded()
+        #expect(SessionRowView.height(for: model, width: width) == 44)
+        #expect(row.branchTextLayer.frame.minY == before)
+        #expect(row.separatorTextLayer.isHidden == false)
+        // Hovered, the line only truncates harder; the badge still stays inside the `×` reserve.
+        let close = row.closeButtonFrame
+        #expect(close != nil)
+        if let close {
+            #expect(row.worktreeBadgeLayer.frame.maxX <= close.minX)
+        }
+    }
+
+    @Test("A wrapped row keeps its chip and memory badge on the branch line, inside the row")
+    func wrappedRowKeepsTheBadgesOnTheBranchLine() {
+        var model = Self.wrappingSample
+        model.accountLabel = "WORK"
+        model.memoryBadge = "6.2 GB"
+        let width = SidebarMetrics.sidebarMinWidth
+        let row = Self.sessionRow(model, width: width)
+        #expect(row.bounds.height == 59)
+        let branchY = row.branchTextLayer.frame.minY
+        #expect(row.accountChipLayer.frame.minY == branchY)
+        #expect(row.memoryBadgeLayer.frame.minY == branchY)
+        #expect(row.accountChipLayer.frame.maxX <= row.bounds.width)
+        #expect(row.memoryBadgeLayer.frame.maxX <= row.accountChipLayer.frame.minX)
+        #expect(row.worktreeBadgeLayer.frame.maxX <= row.memoryBadgeLayer.frame.minX)
+        #expect(row.branchTextLayer.frame.maxX <= row.worktreeBadgeLayer.frame.minX)
+        // The folder line above them has the whole width to itself.
+        #expect(row.directoryTextLayer.frame.minY > branchY)
+    }
+
+    @Test("A wrapped row rasterises headlessly at both scales, and identically twice")
+    func wrappedRowRendersHeadlessly() throws {
+        let row = Self.sessionRow(Self.wrappingSample, width: SidebarMetrics.sidebarMinWidth)
+        for scale in [CGFloat(1), CGFloat(2)] {
+            let rep = try Self.render(row, scale: scale)
+            #expect(rep.pixelsHigh == Int(59 * scale))
+            #expect(try Self.isNonBlank(rep))
+        }
+        let first = try Self.pixels(Self.render(row, scale: 2))
+        row.configure(Self.wrappingSample, theme: .default)
+        let second = try Self.pixels(Self.render(row, scale: 2))
+        #expect(first == second)
     }
 
     // MARK: Headless rendering
@@ -708,7 +865,9 @@ struct SidebarRowViewTests {
             entries.append(Entry(view: Self.groupRow(model, theme: theme), height: GroupRowView.rowHeight))
         }
         func session(_ model: SidebarSessionRowModel) {
-            entries.append(Entry(view: Self.sessionRow(model, theme: theme), height: SessionRowView.rowHeight))
+            entries.append(Entry(
+                view: Self.sessionRow(model, theme: theme),
+                height: SessionRowView.height(for: model, width: width)))
         }
 
         group(SidebarGroupRowModel(name: "tkzmux", color: theme.groupEdgeDefault))
@@ -723,6 +882,10 @@ struct SidebarRowViewTests {
         session(SidebarSessionRowModel(
             title: "a session whose title is far too long to fit in the sidebar",
             branch: "feature/really-long-branch-name", isWorktree: true, status: .idle))
+        session(SidebarSessionRowModel(
+            title: "Track updated fields", branch: "develop", directory: "CoreInvest", isWorktree: true,
+            status: .working))
+        session(Self.wrappingSample)
         group(SidebarGroupRowModel(name: "acme-ledger", color: nil, isCollapsed: true))
         session(SidebarSessionRowModel(title: "restored session", branch: "develop", status: .idle))
 

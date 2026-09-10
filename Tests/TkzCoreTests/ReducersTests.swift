@@ -101,6 +101,37 @@ import Testing
         #expect(moved.displayTitle == "app")
     }
 
+    @Test func directoryTitleIsTheFolderWhateverTheTitleSays() {
+        // No override: the two agree, so the sidebar shows no `…/folder`.
+        var session = Session(groupID: .generate(), cwd: "/repo/app", accountKey: "claude")
+        #expect(session.directoryTitle == "app")
+        #expect(session.directoryTitle == session.displayTitle)
+
+        // Claude's name, a derived name, a rename: the folder stays the folder.
+        session.live = LiveSessionState(
+            descriptor: ClaudeSessionInfo(configDir: "~/.claude", pid: 1, sessionId: "s",
+                                          name: "from claude", nameSource: .auto))
+        #expect(session.displayTitle == "from claude")
+        #expect(session.directoryTitle == "app")
+        session.live?.descriptor?.nameSource = .derived
+        #expect(session.directoryTitle == "app")
+        session.title = "user rename"
+        #expect(session.directoryTitle == "app")
+
+        // A worktree session's folder is the worktree, as its default title would be.
+        session.worktreePath = "/repo/.claude/worktrees/pricing"
+        session.isWorktree = true
+        #expect(session.directoryTitle == "pricing")
+
+        // And Claude's own cwd beats the start dir, exactly as for the title.
+        var moved = Session(groupID: GroupID.generate(), cwd: "/Users/x", accountKey: "claude")
+        moved.live = LiveSessionState(descriptor: ClaudeSessionInfo(
+            configDir: "/Users/x/.claude", pid: 1, sessionId: "s", cwd: "/Users/x/dev/app",
+            name: "Track updated fields", nameSource: .auto))
+        #expect(moved.directoryTitle == "app")
+        #expect(moved.displayTitle == "Track updated fields")
+    }
+
     @Test func moveBetweenGroupsRenumbersBothSides() {
         var state = AppState.fixture
         let id = Fixture.sessionID(1)

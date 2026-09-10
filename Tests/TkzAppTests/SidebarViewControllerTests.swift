@@ -114,11 +114,17 @@ struct SidebarViewControllerTests {
         #expect(harness.controller.rowRect(forGroup: GroupID(uuid: UUID())) == nil)
     }
 
-    @Test("Row heights come from SidebarMetrics, per item type")
-    func rowHeightsAreFixedPerItemType() throws {
+    @Test("Row heights: 28 pt headers, and per session row what SessionRowView.height(for:width:) says")
+    func rowHeightsFollowTheRowViewsAnswer() throws {
         let harness = Self.makeHarness()
+        let state = harness.store.state
+        // The list is the sidebar minus the scroller, so measure the outline, not the window.
+        let width = harness.outline.bounds.width
+        #expect(width > 0 && width <= CGFloat(SidebarMetrics.sidebarWidth))
         var groupRows = 0
         var sessionRows = 0
+        var wrappedRows = 0
+        var expectedTotal: CGFloat = 0
         for row in 0..<harness.outline.numberOfRows {
             let item = try #require(harness.outline.item(atRow: row) as? SidebarItem)
             let height = harness.outline.rect(ofRow: row).height
@@ -126,14 +132,178 @@ struct SidebarViewControllerTests {
                 #expect(height == CGFloat(SidebarMetrics.groupRowHeight))
                 groupRows += 1
             } else {
-                #expect(height == CGFloat(SidebarMetrics.sessionRowHeight))
+                let id = try #require(item.sessionID)
+                let session = try #require(state.sessions[id])
+                let model = SidebarRowAdapter.sessionModel(session, in: state)
+                let expected = SessionRowView.height(for: model, width: width)
+                #expect(height == expected, "row \(row) (\(model.title))")
+                if expected > CGFloat(SidebarMetrics.sessionRowHeight) { wrappedRows += 1 }
                 sessionRows += 1
             }
+            expectedTotal += height
         }
         #expect(groupRows == 5)
         #expect(sessionRows == 35)
-        // Fixed heights, no intercell spacing: the content is exactly the sum.
-        #expect(harness.outline.frame.height == CGFloat(5 * 28 + 35 * 44))
+        // The fixture's renamed sessions carry a `…/folder` subtitle, and some of those wrap at
+        // 300 pt; a fixture where none did would not be testing the tall row at all.
+        #expect(wrappedRows > 0)
+        #expect(wrappedRows < sessionRows)
+        // No intercell spacing: the content is exactly the sum.
+        #expect(harness.outline.frame.height == expectedTotal)
+    }
+
+    @Test("A status flip notes no row heights; Claude naming a session notes exactly that row")
+    func heightsAreRenotedOnlyWhenTheyChange() throws {
+        let harness = Self.makeHarness()
+        harness.outline.resetCounters()
+        // Session 3: no rename, a live descriptor with a `.derived` name, so its title is the
+        // folder and it carries no subtitle yet.
+        let target = Fixture.sessionID(3)
+        let before = try #require(harness.store.state.sessions[target])
+        #expect(before.title == nil)
+        #expect(SidebarRowAdapter.sessionModel(before, in: harness.store.state).directory == nil)
+        let row = harness.controller.row(forSession: target)
+        #expect(row >= 0)
+        let singleLine = harness.outline.rect(ofRow: row).height
+        #expect(singleLine == CGFloat(SidebarMetrics.sessionRowHeight))
+
+        harness.mutate { $0.setStatus(.working, for: target) }
+        #expect(harness.outline.notedHeightRowCount == 0)
+        #expect(harness.outline.reloadedRowCount == 1)
+
+        // Claude names it after the task and the branch is long: `…/reporting · ⎇ …` wraps.
+        harness.outline.resetCounters()
+        harness.mutate { state in
+            state.updateLive(target) { $0.git = GitSummary(branch: "feature/reporting-scheduler-rewrite") }
+            var descriptor = state.sessions[target]!.live!.descriptor!
+            descriptor.name = "Move reporting onto the new scheduler"
+            descriptor.nameSource = .auto
+            state.adoptDescriptor(descriptor, for: target)
+        }
+        let after = try #require(harness.store.state.sessions[target])
+        let model = SidebarRowAdapter.sessionModel(after, in: harness.store.state)
+        #expect(model.directory == "reporting")
+        #expect(model.title == "Move reporting onto the new scheduler")
+        let width = harness.outline.bounds.width
+        #expect(SessionRowView.detailWraps(for: model, width: width))
+        #expect(harness.outline.notedHeightRowIndexSets == [IndexSet(integer: row)])
+        #expect(harness.outline.rect(ofRow: row).height == CGFloat(SidebarMetrics.sessionRowWrappedHeight))
+        let view = try #require(Self.sessionRow(harness, at: row))
+        #expect(view.bounds.height == CGFloat(SidebarMetrics.sessionRowWrappedHeight))
+        #expect(view.directoryTextLayer.string as? String == "\u{2026}/reporting")
+
+        // Another status tick on the now-tall row still notes nothing.
+        harness.outline.resetCounters()
+        harness.mutate { $0.setStatus(.idle, for: target) }
+        #expect(harness.outline.notedHeightRowCount == 0)
+    }
+
+    @Test("Narrowing the sidebar re-notes the rows that start wrapping, and widening it undoes that")
+    func resizingRenotesTheRowsThatWrap() throws {
+        let harness = Self.makeHarness()
+        let state = harness.store.state
+
+        func check(width expected: CGFloat) throws {
+            // The outline is the sidebar minus the scroller; it must have followed the window.
+            let width = harness.outline.bounds.width
+            #expect(width <= expected && width > expected - 24, "outline is \(width) pt for a \(expected) pt sidebar")
+            for row in 0..<harness.outline.numberOfRows {
+                guard let id = (harness.outline.item(atRow: row) as? SidebarItem)?.sessionID else { continue }
+                let session = try #require(state.sessions[id])
+                let model = SidebarRowAdapter.sessionModel(session, in: state)
+                #expect(harness.outline.rect(ofRow: row).height == SessionRowView.height(for: model, width: width),
+                        "row \(row) at \(width) pt")
+            }
+        }
+        func resize(to width: Double) { Self.resize(harness, to: width) }
+
+        try check(width: CGFloat(SidebarMetrics.sidebarWidth))
+        let tallAtFull = (0..<harness.outline.numberOfRows).filter {
+            harness.outline.rect(ofRow: $0).height == CGFloat(SidebarMetrics.sessionRowWrappedHeight)
+        }
+
+        harness.outline.resetCounters()
+        resize(to: SidebarMetrics.sidebarMinWidth)
+        try check(width: CGFloat(SidebarMetrics.sidebarMinWidth))
+        let tallAtMin = (0..<harness.outline.numberOfRows).filter {
+            harness.outline.rect(ofRow: $0).height == CGFloat(SidebarMetrics.sessionRowWrappedHeight)
+        }
+        // Narrower means more rows wrap, and exactly the newly wrapping ones were noted.
+        #expect(tallAtMin.count > tallAtFull.count)
+        let newlyTall = IndexSet(tallAtMin).subtracting(IndexSet(tallAtFull))
+        #expect(harness.outline.notedHeightRowIndexSets.reduce(IndexSet()) { $0.union($1) } == newlyTall)
+
+        harness.outline.resetCounters()
+        resize(to: SidebarMetrics.sidebarWidth)
+        try check(width: CGFloat(SidebarMetrics.sidebarWidth))
+        #expect(harness.outline.notedHeightRowIndexSets.reduce(IndexSet()) { $0.union($1) } == newlyTall)
+    }
+
+    /// Drags the sidebar divider, as far as the harness is concerned.
+    static func resize(_ harness: Harness, to width: Double) {
+        harness.window.setContentSize(NSSize(width: width, height: 700))
+        harness.controller.view.frame = harness.window.contentLayoutRect
+        harness.window.layoutIfNeeded()
+        harness.controller.view.layoutSubtreeIfNeeded()
+    }
+
+    @Test("A resize while a group is collapsed still leaves its rows at the right height once expanded")
+    func collapsedRowsSurviveAResize() throws {
+        // The rows of a collapsed group are not rows, so a width change cannot re-note them; the
+        // outline view asks afresh when the group expands, and that answer has to be what the
+        // controller remembers — or the *next* resize compares against a stale height and says
+        // "no change" to a row that is a line off.
+        let harness = Self.makeHarness()
+        let group = harness.store.state.orderedGroups[0]
+        #expect(group.isCollapsed == false)
+        let members = harness.store.state.sessions(in: group.id)
+
+        func heights(at width: CGFloat) -> [SessionID: CGFloat] {
+            var out: [SessionID: CGFloat] = [:]
+            for session in members {
+                let model = SidebarRowAdapter.sessionModel(session, in: harness.store.state)
+                out[session.id] = SessionRowView.height(for: model, width: width)
+            }
+            return out
+        }
+        func checkEveryRow() throws {
+            let width = harness.outline.bounds.width
+            for row in 0..<harness.outline.numberOfRows {
+                guard let id = (harness.outline.item(atRow: row) as? SidebarItem)?.sessionID else { continue }
+                let session = try #require(harness.store.state.sessions[id])
+                let model = SidebarRowAdapter.sessionModel(session, in: harness.store.state)
+                let expected = SessionRowView.height(for: model, width: width)
+                #expect(harness.outline.rect(ofRow: row).height == expected, "row \(row) at \(width) pt")
+                let view = try #require(Self.sessionRow(harness, at: row))
+                #expect(view.bounds.height == expected, "row view \(row) at \(width) pt")
+            }
+        }
+
+        let wide = harness.outline.bounds.width
+        Self.resize(harness, to: SidebarMetrics.sidebarMinWidth)
+        let narrow = harness.outline.bounds.width
+        Self.resize(harness, to: SidebarMetrics.sidebarWidth)
+        // The fixture must actually have a row in this group that wraps only when narrow.
+        let atWide = heights(at: wide)
+        let atNarrow = heights(at: narrow)
+        #expect(members.contains { atWide[$0.id] != atNarrow[$0.id] })
+
+        // Collapse wide, narrow, expand (fresh answers), widen: the widen must re-note.
+        harness.mutate { $0.setGroupCollapsed(group.id, true) }
+        Self.resize(harness, to: SidebarMetrics.sidebarMinWidth)
+        harness.mutate { $0.setGroupCollapsed(group.id, false) }
+        try checkEveryRow()
+        Self.resize(harness, to: SidebarMetrics.sidebarWidth)
+        try checkEveryRow()
+
+        // And the mirror: collapse narrow, widen, expand, narrow.
+        Self.resize(harness, to: SidebarMetrics.sidebarMinWidth)
+        harness.mutate { $0.setGroupCollapsed(group.id, true) }
+        Self.resize(harness, to: SidebarMetrics.sidebarWidth)
+        harness.mutate { $0.setGroupCollapsed(group.id, false) }
+        try checkEveryRow()
+        Self.resize(harness, to: SidebarMetrics.sidebarMinWidth)
+        try checkEveryRow()
     }
 
     @Test("The outline draws no system selection — the rows paint Theme.selection themselves")
@@ -751,6 +921,19 @@ struct SidebarViewControllerTests {
         #expect(model.title == session.displayTitle)
         #expect(model.isWorktree)
         #expect(model.isSelected == false)
+        // Session 1 is renamed, so its folder rides along as the subtitle — bare, the view adds `…/`.
+        #expect(session.title != nil)
+        #expect(model.directory == session.directoryTitle)
+        #expect(model.directory == "pricing-engine")  // the fixture's worktree folder
+
+        // A row titled by its folder carries no subtitle: the folder name would be said twice.
+        let folderTitled = state.sessions[Fixture.sessionID(0)]!
+        #expect(folderTitled.title == nil)
+        #expect(SidebarRowAdapter.sessionModel(folderTitled, in: state).directory == nil)
+        // …and neither does a rename that happens to spell the folder name.
+        var spelled = session
+        spelled.title = session.directoryTitle
+        #expect(SidebarRowAdapter.sessionModel(spelled, in: state).directory == nil)
 
         let group = state.orderedGroups[0]
         let groupModel = SidebarRowAdapter.groupModel(group, in: state)

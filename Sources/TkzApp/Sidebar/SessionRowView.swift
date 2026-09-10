@@ -11,13 +11,28 @@
 // superview's tree until the hierarchy reaches a window, so anything drawn by a subview would be
 // missing from a headless bitmap.
 //
-// Geometry (row height 44, origin bottom-left — the view is not flipped):
+// Geometry (row height 44, origin bottom-left — the view is not flipped; every y below is
+// measured **down from the top**, so a taller row keeps its title where it was):
 //
 //     ┌────────────────────────────────────────────────────────────┐
-//     │  ●   Session title…                          NEEDS YOU     │  title line,  y 22…38
-//     │      ⎇ branch   WT                                [ALT]    │  detail line, y  6…19
+//     │  ●   Session title…                          NEEDS YOU     │  title line,  top 22…6
+//     │      …/folder · ⎇ branch   WT                     [ALT]    │  detail line, top 38…25
 //     └────────────────────────────────────────────────────────────┘
 //        ↑14                                                    12↑
+//
+// `…/folder` is there only when the title is not the folder (design 2c.1, see
+// `SidebarSessionRowModel.directory`). When `…/folder · ⎇ branch WT` does not fit, the detail line
+// wraps — by *segment*, never mid-word — and the row is 59 pt:
+//
+//     ┌────────────────────────────────────────────────────────────┐
+//     │  ●   Claude's summary title                  NEEDS YOU     │  title line,  top 22…6
+//     │      …/folder                                              │  detail 1,    top 38…25
+//     │      ⎇ feature/a-long-branch-name   WT            [ALT]    │  detail 2,    top 53…40
+//     └────────────────────────────────────────────────────────────┘
+//
+// The wrap decision (`detailWraps(for:width:)`) is a pure function of the model and the row width,
+// so the outline view can ask `height(for:width:)` without a row view, and it ignores the hover
+// `×` reserve on purpose: a row must not change height because the pointer passed over it.
 //
 // The account chip is the one element with a tooltip; since there are no subviews to hang one on,
 // the row registers a tooltip rect and owns it — see `refreshAccountTooltip()`.
@@ -28,7 +43,8 @@ import TkzCore
 public final class SessionRowView: NSTableCellView {
     // MARK: Metrics (all from the design; see docs/design.md → App architecture → Sidebar)
 
-    /// Fixed row height. The outline view must return this from `heightOfRowByItem`.
+    /// The single-line row height. The outline view returns `height(for:width:)` from
+    /// `heightOfRowByItem`, which is this unless the detail line wraps.
     public static let rowHeight: Double = SidebarMetrics.sessionRowHeight
 
     /// Both are measured from the group header's own leading edge and then indented, so the
@@ -39,17 +55,39 @@ public final class SessionRowView: NSTableCellView {
     private static let rightInset: CGFloat = 12
     private static let selectionInset: CGFloat = 5
     private static let titleLineHeight: CGFloat = 16
-    private static let titleLineY: CGFloat = 22
-    private static let detailLineY: CGFloat = 6
+    /// Top of the row → bottom of the title line (`y = h - titleTop`).
+    private static let titleTop: CGFloat = 22
+    /// Top of the row → bottom of the first detail line (`y = h - detailTop`).
+    private static let detailTop: CGFloat = 38
+    /// One more detail line, when the `…/folder · ⎇ branch` line wraps. Equals
+    /// `sessionRowWrappedHeight - sessionRowHeight`, so the second line lands at y 6 of a 59 pt row.
+    private static let detailLinePitch: CGFloat = CGFloat(SidebarMetrics.sessionRowWrappedHeight - SidebarMetrics.sessionRowHeight)
     private static let badgeGap: CGFloat = 6
     /// Smallest sensible title width; below this we still clip rather than let text escape the row.
     private static let minTitleWidth: CGFloat = 24
 
     // MARK: Fonts
+    //
+    // Static, because `detailWraps(for:width:)` measures with them before any row view exists.
 
-    private let titleFont = Theme.Fonts.ui(Theme.Fonts.ui.title, weight: .medium)
-    private let branchFont = Theme.Fonts.mono(Theme.Fonts.mono.detail)
-    private let badgeFont = Theme.Fonts.ui(9, weight: .semibold)
+    private static let titleFont = Theme.Fonts.ui(Theme.Fonts.ui.title, weight: .medium)
+    private static let branchFont = Theme.Fonts.mono(Theme.Fonts.mono.detail)
+    private static let badgeFont = Theme.Fonts.ui(9, weight: .semibold)
+    private var titleFont: NSFont { Self.titleFont }
+    private var branchFont: NSFont { Self.branchFont }
+    private var badgeFont: NSFont { Self.badgeFont }
+
+    // MARK: Detail-line strings
+    //
+    // Built in one place so what `apply()` draws is exactly what `detailWraps` measured.
+
+    /// The design renders the branch as `⎇ <name>`; the glyph is part of the string rather than a
+    /// separate layer so the two truncate together.
+    private static func branchText(_ branch: String) -> String { "\u{2387} \(branch)" }
+    /// `…/<folder>` — the leading ellipsis stands for the rest of the path (design 2c.1).
+    private static func directoryText(_ directory: String) -> String { "\u{2026}/\(directory)" }
+    /// The `·` between the folder and the branch, drawn at half opacity.
+    private static let separatorText = "\u{00B7}"
 
     // MARK: Layers & subviews
 
@@ -60,6 +98,14 @@ public final class SessionRowView: NSTableCellView {
     private let edgeLayer = SidebarLayers.fill(cornerRadius: 0)
     private let selectionLayer = SidebarLayers.fill(cornerRadius: 6)
     private lazy var titleLayer = SidebarLayers.text(titleFont, color: NSColor.clear.cgColor)
+    /// `…/folder`, in front of the branch (or above it, wrapped). Hidden without a directory.
+    private lazy var directoryLayer = SidebarLayers.text(branchFont, color: NSColor.clear.cgColor)
+    /// The `·` between folder and branch; only on the single-line form.
+    private lazy var separatorLayer: CATextLayer = {
+        let layer = SidebarLayers.text(branchFont, color: NSColor.clear.cgColor)
+        layer.opacity = 0.5
+        return layer
+    }()
     private lazy var branchLayer = SidebarLayers.text(branchFont, color: NSColor.clear.cgColor)
     private lazy var wtBadge = SidebarBadgeLayer(font: badgeFont)
     /// The "this session's processes are holding N GB" badge. Reuses the amber NEEDS YOU tokens
@@ -123,6 +169,8 @@ public final class SessionRowView: NSTableCellView {
         root.addSublayer(edgeLayer)
         root.addSublayer(selectionLayer)
         root.addSublayer(titleLayer)
+        root.addSublayer(directoryLayer)
+        root.addSublayer(separatorLayer)
         root.addSublayer(branchLayer)
         root.addSublayer(wtBadge)
         root.addSublayer(memoryBadge)
@@ -181,6 +229,10 @@ public final class SessionRowView: NSTableCellView {
         statusDot.reset()
         model = SidebarSessionRowModel(title: "")
         titleLayer.string = nil
+        directoryLayer.string = nil
+        directoryLayer.isHidden = true
+        separatorLayer.string = nil
+        separatorLayer.isHidden = true
         branchLayer.string = nil
         wtBadge.isHidden = true
         memoryBadge.isHidden = true
@@ -274,16 +326,27 @@ public final class SessionRowView: NSTableCellView {
         titleLayer.string = model.title
         titleLayer.foregroundColor = theme.foreground.cgColor
 
-        // The design renders the branch as `⎇ <name>`; the glyph is part of the string rather than a
-        // separate layer so the two truncate together.
         if let branch = model.branch, !branch.isEmpty {
-            branchLayer.string = "⎇ \(branch)"
+            branchLayer.string = Self.branchText(branch)
             branchLayer.isHidden = false
         } else {
             branchLayer.string = nil
             branchLayer.isHidden = true
         }
         branchLayer.foregroundColor = theme.foregroundMuted.cgColor
+
+        if let directory = model.directory, !directory.isEmpty {
+            directoryLayer.string = Self.directoryText(directory)
+            directoryLayer.isHidden = false
+        } else {
+            directoryLayer.string = nil
+            directoryLayer.isHidden = true
+        }
+        directoryLayer.foregroundColor = theme.foregroundMuted.cgColor
+        // Shown only between a folder and a branch on one line; `layout()` hides it when wrapped.
+        separatorLayer.string = Self.separatorText
+        separatorLayer.foregroundColor = theme.foregroundMuted.cgColor
+        separatorLayer.isHidden = directoryLayer.isHidden || branchLayer.isHidden
 
         wtBadge.isHidden = !model.isWorktree
         if model.isWorktree {
@@ -334,6 +397,8 @@ public final class SessionRowView: NSTableCellView {
     // is, what colour it carries) rather than pixels, and structure is what wave 2 depends on too.
 
     var titleTextLayer: CATextLayer { titleLayer }
+    var directoryTextLayer: CATextLayer { directoryLayer }
+    var separatorTextLayer: CATextLayer { separatorLayer }
     var branchTextLayer: CATextLayer { branchLayer }
     var worktreeBadgeLayer: CALayer { wtBadge }
     var memoryBadgeLayer: CALayer { memoryBadge }
@@ -342,6 +407,43 @@ public final class SessionRowView: NSTableCellView {
     var selectionBackgroundLayer: CALayer { selectionLayer }
     var colourEdgeLayer: CALayer { edgeLayer }
     var titleFontForMeasurement: NSFont { titleFont }
+    var detailFontForMeasurement: NSFont { branchFont }
+
+    // MARK: Row height
+
+    /// `true` when `…/folder · ⎇ branch [WT] [size] [chip]` does not fit one detail line at
+    /// `width`, so the branch (with its badges) moves to a second line.
+    ///
+    /// Pure: the same model at the same width always answers the same, which is what lets the
+    /// outline view ask before a row view exists. Measured at the **unhovered** width — the `×`
+    /// reserve only ever costs truncation, never a line, or a row would grow under the pointer.
+    /// Without a directory, or without a branch, there is nothing to wrap.
+    public static func detailWraps(for model: SidebarSessionRowModel, width: CGFloat) -> Bool {
+        guard let directory = model.directory, !directory.isEmpty,
+              let branch = model.branch, !branch.isEmpty else { return false }
+        var needed = textLeft
+        needed += SidebarLayers.width(of: directoryText(directory), font: branchFont) + 1
+        needed += badgeGap + SidebarLayers.width(of: separatorText, font: branchFont) + 1
+        needed += badgeGap + SidebarLayers.width(of: branchText(branch), font: branchFont) + 1
+        if model.isWorktree {
+            needed += badgeGap + SidebarBadgeLayer.width(for: "WT", font: badgeFont)
+        }
+        if let size = model.memoryBadge, !size.isEmpty {
+            needed += badgeGap + SidebarBadgeLayer.width(for: size, font: badgeFont)
+        }
+        if let label = model.accountLabel, !label.isEmpty {
+            needed += badgeGap + SidebarBadgeLayer.width(for: label, font: badgeFont)
+        }
+        return needed + rightInset > width
+    }
+
+    /// The row height the outline view must return for `model` at `width`: 44, or 59 when the
+    /// detail line wraps.
+    public static func height(for model: SidebarSessionRowModel, width: CGFloat) -> CGFloat {
+        detailWraps(for: model, width: width)
+            ? CGFloat(SidebarMetrics.sessionRowWrappedHeight)
+            : CGFloat(SidebarMetrics.sessionRowHeight)
+    }
 
     // MARK: Layout
 
@@ -384,12 +486,13 @@ public final class SessionRowView: NSTableCellView {
 
         // Title line: NEEDS YOU is right-aligned and the title gets what is left. (The pane count
         // that used to sit inside NEEDS YOU went with the other row counters, 2026-09-10.)
+        let titleY = h - Self.titleTop
         var titleRight = w - Self.rightInset - closeReserve
         if !needsYouBadge.isHidden {
             let x = w - Self.rightInset - closeReserve - needsYouBadgeWidth
             needsYouBadge.frame = CGRect(
                 x: x,
-                y: Self.titleLineY + (Self.titleLineHeight - badgeH) / 2,
+                y: titleY + (Self.titleLineHeight - badgeH) / 2,
                 width: needsYouBadgeWidth,
                 height: badgeH
             )
@@ -397,35 +500,58 @@ public final class SessionRowView: NSTableCellView {
         }
         titleLayer.frame = CGRect(
             x: Self.textLeft,
-            y: Self.titleLineY,
+            y: titleY,
             width: max(Self.minTitleWidth, titleRight - Self.textLeft),
             height: Self.titleLineHeight
         )
 
-        // Detail line: account chip right-aligned, then branch text, then the WT badge after it.
+        // Detail line(s). Single line: `…/folder · ⎇ branch WT … [size] [chip]`. Wrapped: the
+        // folder alone on the first line, the branch with every badge on the second. The wrap is
+        // decided at the unhovered width (see `detailWraps`), so hover only truncates.
+        let wraps = Self.detailWraps(for: model, width: w)
+        let folderLineY = h - Self.detailTop
+        let branchLineY = wraps ? folderLineY - Self.detailLinePitch : folderLineY
+
+        // Account chip right-aligned on the branch line, the memory badge before it.
         var detailRight = w - Self.rightInset - closeReserve
         if !accountChip.isHidden {
             let x = w - Self.rightInset - closeReserve - accountChipWidth
-            accountChip.frame = CGRect(x: x, y: Self.detailLineY, width: accountChipWidth, height: badgeH)
+            accountChip.frame = CGRect(x: x, y: branchLineY, width: accountChipWidth, height: badgeH)
             detailRight = x - Self.badgeGap
         }
         if !memoryBadge.isHidden {
             let x = detailRight - memoryBadgeWidth
-            memoryBadge.frame = CGRect(x: x, y: Self.detailLineY, width: memoryBadgeWidth, height: badgeH)
+            memoryBadge.frame = CGRect(x: x, y: branchLineY, width: memoryBadgeWidth, height: badgeH)
             detailRight = x - Self.badgeGap
         }
+
         var detailLeft = Self.textLeft
+        if !directoryLayer.isHidden {
+            // Wrapped, the folder has the whole first line to itself; otherwise it shares the
+            // badges' line. Either way it is clamped so a pathological name cannot escape the row.
+            let lineRight = wraps ? w - Self.rightInset - closeReserve : detailRight
+            let natural = SidebarLayers.width(of: (directoryLayer.string as? String) ?? "", font: branchFont) + 1
+            let width = min(natural, max(0, lineRight - detailLeft))
+            directoryLayer.frame = CGRect(x: detailLeft, y: folderLineY, width: width, height: badgeH)
+            if !wraps { detailLeft += width + Self.badgeGap }
+        }
+        separatorLayer.isHidden = directoryLayer.isHidden || branchLayer.isHidden || wraps
+        if !separatorLayer.isHidden {
+            let width = SidebarLayers.width(of: Self.separatorText, font: branchFont) + 1
+            separatorLayer.frame = CGRect(x: detailLeft, y: folderLineY, width: width, height: badgeH)
+            detailLeft += width + Self.badgeGap
+        }
         if !branchLayer.isHidden {
             let natural = SidebarLayers.width(of: (branchLayer.string as? String) ?? "", font: branchFont) + 1
             let available = max(0, detailRight - detailLeft - (wtBadge.isHidden ? 0 : wtBadgeWidth + Self.badgeGap))
             let width = min(natural, available)
-            branchLayer.frame = CGRect(x: detailLeft, y: Self.detailLineY, width: width, height: badgeH)
+            branchLayer.frame = CGRect(x: detailLeft, y: branchLineY, width: width, height: badgeH)
             detailLeft += width + Self.badgeGap
         }
         if !wtBadge.isHidden {
             // Clamp so the badge never escapes the row when the branch name eats the whole line.
             let x = min(detailLeft, max(Self.textLeft, detailRight - wtBadgeWidth))
-            wtBadge.frame = CGRect(x: x, y: Self.detailLineY, width: wtBadgeWidth, height: badgeH)
+            wtBadge.frame = CGRect(x: x, y: branchLineY, width: wtBadgeWidth, height: badgeH)
         }
 
         refreshAccountTooltip()

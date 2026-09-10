@@ -323,13 +323,19 @@ final class SidebarBadgeLayer: CALayer {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used; tkzmux builds layers in code") }
 
+    /// The width a badge reading `text` in `font` needs — static so `SessionRowView.detailWraps`
+    /// can measure a row that has no layers yet. `configure` returns exactly this.
+    static func width(for text: String, font: NSFont) -> CGFloat {
+        SidebarLayers.width(of: text, font: font) + horizontalPadding * 2
+    }
+
     /// Sets the text and colours, and returns the width the badge needs.
     @discardableResult
     func configure(text: String, foreground: RGB, background: RGB) -> CGFloat {
         label.string = text
         label.foregroundColor = foreground.cgColor
         backgroundColor = background.cgColor
-        return SidebarLayers.width(of: text, font: font) + Self.horizontalPadding * 2
+        return Self.width(for: text, font: font)
     }
 
     override func layoutSublayers() {
