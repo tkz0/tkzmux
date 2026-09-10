@@ -1,0 +1,21 @@
+docs/release.md
+  s_21ac80e5af0f42::t_9e4514500be1a6 194-195
+scripts/make-dist.sh
+  s_21ac80e5af0f42::t_9e4514500be1a6 122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "0d6cdeb09637ada82af3855343284e641082bf28",
+  "prompts": {},
+  "sessions": {
+    "s_21ac80e5af0f42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "697adc27-0427-48eb-8845-7c7fb54dc423",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
