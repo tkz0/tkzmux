@@ -49,6 +49,14 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
     /// shows only the badges.
     public var branch: String?
 
+    /// The folder the session lives in, shown as `…/<directory>` in front of the branch — but only
+    /// when the title is *not* already that folder (design 2c.1: "Blazor grid fix" gets
+    /// `…/FIIPEV · ⎇ develop`, "FIM" shows only `⎇ develop`). `nil` hides it. The adapter passes
+    /// `Session.directoryTitle` when it differs from `displayTitle`, so a Claude-named or renamed
+    /// row keeps its folder in view. When `…/dir · ⎇ branch [WT]` does not fit the row, the branch
+    /// moves to a second detail line and the row grows to `SidebarMetrics.sessionRowWrappedHeight`.
+    public var directory: String?
+
     /// `true` when the session's cwd is a git worktree (`GitStatus.RepoInfo.isWorktree`).
     /// Drives the `WT` badge on the detail line.
     public var isWorktree: Bool
@@ -97,6 +105,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
     public init(
         title: String,
         branch: String? = nil,
+        directory: String? = nil,
         isWorktree: Bool = false,
         status: SidebarStatus = .idle,
         accountLabel: String? = nil,
@@ -109,6 +118,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
     ) {
         self.title = title
         self.branch = branch
+        self.directory = directory
         self.isWorktree = isWorktree
         self.status = status
         self.accountLabel = accountLabel
@@ -237,8 +247,13 @@ public struct UpdateNoticeModel: Hashable, Sendable {
 public enum SidebarMetrics {
     /// Group header height, in points.
     public static let groupRowHeight: Double = 28
-    /// Session row height, in points.
+    /// Session row height, in points — the single-detail-line row. The outline view no longer
+    /// returns this blindly: it asks `SessionRowView.height(for:width:)` per row, which is this
+    /// unless the row's `…/dir · ⎇ branch` line wraps.
     public static let sessionRowHeight: Double = 44
+    /// A session row whose detail line wrapped to two (`…/dir` above `⎇ branch [WT]`): one more
+    /// 15 pt detail line. Never taller — two lines is the cap.
+    public static let sessionRowWrappedHeight: Double = 59
     /// Summary strip height, in points.
     public static let summaryStripHeight: Double = 26
     /// The "＋ New group" footer strip: a 26 pt dashed button with 2 pt above and 10 pt below.

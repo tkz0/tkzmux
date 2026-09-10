@@ -16,6 +16,9 @@
 //     make the badges and the summary strip disagree with `TkzCore`.
 //   * `title` is `Session.displayTitle` (the resolved chain lives in `TkzCore`).
 //   * `branch` is the bare name from `GitSummary`; the *view* adds the `⎇`.
+//   * `directory` is `Session.directoryTitle` **only when it differs from `displayTitle`** — a row
+//     titled by its folder would otherwise say the same thing twice (design 2c.1). The view adds
+//     the `…/`.
 //   * `SidebarGroupRowModel.name` keeps its original casing; the view uppercases.
 //   * `color: nil` stays `nil` — a group with no colour gets a transparent edge, deliberately not
 //     `Theme.groupEdgeDefault` (that token is the colour picker's default, not a fallback).
@@ -54,6 +57,7 @@ public enum SidebarRowAdapter {
         SidebarSessionRowModel(
             title: session.displayTitle,
             branch: session.live?.git?.branch,
+            directory: directory(for: session),
             isWorktree: session.showsWorktreeBadge,
             status: status(of: session),
             accountLabel: accountLabel(for: session, in: state),
@@ -64,6 +68,13 @@ public enum SidebarRowAdapter {
             groupColor: state.groups[session.groupID]?.color,
             memoryBadge: memoryBadge(for: session)
         )
+    }
+
+    /// The `…/dir` subtitle: the folder-derived title, unless that *is* the title. An exact string
+    /// compare, so a rename that spells the folder name hides it too.
+    static func directory(for session: Session) -> String? {
+        let directory = session.directoryTitle
+        return directory == session.displayTitle ? nil : directory
     }
 
     /// Above this, a session's process subtree gets a badge on its row.

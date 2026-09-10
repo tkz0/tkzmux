@@ -18,6 +18,14 @@
 // `reloadData()` is called exactly once, at load. `SidebarOutlineView` counts every one of these
 // calls so the tests can assert the table above rather than eyeball it.
 //
+// **Row heights are per row, not per type** (design 2c.1): a session row is 44 pt, or 59 pt when
+// its `…/folder · ⎇ branch` line wraps — `SessionRowView.height(for:width:)` decides.
+// `reloadData(forRowIndexes:)` does *not* re-ask the delegate for heights, so `shadowRowHeights`
+// remembers what the outline view was last told and `noteHeightOfRows(withIndexesChanged:)` runs
+// only for rows whose answer changed: a status tick notes nothing, a descriptor name arriving
+// notes one row, and a sidebar resize (`SidebarOutlineView.onWidthChange`) notes whichever rows
+// start or stop wrapping.
+//
 // **Collapse is not structural.** `numberOfChildrenOfItem` always reports a group's full session
 // list; whether those rows exist is `expandItem`/`collapseItem`, driven by `Group.isCollapsed`.
 // Returning 0 for a collapsed group would make every collapse a structural change and defeat the
@@ -86,6 +94,28 @@ final class SidebarOutlineView: NSOutlineView {
     var onArrowKey: (@MainActor (Int) -> Void)?
     /// The context menu for the row under a right-click (M5.2). `nil` = no menu for that row.
     var onContextMenu: (@MainActor (SidebarItem.Kind) -> NSMenu?)?
+    /// The list got wider or narrower — the controller re-checks which session rows wrap.
+    var onWidthChange: (@MainActor (CGFloat) -> Void)?
+
+    /// The width `onWidthChange` last saw.
+    private var reportedWidth: CGFloat = -1
+
+    /// The clip view resizes the document view to its own width, so a sidebar drag arrives as a
+    /// frame change. It is reported from `layout()`, not from `setFrameSize` — `noteHeightOfRows`
+    /// re-tiles the table, and asking for that from inside the table's own frame change is how a
+    /// noted row ended up keeping its old rect.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        if newSize.width != reportedWidth { needsLayout = true }
+    }
+
+    override func layout() {
+        super.layout()
+        let width = bounds.width
+        guard width != reportedWidth else { return }
+        reportedWidth = width
+        onWidthChange?(width)
+    }
 
     /// Right-click: the row under the pointer gets its own menu, without moving the selection —
     /// "Remove" on a row the user is not looking at must not first switch the terminal to it.
@@ -109,6 +139,8 @@ final class SidebarOutlineView: NSOutlineView {
 
     private(set) var reloadDataCallCount = 0
     private(set) var reloadedRowIndexSets: [IndexSet] = []
+    /// Every `noteHeightOfRows(withIndexesChanged:)` — the tests assert a status tick notes none.
+    private(set) var notedHeightRowIndexSets: [IndexSet] = []
     private(set) var insertedItemCalls: [(rows: IndexSet, parent: SidebarItem?)] = []
     private(set) var removedItemCalls: [(rows: IndexSet, parent: SidebarItem?)] = []
     private(set) var movedItemCalls: [(from: Int, to: Int, parent: SidebarItem?)] = []
@@ -122,6 +154,7 @@ final class SidebarOutlineView: NSOutlineView {
     func resetCounters() {
         reloadDataCallCount = 0
         reloadedRowIndexSets = []
+        notedHeightRowIndexSets = []
         insertedItemCalls = []
         removedItemCalls = []
         movedItemCalls = []
@@ -129,6 +162,13 @@ final class SidebarOutlineView: NSOutlineView {
 
     /// Total rows touched by `reloadData(forRowIndexes:)` since the last reset.
     var reloadedRowCount: Int { reloadedRowIndexSets.reduce(0) { $0 + $1.count } }
+    /// Total rows whose height was re-noted since the last reset.
+    var notedHeightRowCount: Int { notedHeightRowIndexSets.reduce(0) { $0 + $1.count } }
+
+    override func noteHeightOfRows(withIndexesChanged indexSet: IndexSet) {
+        Self.record(indexSet, into: &notedHeightRowIndexSets)
+        super.noteHeightOfRows(withIndexesChanged: indexSet)
+    }
 
     override func reloadData() {
         reloadDataCallCount += 1
@@ -311,6 +351,10 @@ public final class SidebarViewController: NSViewController {
     private var shadowGroups: [GroupID] = []
     private var shadowSessions: [GroupID: [SessionID]] = [:]
 
+    /// The height each session row was last reported at — written only by `heightOfRowByItem`,
+    /// so it is exactly what the outline view believes. See *Row heights* in the file header.
+    private var shadowRowHeights: [SessionID: CGFloat] = [:]
+
     /// The colour each group's rows were last rendered with (TKZ-48).
     ///
     /// `ChangeSet.groups` names a group but not *which* field changed, and since the colour edge now
@@ -381,6 +425,7 @@ public final class SidebarViewController: NSViewController {
         outline.target = self
         outline.action = #selector(outlineClicked)
         outline.onArrowKey = { [weak self] offset in self?.moveSelection(by: offset) }
+        outline.onWidthChange = { [weak self] _ in self?.noteChangedRowHeights() }
         outline.registerForDraggedTypes([.tkzSidebarSession])
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         // `.gap` opens the insertion point between rows instead of drawing a two-pixel line the
@@ -442,6 +487,7 @@ public final class SidebarViewController: NSViewController {
     /// The only `reloadData()` in the class. Rebuilds the shadow tree and the expansion state from
     /// the store, then restores the selection.
     public func rebuild() {
+        shadowRowHeights = [:]  // refilled as `heightOfRowByItem` answers
         outline.reloadData()
         shadowGroups = store.state.orderedGroups.map(\.id)
         shadowSessions = [:]
@@ -483,6 +529,7 @@ public final class SidebarViewController: NSViewController {
             }
         }
         if !rows.isEmpty {
+            noteChangedRowHeights(in: rows)
             outline.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
         }
 
@@ -531,7 +578,42 @@ public final class SidebarViewController: NSViewController {
             if row >= 0 { rows.insert(row) }
         }
         if !rows.isEmpty {
+            // A chip appearing on the detail line can be what tips `…/folder · ⎇ branch` over.
+            noteChangedRowHeights(in: rows)
             outline.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
+        }
+    }
+
+    // MARK: Row heights
+
+    /// What `heightOfRowByItem` answers for `session` at the list's current width.
+    private func rowHeight(for session: Session) -> CGFloat {
+        SessionRowView.height(
+            for: SidebarRowAdapter.sessionModel(session, in: store.state),
+            width: outline.bounds.width)
+    }
+
+    /// Re-derives the height of every session row in `rows` (every visible session row when
+    /// `nil`), and tells the outline view about the ones that differ from what it was last told.
+    /// One `noteHeightOfRows` call, with animation off — a row growing by a line should snap, not
+    /// slide the rest of the list down over a quarter of a second.
+    private func noteChangedRowHeights(in rows: IndexSet? = nil) {
+        var changed = IndexSet()
+        let candidates = rows ?? IndexSet(integersIn: 0..<outline.numberOfRows)
+        for row in candidates {
+            guard let id = (outline.item(atRow: row) as? SidebarItem)?.sessionID,
+                  let session = store.state.sessions[id] else { continue }
+            let height = rowHeight(for: session)
+            if shadowRowHeights[id] != height {
+                shadowRowHeights[id] = height
+                changed.insert(row)
+            }
+        }
+        guard !changed.isEmpty else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            context.allowsImplicitAnimation = false
+            outline.noteHeightOfRows(withIndexesChanged: changed)
         }
     }
 
@@ -670,6 +752,9 @@ public final class SidebarViewController: NSViewController {
         for groupID in newGroups where !shadowGroupColors.keys.contains(groupID) {
             shadowGroupColors[groupID] = state.groups[groupID]?.color
         }
+        // Heights: an inserted row records itself when `heightOfRowByItem` answers for it; a
+        // removed row's entry just goes.
+        shadowRowHeights = shadowRowHeights.filter { state.sessions[$0.key] != nil }
 
         // A group that was just inserted has no expansion state yet.
         syncExpansion(for: newGroups)
@@ -1010,6 +1095,14 @@ extension SidebarViewController {
 extension SidebarViewController: NSOutlineViewDelegate {
     public func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
         guard let sidebarItem = item as? SidebarItem else { return SidebarMetrics.sessionRowHeight }
+        if let id = sidebarItem.sessionID, let session = store.state.sessions[id] {
+            // Recorded *here*, so the shadow is literally what the outline view was last told —
+            // including rows it asks about on its own, such as a collapsed group's sessions when
+            // the group expands after a resize.
+            let height = rowHeight(for: session)
+            shadowRowHeights[id] = height
+            return height
+        }
         return sidebarItem.groupID == nil
             ? SidebarMetrics.sessionRowHeight : SidebarMetrics.groupRowHeight
     }

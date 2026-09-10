@@ -244,6 +244,14 @@ public struct Session: Hashable, Sendable, Identifiable {
         if let name = live?.descriptor?.name, !name.isEmpty, live?.descriptor?.nameSource != .derived {
             return name
         }
+        return directoryTitle
+    }
+
+    /// The title the session would have with no rename and no descriptor name: the worktree name
+    /// for a `claude -w` session, else the last segment of `effectiveCwd`. The sidebar shows it as
+    /// `…/<name>` under the title whenever `displayTitle` is something else (design 2c.1), so the
+    /// folder stays visible once Claude has named the session after the task.
+    public var directoryTitle: String {
         if isWorktree, let worktreePath, !worktreePath.isEmpty {
             return Self.title(forPath: worktreePath)
         }
