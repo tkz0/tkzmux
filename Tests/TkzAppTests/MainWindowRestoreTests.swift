@@ -273,6 +273,84 @@ struct MainWindowRestoreTests {
         #expect(harness.host.discarded.isEmpty)
     }
 
+    // MARK: - New session in a group with no repo
+
+    /// A bucket's "New session in …" — the context-menu item, performed the way a click would.
+    private static func newSession(in harness: MainWindowControllerTests.Harness, group: GroupID) throws {
+        let menu = try #require(harness.controller.sidebar.contextMenu(forGroup: group))
+        let item = try #require(menu.items.first { $0.identifier == MainWindowController.ContextItemID.newSession })
+        _ = item.target?.perform(item.action, with: item)
+        harness.store.flush()
+    }
+
+    private static func temporaryFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appending(path: "tkzmux-bucket-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }
+
+    @Test("New session in an empty group asks for a folder and starts claude there, in that group")
+    func newSessionInBucketAsksForAFolder() throws {
+        var state = AppState()
+        let bucket = state.addGroup(name: "Work")
+        let harness = MainWindowControllerTests.makeHarness(state)
+        defer { harness.tearDown() }
+        let folder = try Self.temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        var prompts: [String] = []
+        harness.controller.folderPrompt = { prompt in
+            prompts.append(prompt)
+            return folder
+        }
+        try Self.newSession(in: harness, group: bucket.id)
+
+        #expect(prompts == ["Start here"], "no launch menu first — the picker is the first thing shown")
+        #expect(harness.store.state.groups.count == 1, "the folder joins this group; no new group")
+        #expect(harness.store.state.groups[bucket.id]?.repoRoot == folder.standardizedFileURL.path)
+        let launched = try #require(harness.host.opened.last)
+        #expect(launched.cwd == folder.standardizedFileURL.path)
+        #expect(launched.env["TKZMUX_BOOT_COMMAND"] == "claude")
+        #expect(harness.store.state.sessions[launched.id]?.groupID == bucket.id)
+        #expect(harness.store.state.selection == launched.id)
+    }
+
+    @Test("A folder that already roots another group launches there and leaves the empty group alone")
+    func newSessionInBucketWithATakenFolder() throws {
+        let folder = try Self.temporaryFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var state = AppState()
+        let bucket = state.addGroup(name: "Work")
+        let taken = state.addGroup(name: "Taken", repoRoot: folder.standardizedFileURL.path)
+        let harness = MainWindowControllerTests.makeHarness(state)
+        defer { harness.tearDown() }
+
+        harness.controller.folderPrompt = { _ in folder }
+        try Self.newSession(in: harness, group: bucket.id)
+
+        #expect(harness.store.state.groups.count == 2)
+        #expect(harness.store.state.groups[bucket.id]?.repoRoot == nil, "one folder roots one group")
+        let launched = try #require(harness.host.opened.last)
+        #expect(harness.store.state.sessions[launched.id]?.groupID == taken.id)
+        #expect(launched.cwd == folder.standardizedFileURL.path)
+    }
+
+    @Test("Cancelling the folder picker starts nothing and changes nothing")
+    func newSessionInBucketCancelled() throws {
+        var state = AppState()
+        let bucket = state.addGroup(name: "Work")
+        let harness = MainWindowControllerTests.makeHarness(state)
+        defer { harness.tearDown() }
+
+        harness.controller.folderPrompt = { _ in nil }
+        try Self.newSession(in: harness, group: bucket.id)
+
+        #expect(harness.host.opened.isEmpty)
+        #expect(harness.store.state.sessions.isEmpty)
+        #expect(harness.store.state.groups[bucket.id]?.repoRoot == nil)
+    }
+
     @Test("Set Repo… attaches a folder to a bucket group, and one folder roots one group")
     func setGroupRepo() throws {
         var state = AppState()

@@ -97,6 +97,23 @@ struct SidebarViewControllerTests {
         #expect(rows == rows.sorted())
     }
 
+    @Test("A group's row rectangle is reported for anchoring, and an unknown group has none")
+    func groupRowRect() throws {
+        let harness = Self.makeHarness()
+        let groups = harness.store.state.orderedGroups
+        let first = try #require(groups.first)
+        let second = try #require(groups.dropFirst().first)
+
+        let anchor = try #require(harness.controller.rowRect(forGroup: first.id))
+        #expect(anchor.view === harness.outline)
+        #expect(anchor.rect == harness.outline.rect(ofRow: harness.controller.row(forGroup: first.id)))
+        // Rows are laid out top-down in the flipped outline: a later group sits lower.
+        let later = try #require(harness.controller.rowRect(forGroup: second.id))
+        #expect(later.rect.minY > anchor.rect.maxY)
+
+        #expect(harness.controller.rowRect(forGroup: GroupID(uuid: UUID())) == nil)
+    }
+
     @Test("Row heights come from SidebarMetrics, per item type")
     func rowHeightsAreFixedPerItemType() throws {
         let harness = Self.makeHarness()

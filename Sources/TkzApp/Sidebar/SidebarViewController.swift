@@ -769,6 +769,18 @@ public final class SidebarViewController: NSViewController {
     func row(forSession id: SessionID) -> Int { outline.row(forItem: item(.session(id))) }
     func row(forGroup id: GroupID) -> Int { outline.row(forItem: item(.group(id))) }
 
+    /// Where `id`'s header row is, for anchoring a menu or popover to it: the row's rectangle in
+    /// the outline's (flipped) coordinates, and the outline itself. `nil` when the group has no row,
+    /// or when its row is scrolled out of view — a menu dropped from an off-screen row would land
+    /// outside the sidebar, and the caller's fallback anchor is better than that.
+    public func rowRect(forGroup id: GroupID) -> (rect: NSRect, view: NSView)? {
+        let row = self.row(forGroup: id)
+        guard row >= 0 else { return nil }
+        let rect = outline.rect(ofRow: row)
+        guard outline.visibleRect.intersects(rect) else { return nil }
+        return (rect, outline)
+    }
+
     private func updateSummary() {
         strip.configure(SidebarRowAdapter.summaryModel(for: store.state), theme: theme)
     }
