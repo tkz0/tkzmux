@@ -1,0 +1,79 @@
+Tests/TkzCoreTests/ReducersTests.swift
+  s_c818df82eb6acc::t_e044f4960f54c5 104-134
+Sources/TkzApp/Sidebar/StatusDotView.swift
+  s_c818df82eb6acc::t_25ff91caa4e314 326-331,338
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_c818df82eb6acc::t_e6b7c7c933030d 73-79
+  s_c818df82eb6acc::t_5bb58f7cdd0f34 60
+  s_c818df82eb6acc::t_69fd59ffc7d871 19-21
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_c818df82eb6acc::t_5071862c669b83 93-95
+  s_c818df82eb6acc::t_344a94fc466963 123,129,133,136-220,224-250,253-288
+  s_c818df82eb6acc::t_0beac8335075d3 251-252
+  s_c818df82eb6acc::t_90106390a42b72 868-870
+  s_c818df82eb6acc::t_f81af12ea85a3f 885-888
+  s_c818df82eb6acc::t_7d3227d884904d 221-223
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_c818df82eb6acc::t_16f20b48af0010 121,123
+  s_c818df82eb6acc::t_30a419ef766bda 117-118,120,122,126-127,137-140,143,147-206,208,210-217,219-239
+  s_c818df82eb6acc::t_ea8dcae3133092 207,209
+  s_c818df82eb6acc::t_eca0723ba9d512 218
+  s_c818df82eb6acc::t_00cfccfdc3cab1 135-136
+  s_c818df82eb6acc::t_1c984a0a91af54 240,242-306
+  s_c818df82eb6acc::t_7da40842e2049a 925-927,935
+  s_c818df82eb6acc::t_15059b7d8ad17c 924,928-934,936
+  s_c818df82eb6acc::t_306b31bcb1c052 241
+Sources/TkzCore/Models.swift
+  s_c818df82eb6acc::t_b23b1934e8ebbd 247-254
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_c818df82eb6acc::t_4796f4d97be04a 428
+  s_c818df82eb6acc::t_ad20b3d5f86b21 165-171
+  s_c818df82eb6acc::t_77da113db61f2c 581-582,587-616,618
+  s_c818df82eb6acc::t_107a0c62dc338d 142-143
+  s_c818df82eb6acc::t_2dfd354a2ed743 21-28
+  s_c818df82eb6acc::t_1d8f6aa82e27d5 757
+  s_c818df82eb6acc::t_8eea57418186b2 1099-1104
+  s_c818df82eb6acc::t_6db7f0bff5621a 157
+  s_c818df82eb6acc::t_06a0f034af7feb 490
+  s_c818df82eb6acc::t_24a1bd291ea6e1 532
+  s_c818df82eb6acc::t_1f5db688457810 100-101,103-106,109-117
+  s_c818df82eb6acc::t_05e6ac70451b37 356-357
+  s_c818df82eb6acc::t_ee93b01ebbcf8e 617,1098,1105
+  s_c818df82eb6acc::t_b73159a92e4a4e 755-756
+  s_c818df82eb6acc::t_a5b59f9ab5ff7d 354-355
+  s_c818df82eb6acc::t_705db58019fcdd 97-99,102,107-108,118
+  s_c818df82eb6acc::t_f56cbbb1f5b8a5 619
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_c818df82eb6acc::t_0129cb30ff94ad 250-252,254-256
+  s_c818df82eb6acc::t_c6fc7216220209 108
+  s_c818df82eb6acc::t_6079b7757373dd 121
+  s_c818df82eb6acc::t_636103ea42b8b1 52-59
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_c818df82eb6acc::t_b747bc8b49f5a2 101-108
+  s_c818df82eb6acc::t_52b6d646f3e13b 46-47
+  s_c818df82eb6acc::t_2fbce2a82025bc 172-173
+  s_c818df82eb6acc::t_279e1bff6942a0 410-446
+  s_c818df82eb6acc::t_2c83b8e629bd5a 58-64,70-71,73-90
+  s_c818df82eb6acc::t_01934d3ae8d794 400-401
+  s_c818df82eb6acc::t_ff962689764e03 489,495,503,508-515,519,524,527,529-543,548,554
+  s_c818df82eb6acc::t_b7fef8d3b7cba3 232-235
+  s_c818df82eb6acc::t_41f205beb19139 330,338-349
+  s_c818df82eb6acc::t_a55ea731e04de0 14-15,18-19,23-36
+  s_c818df82eb6acc::t_60240b43b05374 350
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "605857122c25cbbcacadb9a557003e1fbcf1532b",
+  "prompts": {},
+  "sessions": {
+    "s_c818df82eb6acc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed325f59-a2b3-4aca-8b78-5378c1dbfbc1",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
