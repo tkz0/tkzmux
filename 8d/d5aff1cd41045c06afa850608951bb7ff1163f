@@ -1,0 +1,35 @@
+Resources/Info.plist
+  s_1eb65756706e92::t_cca7335abf26f2 13-14
+  s_1eb65756706e92::t_82af3501a81c4b 15-16
+Resources/AppIcon.icon/Assets/spark.svg
+  s_1eb65756706e92::t_3c85482a9df110 1-9
+Resources/AppIcon.icon/icon.json
+  s_1eb65756706e92::t_07362d8efde9d3 1-49
+scripts/make-app.sh
+  s_1eb65756706e92::t_bbd68bde934054 168-172
+  s_1eb65756706e92::t_70970999bb18ed 165-167,173-181,183-184
+  s_1eb65756706e92::t_d19d7f3c606771 182
+  s_1eb65756706e92::t_07b7c96ba6063f 241-242,244-245
+  s_1eb65756706e92::t_b1fa611b6db988 214-220
+  s_1eb65756706e92::t_1f26eb44073860 243,246-247
+README.md
+  s_1eb65756706e92::t_7d17f62ce09bb3 85-89
+Resources/AppIcon.icon/Assets/prompt.svg
+  s_1eb65756706e92::t_69a711d498455e 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "8dd5aff1cd41045c06afa850608951bb7ff1163f",
+  "prompts": {},
+  "sessions": {
+    "s_1eb65756706e92": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d57fa4d-621a-4a72-8156-902c5ca27258",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
