@@ -353,23 +353,32 @@ struct MainWindowControllerTests {
         let whole = try #require(harness.controller.projectedLaunchSize(for: first))
         #expect(whole.cols > 2 && whole.rows > 2, "the container must have real bounds")
 
+        // The same arithmetic the projection does, on a height: points → pixels → whole cells.
+        let scale = harness.window.backingScaleFactor
+        let area = harness.controller.paneContainer.bounds
+        func rows(_ points: CGFloat) -> Int { Int((points * scale).rounded(.down)) / 16 }
+        #expect(Int(whole.rows) == rows(area.height))
+
         var second: TerminalID?
         harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
         let other = try #require(second)
 
+        // A side-by-side split keeps the height, less the 28 pt header every split pane now wears.
         let sideBySide = try #require(harness.controller.projectedLaunchSize(for: other))
-        #expect(sideBySide.rows == whole.rows, "a side-by-side split does not change the height")
+        #expect(Int(sideBySide.rows) == rows(area.height - PaneHeaderMetrics.height))
         #expect(abs(Int(sideBySide.cols) - Int(whole.cols) / 2) <= 1)
         #expect(sideBySide.cellWidthPx == 8 && sideBySide.cellHeightPx == 16)
 
-        // ⇧⌘D halves the rows instead, and only within the pane it split.
+        // ⇧⌘D halves the rows instead — the divider and its own header off its half — and only
+        // within the pane it split.
         harness.store.flush()
         harness.layout()
         var third: TerminalID?
         harness.store.updating { third = $0.splitPane(other, axis: .vertical) }
         let stacked = try #require(third)
         let below = try #require(harness.controller.projectedLaunchSize(for: stacked))
-        #expect(abs(Int(below.rows) - Int(whole.rows) / 2) <= 1)
+        let half = (area.height - SplitMetrics.dividerThickness) / 2
+        #expect(Int(below.rows) == rows(half - PaneHeaderMetrics.height))
         #expect(below.cols == sideBySide.cols)
     }
 
@@ -438,7 +447,7 @@ struct MainWindowControllerTests {
         harness.mutate { $0.focusPane(first) }
         #expect(harness.store.state.sessions[id]?.focusedTerminalID == first)
 
-        let otherView = try #require(harness.controller.paneContainer.paneView(for: other))
+        let otherView = try #require(harness.controller.paneContainer.contentView(for: other))
         _ = harness.window.makeFirstResponder(otherView)
         harness.store.flush()
         harness.layout()
@@ -468,8 +477,10 @@ struct MainWindowControllerTests {
         let container = harness.controller.paneContainer
         let firstView = try #require(container.paneView(for: first))
         let otherView = try #require(container.paneView(for: other))
-        #expect(firstView === harness.terminalView)
+        // The split arranges each pane's *chrome*; the injected terminal sits inside the first.
+        #expect(container.contentView(for: first) === harness.terminalView)
         #expect(firstView !== otherView)
+        #expect(container.contentView(for: first) !== container.contentView(for: other))
         let split = try #require(firstView.superview as? NSSplitView)
         #expect(split.arrangedSubviews.count == 2)
         #expect(otherView.superview === split)
@@ -512,7 +523,7 @@ struct MainWindowControllerTests {
         let (_, first) = try Self.selectedRowWithAShell(harness)
         harness.controller.focusPane(first)
         #expect(
-            harness.window.firstResponder === harness.controller.paneContainer.paneView(for: first))
+            harness.window.firstResponder === harness.controller.paneContainer.contentView(for: first))
 
         var second: TerminalID?
         harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
@@ -520,7 +531,7 @@ struct MainWindowControllerTests {
         harness.layout()
         let other = try #require(second)
 
-        let otherView = try #require(harness.controller.paneContainer.paneView(for: other))
+        let otherView = try #require(harness.controller.paneContainer.contentView(for: other))
         #expect(harness.window.firstResponder === otherView)
     }
 
@@ -541,7 +552,7 @@ struct MainWindowControllerTests {
         harness.mutate { $0.focusPane(first) }
 
         harness.controller.focusPane(other)
-        let otherView = try #require(harness.controller.paneContainer.paneView(for: other))
+        let otherView = try #require(harness.controller.paneContainer.contentView(for: other))
         #expect(harness.window.firstResponder === otherView)
     }
 
@@ -596,6 +607,151 @@ struct MainWindowControllerTests {
         // A real ratio change does place it again.
         harness.mutate { $0.setRatio(above: first, to: 0.6) }
         #expect(harness.controller.paneContainer.appliedRatioCount > placed)
+    }
+
+    // MARK: - Pane chrome (design 2c.3 / 2c.4)
+
+    /// A lone pane is 2c.1: no header, no ring. Splitting puts a header on both panes and the
+    /// ring on the one with the keyboard.
+    @Test("Headers appear on a split, and only the focused pane is ringed")
+    func headersAppearOnASplitAndTheFocusedPaneIsRinged() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+        let container = harness.controller.paneContainer
+
+        let lone = try #require(container.chrome(for: first))
+        #expect(!lone.isHeaderVisible)
+        #expect(lone.header.isHidden)
+        #expect(lone.content.frame.height == lone.frame.height, "a lone pane loses no height")
+        #expect(lone.ringWidth == 0, "2c.1: a lone pane is not ringed")
+        #expect(lone.content.alphaValue == 1)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        harness.layout()
+        let other = try #require(second)
+
+        let a = try #require(container.chrome(for: first))
+        let b = try #require(container.chrome(for: other))
+        #expect(a === lone, "the existing pane keeps its chrome")
+        #expect(a.isHeaderVisible && b.isHeaderVisible)
+        #expect(a.header.frame.height == PaneHeaderMetrics.height)
+        #expect(a.content.frame.minY == PaneHeaderMetrics.height)
+        #expect(harness.store.state.sessions[id]?.focusedTerminalID == other)
+        #expect(b.isFocused && !a.isFocused)
+        #expect(b.ringWidth == PaneHeaderMetrics.focusRingWidth)
+        #expect(a.ringWidth == 0)
+        #expect(a.content.alphaValue < 1 && b.content.alphaValue == 1)
+
+        // The split view between them is the 7 pt grip bar.
+        let split = try #require(a.superview as? NSSplitView)
+        #expect(split.dividerThickness == SplitMetrics.dividerThickness)
+
+        // Focus moves the ring without rebuilding anything.
+        harness.mutate { $0.focusPane(first) }
+        #expect(container.chrome(for: first) === a)
+        #expect(a.isFocused && !b.isFocused)
+        #expect(a.ringWidth == PaneHeaderMetrics.focusRingWidth && b.ringWidth == 0)
+
+        // Zoom shows one pane again, and a lone pane has neither header nor ring.
+        harness.mutate { $0.zoomPane(first, in: id) }
+        #expect(!(container.chrome(for: first)?.isHeaderVisible ?? true))
+        #expect(container.chrome(for: first)?.ringWidth == 0)
+    }
+
+    /// Each header names its own pane's directory. A `cd` in the background pane retitles that
+    /// header alone — and it rides the `sessions` bucket, so the tree is not rebuilt for it.
+    @Test("A pane's header follows that pane's cwd, not the row's")
+    func aHeaderFollowsItsOwnPanesCwd() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (_, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .vertical) }
+        harness.store.flush()
+        harness.layout()
+        let other = try #require(second)
+        let container = harness.controller.paneContainer
+        let a = try #require(container.chrome(for: first))
+        let b = try #require(container.chrome(for: other))
+        let split = try #require(a.superview)
+
+        harness.mutate { $0.focusPane(other) }
+        harness.mutate { $0.setPaneCwd(first, path: "/tmp/elsewhere/toolbox") }
+        #expect(a.header.model.title == "toolbox")
+        #expect(a.header.model.path == "/tmp/elsewhere/toolbox")
+        #expect(b.header.model.title != "toolbox")
+        #expect(a.superview === split, "a cwd change must not rebuild the tree")
+        #expect(container.chrome(for: first) === a)
+
+        // The strip's git target followed the *focused* pane, which is still `other`.
+        harness.mutate { $0.setPaneCwd(other, path: "/tmp/other-repo") }
+        #expect(GitIntegration.trackingTargets(in: harness.store.state).values.contains("/tmp/other-repo"))
+        #expect(!GitIntegration.trackingTargets(in: harness.store.state).values.contains("/tmp/elsewhere/toolbox"))
+    }
+
+    /// A click on a header is a click into its pane.
+    @Test("Clicking a pane header focuses that pane")
+    func clickingAHeaderFocusesThePane() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        harness.layout()
+        let other = try #require(second)
+        _ = try harness.host.open(
+            other, session: id, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.mutate { $0.focusPane(other) }
+
+        let a = try #require(harness.controller.paneContainer.chrome(for: first))
+        a.header.mouseDown(with: NSEvent())
+        harness.store.flush()
+        harness.layout()
+        #expect(harness.store.state.sessions[id]?.focusedTerminalID == first)
+        #expect(harness.window.firstResponder === a.content)
+        #expect(a.isFocused)
+    }
+
+    /// The header's `×` closes that pane — any pane, not only the focused one — and the keyboard
+    /// lands on the survivor. It never reaches the row: a header exists only alongside another pane.
+    @Test("The header's × closes its pane and the survivor takes the keyboard")
+    func theHeaderCloseButtonClosesItsPane() throws {
+        let harness = Self.makeSplitHarness()
+        defer { harness.tearDown() }
+        let (id, first) = try Self.selectedRowWithAShell(harness)
+
+        var second: TerminalID?
+        harness.store.updating { second = $0.splitPane(first, axis: .horizontal) }
+        harness.store.flush()
+        harness.layout()
+        let other = try #require(second)
+        _ = try harness.host.open(
+            other, session: id, cwd: "/tmp", env: [:], size: TerminalSize(rows: 24, cols: 80))
+        harness.mutate { $0.setPanePid(other, pid: 99) }
+        harness.mutate { $0.focusPane(other) }
+
+        let a = try #require(harness.controller.paneContainer.chrome(for: first))
+        harness.controller.closeTerminal(first)   // what `a.header.onClose` calls
+        harness.store.flush()
+        harness.layout()
+        #expect(harness.store.state.sessions[id]?.terminalCount == 1)
+        #expect(harness.store.state.sessions[id]?.focusedTerminalID == other)
+        #expect(harness.controller.paneContainer.chrome(for: first) == nil)
+        #expect(a.superview == nil)
+        let survivor = try #require(harness.controller.paneContainer.chrome(for: other))
+        #expect(!survivor.isHeaderVisible, "back to one pane: no header")
+        #expect(harness.window.firstResponder === survivor.content)
+
+        // The row's last terminal is not this path's to close.
+        harness.controller.closeTerminal(other)
+        harness.store.flush()
+        #expect(harness.store.state.sessions[id] != nil)
     }
 
     // MARK: - Structure

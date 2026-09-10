@@ -216,7 +216,10 @@ signed.
 - **zsh only.** The shell integration is a set of `ZDOTDIR` wrappers; there is no bash or fish
   equivalent, and in another shell tkzmux degrades to descriptor-only status with no hooks
   (Linear TKZ-33).
-- **One surface per session.** No splits, no tabs within a session.
+- **One Claude per session.** Splits and tabs share the row's Claude session: every pane of a
+  row shows the same status dot, and the status bar's Context and model are the row's. The
+  git facts — the status bar and the row's `⎇ branch` line — follow the *focused* pane's
+  directory; the row's title does not.
 - **Apple Silicon, macOS 26+, and no light theme yet.**
 
 ## License and credits

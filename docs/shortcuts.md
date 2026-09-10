@@ -34,6 +34,7 @@ this table; nothing hard-codes a key equivalent.
 | `focusPaneLeft` … `focusPaneDown` | ⌥⌘← ↑ → ↓ | Move the keyboard to the neighbouring pane. No wrap: an arrow at the edge does nothing |
 | `equalizeSplits` | ⌃⌘= | Every pane in the tab the same size |
 | `zoomPane` | ⇧⌘↩ | One pane fills the tab; again to restore |
+| — | click a pane's header | Focus that pane (the header appears once a tab has more than one pane) |
 | `previousTab` / `nextTab` | ⇧⌘[ / ⇧⌘] | Previous / next terminal in this session |
 | `nextSession` | — | Known action, **no default** (cmux binds none) |
 | `previousSession` | — | Same |

@@ -51,6 +51,32 @@ import Testing
         let minimum = theme.isDark ? 4.5 : 4.0
         #expect(theme.statusBarText.contrastRatio(against: theme.statusBarBackground) >= minimum,
                 "\(theme.preset) statusBarText")
+        // The pane header's two lines, on both of its backgrounds (2c.3).
+        #expect(theme.foreground.contrastRatio(against: theme.paneHeaderBackground) >= 4.5,
+                "\(theme.preset) pane title")
+        #expect(theme.paneHeaderPath.contrastRatio(against: theme.paneHeaderBackground) >= minimum,
+                "\(theme.preset) paneHeaderPath")
+        #expect(theme.summaryText.contrastRatio(against: theme.paneHeaderBackgroundInactive) >= minimum,
+                "\(theme.preset) inactive pane title")
+        #expect(theme.paneHeaderPathInactive.contrastRatio(against: theme.paneHeaderBackgroundInactive) >= 4.0,
+                "\(theme.preset) paneHeaderPathInactive")
+    }
+
+    @Test(arguments: Theme.allPresets)
+    func paneChromeFollowsTheArtboards(theme: Theme) {
+        // The ring and the grip are the accent, translucent; the divider gradient is a translucent
+        // shade and a translucent highlight, so it reads on any pane background.
+        #expect(theme.focusRing.a < 1 && theme.focusRing.a > 0.5)
+        #expect(theme.dividerGrip.a < 1 && theme.dividerGrip.a > 0.3)
+        let opaque = { (c: RGB) in RGB(r: c.r, g: c.g, b: c.b, a: 1) }
+        #expect(opaque(theme.focusRing) == opaque(theme.accent), "\(theme.preset) focusRing is the accent")
+        #expect(opaque(theme.dividerGrip) == opaque(theme.accent), "\(theme.preset) dividerGrip is the accent")
+        #expect(theme.dividerShade.a < 1 && theme.dividerHighlight.a < 1)
+        #expect(theme.dividerShade.relativeLuminance < theme.dividerHighlight.relativeLuminance)
+        // The focused header stands off the inactive one, and both off the terminal.
+        #expect(theme.paneHeaderBackground != theme.paneHeaderBackgroundInactive)
+        #expect(theme.paneHeaderBackground != theme.terminalBackground)
+        #expect(theme.paneHeaderBackgroundInactive != theme.terminalBackground)
     }
 
     // MARK: Terminal palette
@@ -135,6 +161,20 @@ import Testing
         #expect(t.selection.hexString == "rgba(139,147,248,.22)")
         #expect(t.diffRemove.hexString == "#f28b8b")   // design.md used to say #f07a7a (that is 2a's)
         #expect(t.idle.hexString == "rgba(255,255,255,.30)")
+    }
+
+    @Test func midnightIndigoMatchesArtboard2c3() {
+        let t = Theme.midnightIndigo
+        #expect(t.paneHeaderBackground.hexString == "#222639")
+        #expect(t.paneHeaderBackgroundInactive.hexString == "#1d2033")
+        #expect(t.paneHeaderPath.hexString == "#99a1c4")
+        #expect(t.paneHeaderPathInactive.hexString == "#8890b4")
+        #expect(t.focusRing.hexString == "rgba(139,147,248,.65)")
+        #expect(t.dividerGrip.hexString == "rgba(139,147,248,.55)")
+        #expect(t.dividerShade.hexString == "rgba(0,0,0,.35)")
+        #expect(t.dividerHighlight.hexString == "rgba(255,255,255,.06)")
+        // The header's other colours are existing tokens, which the artboard confirms.
+        #expect(t.summaryText.hexString == "#b6bcd8")     // inactive title
     }
 
     @Test func lightMatchesArtboard1b() {
