@@ -119,7 +119,7 @@ NOTES="$DIST_DIR/notes.md"
     echo "### Changes (first release: everything since $(git rev-list --max-parents=0 HEAD | tail -1 | cut -c1-7))"
   fi
   echo
-  git log --oneline --no-decorate "$LOG_RANGE"
+  git log --oneline --no-decorate --no-merges "$LOG_RANGE"
   echo
   echo "### Install"
   echo
