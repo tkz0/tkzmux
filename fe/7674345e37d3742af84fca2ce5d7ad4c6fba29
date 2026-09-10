@@ -1,0 +1,113 @@
+Sources/TkzApp/Prompt/PromptCardView.swift
+  s_7c8fb28197d630::t_2a7bce6b345203 34-36
+  s_7c8fb28197d630::t_8b5922d650c418 304-305
+  s_7c8fb28197d630::t_281878d9afcfd7 278
+  s_7c8fb28197d630::t_38b9a099abd30d 95-101
+  s_7c8fb28197d630::t_5c8f8aa80341fd 1-33,37-94,102-277,279-303,306-399
+Tests/TkzTerminalViewTests/ScrollMetricsReportTests.swift
+  s_7c8fb28197d630::t_dd88515e3a3e94 1-49
+docs/shortcuts.md
+  s_7c8fb28197d630::t_6a3577ade389d4 29
+Tests/ClaudeBridgeTests/HookBinaryTests.swift
+  s_7c8fb28197d630::t_e0b8d175800aec 259
+  s_7c8fb28197d630::t_b59a305e174ea2 299
+  s_7c8fb28197d630::t_f5525669640041 223
+  s_7c8fb28197d630::t_2aa0aa6ef061cf 185,195
+Sources/ClaudeBridge/HookServer.swift
+  s_7c8fb28197d630::t_77b45e7941955e 278
+  s_7c8fb28197d630::t_81e7bc9d3b5740 293-295
+Tests/TkzAppTests/ScrollRevealTests.swift
+  s_7c8fb28197d630::t_2c4d616acaea42 147,153-162
+  s_7c8fb28197d630::t_53fd4ea58c9ff3 139-143
+  s_7c8fb28197d630::t_48f53bdd592f2b 1-138,144-146,148-152,163-178
+Sources/TkzApp/MainMenu.swift
+  s_7c8fb28197d630::t_856290aba1c2c5 244
+Tests/TkzAppTests/MainMenuTests.swift
+  s_7c8fb28197d630::t_664857559593ed 198
+Sources/TkzApp/ClaudeIntegration.swift
+  s_7c8fb28197d630::t_44162c096123ea 344-345
+  s_7c8fb28197d630::t_4fa6e9ea84e273 373,380
+  s_7c8fb28197d630::t_1785e18a4f7802 525
+  s_7c8fb28197d630::t_590261d8d830d6 55-64
+  s_7c8fb28197d630::t_96afbcb6af93c9 501-524,526-563
+Sources/TkzApp/MainWindowController.swift
+  s_7c8fb28197d630::t_c06efba351dcf3 1239-1246
+  s_7c8fb28197d630::t_d2d627ca6f396d 1381
+  s_7c8fb28197d630::t_39b1982106d1a1 920-923,925-932,938,940-941,973-974
+  s_7c8fb28197d630::t_4c01fedfeb73ab 1338
+  s_7c8fb28197d630::t_70ee799111e053 512
+  s_7c8fb28197d630::t_63ceb9aa037c83 472
+  s_7c8fb28197d630::t_6d0e6e5730a9f1 958-963
+  s_7c8fb28197d630::t_fb36c7e56e9417 1375-1380
+  s_7c8fb28197d630::t_6bc62fd1aedbf9 1628
+  s_7c8fb28197d630::t_af43f854f8d1f2 1626-1627
+  s_7c8fb28197d630::t_0707f93c6a946e 331-335
+  s_7c8fb28197d630::t_e98bc05dc9e826 1035-1038
+  s_7c8fb28197d630::t_29f2136e1079eb 2877
+  s_7c8fb28197d630::t_c7bc3b345ea5e5 324-326
+  s_7c8fb28197d630::t_7d596b766d82b8 933-937,939,942-957,964-972
+  s_7c8fb28197d630::t_3a271dfbe4bfaa 327-330
+  s_7c8fb28197d630::t_7bff04efced07f 924
+Sources/ClaudeBridge/HookFrame.swift
+  s_7c8fb28197d630::t_cd859a356176ec 8-13
+Tests/ClaudeBridgeTests/HookServerTests.swift
+  s_7c8fb28197d630::t_06b591de78a144 123
+  s_7c8fb28197d630::t_7d6e02623b1ae5 97
+  s_7c8fb28197d630::t_84c84d29b02a65 152
+Sources/ClaudeBridge/TranscriptReader.swift
+  s_7c8fb28197d630::t_c1902253766e7c 1-211,214-215,218-242
+  s_7c8fb28197d630::t_a43700e9ffe327 212-213,216-217
+Sources/TkzTerminalView/MouseController.swift
+  s_7c8fb28197d630::t_702ce6ac3c3db1 220-223
+  s_7c8fb28197d630::t_870ed6141d1fd5 493
+Sources/TkzApp/Prompt/ScrollRevealPolicy.swift
+  s_7c8fb28197d630::t_25e037dfdcfd22 1-88
+Tests/ClaudeBridgeTests/Fixtures/transcript/session.jsonl
+  s_7c8fb28197d630::t_3a8af8bc840dcc 1-21
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_7c8fb28197d630::t_96344048a829dc 173
+  s_7c8fb28197d630::t_18c1bda007b10f 198
+  s_7c8fb28197d630::t_bbd3428ff208aa 53-56
+  s_7c8fb28197d630::t_586e8b604dba48 235
+Tests/TkzAppTests/PromptCardTests.swift
+  s_7c8fb28197d630::t_0efd65f1c3dc06 1-123,126-252
+  s_7c8fb28197d630::t_3b0ab5918cd8fe 124-125
+Tests/ClaudeBridgeTests/TranscriptReaderTests.swift
+  s_7c8fb28197d630::t_42f41102f0d29f 1-98
+Sources/TkzTerminalView/TerminalMetalView.swift
+  s_7c8fb28197d630::t_b961cfb8eb74b8 111-117
+  s_7c8fb28197d630::t_7d232ed8129cf5 650-658
+  s_7c8fb28197d630::t_ce1fc260dea444 208
+Sources/TkzApp/Prompt/PromptCardController.swift
+  s_7c8fb28197d630::t_105d328ae63acb 107-109
+  s_7c8fb28197d630::t_21d9803394e68e 68-69,72,82-99,102,104,111-114,116-129,137
+  s_7c8fb28197d630::t_d4d98d29d46c59 38-46,49-50
+  s_7c8fb28197d630::t_ba1d4783851207 1-37,47-48,51-67,70-71,73-81,100-101,103,105-106,110,115,130-136,138-144,152,159-289,292,294-370
+  s_7c8fb28197d630::t_d4d82d09f5b3e8 145-151
+  s_7c8fb28197d630::t_d827781939032e 153-158
+  s_7c8fb28197d630::t_1a1c2d69ab42dc 290-291,293
+Tests/TkzAppTests/ClaudeIntegrationTests.swift
+  s_7c8fb28197d630::t_d9193f173b80ae 81,101,116,255
+  s_7c8fb28197d630::t_650a2227b66238 302-366
+  s_7c8fb28197d630::t_4cf7be3e072c58 367
+Tests/TkzAppTests/PerSessionCacheEvictionTests.swift
+  s_7c8fb28197d630::t_a9af5717e775d6 53-71
+  s_7c8fb28197d630::t_c074d9468b711f 13
+  s_7c8fb28197d630::t_5235050dc05e93 72-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "fe7674345e37d3742af84fca2ce5d7ad4c6fba29",
+  "prompts": {},
+  "sessions": {
+    "s_7c8fb28197d630": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "68f75824-984a-4a87-b1d8-c6cef891df41",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
