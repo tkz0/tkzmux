@@ -26,6 +26,7 @@ this table; nothing hard-codes a key equivalent.
 | `openFolder` | ⌘O | Open folder |
 | `reloadConfig` | ⇧⌘, | Reload config |
 | `copyLastMessage` | ⇧⌘C | Copy the selected session's last Stop message (M3.4) |
+| `showFirstPrompt` | ⌥⌘P | Glass card over the terminal with the selected session's first prompt and Claude's recap (design 2c.5); again or Esc closes. Scrolling up a few rows in a Claude session *peeks* the same card without taking the keyboard; scrolling back down (or typing) hides it, and the chord pins it |
 | `removeShellIntegration` | — | Delete the claude shim and zsh wrappers under Application Support (M3.3); app menu |
 | `statusLineIntegration` | — | Install or remove tkzmux's `statusLine` command, behind a consent sheet (TKZ-32); app menu |
 | `newTerminal` | ⌘T | Another terminal in this session, as a new tab |

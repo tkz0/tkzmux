@@ -182,7 +182,7 @@ private func runHook(
         // Warm-up + measured run, plus whatever extra samples the timing loop needed.
         let frames = await collector.waitFor(count: 2)
         #expect(frames.count >= 2)
-        guard case .hook(let event, let ppid, let fullMessage, let cwd) = frames.last! else {
+        guard case .hook(let event, let ppid, let fullMessage, let cwd, let transcriptPath) = frames.last! else {
             Issue.record("expected a .hook frame")
             return
         }
@@ -192,6 +192,7 @@ private func runHook(
         #expect(event.lastAssistantMessage == "All done, the build is green.")
         #expect(fullMessage == "All done, the build is green.")
         #expect(cwd == "/Users/someone/dev/tkzmux")
+        #expect(transcriptPath == "/Users/someone/.claude/projects/tkzmux/transcript.jsonl")
         #expect(ppid > 0)
     }
 
@@ -219,7 +220,7 @@ private func runHook(
 
         let frames = await collector.waitFor(count: 1)
         #expect(frames.count == 1)
-        guard case .hook(let event, _, let fullMessage, _) = frames[0] else {
+        guard case .hook(let event, _, let fullMessage, _, _) = frames[0] else {
             Issue.record("expected a .hook frame")
             return
         }
@@ -255,7 +256,7 @@ private func runHook(
 
         let frames = await collector.waitFor(count: 1)
         #expect(frames.count == 1)
-        guard case .hook(_, _, let fullMessage, _) = frames[0] else {
+        guard case .hook(_, _, let fullMessage, _, _) = frames[0] else {
             Issue.record("expected a .hook frame")
             return
         }
@@ -295,7 +296,7 @@ private func runHook(
         // wire protocol) — but if something arrived, it must be exactly the marker, never a
         // "successful" frame carrying 2 MiB of message.
         if let frame = frames.first {
-            guard case .hook(_, _, let fullMessage, _) = frame else {
+            guard case .hook(_, _, let fullMessage, _, _) = frame else {
                 Issue.record("expected a .hook frame")
                 return
             }

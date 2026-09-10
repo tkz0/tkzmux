@@ -217,6 +217,10 @@ public final class MouseController: NSObject, TerminalMouseHandling {
     public private(set) var pushedGeometry: TerminalPixelGeometry?
     /// Rows the wheel has asked for, newest last. Diagnostics.
     public private(set) var lastWheelRows = 0
+    /// Every non-zero wheel event, in rows (**negative = up**), whether the terminal scrolled its
+    /// viewport or reported the wheel to the program. On the alternate screen this is the only
+    /// evidence that the user is scrolling at all — see `ScrollRevealPolicy` in the app.
+    public var onWheelRows: ((Int) -> Void)?
 
     // MARK: Private
 
@@ -486,6 +490,7 @@ public final class MouseController: NSObject, TerminalMouseHandling {
             gestureEnded: event.phase.contains(.ended) || event.momentumPhase.contains(.ended))
         lastWheelRows = rows
         guard rows != 0 else { return true }
+        onWheelRows?(rows)
 
         switch (try? terminal.mouseWheel(rows: rows, at: position, mods: mods)) ?? WheelOutcome.none {
         case .report(let bytes):

@@ -5,10 +5,12 @@ import TkzCore
 
 /// One decoded wire frame handed to `HookServer`'s `onFrame` callback, in arrival order.
 public enum HookFrame: Sendable {
-    /// A hook event forwarded by `tkzmux-hook <Event>`. `fullMessage` and `cwd` carry the
-    /// untruncated `last_assistant_message` and `payload.cwd` alongside the `HookEvent` (which
-    /// only keeps a 4 KiB prefix of the message, per `docs/design.md`).
-    case hook(HookEvent, ppid: pid_t, fullMessage: String?, cwd: String?)
+    /// A hook event forwarded by `tkzmux-hook <Event>`. `fullMessage`, `cwd` and `transcriptPath`
+    /// carry the untruncated `last_assistant_message`, `payload.cwd` and `payload.transcript_path`
+    /// alongside the `HookEvent` (which only keeps a 4 KiB prefix of the message, per
+    /// `docs/design.md`). Every hook kind carries the transcript path, so the first frame of a
+    /// session is enough to learn where Claude keeps its conversation — `TranscriptReader` reads it.
+    case hook(HookEvent, ppid: pid_t, fullMessage: String?, cwd: String?, transcriptPath: String?)
     case launch(LaunchAnnouncement)
 }
 

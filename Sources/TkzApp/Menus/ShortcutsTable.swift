@@ -50,6 +50,10 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     public static let previousSession = ShortcutAction("previousSession")
     /// ⇧⌘C — copies the selected session's last Stop message (M3.4).
     public static let copyLastMessage = ShortcutAction("copyLastMessage")
+    /// ⌥⌘P — the glass card with the selected session's first prompt and Claude's recap (design
+    /// 2c.5). The artboard says ⇧⌘P, but that is the command palette in the cmux bindings, so
+    /// "P for prompt" takes the ⌥ chord instead. Toggles.
+    public static let showFirstPrompt = ShortcutAction("showFirstPrompt")
     /// No key: deletes `bin/` and `zsh/` under Application Support so new shells are plain (M3.3).
     public static let removeShellIntegration = ShortcutAction("removeShellIntegration")
     /// No key: installs (or removes) tkzmux's `statusLine` command in `~/.claude/settings.json`,
@@ -166,7 +170,7 @@ public enum ShortcutsTable {
             .newSession, .searchSessions, .commandPalette, .toggleSidebar, .renameSession,
             .closeTerminal, .closeSession, .jumpToNeedsYou, .notifications, .settings,
             .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
-            .removeShellIntegration, .statusLineIntegration, .resumeSession, .resumeAllInGroup,
+            .showFirstPrompt, .removeShellIntegration, .statusLineIntegration, .resumeSession, .resumeAllInGroup,
             .managePresets, .toggleAutoResume,
             .newTerminal, .splitVertically, .splitHorizontally,
             .focusPaneLeft, .focusPaneRight, .focusPaneUp, .focusPaneDown,
@@ -191,6 +195,7 @@ public enum ShortcutsTable {
             .openFolder: Shortcut("o", .command),
             .reloadConfig: Shortcut(",", [.shift, .command]),
             .copyLastMessage: Shortcut("c", [.shift, .command]),
+            .showFirstPrompt: Shortcut("p", [.option, .command]),
             .resumeSession: Shortcut("r", .command),
             .closeSession: Shortcut("w", [.shift, .command]),
             .newTerminal: Shortcut("t", .command),
@@ -227,6 +232,7 @@ public enum ShortcutsTable {
         case .nextSession: "Next Session"
         case .previousSession: "Previous Session"
         case .copyLastMessage: "Copy Last Message"
+        case .showFirstPrompt: "Show First Prompt & Recap"
         case .removeShellIntegration: "Remove Shell Integration"
         case .statusLineIntegration: "Status Line Integration\u{2026}"
         case .resumeSession: "Resume Session"

@@ -94,7 +94,7 @@ private func connectBlocking(fd: Int32, path: String) throws {
         let frames = await collector.waitFor(count: 2)
         #expect(frames.count == 2)
         for frame in frames {
-            guard case .hook(let event, _, _, _) = frame else {
+            guard case .hook(let event, _, _, _, _) = frame else {
                 Issue.record("expected a .hook frame")
                 continue
             }
@@ -120,7 +120,7 @@ private func connectBlocking(fd: Int32, path: String) throws {
 
         let frames = await collector.waitFor(count: 2)
         #expect(frames.count == 2)
-        guard case .hook(let first, _, _, _) = frames[0], case .hook(let second, _, _, _) = frames[1] else {
+        guard case .hook(let first, _, _, _, _) = frames[0], case .hook(let second, _, _, _, _) = frames[1] else {
             Issue.record("expected two .hook frames")
             return
         }
@@ -149,7 +149,7 @@ private func connectBlocking(fd: Int32, path: String) throws {
 
         let frames = await collector.waitFor(count: 1)
         #expect(frames.count == 1)
-        guard case .hook(let event, let ppid, _, _) = frames[0] else {
+        guard case .hook(let event, let ppid, _, _, _) = frames[0] else {
             Issue.record("expected a .hook frame")
             return
         }

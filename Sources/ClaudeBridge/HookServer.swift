@@ -275,6 +275,7 @@ public final class HookServer: Sendable {
         let source = payload["source"] as? String
         let reason = payload["reason"] as? String
         let cwd = payload["cwd"] as? String
+        let transcriptPath = payload["transcript_path"] as? String
 
         let sessionID = sid.isEmpty ? nil : SessionID(sid)
 
@@ -289,7 +290,9 @@ public final class HookServer: Sendable {
             pid: nil,
             receivedAt: Date()
         )
-        return .hook(hookEvent, ppid: pid_t(ppidRaw), fullMessage: lastAssistantMessageFull, cwd: cwd)
+        return .hook(
+            hookEvent, ppid: pid_t(ppidRaw), fullMessage: lastAssistantMessageFull, cwd: cwd,
+            transcriptPath: transcriptPath)
     }
 
     private static func parseLaunchFrame(_ obj: [String: Any]) -> HookFrame? {

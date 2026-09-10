@@ -108,6 +108,13 @@ public final class TerminalMetalView: NSView {
     /// (`Pty.resize`). The view never owns a pty.
     public var onGridResize: ((TerminalSize) -> Void)?
 
+    /// Called once per frame in which the scroll position *changed* — the diffed form of the poll
+    /// `ScrollIndicator.swift` describes, for owners that want to react to scrolling (the
+    /// first-prompt card peeks when the user scrolls up). Never fires for an unchanged position,
+    /// so an idle terminal costs the comparison and nothing else.
+    public var onScrollMetricsChanged: ((TerminalScrollMetrics) -> Void)?
+    private var lastReportedScrollMetrics: TerminalScrollMetrics?
+
     /// The visible session, or nil.
     public private(set) var session: TerminalSession?
 
@@ -198,6 +205,7 @@ public final class TerminalMetalView: NSView {
         // Before the incoming session gets a chance to render: the thumb must not survive the
         // swap, or the new session flashes the old one's scroll position on its first frame.
         scrollIndicator.reset()
+        lastReportedScrollMetrics = nil
         self.session = session
 
         guard let session else {
@@ -639,6 +647,15 @@ public final class TerminalMetalView: NSView {
             scale: backingScale,
             color: scrollThumbColor(),
             host: host)
+        reportScrollMetrics(surface.scrollMetrics)
+    }
+
+    /// Fires `onScrollMetricsChanged` when `metrics` differ from the last report. Internal so the
+    /// headless tests can drive it without a layer.
+    func reportScrollMetrics(_ metrics: TerminalScrollMetrics) {
+        guard metrics != lastReportedScrollMetrics else { return }
+        lastReportedScrollMetrics = metrics
+        onScrollMetricsChanged?(metrics)
     }
 
     /// The thumb colour, memoised on the theme it was derived from — this runs once per frame, and

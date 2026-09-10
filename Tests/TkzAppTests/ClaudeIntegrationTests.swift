@@ -78,7 +78,7 @@ struct ClaudeIntegrationTests {
 
         let prompt = HookEvent(kind: .notification, sessionID: h.session, claudeSessionId: "claude-sid",
                                notificationType: .permissionPrompt, receivedAt: t0.addingTimeInterval(1))
-        h.integration.handle(HookFrame.hook(prompt, ppid: 4242, fullMessage: nil, cwd: nil))
+        h.integration.handle(HookFrame.hook(prompt, ppid: 4242, fullMessage: nil, cwd: nil, transcriptPath: nil))
         #expect(h.store.state.sessions[h.session]?.status == .waiting(.permission))
         #expect(h.store.state.sessions[h.session]?.needsAttention == true)
         #expect(h.store.state.summaryCounts.needsYou == 1)
@@ -98,7 +98,7 @@ struct ClaudeIntegrationTests {
         h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .idle), alive: true))
         let full = String(repeating: "x", count: 10_000)
         let stop = HookEvent(kind: .stop, sessionID: h.session, lastAssistantMessage: String(full.prefix(4096)))
-        h.integration.handle(HookFrame.hook(stop, ppid: 4242, fullMessage: full, cwd: nil))
+        h.integration.handle(HookFrame.hook(stop, ppid: 4242, fullMessage: full, cwd: nil, transcriptPath: nil))
         let session = h.store.state.sessions[h.session]
         #expect(session?.live?.lastStopMessage?.count == 4096)
         #expect(h.integration.lastMessage(for: h.session) == full)
@@ -113,7 +113,7 @@ struct ClaudeIntegrationTests {
         h.integration.isSessionAttended = { _ in true }
         h.integration.handle(Self.launch(h.session, pid: 4242))
         let stop = HookEvent(kind: .stop, sessionID: h.session, lastAssistantMessage: "done")
-        h.integration.handle(HookFrame.hook(stop, ppid: 4242, fullMessage: "done", cwd: nil))
+        h.integration.handle(HookFrame.hook(stop, ppid: 4242, fullMessage: "done", cwd: nil, transcriptPath: nil))
         let live = h.store.state.sessions[h.session]?.live
         #expect(live?.isDone == false)
         #expect(live?.attendedAt != nil)
@@ -252,7 +252,7 @@ struct ClaudeIntegrationTests {
         #expect(h.integration.pidToSession[4242] == nil)
         let hook = HookEvent(kind: .stop, sessionID: h.session, claudeSessionId: "claude-sid")
         #expect(h.integration.sessionID(forHook: hook, ppid: 0) == nil)
-        h.integration.handle(HookFrame.hook(hook, ppid: 0, fullMessage: nil, cwd: nil))
+        h.integration.handle(HookFrame.hook(hook, ppid: 0, fullMessage: nil, cwd: nil, transcriptPath: nil))
         #expect(h.store.state.sessions[h.session]?.live == nil)
     }
 
@@ -297,6 +297,72 @@ struct ClaudeIntegrationTests {
         let last = deliveries.last
         #expect(last?.sessions == [h.session])
         #expect(last?.structure == false)
+    }
+
+    // MARK: - Transcript summary (design 2c.5)
+
+    /// A two-line synthetic transcript: one typed prompt, one `away_summary` stamped `summaryAt`.
+    private static func writeTranscript(summaryAt: Date) throws -> URL {
+        let dir = URL(filePath: NSTemporaryDirectory())
+            .appending(path: "tkzci-transcript-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let stamp = summaryAt.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true))
+        let lines = [
+            #"{"type":"user","message":{"role":"user","content":"Fix the build"},"timestamp":"2026-09-10T08:00:00.000Z"}"#,
+            #"{"type":"system","subtype":"away_summary","content":"Goal was the build; it is green. Next: ship.","timestamp":"\#(stamp)"}"#,
+        ]
+        let url = dir.appending(path: "t.jsonl", directoryHint: .notDirectory)
+        try Data(lines.joined(separator: "\n").appending("\n").utf8).write(to: url)
+        return url
+    }
+
+    private static func load(_ h: Harness) async -> TranscriptSummary {
+        await withCheckedContinuation { continuation in
+            h.integration.loadTranscriptSummary(for: h.session) { continuation.resume(returning: $0) }
+        }
+    }
+
+    /// The hook's Stop message is newer than an `away_summary` written before it, so it wins
+    /// until Claude's next summary lands; a summary newer than the Stop is the considered recap
+    /// and wins back. A row with no transcript at all still gets the Stop message as its recap.
+    @Test("the recap merges the transcript's away_summary with the hook's Stop message by age")
+    func transcriptSummaryMerge() async throws {
+        let h = Self.makeHarness()
+        h.integration.handle(Self.launch(h.session, pid: 4242))
+
+        // No transcript, no Stop: nothing.
+        #expect(await Self.load(h).isEmpty)
+
+        // No transcript, a Stop: the Stop message is the recap.
+        let stop = HookEvent(kind: .stop, sessionID: h.session, lastAssistantMessage: "Done, tests green.")
+        h.integration.handle(HookFrame.hook(stop, ppid: 4242, fullMessage: "Done, tests green.", cwd: nil, transcriptPath: nil))
+        var summary = await Self.load(h)
+        #expect(summary.recap == "Done, tests green.")
+        #expect(summary.recapSource == .stopMessage)
+        #expect(summary.firstPrompt == nil)
+
+        // A transcript whose away_summary predates the Stop: the Stop still wins, the prompt is read.
+        let older = try Self.writeTranscript(summaryAt: Date().addingTimeInterval(-600))
+        defer { try? FileManager.default.removeItem(at: older.deletingLastPathComponent()) }
+        h.integration.transcriptPaths[h.session] = older.path
+        summary = await Self.load(h)
+        #expect(summary.firstPrompt == "Fix the build")
+        #expect(summary.recapSource == .stopMessage)
+        #expect(h.integration.cachedTranscriptSummary(for: h.session) == summary)
+
+        // A newer away_summary: Claude's own recap wins back.
+        let newer = try Self.writeTranscript(summaryAt: Date().addingTimeInterval(600))
+        defer { try? FileManager.default.removeItem(at: newer.deletingLastPathComponent()) }
+        h.integration.transcriptPaths[h.session] = newer.path
+        summary = await Self.load(h)
+        #expect(summary.recapSource == .awaySummary)
+        #expect(summary.recap?.hasPrefix("Goal was the build") == true)
+
+        // The path came from the hook frame, and the fallback locates by claudeSessionId.
+        h.integration.handle(HookFrame.hook(stop, ppid: 4242, fullMessage: nil, cwd: nil, transcriptPath: "/tmp/from-hook.jsonl"))
+        #expect(h.integration.transcriptPath(for: h.session) == "/tmp/from-hook.jsonl")
+        h.integration.forget(h.session)
+        #expect(h.integration.transcriptPath(for: h.session) == nil, "no path, no claudeSessionId → nothing to locate")
     }
 
     // MARK: - The real relay
