@@ -105,6 +105,53 @@ public enum SidebarRowAdapter {
         return SidebarSummaryModel(working: counts.working, needAttention: counts.needsYou)
     }
 
+    // MARK: - Update card (TKZ-50)
+
+    /// The card for `state.visibleUpdate`, worded for the upgrade's phase, or `nil` for no card.
+    /// The release link is on every variant; brew is offered only when the capability allows.
+    public static func updateNotice(for state: AppState) -> UpdateNoticeModel? {
+        guard let update = state.visibleUpdate else { return nil }
+        let whatsNew = UpdateNoticeModel.Run("What\u{2019}s new", action: .openReleasePage)
+        let version = "v\(update.version)"
+        switch state.update.phase {
+        case .idle:
+            var runs: [UpdateNoticeModel.Run] = []
+            if state.update.canUpgradeInPlace {
+                runs.append(UpdateNoticeModel.Run("Update via Homebrew", action: .upgrade))
+            }
+            runs.append(whatsNew)
+            return UpdateNoticeModel(title: "Update available \u{2014} \(version)", runs: runs)
+        case .running(let step):
+            return UpdateNoticeModel(
+                title: "Updating to \(version)\u{2026}",
+                runs: [UpdateNoticeModel.Run("Running brew \(step)")],
+                showsClose: false)
+        case .restartReady(let installed):
+            // No ✕: the bundle on disk is already the new one, and a dismissed card would take
+            // the only way to restart with it — the next launch is the update whatever happens.
+            return UpdateNoticeModel(
+                title: "Update installed \u{2014} v\(installed)",
+                runs: [UpdateNoticeModel.Run("Restart to update", action: .restart), whatsNew],
+                showsClose: false)
+        case .notInHomebrewYet:
+            return UpdateNoticeModel(
+                title: "Update available \u{2014} \(version)",
+                runs: [
+                    UpdateNoticeModel.Run("Homebrew doesn\u{2019}t have it yet"),
+                    UpdateNoticeModel.Run("Try again", action: .retry),
+                    whatsNew,
+                ])
+        case .failed:
+            return UpdateNoticeModel(
+                title: "Update failed",
+                runs: [
+                    UpdateNoticeModel.Run("Show log", action: .showLog),
+                    UpdateNoticeModel.Run("Try again", action: .retry),
+                    whatsNew,
+                ])
+        }
+    }
+
     // MARK: - Account chip
 
     /// Short label for the account chip, or `nil` to hide the chip entirely.

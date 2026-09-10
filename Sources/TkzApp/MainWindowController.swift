@@ -1328,6 +1328,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         statusTickTimer?.cancel()
         statusTickTimer = nil
         git?.stop()
+        update?.stop()
         eventPump?.cancel()
         eventPump = nil
         if let host = host as? TerminalViewHost {
@@ -1389,6 +1390,18 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             guard let git else { return }
             git.start()
             claude?.onStop = { [weak git] id in git?.sessionDidStop(id) }
+        }
+    }
+
+    /// The update-card coordinator (TKZ-50), once `AppDelegate` has built it — only for a release
+    /// build, or a dev build with `TKZMUX_UPDATE_URL`. The sidebar's card links route here, and
+    /// "Restart to update" comes back as `restartForUpdate(installed:)`.
+    public var update: UpdateIntegration? {
+        didSet {
+            guard let update else { return }
+            sidebar.onUpdateAction = { [weak update] action in update?.perform(action) }
+            update.onRestartRequested = { [weak self] installed in self?.restartForUpdate(installed: installed) }
+            update.start()
         }
     }
 
@@ -2205,6 +2218,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Overrides the "remove a group with sessions in it?" alert: gets the group and its members,
     /// returns whether to go ahead. Only asked for a group that still has rows. Tests set it.
     public var confirmRemoveGroup: ((Group, [Session]) -> Bool)?
+
+    /// Overrides the "restart to finish updating?" alert (TKZ-50): gets the relaunch plan,
+    /// returns whether to go ahead. Tests set it. See `restartForUpdate(installed:)`.
+    public var confirmRestartForUpdate: ((RelaunchPlan) -> Bool)?
+
+    /// Overrides the relaunch itself (TKZ-50). Tests set it; the default spawns the `open` waiter
+    /// and terminates the app.
+    public var performRelaunch: ((RelaunchPlan) throws -> Void)?
 
     /// ⌘W, the row's `×`, the context menu: the session goes — row, shell and snapshot. There is
     /// no "closed but kept" state (decision 2026-09-08: a terminal cannot be exited). A session

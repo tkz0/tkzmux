@@ -187,6 +187,49 @@ public struct SidebarSummaryModel: Hashable, Sendable {
     }
 }
 
+// MARK: - Update card (TKZ-50)
+
+/// What a click on the update card's second line asks the owner to do.
+public enum UpdateAction: Hashable, Sendable {
+    /// Run `brew update` + `brew upgrade --cask`.
+    case upgrade
+    /// The bundle on disk is new: quit and reopen.
+    case restart
+    /// Run brew again (after a failure, or when the cask was not bumped yet).
+    case retry
+    /// Reveal `~/Library/Logs/tkzmux/update.log`.
+    case showLog
+    /// Open the GitHub release page.
+    case openReleasePage
+}
+
+/// The 48 pt "Update available" card. `nil` from the adapter means no card at all.
+public struct UpdateNoticeModel: Hashable, Sendable {
+    /// One run on the second line; a run with an `action` is drawn as a link.
+    public struct Run: Hashable, Sendable {
+        public var text: String
+        public var action: UpdateAction?
+
+        public init(_ text: String, action: UpdateAction? = nil) {
+            self.text = text
+            self.action = action
+        }
+    }
+
+    /// "Update available — v0.8.0".
+    public var title: String
+    /// Rendered left to right, separated by " · ".
+    public var runs: [Run]
+    /// The `✕`; hidden while brew is running.
+    public var showsClose: Bool
+
+    public init(title: String, runs: [Run], showsClose: Bool = true) {
+        self.title = title
+        self.runs = runs
+        self.showsClose = showsClose
+    }
+}
+
 // MARK: - Shared metrics
 
 /// Fixed geometry from the design (artboard 2c). The outline view returns these from
@@ -200,6 +243,9 @@ public enum SidebarMetrics {
     public static let summaryStripHeight: Double = 26
     /// The "＋ New group" footer strip: a 26 pt dashed button with 2 pt above and 10 pt below.
     public static let newGroupFooterHeight: Double = 38
+    /// The "Update available" card above the footer (TKZ-50): a 40 pt card with 2 pt above and
+    /// 6 pt below. Only laid out while a card is showing.
+    public static let updateNoticeHeight: Double = 48
     /// How far a session row's content sits inside its group header's.
     ///
     /// `NSOutlineView.indentationPerLevel` is 0 because the rows lay themselves out, so the

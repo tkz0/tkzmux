@@ -95,12 +95,21 @@ ad-hoc signed, which `codesign -dv build/tkzmux.app` reports as `Signature=adhoc
 This is the whole privacy story. Every claim below is a claim about the code in this repository;
 the file that backs it is named so you can check it yourself.
 
-**No telemetry, no analytics, no crash reporting, no update check.** tkzmux itself opens no network
-sockets: there is no `URLSession`, no `Network.framework`, no `AF_INET` socket anywhere in
-`Sources/`. The only socket it creates is an `AF_UNIX` one — a file in its own support directory,
-used by the hook relay (`Sources/ClaudeBridge/HookServer.swift`, `Sources/tkzmux-hook/Socket.swift`).
+**No telemetry, no analytics, no crash reporting.** tkzmux makes exactly **one** kind of network
+request of its own: the update check. A release build asks GitHub for the latest release —
+`GET https://api.github.com/repos/tkz0/tkzmux/releases/latest` — 15 seconds after launch, then
+every 4 hours, and again on wake or activation if the last check is older than that
+(`Sources/TkzApp/Update/UpdateChecker.swift`, `UpdateIntegration.swift`). The request carries an
+`Accept` header and `User-Agent: tkzmux/<version>` and nothing else: nothing about you, your
+sessions or your machine. The answer only ever shows the "Update available" card at the foot of
+the sidebar; closing that card hides it for that version for good. Builds made with `make app`
+or `swift run` never check (their version is not a release), unless `TKZMUX_UPDATE_URL` points
+them at a feed on purpose. That is the whole `URLSession` story — there is no other one, and no
+`Network.framework` or `AF_INET` socket anywhere else in `Sources/`. The only other socket it
+creates is an `AF_UNIX` one — a file in its own support directory, used by the hook relay
+(`Sources/ClaudeBridge/HookServer.swift`, `Sources/tkzmux-hook/Socket.swift`).
 
-It does, however, reach the network **indirectly, in one place**: the PR badge shells out to
+It also reaches the network **indirectly, in one place**: the PR badge shells out to
 `gh pr view` (`Sources/GitStatus/PRLookup.swift`), and `gh` talks to GitHub under your own
 credentials. That call is gated — the origin's host is checked with `git remote get-url origin` and
 cached per directory first, so `gh` is never invoked for a repo whose origin is not GitHub, not even
@@ -122,6 +131,13 @@ Plus these, in the background, on repos backing your sessions:
 
 All of them run with `--no-optional-locks` / `GIT_OPTIONAL_LOCKS=0` so a background refresh cannot
 contend with git commands you run yourself.
+
+And these, **only when you click** on the update card, never on their own:
+
+| Command | Why |
+|---|---|
+| `brew update`, then `brew upgrade --cask tkz0/tap/tkzmux` | "Update via Homebrew" — offered only when the running app is the cask's `/Applications/tkzmux.app` and `brew` is installed; everything brew prints goes to `~/Library/Logs/tkzmux/update.log` (`Sources/TkzApp/Update/UpgradeRunner.swift`) |
+| `/bin/sh -c 'while kill -0 <pid> …; do sleep 0.2; done; exec /usr/bin/open <app>'` | "Restart to update" — waits for tkzmux to quit, then reopens it (`UpdateRelaunch.swift`). Restarting closes every session's shell; the rows are kept and ⌘R resumes Claude |
 
 **Processes it inspects.** To show a dev server's port on a row, tkzmux walks the descendant
 processes of a session and looks at their open file descriptors for listening TCP sockets

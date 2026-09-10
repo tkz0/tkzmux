@@ -32,6 +32,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var autosaver: StateAutosaver?
     private var claude: ClaudeIntegration?
     private var git: GitIntegration?
+    private var update: UpdateIntegration?
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "app")
 
     /// Milliseconds after launch to print engine diagnostics and quit. Development only: it is how
@@ -102,6 +103,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 let gitIntegration = GitIntegration(store: store)
                 controller.git = gitIntegration
                 git = gitIntegration
+                // TKZ-50: the sidebar's update card. Release builds only (a dev build checks
+                // when `TKZMUX_UPDATE_URL` points it at a feed); the first check is 15 s out.
+                if UpdateIntegration.shouldRun() {
+                    let updateIntegration = UpdateIntegration(store: store)
+                    controller.update = updateIntegration
+                    update = updateIntegration
+                }
                 // After the integration: every `claude --resume` must run through the shim the
                 // installer just wrote, so the launch frame binds its pid.
                 if restored.loaded != nil { controller.autoResumeIfEnabled() }
@@ -125,6 +133,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationWillTerminate(_ notification: Notification) {
         claude?.stop()
         git?.stop()
+        update?.stop()
         devWindow?.shutdown()
         mainWindow?.shutdown()
         // After `shutdown`, and synchronously: the debounced write for the last mutation before ⌘Q

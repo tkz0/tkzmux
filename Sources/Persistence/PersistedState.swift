@@ -6,9 +6,10 @@
 //     dictionary with a struct key encodes as a flat `[k, v, k, v]` array — unreadable by hand and
 //     nothing like design.md's `groups[]` / `sessions[]`;
 //   * `CGRect` encodes as `[[x, y], [w, h]]`, where the ticket asks for explicit keys;
-//   * `accounts` and `usage` are not durable at all. Accounts come from config and usage from
-//     `UsageReader`; persisting either would mean restoring a stale quota reading as if it were
-//     current.
+//   * `accounts`, `usage` and `update` are not durable at all. Accounts come from config, usage
+//     from `UsageReader` and `update` from the release check (TKZ-50); persisting any of them
+//     would mean restoring a stale reading as if it were current. Only the *dismissed* update
+//     version is kept, in `preferences`.
 //
 // `Session.live` needs no handling here: `Session.CodingKeys` already omits it, so a decoded row has
 // `live == nil` and therefore `status == .exited` *by construction* (design.md → *Session flows &
@@ -64,18 +65,28 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     public var autoResumeOnLaunch: Bool
     /// The statusline consent sheet has been shown once (TKZ-32).
     public var statuslineOffered: Bool
+    /// The release whose "Update available" card was closed (TKZ-50); `nil` = none dismissed.
+    public var dismissedUpdateVersion: String?
 
-    public init(autoResumeOnLaunch: Bool = false, statuslineOffered: Bool = false) {
+    public init(
+        autoResumeOnLaunch: Bool = false,
+        statuslineOffered: Bool = false,
+        dismissedUpdateVersion: String? = nil
+    ) {
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
+        self.dismissedUpdateVersion = dismissedUpdateVersion
     }
 
-    private enum CodingKeys: String, CodingKey { case autoResumeOnLaunch, statuslineOffered }
+    private enum CodingKeys: String, CodingKey {
+        case autoResumeOnLaunch, statuslineOffered, dismissedUpdateVersion
+    }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         autoResumeOnLaunch = try c.decodeIfPresent(Bool.self, forKey: .autoResumeOnLaunch) ?? false
         statuslineOffered = try c.decodeIfPresent(Bool.self, forKey: .statuslineOffered) ?? false
+        dismissedUpdateVersion = try c.decodeIfPresent(String.self, forKey: .dismissedUpdateVersion)
     }
 }
 
@@ -168,7 +179,8 @@ public struct PersistedState: Hashable, Sendable, Codable {
             shortcuts: state.shortcuts,
             preferences: PersistedPreferences(
                 autoResumeOnLaunch: state.autoResumeOnLaunch,
-                statuslineOffered: state.statuslineOffered))
+                statuslineOffered: state.statuslineOffered,
+                dismissedUpdateVersion: state.dismissedUpdateVersion))
     }
 
     // MARK: Restore
@@ -222,6 +234,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
         state.shortcuts = shortcuts
         state.autoResumeOnLaunch = preferences.autoResumeOnLaunch
         state.statuslineOffered = preferences.statuslineOffered
+        state.dismissedUpdateVersion = preferences.dismissedUpdateVersion
 
         return warnings
     }

@@ -35,6 +35,12 @@ public struct AppState: Hashable, Sendable {
     /// and never again: declining is an answer, and re-asking every launch would be nagging. The
     /// menu command stays available either way.
     public var statuslineOffered: Bool
+    /// The release the user closed the sidebar's update card for (TKZ-50). That version never
+    /// shows the card again; a newer one does. Durable, in `PersistedPreferences`.
+    public var dismissedUpdateVersion: String?
+    /// The release check's answer and the in-app upgrade's progress. Process state, never
+    /// persisted — see `UpdateState`.
+    public var update: UpdateState
 
     public init(
         groups: [GroupID: Group] = [:],
@@ -48,7 +54,9 @@ public struct AppState: Hashable, Sendable {
         presets: [Preset] = [],
         shortcuts: [String: String] = [:],
         autoResumeOnLaunch: Bool = false,
-        statuslineOffered: Bool = false
+        statuslineOffered: Bool = false,
+        dismissedUpdateVersion: String? = nil,
+        update: UpdateState = UpdateState()
     ) {
         self.groups = groups
         self.sessions = sessions
@@ -62,6 +70,19 @@ public struct AppState: Hashable, Sendable {
         self.shortcuts = shortcuts
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
+        self.dismissedUpdateVersion = dismissedUpdateVersion
+        self.update = update
+    }
+
+    // MARK: Update card
+
+    /// The release the sidebar's card should show: the newest known release, unless the user has
+    /// dismissed exactly that version. `nil` hides the card.
+    public var visibleUpdate: AvailableUpdate? {
+        guard let available = update.available, available.version != dismissedUpdateVersion else {
+            return nil
+        }
+        return available
     }
 
     // MARK: Ordered access (what the sidebar renders)
