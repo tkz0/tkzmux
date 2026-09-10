@@ -18,7 +18,7 @@ private func makeSocketDir() throws -> URL {
         mkdtemp(buf.baseAddress)
     }
     guard result != nil else { throw TestSetupError.mkdtempFailed }
-    let path = String(cString: template)
+    let path = template.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
     return URL(fileURLWithPath: path, isDirectory: true)
 }
 

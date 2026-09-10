@@ -372,7 +372,7 @@ private struct SeededGenerator: RandomNumberGenerator {
 // MARK: - Restore hygiene
 
 @Test func aDanglingSelectionIsDroppedAndReported() throws {
-    var state = makeState()
+    let state = makeState()
     let ghost = SessionID.generate()
     var persisted = PersistedState(state)
     persisted.selection = ghost
@@ -381,7 +381,6 @@ private struct SeededGenerator: RandomNumberGenerator {
     let warnings = persisted.apply(to: &restored)
     #expect(restored.selection == nil)
     #expect(warnings.contains { $0.contains(ghost.rawValue) })
-    _ = state
 }
 
 @Test func aSessionInAnUnknownGroupIsDroppedAndReported() throws {

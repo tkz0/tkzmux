@@ -307,7 +307,8 @@ struct ClaudeIntegrationTests {
         // `sun_path` is 104 bytes; NSTemporaryDirectory() is too long for a socket.
         var template = Array("/tmp/tkzci.XXXXXX".utf8CString)
         guard mkdtemp(&template) != nil else { throw TestFailure.mkdtemp }
-        let directory = URL(filePath: String(cString: template), directoryHint: .isDirectory)
+        let path = template.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
+        let directory = URL(filePath: path, directoryHint: .isDirectory)
         defer { try? FileManager.default.removeItem(at: directory) }
 
         var state = AppState.startup(homeDirectory: directory.path)

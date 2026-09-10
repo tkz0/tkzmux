@@ -381,7 +381,7 @@ public final class TerminalRenderer {
 
         encoder.endEncoding()
 
-        commandBuffer.addCompletedHandler { [ring] _ in ring.release() }
+        commandBuffer.addCompletedHandler { [releaser = ring.releaser] _ in releaser.release() }
         if presentViaCommandBuffer, let drawable { commandBuffer.present(drawable) }
         commandBuffer.commit()
 
