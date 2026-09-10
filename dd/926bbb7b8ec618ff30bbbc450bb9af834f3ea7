@@ -1,0 +1,38 @@
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_7c8fb28197d630::t_b9cf4a5e048b14 108
+  s_7c8fb28197d630::t_216243d4fd1890 169
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_7c8fb28197d630::t_b3cb075a9e3cac 385-386
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_7c8fb28197d630::t_aaac0f2a124617 223,225,227-228
+  s_7c8fb28197d630::t_76cada1f26b4a8 224
+  s_7c8fb28197d630::t_5018390b7b5d1c 583
+Sources/TkzApp/Sidebar/GroupRowView.swift
+  s_7c8fb28197d630::t_906fc1eff6e0aa 35-36
+  s_7c8fb28197d630::t_343b17f84072a7 4
+  s_7c8fb28197d630::t_83fa84e0f46837 187-188,193
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_7c8fb28197d630::t_76cada1f26b4a8 140,400,618,642,646,658,714,726,770
+  s_7c8fb28197d630::t_f41e74deb7b223 772-774,776,780,782-785
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_7c8fb28197d630::t_0b17e6020b8023 65
+  s_7c8fb28197d630::t_8000a3480b89f5 97
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_7c8fb28197d630::t_98e05cddeb6085 604-606
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "dd926bbb7b8ec618ff30bbbc450bb9af834f3ea7",
+  "prompts": {},
+  "sessions": {
+    "s_7c8fb28197d630": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "68f75824-984a-4a87-b1d8-c6cef891df41",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
