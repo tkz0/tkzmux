@@ -1,0 +1,34 @@
+Sources/TkzApp/GitIntegration.swift
+  s_8ef71e3cab3be4::t_2866eae6e5b93f 251-255,262
+Sources/TkzTerminalRender/TerminalRenderer.swift
+  s_8ef71e3cab3be4::t_88853924cc7719 384
+Tests/TkzAppTests/TerminalHostTests.swift
+  s_8ef71e3cab3be4::t_09869f4b933d95 199
+Tests/TkzAppTests/ClaudeIntegrationTests.swift
+  s_8ef71e3cab3be4::t_d8c1c9b4cf8b11 310-311
+Tests/PersistenceTests/StateFileTests.swift
+  s_8ef71e3cab3be4::t_c2c483090be1d2 375
+Sources/TkzTerminalRender/FrameRing.swift
+  s_8ef71e3cab3be4::t_1f15e8f3f6c4a6 59-60,65-67
+  s_8ef71e3cab3be4::t_61b9ecbcac37b3 20-23,33-40
+  s_8ef71e3cab3be4::t_2474cab1ae2f05 41-42
+  s_8ef71e3cab3be4::t_8ba13039d8c4b8 68-69
+Tests/ClaudeBridgeTests/HookServerTests.swift
+  s_8ef71e3cab3be4::t_bdd3f6b2194ee7 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "3e2900141c762e6bf4a21d87f29fd69daeff69e3",
+  "prompts": {},
+  "sessions": {
+    "s_8ef71e3cab3be4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90a3072c-a95b-418c-b143-3620d3996c18",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <thomas@tkz.se>"
+    }
+  }
+}
