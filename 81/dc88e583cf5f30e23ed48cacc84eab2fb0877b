@@ -1,0 +1,117 @@
+Tests/TkzAppTests/UpdateNoticeTests.swift
+  s_9aa5551ad59ea6::t_c284718bf1626a 183
+  s_9aa5551ad59ea6::t_e204f15a95cc51 185-186,192
+  s_9aa5551ad59ea6::t_cdd2082f1784b1 57-58
+  s_9aa5551ad59ea6::t_7659d42b3813d8 1-56,59-93,96-182,184,187-191,193-213
+  s_9aa5551ad59ea6::t_a1cce5a35d739d 94-95
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_9aa5551ad59ea6::t_b8a91db2f8916a 249-254
+  s_9aa5551ad59ea6::t_b71254e8f04b95 291-294,303
+  s_9aa5551ad59ea6::t_ec0d7f9302976a 15-16
+  s_9aa5551ad59ea6::t_f0dc2ed987beef 492-510,514-515
+  s_9aa5551ad59ea6::t_979193feacffc9 179-183,189,204-212,215-216
+  s_9aa5551ad59ea6::t_668aaeb77634e1 511-513,516-519
+  s_9aa5551ad59ea6::t_da12280a26800b 402-406,410,420
+  s_9aa5551ad59ea6::t_4d905fb76d2e80 432
+Sources/TkzCore/Reducers.swift
+  s_9aa5551ad59ea6::t_ba277f111cca9b 370-390
+Sources/TkzApp/Update/UpgradeRunner.swift
+  s_9aa5551ad59ea6::t_810cf07aac17d1 1-35,38,40,42-80,82-134,142-199,203-242
+  s_9aa5551ad59ea6::t_1d6b78ccf5e17d 36-37,39,41,81
+  s_9aa5551ad59ea6::t_7d642dd63c8169 200-202
+  s_9aa5551ad59ea6::t_09611bed15518d 135-141
+Sources/TkzApp/Update/BrewCommand.swift
+  s_9aa5551ad59ea6::t_c769582bb729f0 1-51,54,56-64,66-172
+  s_9aa5551ad59ea6::t_d53e9d735cd323 65
+  s_9aa5551ad59ea6::t_a1806fedf96576 52-53,55
+Sources/TkzCore/AppStore.swift
+  s_9aa5551ad59ea6::t_19f07ab04fc800 56-59
+  s_9aa5551ad59ea6::t_acb19b669311f9 154-155
+docs/release.md
+  s_9aa5551ad59ea6::t_bdf2a3cf348c96 284-301
+Sources/TkzApp/AppDelegate.swift
+  s_9aa5551ad59ea6::t_c07c1669710e40 106-112
+  s_9aa5551ad59ea6::t_6c5b71caae7a09 35
+  s_9aa5551ad59ea6::t_59c4fd342d3cf6 136
+Tests/TkzAppTests/UpgradeRunnerTests.swift
+  s_9aa5551ad59ea6::t_9d5ff3d302c378 1-54,56-81,83-109,112-125,127-151,153-154,178-181,183-202,204-217,219-235,237-251,253-265,267-284,286-340,342-429
+  s_9aa5551ad59ea6::t_12f6f9cf2fc35b 152,155-177
+  s_9aa5551ad59ea6::t_c284718bf1626a 55,82,126,182,203,218,236,252,266,285,341
+  s_9aa5551ad59ea6::t_b37c58489be430 110-111
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_9aa5551ad59ea6::t_d08028553d749f 246-248
+  s_9aa5551ad59ea6::t_37bb2054f42e8c 190-232
+Sources/TkzApp/Update/UpdateChecker.swift
+  s_9aa5551ad59ea6::t_3713aeeb73df67 1-92,94,96-97,100
+  s_9aa5551ad59ea6::t_57a85cb76b50ec 93,95,98-99
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_9aa5551ad59ea6::t_9cf8cc63f5ae8d 108-129,132-133,136-154
+  s_9aa5551ad59ea6::t_56cd3cb20c8883 130-131,134-135
+Sources/TkzCore/UpdateState.swift
+  s_9aa5551ad59ea6::t_39c3db438889c8 1-63
+Tests/TkzCoreTests/UpdateStateTests.swift
+  s_9aa5551ad59ea6::t_0656827e35a126 1-72
+Sources/TkzApp/Update/UpdateRelaunch.swift
+  s_9aa5551ad59ea6::t_0c890e86e6af4d 73
+  s_9aa5551ad59ea6::t_ce4dbe20b9761e 1-52,56-59,61-72,74-91
+  s_9aa5551ad59ea6::t_47c45a21212b9a 53-55,60
+Sources/TkzApp/MainWindowController.swift
+  s_9aa5551ad59ea6::t_fd0cbd2b7b57ec 2222-2229
+  s_9aa5551ad59ea6::t_cab02b0792c883 1331
+  s_9aa5551ad59ea6::t_d163451aacc1fe 1396-1407
+Tests/TkzAppTests/UpdateCheckerTests.swift
+  s_9aa5551ad59ea6::t_55b757e72d28df 1-7,9-41,44,48-77,79,81-83,85-110
+  s_9aa5551ad59ea6::t_94ee7874cb5a9e 42-43,45-47
+  s_9aa5551ad59ea6::t_05899efba642f3 8
+  s_9aa5551ad59ea6::t_5bf7cf8217d543 78,80,84
+Tests/TkzAppTests/UpdateIntegrationTests.swift
+  s_9aa5551ad59ea6::t_52a3a192b1e65f 168-173
+  s_9aa5551ad59ea6::t_f3205a47da4352 174-178
+  s_9aa5551ad59ea6::t_8d7009ec58a0a6 1-167,179-222
+Sources/Persistence/PersistedState.swift
+  s_9aa5551ad59ea6::t_41bc20bdea0ff9 9-12
+  s_9aa5551ad59ea6::t_31171c5f0a8a98 237
+  s_9aa5551ad59ea6::t_75efe1af16dab3 68-69,71-75,78,81-83,89
+  s_9aa5551ad59ea6::t_409fb990b39c22 182-183
+Tests/PersistenceTests/StateFileTests.swift
+  s_9aa5551ad59ea6::t_ff1ea3e836e947 103,107-130
+  s_9aa5551ad59ea6::t_a30854aa7f569f 131-132
+README.md
+  s_9aa5551ad59ea6::t_9f0224a3e516cf 135-141
+  s_9aa5551ad59ea6::t_54946f5a598290 98-112
+Tests/TkzCoreTests/SemanticVersionTests.swift
+  s_9aa5551ad59ea6::t_e9b3f34d4e51f7 71-74
+  s_9aa5551ad59ea6::t_de23f026a0bb79 1-70,75-82
+Sources/TkzApp/Sidebar/UpdateNoticeView.swift
+  s_9aa5551ad59ea6::t_1da19549c40468 1-254
+Sources/TkzApp/Update/UpgradeCapability.swift
+  s_9aa5551ad59ea6::t_2fb5b23b9ad574 1-74
+Sources/TkzCore/AppState.swift
+  s_9aa5551ad59ea6::t_d27825ca240471 57-59
+  s_9aa5551ad59ea6::t_b2a336a1c58cb8 38-43
+  s_9aa5551ad59ea6::t_95f8a54739ea17 73-85
+Sources/TkzApp/Update/InstalledVersion.swift
+  s_9aa5551ad59ea6::t_07fcefb1e96a4b 1-36
+Sources/TkzApp/Update/UpdateIntegration.swift
+  s_9aa5551ad59ea6::t_c9925a0e04abae 1-62,64-161,166-178
+  s_9aa5551ad59ea6::t_b37c58489be430 63
+  s_9aa5551ad59ea6::t_c2217504254351 162-165
+Sources/TkzCore/SemanticVersion.swift
+  s_9aa5551ad59ea6::t_39c3db438889c8 1-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "81dc88e583cf5f30e23ed48cacc84eab2fb0877b",
+  "prompts": {},
+  "sessions": {
+    "s_9aa5551ad59ea6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a296f8c9-05d4-4d64-9bde-22051d8533d0",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
