@@ -58,6 +58,14 @@ public struct Theme: Hashable, Sendable {
     public let diffAdd: RGB               // +142
     public let diffRemove: RGB            // −38
     public let border: RGB                // sidebar border-right / title-bar border-bottom
+    /// Status-bar PR badge (icon + `#418`) while the PR is open. 2c.1 draws it in GitHub's own
+    /// open green (`#3fb950`), not a preset colour, so every dark preset shares it; the light
+    /// preset takes GitHub's light-mode green, since the dark one is 2.2:1 on 1b's strip.
+    public let prOpen: RGB
+    /// The same badge once the PR is merged. No artboard shows one; GitHub's merged purple
+    /// (`#a371f7`) lifted one step so it clears 4.5:1 on every dark strip, and GitHub's
+    /// light-mode purple on 1b.
+    public let prMerged: RGB
 
     // MARK: Panes (artboards 2c.3 / 2c.4: the 28 pt pane header, the focus ring, the 7 pt grip divider)
     public let paneHeaderBackground: RGB          // header of the focused pane
@@ -199,6 +207,8 @@ extension Theme {
             diffAdd: RGB(hex: 0x4ade80),
             diffRemove: diffRemove,
             border: RGB(rgb: 255, 255, 255, alpha: 0.08),
+            prOpen: RGB(hex: 0x3fb950),
+            prMerged: RGB(hex: 0xb48cff),
             paneHeaderBackground: RGB(hex: 0x222639),
             paneHeaderBackgroundInactive: RGB(hex: 0x1d2033),
             paneHeaderPath: RGB(hex: 0x99a1c4),
@@ -254,6 +264,8 @@ extension Theme {
             diffAdd: RGB(hex: 0x3ddc74),
             diffRemove: diffRemove,
             border: RGB(rgb: 255, 255, 255, alpha: 0.08),
+            prOpen: RGB(hex: 0x3fb950),
+            prMerged: RGB(hex: 0xb48cff),
             // No split artboard for this preset: the focused header is the footer surface, the
             // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
             // are the accent at the same alphas 2c.3 uses.
@@ -313,6 +325,8 @@ extension Theme {
             diffAdd: RGB(hex: 0x4cc97e),
             diffRemove: diffRemove,
             border: RGB(rgb: 255, 255, 255, alpha: 0.08),
+            prOpen: RGB(hex: 0x3fb950),
+            prMerged: RGB(hex: 0xb48cff),
             // No split artboard for this preset: the focused header is the footer surface, the
             // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
             // are the accent at the same alphas 2c.3 uses.
@@ -372,6 +386,8 @@ extension Theme {
             diffAdd: RGB(hex: 0x34b060),
             diffRemove: diffRemove,
             border: RGB(rgb: 255, 255, 255, alpha: 0.06),
+            prOpen: RGB(hex: 0x3fb950),
+            prMerged: RGB(hex: 0xb48cff),
             // No split artboard for this preset: the focused header is the footer surface, the
             // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
             // are the accent at the same alphas 2c.3 uses.
@@ -433,6 +449,8 @@ extension Theme {
             diffAdd: RGB(hex: 0x2c9e53),
             diffRemove: diffRemove,
             border: RGB(rgb: 0, 0, 0, alpha: 0.08),
+            prOpen: RGB(hex: 0x1a7f37),
+            prMerged: RGB(hex: 0x8250df),
             // No split artboard for this preset: the focused header is the footer surface, the
             // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
             // are the accent at the same alphas 2c.3 uses.

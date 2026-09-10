@@ -131,6 +131,49 @@ struct GitIntegrationTests {
         #expect(store.state.sessions[id]?.live?.portOwners.isEmpty == true)
     }
 
+    // MARK: Pull request cadence
+
+    @Test func theTickReasksForTheSelectedRowAndEveryOpenPullRequest() {
+        var state = AppState()
+        let group = state.addGroup(name: "repo", repoRoot: "/tmp/repo")
+        let selected = state.createSession(groupID: group.id, cwd: "/tmp/a").id
+        let open = state.createSession(groupID: group.id, cwd: "/tmp/b").id
+        let merged = state.createSession(groupID: group.id, cwd: "/tmp/c").id
+        let none = state.createSession(groupID: group.id, cwd: "/tmp/d").id
+        let restored = state.createSession(groupID: group.id, cwd: "/tmp/e").id
+        state.setLive(LiveSessionState(shellPid: 1, git: GitSummary(branch: "a")), for: selected)
+        state.setLive(LiveSessionState(shellPid: 2, git: GitSummary(branch: "b", pr: PRInfo(number: 2, state: "open"))), for: open)
+        state.setLive(LiveSessionState(shellPid: 3, git: GitSummary(branch: "c", pr: PRInfo(number: 3, state: "MERGED"))), for: merged)
+        state.setLive(LiveSessionState(shellPid: 4, git: GitSummary(branch: "d")), for: none)
+        _ = restored  // no live state at all
+        state.select(selected)
+
+        let rows = GitIntegration.rowsNeedingPRRefresh(in: state)
+        #expect(rows.first == selected)
+        #expect(Set(rows) == [selected, open])
+    }
+
+    @Test func aSelectedRowWithAnOpenPullRequestIsListedOnce() {
+        var state = AppState()
+        let group = state.addGroup(name: "repo", repoRoot: "/tmp/repo")
+        let id = state.createSession(groupID: group.id, cwd: "/tmp/a").id
+        state.setLive(LiveSessionState(shellPid: 1, git: GitSummary(branch: "a", pr: PRInfo(number: 1, state: "OPEN"))), for: id)
+        state.select(id)
+        #expect(GitIntegration.rowsNeedingPRRefresh(in: state) == [id])
+    }
+
+    @Test func theSidecarSeedsOnlyUntilSomethingHasBeenLookedUp() {
+        // The hook stamps every sidecar PR `OPEN` and the file freezes when Claude exits, so a
+        // looked-up MERGED must not be overwritten by it — the sidecar is a first answer only.
+        let sidecar = SessionSidecar(sessionId: "s", pr: PRInfo(number: 5, state: "OPEN"))
+        #expect(GitIntegration.shouldSeedFromSidecar(git: nil, sidecar: sidecar))
+        #expect(GitIntegration.shouldSeedFromSidecar(git: GitSummary(branch: "b"), sidecar: sidecar))
+        #expect(!GitIntegration.shouldSeedFromSidecar(
+            git: GitSummary(branch: "b", pr: PRInfo(number: 5, state: "MERGED")), sidecar: sidecar))
+        #expect(!GitIntegration.shouldSeedFromSidecar(git: nil, sidecar: SessionSidecar(sessionId: "s")))
+        #expect(!GitIntegration.shouldSeedFromSidecar(git: nil, sidecar: nil))
+    }
+
     // MARK: Store guards
 
     @Test func gitAndPortsAreRefusedForARowWithNoShell() {

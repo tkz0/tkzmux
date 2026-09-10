@@ -60,11 +60,17 @@ public final class PRLookup: Sendable {
     }
 
     /// Ask for the PR of `branch` in `directory`. See the type doc for throttling / gating rules.
+    ///
+    /// `maxAge` replaces `refreshInterval` for this one call — "ask again if the answer is older
+    /// than this" — which is what a Stop hook wants: a PR the session just created should show up
+    /// in seconds, not at the next five-minute tick. Unlike `force` it still honours the failure
+    /// cache (a broken `gh` must not be hit on every turn) and still reports only on change.
     public func lookup(
         for key: SessionID,
         directory: String,
         branch: String?,
         force: Bool = false,
+        maxAge: TimeInterval? = nil,
         completion: @escaping @Sendable (PRInfo?) -> Void
     ) {
         queue.async { [self] in
@@ -98,8 +104,9 @@ public final class PRLookup: Sendable {
                     previous.lastFailureAt.map { now.timeIntervalSince($0) < failureCacheInterval }
                     ?? false
                 let unchanged = previous.directory == directory && previous.branch == branch
+                let interval = maxAge ?? refreshInterval
                 let fresh =
-                    previous.lastAttemptAt.map { now.timeIntervalSince($0) < refreshInterval }
+                    previous.lastAttemptAt.map { now.timeIntervalSince($0) < interval }
                     ?? false
                 if failureFresh || (unchanged && fresh) {
                     return  // cache is authoritative; nothing changed, nothing to report.

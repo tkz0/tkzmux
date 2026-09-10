@@ -122,6 +122,55 @@ import TkzCore
         #expect(fixture.witnessLineCount() == 2)  // only the two forced `gh` calls ran.
     }
 
+    @Test func maxAgeReasksWithinTheRefreshIntervalButNotWithinItself() throws {
+        // A Stop hook asks with a short `maxAge`: an answer older than that is re-fetched even
+        // though the 5-minute throttle would have kept it, while one younger than it is not.
+        let fixture = try Fixture(origin: "https://github.com/o/r.git")
+        defer { fixture.cleanup() }
+
+        let lookup = PRLookup(ghPath: fixture.stubGhPath, refreshInterval: 300)
+        _ = try fixture.awaitLookup(lookup, force: true)
+        #expect(fixture.witnessLineCount() == 1)
+
+        // Zero max age: the cached answer is always too old, so `gh` runs again. Same payload, so
+        // per the contract there is no callback — chase it with a forced lookup on the serial
+        // queue to know it has run.
+        lookup.lookup(for: fixture.sessionID, directory: fixture.repoPath, branch: "main", maxAge: 0) { _ in
+            Issue.record("an unchanged answer must not call completion")
+        }
+        _ = try fixture.awaitLookup(lookup, force: true)
+        #expect(fixture.witnessLineCount() == 3)
+
+        // A generous max age: the answer is fresh enough, nothing runs.
+        lookup.lookup(for: fixture.sessionID, directory: fixture.repoPath, branch: "main", maxAge: 60) { _ in
+            Issue.record("a fresh answer must not call completion")
+        }
+        _ = try fixture.awaitLookup(lookup, force: true)
+        #expect(fixture.witnessLineCount() == 4)
+    }
+
+    @Test func maxAgeStillHonoursTheFailureCache() throws {
+        // A `gh` that cannot even launch is cached as a failure; a Stop hook's short `maxAge`
+        // must not turn that into one failed launch per turn.
+        let fixture = try Fixture(origin: "https://github.com/o/r.git")
+        defer { fixture.cleanup() }
+
+        let lookup = PRLookup(
+            ghPath: fixture.base.appending(path: "no-such-gh").path,
+            refreshInterval: 300, failureCacheInterval: 600)
+        #expect(try fixture.awaitLookup(lookup, force: true) == nil)
+
+        let sem = DispatchSemaphore(value: 0)
+        lookup.lookup(for: fixture.sessionID, directory: fixture.repoPath, branch: "main", maxAge: 0) { _ in
+            Issue.record("a cached failure must suppress a maxAge lookup")
+        }
+        // Drain the serial queue behind it so the assertion above has had its chance to fire.
+        lookup.lookup(for: fixture.sessionID, directory: fixture.repoPath, branch: "main", force: true) { _ in
+            sem.signal()
+        }
+        #expect(sem.wait(timeout: .now() + 5) == .success)
+    }
+
     @Test func forcedLookupAlwaysInvokesGh() throws {
         let fixture = try Fixture(origin: "https://github.com/o/r.git")
         defer { fixture.cleanup() }

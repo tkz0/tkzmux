@@ -62,32 +62,75 @@ struct StatusBarInteractionTests {
 
     // MARK: PR badge
 
-    @Test func approvedPullRequestIsATickInTheAddColour() throws {
+    @Test func anOpenPullRequestIsTheGlyphAndNumberInTheOpenGreen() throws {
+        // 2c.1: the pull-request glyph and `#418` in GitHub's open green, no pill. The review
+        // decision is in the tooltip, not the colour.
         let pr = PRInfo(
             number: 123, url: "https://github.com/o/r/pull/123", state: "OPEN",
             reviewDecision: "APPROVED")
         let item = try #require(Self.items(StatusBarModel(pullRequest: pr)).first)
-        #expect(item.segment.plainText == "#123 \u{2713}")
-        #expect(item.segment.colors.first == Theme.default.diffAdd)
+        #expect(item.segment.plainText == "#123")
+        #expect(item.segment.iconName == StatusBarView.openSymbol)
+        #expect(item.segment.colors.first == Theme.default.prOpen)
+        #expect(item.segment.colors == [Theme.default.prOpen, Theme.default.prOpen])
         #expect(item.url?.absoluteString == "https://github.com/o/r/pull/123")
-        #expect(item.tooltip?.contains("Pull request #123") == true)
-        #expect(item.tooltip?.contains("Review approved") == true)
+        #expect(item.tooltip == "Pull request #123\nOpen\nReview approved\nhttps://github.com/o/r/pull/123")
     }
 
-    @Test func draftBeatsTheReviewDecision() throws {
+    @Test func aMergedPullRequestTurnsPurpleWithTheMergeGlyph() throws {
+        let pr = PRInfo(number: 23, url: "https://github.com/o/r/pull/23", state: "MERGED")
+        let item = try #require(Self.items(StatusBarModel(pullRequest: pr)).first)
+        #expect(item.segment.plainText == "#23")
+        #expect(item.segment.iconName == StatusBarView.mergedSymbol)
+        #expect(item.segment.colors.first == Theme.default.prMerged)
+        #expect(item.tooltip?.contains("\nMerged") == true)
+        // Still clickable after the merge — the PR page is where the discussion lives.
+        #expect(item.url?.absoluteString == "https://github.com/o/r/pull/23")
+    }
+
+    @Test func draftIsDimmedAndStateStillWinsOverTheReview() throws {
         let pr = PRInfo(number: 7, state: "OPEN", isDraft: true, reviewDecision: "APPROVED")
         let item = try #require(Self.items(StatusBarModel(pullRequest: pr)).first)
-        #expect(item.segment.plainText == "#7 draft")
+        #expect(item.segment.plainText == "#7")
+        #expect(item.segment.iconName == StatusBarView.openSymbol)
         #expect(item.segment.colors.first == Theme.default.foregroundDim)
+        #expect(item.tooltip == "Pull request #7\nDraft\nReview approved")
         // No URL in the payload → nothing to click, and no crash constructing one.
         #expect(item.url == nil)
     }
 
-    @Test func changesRequestedUsesTheRemoveColour() throws {
+    @Test func aClosedPullRequestUsesTheRemoveColour() throws {
+        let pr = PRInfo(number: 9, state: "CLOSED", reviewDecision: "CHANGES_REQUESTED")
+        let item = try #require(Self.items(StatusBarModel(pullRequest: pr)).first)
+        #expect(item.segment.iconName == StatusBarView.openSymbol)
+        #expect(item.segment.colors.first == Theme.default.diffRemove)
+        #expect(item.tooltip == "Pull request #9\nClosed\nReview changes requested")
+    }
+
+    @Test func aReviewDecisionNoLongerColoursAnOpenBadge() throws {
+        // The colour answers "open or merged?"; changes requested is a tooltip line.
         let pr = PRInfo(number: 9, state: "OPEN", reviewDecision: "CHANGES_REQUESTED")
         let item = try #require(Self.items(StatusBarModel(pullRequest: pr)).first)
-        #expect(item.segment.plainText == "#9 \u{25CF}")
-        #expect(item.segment.colors.first == Theme.default.diffRemove)
+        #expect(item.segment.colors.first == Theme.default.prOpen)
+        #expect(item.tooltip?.contains("Review changes requested") == true)
+    }
+
+    @Test(arguments: Theme.allPresets)
+    func theBadgeColoursComeFromTheTheme(theme: Theme) throws {
+        let open = try #require(Self.items(StatusBarModel(pullRequest: PRInfo(number: 1, state: "OPEN")), theme).first)
+        let merged = try #require(Self.items(StatusBarModel(pullRequest: PRInfo(number: 1, state: "MERGED")), theme).first)
+        #expect(open.segment.colors.first == theme.prOpen)
+        #expect(merged.segment.colors.first == theme.prMerged)
+    }
+
+    @Test func theBadgeIsWiderThanItsNumberByTheGlyph() throws {
+        // The glyph and its gap are part of the hit target, so a click on the icon opens the PR.
+        let view = Self.laidOut(StatusBarModel(pullRequest: PRInfo(number: 418, url: "https://x/418")))
+        let placed = try #require(view.placement().first)
+        let iconRect = view.iconRect(at: placed.frame.minX)
+        #expect(placed.frame.width > StatusBarView.iconSize + StatusBarView.iconGap)
+        #expect(placed.frame.contains(NSPoint(x: iconRect.midX, y: iconRect.midY)))
+        #expect(view.item(at: NSPoint(x: iconRect.midX, y: iconRect.midY))?.url?.absoluteString == "https://x/418")
     }
 
     // MARK: Ports
@@ -152,6 +195,25 @@ struct StatusBarInteractionTests {
             context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
         view.mouseUp(with: branchEvent)
         #expect(opened.url == nil)
+    }
+
+    @Test func clickingThePullRequestBadgeOpensThePullRequest() throws {
+        let view = Self.laidOut(StatusBarModel(
+            branch: "develop",
+            pullRequest: PRInfo(number: 418, url: "https://github.com/o/r/pull/418", state: "MERGED")))
+        let opened = OpenedBox()
+        view.openURL = { opened.url = $0 }
+
+        let badge = try #require(view.placement().first { $0.item.url != nil })
+        let point = NSPoint(x: badge.frame.midX, y: badge.frame.midY)
+        let event = NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: view.convert(point, to: nil),
+            modifierFlags: [], timestamp: 0,
+            windowNumber: view.window?.windowNumber ?? 0,
+            context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        view.mouseUp(with: event)
+        #expect(opened.url?.absoluteString == "https://github.com/o/r/pull/418")
     }
 
     /// A reference the click closure can write into from the main actor.

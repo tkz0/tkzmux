@@ -104,8 +104,10 @@ It does, however, reach the network **indirectly, in one place**: the PR badge s
 `gh pr view` (`Sources/GitStatus/PRLookup.swift`), and `gh` talks to GitHub under your own
 credentials. That call is gated — the origin's host is checked with `git remote get-url origin` and
 cached per directory first, so `gh` is never invoked for a repo whose origin is not GitHub, not even
-to fail. Apart from that and Claude Code's own traffic from the `claude` process in your terminal,
-nothing leaves the machine.
+to fail. When it may run, it runs for the selected session and for any session whose PR is still
+open, at most once per five minutes per session, plus once when a Claude turn ends (at least 15 s
+apart) so a PR the session just created shows up promptly. Apart from that and Claude Code's own
+traffic from the `claude` process in your terminal, nothing leaves the machine.
 
 **Processes it starts.** Your login shell, on a pty (`Sources/TkzPtyShim/TkzPtyShim.c`,
 `Sources/TkzTerminalCore/Pty.swift`) — everything else *inside* a session is something you typed.
@@ -116,7 +118,7 @@ Plus these, in the background, on repos backing your sessions:
 | `git status --porcelain=v2 --branch -z`, `git diff HEAD --shortstat` | branch, ahead/behind and diff counts (`GitStatusService.swift`) |
 | `git worktree list --porcelain` | notice when a worktree behind a row is removed (`WorktreeList.swift`) |
 | `git remote get-url origin` | decide whether the PR lookup may run at all (`PRLookup.swift`) |
-| `gh pr view --json …` | the PR badge — **GitHub origins only** (`PRLookup.swift`) |
+| `gh pr view --json …` | the PR badge — **GitHub origins only**; ≤ 1 per 5 min per session with an open PR, plus one per Claude turn (`PRLookup.swift`) |
 
 All of them run with `--no-optional-locks` / `GIT_OPTIONAL_LOCKS=0` so a background refresh cannot
 contend with git commands you run yourself.
@@ -215,9 +217,10 @@ signed.
   segments stay empty until you accept the status line integration described above — Claude Code
   publishes that data nowhere else. It is offered once at startup and lives in the app menu.
 - **The PR badge needs `gh`.** Branch, diff stats, ahead/behind and ports are live. The PR badge
-  additionally needs the GitHub CLI installed and authenticated, and only appears for repos whose
-  origin is on GitHub — on any other host the lookup is skipped by design, and the badge stays
-  empty.
+  (green while open, purple once merged; click to open the PR) additionally needs the GitHub CLI
+  installed and authenticated, and only appears for repos whose origin is on GitHub — on any other
+  host the lookup is skipped by design, and the badge stays empty. A merge made outside the
+  session is noticed within five minutes.
 - **zsh only.** The shell integration is a set of `ZDOTDIR` wrappers; there is no bash or fish
   equivalent, and in another shell tkzmux degrades to descriptor-only status with no hooks
   (Linear TKZ-33).
