@@ -710,7 +710,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public var groupNamePrompt: (() -> String?)?
 
     /// "＋ New group": asks for a name (see ``createGroup(named:)``). The group starts as a
-    /// bucket; *Set Repo…* on its context menu attaches a repo afterwards.
+    /// bucket; *Set Repo…* on its context menu attaches a repo afterwards, and so does its first
+    /// *New session in …* (``presentSetRepoAndStartPanel(for:)``).
     public func presentNewGroupPanel() {
         if let groupNamePrompt {
             guard let answer = groupNamePrompt() else { return }
@@ -740,11 +741,46 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         presentFolderPanel(prompt: "Start here",
                            message: "Choose a repo. It becomes a group, and claude starts in it.") { [weak self] url in
             guard let self, let groupID = self.createGroup(from: url) else { return }
-            self.store.flush()
-            self.newSessionMenu.configure(state: self.store.state, groupID: groupID)
-            guard let launch = self.newSessionMenu.repoRootLaunch() else { return }
-            self.newSessionMenu.perform(launch)
+            self.startClaude(in: groupID)
         }
+    }
+
+    /// "New session in X…" on a group that has no repo yet: a folder picker, and the group's first
+    /// session starts at once — the folder becomes the group's `repoRoot`, `claude` starts in it.
+    /// No launch menu first: for a bucket both of its `claude` rows would be disabled, and its only
+    /// live row ("In another repo…") makes a *new* group, which is not what a click on this group
+    /// asked for.
+    ///
+    /// A folder that already roots another group launches into that group instead — one folder
+    /// roots one group — and this group is left as it was.
+    public func presentSetRepoAndStartPanel(for id: GroupID) {
+        guard let group = store.state.groups[id] else { return }
+        presentFolderPanel(
+            prompt: "Start here",
+            message: "Choose the repo for \u{201C}\(group.name)\u{201D}. It becomes the group\u{2019}s repo, and claude starts in it."
+        ) { [weak self] url in
+            guard let self else { return }
+            let path = url.standardizedFileURL.path
+            let target: GroupID
+            if let other = self.group(rootedAt: path) {
+                target = other.id
+            } else {
+                self.store.update { $0.setGroupRepoRoot(id, path: path) }
+                target = id
+            }
+            self.startClaude(in: target)
+        }
+    }
+
+    /// `claude` in `groupID`'s repo root, the way "In repo root" on the launch menu does it. The
+    /// menu is re-``NewSessionMenu/configure(state:groupID:)``d first: its `group` is a value copy,
+    /// so a launch resolved against the copy from before the store write would see the old
+    /// `repoRoot` (`nil`, for a group that just got one) and resolve to nothing.
+    private func startClaude(in groupID: GroupID) {
+        store.flush()
+        newSessionMenu.configure(state: store.state, groupID: groupID)
+        guard let launch = newSessionMenu.repoRootLaunch() else { return }
+        newSessionMenu.perform(launch)
     }
 
     /// Overrides the folder picker: returns the folder, or nil for cancel. Tests set it — an
@@ -1752,11 +1788,29 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     // MARK: Commands
 
-    /// ⌘N — the group-scoped new-session menu, at the toolbar item if the toolbar has vended one
-    /// and under the title bar otherwise.
+    /// ⌘N, the per-group ＋, a group's context menu and the palette's group rows — the group-scoped
+    /// new-session menu. A group with no repo skips the menu and goes straight to the folder picker
+    /// (``presentSetRepoAndStartPanel(for:)``): every `claude` row on its menu would be disabled.
+    ///
+    /// The menu drops from the group's sidebar row when there is one to drop from, and from under
+    /// the title bar otherwise (⌘N with the sidebar hidden, or no group at all).
     public func presentNewSessionMenu(for groupID: GroupID? = nil) {
         let group = groupID ?? store.state.selectedSession?.groupID
+        if let group, store.state.groups[group]?.repoRoot == nil {
+            presentSetRepoAndStartPanel(for: group)
+            return
+        }
         newSessionMenu.configure(state: store.state, groupID: group)
+        popUpNewSessionMenu(near: group)
+    }
+
+    private func popUpNewSessionMenu(near groupID: GroupID?) {
+        if let groupID, store.state.sidebarVisible, let anchor = sidebar.rowRect(forGroup: groupID) {
+            // The outline is flipped, so `maxY` is the row's bottom edge on screen.
+            let point = NSPoint(x: anchor.rect.minX, y: anchor.rect.maxY)
+            newSessionMenu.menu.popUp(positioning: nil, at: point, in: anchor.view)
+            return
+        }
         guard let contentView = window.contentView else { return }
         let point = NSPoint(x: 16, y: contentView.bounds.height - 8)
         newSessionMenu.menu.popUp(positioning: nil, at: point, in: contentView)
@@ -2087,8 +2141,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         resumeAll.identifier = ContextItemID.resumeAll
         menu.addItem(resumeAll)
-        // A group made by name is a bucket: the two `claude` rows on its ＋ menu stay disabled
-        // ("no repo — add one to this group first") until a folder is attached here.
+        // A group made by name is a bucket: until a folder is attached — here, or by its first
+        // "New session in …", which goes straight to the folder picker — its ＋ menu has no
+        // enabled `claude` row.
         let repo = contextItem(
             group.repoRoot == nil ? "Set Repo\u{2026}" : "Change Repo\u{2026}",
             action: #selector(contextSetGroupRepo(_:)), id: id.rawValue)
