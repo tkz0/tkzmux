@@ -32,14 +32,71 @@ final class PaneSplitView: NSSplitView, NSSplitViewDelegate {
     /// Every terminal view below this split, so a drag can bracket them all.
     var synchronousResizeTargets: () -> [TerminalMetalView] = { [] }
 
-    init(axis: PaneAxis, anchorLeaf: TerminalID, anchorLevels: Int) {
+    /// Colours for the divider. Set by the container; a change redraws the divider only.
+    var theme: Theme {
+        didSet { if theme != oldValue { needsDisplay = true } }
+    }
+
+    init(axis: PaneAxis, anchorLeaf: TerminalID, anchorLevels: Int, theme: Theme) {
         self.axis = axis
         self.anchorLeaf = anchorLeaf
         self.anchorLevels = anchorLevels
+        self.theme = theme
         super.init(frame: .zero)
         isVertical = axis.isVerticalSplitView
         dividerStyle = .thin
         delegate = self
+    }
+
+    // MARK: The grip divider (2c.3 / 2c.4)
+
+    /// 7 pt, whatever `dividerStyle` says: the artboards' grip bar, not AppKit's hairline.
+    override var dividerThickness: CGFloat { SplitMetrics.dividerThickness }
+
+    /// A dark → light → dark gradient across the divider's thin axis, and a 3 × 44 pt accent pill
+    /// centred along it. Drawn, not layered: `NSSplitView` asks for the divider on every layout
+    /// and this is a handful of fills.
+    override func drawDivider(in rect: NSRect) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        let shade = theme.dividerShade.cgColor
+        let highlight = theme.dividerHighlight.cgColor
+        let colors = [shade, highlight, shade] as CFArray
+        let space = CGColorSpaceCreateDeviceRGB()
+        let gradient = CGGradient(colorsSpace: space, colors: colors, locations: [0, 0.5, 1])
+
+        context.saveGState()
+        context.clip(to: rect)
+        if let gradient {
+            // Across the thin axis: left→right for a vertical divider, top→bottom for a horizontal.
+            let start = isVertical
+                ? CGPoint(x: rect.minX, y: rect.midY) : CGPoint(x: rect.midX, y: rect.minY)
+            let end = isVertical
+                ? CGPoint(x: rect.maxX, y: rect.midY) : CGPoint(x: rect.midX, y: rect.maxY)
+            context.drawLinearGradient(gradient, start: start, end: end, options: [])
+        }
+        context.restoreGState()
+
+        let grip = Self.gripRect(in: rect, isVertical: isVertical)
+        let path = CGPath(
+            roundedRect: grip, cornerWidth: SplitMetrics.gripThickness / 2,
+            cornerHeight: SplitMetrics.gripThickness / 2, transform: nil)
+        context.setFillColor(theme.dividerGrip.cgColor)
+        context.addPath(path)
+        context.fillPath()
+    }
+
+    /// Where the pill goes: centred in the divider, its long side along the divider. Pure, so the
+    /// geometry is a test rather than a screenshot.
+    static func gripRect(in divider: CGRect, isVertical: Bool) -> CGRect {
+        let long = min(SplitMetrics.gripLength, isVertical ? divider.height : divider.width)
+        let thin = SplitMetrics.gripThickness
+        return isVertical
+            ? CGRect(
+                x: divider.midX - thin / 2, y: (divider.midY - long / 2).rounded(),
+                width: thin, height: long)
+            : CGRect(
+                x: (divider.midX - long / 2).rounded(), y: divider.midY - thin / 2,
+                width: long, height: thin)
     }
 
     @available(*, unavailable)
@@ -108,9 +165,26 @@ public final class PaneContainerView: NSView {
 
     public override var isFlipped: Bool { true }
 
-    /// The view showing `id`, if it is on screen.
+    /// The view showing `id`, if it is on screen — the pane's *chrome* (header + terminal) when
+    /// the factory vends one, which the window's does.
     public func paneView(for id: TerminalID) -> NSView? { paneViews[id] }
+    /// The pane's chrome, if the factory vends one.
+    public func chrome(for id: TerminalID) -> PaneChromeView? { paneViews[id] as? PaneChromeView }
+    /// The terminal view inside the pane: the chrome's content, or the bare view for a factory
+    /// that vends no chrome.
+    public func contentView(for id: TerminalID) -> NSView? {
+        (paneViews[id] as? PaneChromeView)?.content ?? paneViews[id]
+    }
     private var paneViews: [TerminalID: NSView] = [:]
+
+    /// Colours for the dividers and the chromes. `apply(theme:)` re-tints what is on screen.
+    public private(set) var theme: Theme = .default
+
+    public func apply(theme: Theme) {
+        self.theme = theme
+        for split in splitViews { split.theme = theme }
+        for view in paneViews.values { (view as? PaneChromeView)?.apply(theme: theme) }
+    }
 
     /// Rebuilds the tree for `tab`, reusing every pane view it already has.
     ///
@@ -195,7 +269,8 @@ public final class PaneContainerView: NSView {
             // right-heavy subtree would report a level nothing sits at.
             let anchor = split.first.firstLeafID
             let levels = node.ancestorDistance(of: anchor) ?? 0
-            let view = PaneSplitView(axis: split.axis, anchorLeaf: anchor, anchorLevels: levels)
+            let view = PaneSplitView(
+                axis: split.axis, anchorLeaf: anchor, anchorLevels: levels, theme: theme)
             view.onRatioChanged = { [weak self] leaf, levels, ratio in
                 self?.onRatioChanged?(leaf, levels, ratio)
             }

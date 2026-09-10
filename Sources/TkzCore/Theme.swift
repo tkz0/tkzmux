@@ -59,6 +59,16 @@ public struct Theme: Hashable, Sendable {
     public let diffRemove: RGB            // −38
     public let border: RGB                // sidebar border-right / title-bar border-bottom
 
+    // MARK: Panes (artboards 2c.3 / 2c.4: the 28 pt pane header, the focus ring, the 7 pt grip divider)
+    public let paneHeaderBackground: RGB          // header of the focused pane
+    public let paneHeaderBackgroundInactive: RGB  // header of every other pane
+    public let paneHeaderPath: RGB                // the `~/dev/repo` line on the focused header
+    public let paneHeaderPathInactive: RGB        // the same line on an unfocused header (2c.3: foregroundDim)
+    public let focusRing: RGB                     // 1.5 pt inset ring around the focused pane — accent at .65
+    public let dividerGrip: RGB                   // the 3 × 44 pt pill in the middle of a divider — accent at .55
+    public let dividerShade: RGB                  // the divider gradient's two dark ends
+    public let dividerHighlight: RGB              // the divider gradient's light middle
+
     /// ANSI 0…7 then bright 8…15, all opaque. Built by `Theme.palette16`; see the rule there.
     public let terminalPalette16: [RGB]
 
@@ -189,6 +199,14 @@ extension Theme {
             diffAdd: RGB(hex: 0x4ade80),
             diffRemove: diffRemove,
             border: RGB(rgb: 255, 255, 255, alpha: 0.08),
+            paneHeaderBackground: RGB(hex: 0x222639),
+            paneHeaderBackgroundInactive: RGB(hex: 0x1d2033),
+            paneHeaderPath: RGB(hex: 0x99a1c4),
+            paneHeaderPathInactive: dim,
+            focusRing: RGB(rgb: 139, 147, 248, alpha: 0.65),
+            dividerGrip: RGB(rgb: 139, 147, 248, alpha: 0.55),
+            dividerShade: RGB(rgb: 0, 0, 0, alpha: 0.35),
+            dividerHighlight: RGB(rgb: 255, 255, 255, alpha: 0.06),
             terminalPalette16: palette16(
                 isDark: true, black: statusBar, white: termFg, brightBlack: dim, brightWhite: fg,
                 base: AnsiBase(
@@ -236,6 +254,18 @@ extension Theme {
             diffAdd: RGB(hex: 0x3ddc74),
             diffRemove: diffRemove,
             border: RGB(rgb: 255, 255, 255, alpha: 0.08),
+            // No split artboard for this preset: the focused header is the footer surface, the
+            // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
+            // are the accent at the same alphas 2c.3 uses.
+            paneHeaderBackground: statusBar,
+            paneHeaderBackgroundInactive: RGB(hex: 0x0f1013).mixed(
+                with: RGB(hex: 0x1b1d22).over(RGB(hex: 0x141519)), amount: 0.5),
+            paneHeaderPath: RGB(hex: 0x98a2b3),
+            paneHeaderPathInactive: dim,
+            focusRing: RGB(rgb: 91, 141, 239, alpha: 0.65),
+            dividerGrip: RGB(rgb: 91, 141, 239, alpha: 0.55),
+            dividerShade: RGB(rgb: 0, 0, 0, alpha: 0.35),
+            dividerHighlight: RGB(rgb: 255, 255, 255, alpha: 0.06),
             terminalPalette16: palette16(
                 isDark: true, black: statusBar, white: termFg, brightBlack: dim, brightWhite: fg,
                 base: AnsiBase(
@@ -283,6 +313,18 @@ extension Theme {
             diffAdd: RGB(hex: 0x4cc97e),
             diffRemove: diffRemove,
             border: RGB(rgb: 255, 255, 255, alpha: 0.08),
+            // No split artboard for this preset: the focused header is the footer surface, the
+            // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
+            // are the accent at the same alphas 2c.3 uses.
+            paneHeaderBackground: statusBar,
+            paneHeaderBackgroundInactive: RGB(hex: 0x141110).mixed(
+                with: RGB(hex: 0x201b17).over(RGB(hex: 0x191512)), amount: 0.5),
+            paneHeaderPath: RGB(hex: 0xa1968a),
+            paneHeaderPathInactive: dim,
+            focusRing: RGB(rgb: 226, 134, 102, alpha: 0.65),
+            dividerGrip: RGB(rgb: 226, 134, 102, alpha: 0.55),
+            dividerShade: RGB(rgb: 0, 0, 0, alpha: 0.35),
+            dividerHighlight: RGB(rgb: 255, 255, 255, alpha: 0.06),
             terminalPalette16: palette16(
                 isDark: true, black: statusBar, white: termFg, brightBlack: dim, brightWhite: fg,
                 base: AnsiBase(
@@ -330,6 +372,18 @@ extension Theme {
             diffAdd: RGB(hex: 0x34b060),
             diffRemove: diffRemove,
             border: RGB(rgb: 255, 255, 255, alpha: 0.06),
+            // No split artboard for this preset: the focused header is the footer surface, the
+            // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
+            // are the accent at the same alphas 2c.3 uses.
+            paneHeaderBackground: statusBar,
+            paneHeaderBackgroundInactive: RGB(hex: 0x17181b).mixed(
+                with: RGB(rgb: 32, 34, 38, alpha: 0.96).over(RGB(hex: 0x1b1d21)), amount: 0.5),
+            paneHeaderPath: RGB(hex: 0x8b93a0),
+            paneHeaderPathInactive: dim,
+            focusRing: RGB(rgb: 77, 127, 214, alpha: 0.65),
+            dividerGrip: RGB(rgb: 77, 127, 214, alpha: 0.55),
+            dividerShade: RGB(rgb: 0, 0, 0, alpha: 0.35),
+            dividerHighlight: RGB(rgb: 255, 255, 255, alpha: 0.06),
             terminalPalette16: palette16(
                 isDark: true, black: statusBar, white: termFg, brightBlack: dim, brightWhite: fg,
                 base: AnsiBase(
@@ -379,6 +433,19 @@ extension Theme {
             diffAdd: RGB(hex: 0x2c9e53),
             diffRemove: diffRemove,
             border: RGB(rgb: 0, 0, 0, alpha: 0.08),
+            // No split artboard for this preset: the focused header is the footer surface, the
+            // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
+            // are the accent at the same alphas 2c.3 uses.
+            paneHeaderBackground: RGB(hex: 0xeff0f3),
+            paneHeaderBackgroundInactive: RGB(hex: 0xffffff).mixed(
+                with: RGB(rgb: 236, 238, 241, alpha: 0.96).over(RGB(hex: 0xf5f5f7)), amount: 0.5),
+            paneHeaderPath: muted,
+            // `dim` is 2.4:1 on a near-white header; the muted grey is the readable choice here.
+            paneHeaderPathInactive: muted,
+            focusRing: RGB(rgb: 77, 127, 214, alpha: 0.65),
+            dividerGrip: RGB(rgb: 77, 127, 214, alpha: 0.55),
+            dividerShade: RGB(rgb: 0, 0, 0, alpha: 0.12),
+            dividerHighlight: RGB(rgb: 255, 255, 255, alpha: 0.5),
             terminalPalette16: palette16(
                 isDark: false, black: fg, white: muted, brightBlack: dim, brightWhite: termFg,
                 base: AnsiBase(

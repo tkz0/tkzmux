@@ -217,6 +217,7 @@ final class DetailViewController: NSViewController {
         view.layer?.backgroundColor = theme.terminalBackground.cgColor
         terminalContainer.layer?.backgroundColor = theme.terminalBackground.cgColor
         statusBar.theme = theme
+        paneContainer.apply(theme: theme)
         (emptyState as? EmptyStateView)?.apply(theme: theme)
     }
 
@@ -324,13 +325,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// The pane tree. `paneContainer.paneView(for:)` is the per-pane view; `terminalView` below
     /// is the focused one, which is what almost every caller means.
     public var paneContainer: PaneContainerView { detail.paneContainer }
-    /// The focused pane's view, or the container when there is no pane.
+    /// The focused pane's terminal view, or the container when there is no pane.
     ///
     /// A computed property since TKZ-36: with one terminal per row this was the one injected view
     /// and every caller could hold it, but "the terminal" now depends on which pane has focus.
+    /// The *terminal*, not its chrome: this is what takes the keyboard.
     public var terminalView: NSView {
         guard let id = store.state.selection.flatMap({ store.state.sessions[$0]?.focusedTerminalID }),
-            let view = detail.paneContainer.paneView(for: id)
+            let view = panes[id]?.view ?? detail.paneContainer.contentView(for: id)
         else { return detail.paneContainer }
         return view
     }
@@ -340,14 +342,18 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     @MainActor
     final class PaneController {
         let id: TerminalID
+        /// The terminal view: first responder, input delegate, mouse target.
         let view: NSView
+        /// What the split container arranges: the header and the ring around `view`.
+        let chrome: PaneChromeView
         let metalView: TerminalMetalView?
         let input = TerminalInputController()
         let mouse = MouseController()
 
-        init(id: TerminalID, view: NSView) {
+        init(id: TerminalID, view: NSView, theme: Theme) {
             self.id = id
             self.view = view
+            self.chrome = PaneChromeView(content: view, theme: theme)
             self.metalView = view as? TerminalMetalView
         }
     }
@@ -364,6 +370,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     private let sharedView: NSView?
     /// Guards the view→store→view focus loop.
     private var isApplyingFocus = false
+    /// The home directory the pane headers abbreviate to `~`. Injected, like the launcher's.
+    private let home: String
 
     /// The real Metal view, when there is one (`init(store:renderContext:)`). `nil` in tests.
     public private(set) var metalView: TerminalMetalView?
@@ -431,6 +439,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         self.sharedView = sharedView
         self.terminalViewFactory = terminalViewFactory
         self.theme = theme
+        self.home = home
         self.launcher = SessionLauncher(store: store, host: host, home: home)
 
         self.sidebar = SidebarViewController(store: store, theme: theme)
@@ -1026,7 +1035,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         applyTabStrip()
         let tab = store.state.selection.flatMap { store.state.sessions[$0]?.activeTabValue }
         detail.paneContainer.viewForTerminal = { [weak self] id in
-            self?.makePane(id).view ?? NSView()
+            self?.makePane(id).chrome ?? NSView()
         }
         detail.paneContainer.onRatioChanged = { [weak self] leaf, levels, ratio in
             self?.recordRatioWhenSettled(leaf: leaf, levels: levels, ratio: ratio)
@@ -1042,16 +1051,46 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         let rebuilt = detail.paneContainer.apply(tab)
 
+        // Before the layout pass, so the first grid measurement — and the attach resize that
+        // follows it — already sees the header's height rather than resizing twice.
+        applyPaneHeaders()
         window.layoutIfNeeded()
         detail.paneContainer.applyRatios(tab)
         return rebuilt
     }
 
+    /// Tints every visible pane's chrome from the store: header text, dot, badge, and the ring
+    /// on the focused pane. A lone pane has no header (2c.1), like a lone tab has no strip.
+    ///
+    /// Cheap and idempotent: `PaneHeaderView.configure` no-ops on an equal model, so this runs on
+    /// every delivery that touches the selected row without a cost worth measuring.
+    private func applyPaneHeaders() {
+        guard let id = store.state.selection, let session = store.state.sessions[id] else { return }
+        let visible = session.visibleTerminalIDs
+        let showHeaders = visible.count > 1
+        for terminal in visible {
+            guard let pane = panes[terminal] else { continue }
+            pane.chrome.setHeaderVisible(showHeaders)
+            guard let model = PaneHeaderAdapter.model(for: terminal, in: store.state, home: home)
+            else { continue }
+            pane.chrome.header.configure(model, theme: theme)
+            pane.chrome.setFocused(model.isFocused)
+        }
+    }
+
     /// A pane's view and its collaborators, created once per terminal.
     private func makePane(_ id: TerminalID) -> PaneController {
         if let existing = panes[id] { return existing }
-        let pane = PaneController(id: id, view: freeSharedView() ?? terminalViewFactory(id))
+        let pane = PaneController(
+            id: id, view: freeSharedView() ?? terminalViewFactory(id), theme: theme)
         panes[id] = pane
+        // A click on the header is a click into the pane, as far as the keyboard is concerned.
+        pane.chrome.header.onActivate = { [weak self] in
+            guard let self else { return }
+            self.store.update { $0.focusPane(id) }
+            self.focusPane(id)
+        }
+        pane.chrome.header.onClose = { [weak self] in self?.closeTerminal(id) }
 
         guard let metal = pane.metalView, let host = host as? TerminalViewHost else { return pane }
         metal.inputDelegate = pane.input
@@ -1469,6 +1508,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             updateStatusBar()
             updateToolbarTitle()
         }
+        // The headers read live state (a pane's cwd, the row's status) and focus, none of which
+        // rebuilds the tree, so they are re-tinted here rather than only in `applyPaneTree`.
+        if change.selection || (selected.map(change.touches) ?? false) {
+            applyPaneHeaders()
+        }
         git?.apply(change)
     }
 
@@ -1606,7 +1650,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         var attachments: [TerminalID: any TerminalPaneSurface] = [:]
         for terminal in session.visibleTerminalIDs where host.contains(terminal) {
             guard let surface = panes[terminal]?.metalView as (any TerminalPaneSurface)?
-                ?? detail.paneContainer.paneView(for: terminal) as? any TerminalPaneSurface
+                ?? panes[terminal]?.view as? any TerminalPaneSurface
+                ?? detail.paneContainer.contentView(for: terminal) as? any TerminalPaneSurface
             else { continue }
             attachments[terminal] = surface
         }
@@ -1913,8 +1958,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             area.size.height -= TabStripMetrics.stripHeight
         }
         guard area.width > 1, area.height > 1,
-            let rect = tab.root.frames(in: area, divider: SplitMetrics.dividerThickness)[terminal]
+            var rect = tab.root.frames(in: area, divider: SplitMetrics.dividerThickness)[terminal]
         else { return nil }
+        // Likewise the header: a tab that will show more than one pane puts 28 pt of chrome
+        // above each of them, and the shell must not spawn those rows too tall.
+        if tab.visibleTerminalIDs.count > 1 {
+            rect.size.height = max(0, rect.height - PaneHeaderMetrics.height)
+        }
 
         // Same arithmetic as `TerminalMetalView.gridSizeForBounds`, on a rectangle rather than a
         // view: points → device pixels → whole cells, leftovers cleared at the right/bottom edge.
@@ -2755,9 +2805,17 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             removeSelectedSession()
             return
         }
-        // No confirmation for a pane: it is a shell, not a conversation.
-        launcher.closeTerminal(session.focusedTerminalID)
-        if let focused = store.state.sessions[id]?.focusedTerminalID { focusPane(focused) }
+        closeTerminal(session.focusedTerminalID)
+    }
+
+    /// Closes one pane of a row that has more than one — ⌘W on the focused pane, or the `×` in
+    /// any pane's header. No confirmation for a pane: it is a shell, not a conversation. The
+    /// row's *last* terminal is `closeFocusedTerminal`'s business, which confirms.
+    func closeTerminal(_ terminal: TerminalID) {
+        guard let session = store.state.session(owning: terminal), session.terminalCount > 1
+        else { return }
+        launcher.closeTerminal(terminal)
+        if let focused = store.state.sessions[session.id]?.focusedTerminalID { focusPane(focused) }
     }
 
     /// Builds the menu bar for the current bindings and installs it. Called by `AppDelegate` once

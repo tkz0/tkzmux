@@ -53,6 +53,42 @@ struct GitIntegrationTests {
         #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/claude-cwd")
     }
 
+    /// Design 2c.3/2c.4: the strip describes the pane with the keyboard. A split whose panes stand
+    /// in two repos shows the branch of the focused one, and moving focus moves the strip — over
+    /// Claude's own directory too, which is what the row's *title* keeps following.
+    @Test func theFocusedPanesOwnCwdWinsOverEverything() throws {
+        var (state, id) = Self.stateWithSession()
+        state.updateLive(id) {
+            $0.descriptor = ClaudeSessionInfo(
+                configDir: "/home/.claude", pid: 99, sessionId: "s", cwd: "/tmp/claude-cwd")
+        }
+        let first = try #require(state.sessions[id]?.focusedTerminalID)
+        let split = state.splitPane(first, axis: .horizontal)
+        let second = try #require(split)
+        state.setPaneCwd(first, path: "/tmp/first-repo")
+        state.setPaneCwd(second, path: "/tmp/second-repo")
+
+        state.focusPane(first)
+        #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/first-repo")
+        state.focusPane(second)
+        #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/second-repo")
+        // The title did not move: only the strip follows pane focus.
+        #expect(state.sessions[id]?.effectiveCwd == "/tmp/claude-cwd")
+    }
+
+    @Test func anUnfocusedPanesCwdDoesNotSteerTheStrip() throws {
+        var (state, id) = Self.stateWithSession()
+        let first = try #require(state.sessions[id]?.focusedTerminalID)
+        let split = state.splitPane(first, axis: .horizontal)
+        let second = try #require(split)
+        state.focusPane(first)
+        state.setPaneCwd(second, path: "/tmp/second-repo")
+        // `first` has not reported an OSC 7 yet: the row's own directory stands in.
+        #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/repo")
+        state.setPaneCwd(first, path: "/tmp/first-repo")
+        #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/first-repo")
+    }
+
     // MARK: Ports
 
     @Test func aScanBecomesPortsAndOwnerTooltips() {

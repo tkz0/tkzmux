@@ -136,12 +136,20 @@ public final class GitIntegration {
     ///
     /// Only rows with live state qualify: a restored row has no shell, nothing is running in a
     /// directory on its behalf, and `AppState.setGitSummary` would refuse the result anyway.
-    /// `effectiveCwd` is the same directory the row's *title* comes from — Claude's cwd while a
-    /// descriptor is bound, then the shell's last reported cwd, then where it was started.
+    ///
+    /// **The focused pane's directory wins** (design 2c.3/2c.4, 2026-09-10): the status bar
+    /// describes the pane that has the keyboard, so a split whose panes stand in two repos shows
+    /// the branch of the one you are typing in, and moving focus moves the strip. Only when that
+    /// pane has not reported an OSC 7 yet (a fresh split, for its first second) does the row fall
+    /// back to `effectiveCwd` — Claude's cwd while a descriptor is bound, then the shell's last
+    /// reported cwd, then where it was started — which is still the directory the row's *title*
+    /// comes from. The title and the `WT` badge deliberately do not follow pane focus; the git
+    /// facts do, everywhere they are shown: the strip and the sidebar row's `⎇ branch` line both
+    /// read `GitSummary`, so both name the focused pane's branch.
     static func trackingTargets(in state: AppState) -> [SessionID: String] {
         var out: [SessionID: String] = [:]
         for session in state.sessions.values where session.live != nil {
-            let directory = session.effectiveCwd
+            let directory = session.live?.paneCwds[session.focusedTerminalID] ?? session.effectiveCwd
             guard !directory.isEmpty else { continue }
             out[session.id] = directory
         }
@@ -152,12 +160,22 @@ public final class GitIntegration {
         let targets = Self.trackingTargets(in: store.state)
         for (id, directory) in targets where tracked[id] != directory {
             tracked[id] = directory
+            // Still inside the checkout the row was already watched at? Then it is the same HEAD
+            // and the same PR. This is the common retarget now that the target follows pane focus:
+            // two panes of one repo swap the directory on every ⌥⌘-arrow, and dropping the badge
+            // and re-running `gh` for each would be churn for nothing. (Nested worktrees pass
+            // this test too; they are caught a moment later, when the branch change re-asks.)
+            let sameCheckout = service.repoInfo(for: id).map {
+                directory == $0.toplevel || directory.hasPrefix($0.toplevel + "/")
+            } ?? false
             service.track(id, directory: directory)
-            // A new directory is a new repo as far as the PR is concerned — both the cache and the
-            // badge, or the strip would keep showing the previous repo's `#123` until a lookup for
-            // the new one happened to land.
-            prLookup.forget(id)
-            service.setPullRequest(nil, for: id)
+            // Otherwise a new directory is a new repo as far as the PR is concerned — both the
+            // cache and the badge, or the strip would keep showing the previous repo's `#123`
+            // until a lookup for the new one happened to land.
+            if !sameCheckout {
+                prLookup.forget(id)
+                service.setPullRequest(nil, for: id)
+            }
         }
         // Snapshot the keys: `forget` mutates `tracked`, and iterating the live view while it
         // changes is exactly the kind of exclusivity trap Swift 6 is right to dislike.
@@ -198,7 +216,9 @@ public final class GitIntegration {
             return
         }
         guard let branch = live.git?.branch, !branch.isEmpty else { return }
-        let directory = tracked[id] ?? session.effectiveCwd
+        // Keyed by the checkout, not the pane's subdirectory: `PRLookup` re-runs `gh` when the
+        // directory it last looked up changes, and every pane of one checkout has the same PR.
+        let directory = service.repoInfo(for: id)?.toplevel ?? tracked[id] ?? session.effectiveCwd
         prLookup.lookup(for: id, directory: directory, branch: branch) { pr in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { [weak self] in
