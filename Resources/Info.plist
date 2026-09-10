@@ -10,6 +10,10 @@
 	<string>tkzmux</string>
 	<key>CFBundleExecutable</key>
 	<string>tkzmux</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>se.tkz.tkzmux</string>
 	<key>CFBundleInfoDictionaryVersion</key>

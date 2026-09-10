@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Prompt chevron + dash pill from Claude Design artboard 3a, rescaled from the 512 viewBox
+       (448 squircle centred at 256,256) onto Icon Composer's 1024-pt canvas (824 squircle):
+       (x,y) -> (512 + (x-256)*824/448, 512 + (y-256)*824/448). -->
+  <path d="M 317 365 L 494 512 L 317 659" fill="none" stroke="#eef1f6" stroke-width="81" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="541" y="619" width="221" height="81" rx="40" fill="#eef1f6" opacity="0.92"/>
+</svg>
