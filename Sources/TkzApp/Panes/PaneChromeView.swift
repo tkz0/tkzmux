@@ -17,6 +17,9 @@ public final class PaneChromeView: NSView {
     let header: PaneHeaderView
     /// The terminal view (or a test's stand-in). Fills the chrome below the header.
     public let content: NSView
+    /// "Starting Claude…", over `content` while the pane's boot command is still on its way.
+    /// A sibling above the terminal view, so the body dimming below never touches it.
+    let startupOverlay: PaneStartupOverlayView
 
     private var theme: Theme
     private var headerVisible = false
@@ -25,6 +28,7 @@ public final class PaneChromeView: NSView {
     init(content: NSView, theme: Theme) {
         self.content = content
         self.header = PaneHeaderView(theme: theme)
+        self.startupOverlay = PaneStartupOverlayView(theme: theme)
         self.theme = theme
         super.init(frame: content.frame)
         wantsLayer = true
@@ -33,8 +37,10 @@ public final class PaneChromeView: NSView {
         header.isHidden = true
         content.translatesAutoresizingMaskIntoConstraints = true
         header.translatesAutoresizingMaskIntoConstraints = true
+        startupOverlay.translatesAutoresizingMaskIntoConstraints = true
         addSubview(content)
         addSubview(header)
+        addSubview(startupOverlay)
         applyFocus()
     }
 
@@ -68,10 +74,23 @@ public final class PaneChromeView: NSView {
 
     var isFocused: Bool { focused }
 
+    /// Shows the "Starting Claude…" overlay for `model`, or hides it for `nil`. A no-op on an
+    /// equal model, like `PaneHeaderView.configure`.
+    func setStartup(_ model: PaneStartupModel?) {
+        if let model {
+            startupOverlay.show(model, theme: theme)
+        } else {
+            startupOverlay.hide()
+        }
+    }
+
+    var isShowingStartup: Bool { startupOverlay.isShowing }
+
     func apply(theme: Theme) {
         self.theme = theme
         layer?.backgroundColor = theme.terminalBackground.cgColor
         header.setTheme(theme)
+        startupOverlay.apply(theme: theme)
         applyFocus()
     }
 
@@ -93,6 +112,7 @@ public final class PaneChromeView: NSView {
         header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
         content.frame = CGRect(
             x: 0, y: headerHeight, width: bounds.width, height: max(0, bounds.height - headerHeight))
+        startupOverlay.frame = content.frame
     }
 
     // MARK: Test hooks

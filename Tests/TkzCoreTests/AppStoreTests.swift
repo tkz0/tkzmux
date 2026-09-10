@@ -45,6 +45,31 @@ import Testing
         #expect(change.layout.isEmpty)
     }
 
+    /// The "Starting Claude…" fact is live state like any other: it names the row, never the
+    /// tree — the overlay is a pane *tint*, not a pane.
+    @Test func aClaudeStartupIsLiveStateAndNeverLayout() {
+        let probe = Probe()
+        let store = probe.store
+        let terminal = TerminalID(uuid: sessionA.uuid)
+        store.update { state in
+            state.beginClaudeStartup(sessionA, terminal: terminal, command: "claude", now: Fixture.now)
+        }
+        store.flush()
+        #expect(probe.last.sessions == [sessionA])
+        #expect(probe.last.layout.isEmpty)
+        #expect(probe.last.structure == false)
+
+        let deliveries = store.deliveryCount
+        store.update { $0.endClaudeStartup(sessionA) }
+        store.flush()
+        #expect(probe.last.sessions == [sessionA])
+        #expect(store.deliveryCount == deliveries + 1)
+        // Ending what is not pending delivers nothing.
+        store.update { $0.endClaudeStartup(sessionA) }
+        store.flush()
+        #expect(store.deliveryCount == deliveries + 1)
+    }
+
     // MARK: Layout granularity (TKZ-36)
 
     /// Every tree-shape mutation names the session in **both** buckets, and none of them is

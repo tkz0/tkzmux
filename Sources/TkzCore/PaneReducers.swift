@@ -81,8 +81,7 @@ extension AppState {
         if session.tabs[tabIndex].terminalCount == 1 {
             guard session.tabs.count > 1 else { return false }
             removeTab(at: tabIndex, in: &session)
-            session.live?.panePids[terminal] = nil
-            session.live?.paneCwds[terminal] = nil
+            forgetPane(terminal, in: &session)
             sessions[sessionID] = session
             return true
         }
@@ -94,10 +93,19 @@ extension AppState {
         if session.tabs[tabIndex].zoomedLeaf == terminal {
             session.tabs[tabIndex].zoomedLeaf = nil
         }
-        session.live?.panePids[terminal] = nil
-        session.live?.paneCwds[terminal] = nil
+        forgetPane(terminal, in: &session)
         sessions[sessionID] = session
         return true
+    }
+
+    /// Drops everything the live state holds per pane. A launch waiting on this pane is over
+    /// with it: the shell that was running the command is gone.
+    private func forgetPane(_ terminal: TerminalID, in session: inout Session) {
+        session.live?.panePids[terminal] = nil
+        session.live?.paneCwds[terminal] = nil
+        if session.live?.claudeStartup?.terminal == terminal {
+            session.live?.claudeStartup = nil
+        }
     }
 
     /// **Close a tab** and every pane in it. Refuses the last tab of a session, for the same
@@ -110,8 +118,7 @@ extension AppState {
             session.tabs.count > 1
         else { return false }
         for terminal in session.tabs[index].terminalIDs {
-            session.live?.panePids[terminal] = nil
-            session.live?.paneCwds[terminal] = nil
+            forgetPane(terminal, in: &session)
         }
         removeTab(at: index, in: &session)
         sessions[sessionID] = session

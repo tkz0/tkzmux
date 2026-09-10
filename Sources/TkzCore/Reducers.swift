@@ -450,6 +450,8 @@ extension AppState {
             case .sessionStart:
                 live.ended = false
                 live.pendingNotification = nil
+                // Claude is up: whatever launch this row was waiting on has arrived.
+                live.claudeStartup = nil
             case .sessionEnd:
                 // `clear` and `resume` are not an exit — see the SessionEnd `reason` values in
                 // design.md → *Claude integration*.
@@ -500,6 +502,13 @@ extension AppState {
         live.pid = descriptor.pid
         live.descriptor = descriptor
         live.alive = alive
+        // A *live* descriptor bound to this row means Claude is running in it — the launch is
+        // over, whether or not the `SessionStart` hook got here first. A dead one is no such
+        // evidence: a stale `sessions/<pid>.json` from before a crash matches a resumed row by
+        // its conversation id, and must not take the overlay down before the new Claude is up.
+        if alive {
+            live.claudeStartup = nil
+        }
         if rebound {
             live.ended = false
         }
@@ -546,6 +555,26 @@ extension AppState {
         guard sessions[id] != nil else { return }
         updateLive(id) { $0.alive = alive }
         rederiveStatus(for: id, now: now)
+    }
+
+    // MARK: Claude startup
+
+    /// A boot command was handed to `terminal`'s shell: the row is now waiting on Claude to come
+    /// up there. `SessionLauncher.start`/`reopen(bootCommand:)` are the callers.
+    public mutating func beginClaudeStartup(
+        _ id: SessionID, terminal: TerminalID, command: String, now: Date = Date()
+    ) {
+        guard sessions[id]?.live != nil else { return }
+        updateLive(id) {
+            $0.claudeStartup = ClaudeStartup(terminal: terminal, command: command, startedAt: now)
+        }
+    }
+
+    /// The launch is over — Claude is up, the command returned, or the edge gave up waiting.
+    /// A no-op when nothing was pending, so it never costs a `sessions` delivery.
+    public mutating func endClaudeStartup(_ id: SessionID) {
+        guard sessions[id]?.live?.claudeStartup != nil else { return }
+        updateLive(id) { $0.claudeStartup = nil }
     }
 
     /// Re-derives one session's status/attention/isDone from its current live state.

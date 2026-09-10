@@ -402,6 +402,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// A launch-time message shown in the status strip; see ``showNotice(_:)``.
     private var transientNotice: String?
     private var noticeTimer: DispatchSourceTimer?
+    /// The next edge of the selected row's "Starting Claude…" overlay — its 2 s appearance or
+    /// its give-up. One-shot, re-armed by `applyStartupOverlay` on every delivery that matters.
+    private var startupOverlayTimer: DispatchSourceTimer?
     /// Snapshots every live session periodically (M5.2), so a crash loses at most this much screen.
     private var snapshotTimer: DispatchSourceTimer?
     /// Re-renders the status strip once a minute so `resets 4d 12h` counts down (M4.2). Nothing
@@ -1054,9 +1057,66 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // Before the layout pass, so the first grid measurement — and the attach resize that
         // follows it — already sees the header's height rather than resizing twice.
         applyPaneHeaders()
+        applyStartupOverlay()
         window.layoutIfNeeded()
         detail.paneContainer.applyRatios(tab)
         return rebuilt
+    }
+
+    /// Shows or hides the "Starting Claude…" overlay on the selected row's boot pane, from the
+    /// store's `claudeStartup` and the clock, and arms the timer for the next edge.
+    ///
+    /// The fact lives in the store because `panes` is pruned on every tab or row switch; the
+    /// *timing* lives here because the store has no clock. `StartupOverlayPolicy` turns the two
+    /// dates into a phase; this only acts on it. `now` is a parameter so the tests can walk the
+    /// clock by hand instead of sleeping.
+    func applyStartupOverlay(now: Date = Date()) {
+        startupOverlayTimer?.cancel()
+        startupOverlayTimer = nil
+
+        let selected = store.state.selection.flatMap { store.state.sessions[$0] }
+        let startup = selected?.live?.claudeStartup
+        // Every visible pane but the boot pane: nothing to show. Cheap — `hide()` no-ops.
+        for (id, pane) in panes where id != startup?.terminal {
+            pane.chrome.setStartup(nil)
+        }
+        guard let selected, let startup, let pane = panes[startup.terminal] else { return }
+
+        switch StartupOverlayPolicy.phase(startedAt: startup.startedAt, now: now) {
+        case .pending(let showAt):
+            pane.chrome.setStartup(nil)
+            armStartupOverlayTimer(at: showAt, now: now) { $0.applyStartupOverlay() }
+        case .visible(let expiresAt):
+            pane.chrome.setStartup(PaneStartupModel(command: startup.command))
+            armStartupOverlayTimer(at: expiresAt, now: now) { $0.applyStartupOverlay() }
+        case .expired:
+            // Nothing arrived in time. The store write goes through the timer rather than
+            // happening inside this delivery: a change set that begets a change set is
+            // tolerated by the store, but keeping the write off the delivery path is simpler
+            // to reason about, and the cost is one run-loop turn.
+            pane.chrome.setStartup(nil)
+            let id = selected.id
+            armStartupOverlayTimer(at: now, now: now) { $0.store.update { $0.endClaudeStartup(id) } }
+        }
+    }
+
+    /// Fires `body` when the caller's clock reaches `date`. The delay is measured from `now`,
+    /// not from the wall clock: `applyStartupOverlay(now:)` is handed a date the tests move by
+    /// hand, and a deadline taken against `Date()` would be off by however far they moved it.
+    private func armStartupOverlayTimer(
+        at date: Date, now: Date, _ body: @escaping @MainActor (MainWindowController) -> Void
+    ) {
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + max(0, date.timeIntervalSince(now)))
+        timer.setEventHandler { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.startupOverlayTimer = nil
+                body(self)
+            }
+        }
+        startupOverlayTimer = timer
+        timer.resume()
     }
 
     /// Tints every visible pane's chrome from the store: header text, dot, badge, and the ring
@@ -1180,6 +1240,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         recordSidebarWidth()
         noticeTimer?.cancel()
         noticeTimer = nil
+        startupOverlayTimer?.cancel()
+        startupOverlayTimer = nil
         snapshotTimer?.cancel()
         snapshotTimer = nil
         statusTickTimer?.cancel()
@@ -1512,6 +1574,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // rebuilds the tree, so they are re-tinted here rather than only in `applyPaneTree`.
         if change.selection || (selected.map(change.touches) ?? false) {
             applyPaneHeaders()
+            applyStartupOverlay()
         }
         git?.apply(change)
     }
@@ -2685,6 +2748,15 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
                         state.setShellCwd(session.id, path: path)
                     }
                 }
+            }
+        case .progress(.remove, _):
+            // `.zlogin` brackets the boot command in OSC 9;4, and *remove* means it has returned
+            // — Claude quit, or never started (`claude: command not found`). Either way the
+            // launch this pane was waiting on is over. Other progress states stay unread.
+            if let session = store.state.session(owning: id),
+                session.live?.claudeStartup?.terminal == id
+            {
+                store.update { $0.endClaudeStartup(session.id) }
             }
         default:
             // `.title` deliberately does not land in the store: `Session.title` is the rename slot
