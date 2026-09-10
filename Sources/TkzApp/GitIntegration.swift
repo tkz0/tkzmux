@@ -248,17 +248,18 @@ public final class GitIntegration {
         // replaced by a resume — and with split panes the server the user wants a badge for is
         // just as likely to be in the pane they are *not* looking at. `shellPid`/`pid` stay in the
         // set so a row whose panes predate this map still scans.
-        var roots = Set(live.panePids.values)
-        if let shellPid = live.shellPid { roots.insert(shellPid) }
-        if roots.isEmpty, let pid = live.pid { roots.insert(pid) }
-        guard !roots.isEmpty else { return }
+        var pids = Set(live.panePids.values)
+        if let shellPid = live.shellPid { pids.insert(shellPid) }
+        if pids.isEmpty, let pid = live.pid { pids.insert(pid) }
+        guard !pids.isEmpty else { return }
+        let roots = pids.sorted()
         let scan = scanPorts
         portQueue.async { [weak self] in
             // Deduplicated on the port: two panes in one process tree would otherwise report the
             // same listener twice.
             var seen: Set<UInt16> = []
             var found: [ListeningPort] = []
-            for root in roots.sorted() {
+            for root in roots {
                 for port in scan(root) where seen.insert(port.port).inserted {
                     found.append(port)
                 }

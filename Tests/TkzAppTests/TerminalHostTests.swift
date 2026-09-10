@@ -196,7 +196,7 @@ struct BackgroundSessionTests {
     @Test("30 terminals attach only what is shown, and each surface holds its own terminal")
     func thirtyTerminalsAttachOnlyWhatIsShown() throws {
         let temp = try TempDirectory()
-        guard let (context, view, host) = try makeHost(temp) else { return }
+        guard let (_, view, host) = try makeHost(temp) else { return }
         defer { host.closeAll(signal: SIGKILL) }
 
         var ids: [TerminalID] = []

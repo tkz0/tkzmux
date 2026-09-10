@@ -17,8 +17,10 @@ import Metal
 /// Three sets of instance buffers, cycled so the CPU can write frame N+2 while the GPU still reads
 /// frame N.
 ///
-/// Not `Sendable`: it is touched from the render path (main thread) and its semaphore is signalled
-/// from a Metal completion handler, which is exactly the split `DispatchSemaphore` exists for.
+/// Not `Sendable`, and it never crosses a thread: the slots and the cursor are only touched from
+/// the render path (main thread). The one thing that does cross is the semaphore signal from a
+/// Metal completion handler, and that goes through `Releaser` — a `Sendable` handle holding
+/// nothing but the semaphore, which is exactly the split `DispatchSemaphore` exists for.
 public final class FrameRing {
     /// One frame's worth of instance buffers.
     final class Slot {
@@ -26,6 +28,16 @@ public final class FrameRing {
         var glyphs: MTLBuffer?
         var rectsBelow: MTLBuffer?
         var rectsAbove: MTLBuffer?
+    }
+
+    /// The half of the ring that may leave the render thread: `release()` and nothing else.
+    /// Captured by the command buffer's completion handler instead of the ring itself.
+    public struct Releaser: Sendable {
+        fileprivate let inflight: DispatchSemaphore
+
+        public func release() {
+            inflight.signal()
+        }
     }
 
     public static let depth = 3
@@ -44,9 +56,15 @@ public final class FrameRing {
         return slots[index]
     }
 
-    /// Called from a command buffer's completion handler, or directly on an encode that bailed.
+    /// Called directly on an encode that bailed before committing a command buffer. A committed
+    /// buffer releases through `releaser` from its completion handler instead.
     public func release() {
         inflight.signal()
+    }
+
+    /// A `Sendable` handle that releases this ring's slot from a Metal completion handler.
+    public var releaser: Releaser {
+        Releaser(inflight: inflight)
     }
 
     /// Total bytes the ring is holding. Diagnostics — with N panes this is the number that says
