@@ -1,0 +1,74 @@
+Tests/TkzAppTests/StartupOverlayTests.swift
+  s_e8fff77b805ba9::t_c85e4beecceb9b 1-156
+Sources/TkzApp/Panes/StartupOverlayPolicy.swift
+  s_e8fff77b805ba9::t_99a11041c597ba 1-49
+Sources/ClaudeBridge/Resources/zsh/zlogin
+  s_e8fff77b805ba9::t_9a38d260bb8a04 40-46,48
+Sources/TkzCore/PaneReducers.swift
+  s_e8fff77b805ba9::t_971ff65cf1d00b 84,96,101-110,121
+Tests/ClaudeBridgeTests/ZshWrapperTests.swift
+  s_e8fff77b805ba9::t_629ca1a3a6f918 286-308,312,314
+Sources/TkzApp/Panes/PaneChromeView.swift
+  s_e8fff77b805ba9::t_1809c57a9f86af 40,43
+  s_e8fff77b805ba9::t_99e6c037b8aea8 77-88,93
+  s_e8fff77b805ba9::t_83c3fbe13be3b6 20-22
+  s_e8fff77b805ba9::t_dc9a5ee6d5dbb1 115
+  s_e8fff77b805ba9::t_256df662e7eabc 31
+Tests/TkzTerminalCoreTests/TerminalSessionTests.swift
+  s_e8fff77b805ba9::t_ce16ca7cdb4bee 140-154
+Sources/TkzApp/SessionLauncher.swift
+  s_e8fff77b805ba9::t_9a38d260bb8a04 98,128-133,168,219-222
+Sources/TkzCore/Reducers.swift
+  s_e8fff77b805ba9::t_5f2d57f0393301 505-511
+  s_e8fff77b805ba9::t_971ff65cf1d00b 453-454,560-578
+  s_e8fff77b805ba9::t_16c2fa8d74f2e0 579
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_e8fff77b805ba9::t_e89c64c25dcc67 287
+  s_e8fff77b805ba9::t_f16fb898e556e0 222-286,288-334
+Tests/TkzCoreTests/ReducersTests.swift
+  s_e8fff77b805ba9::t_f18d307d8ea4f3 724-764,766-770,781-792,797-798,803-815
+  s_e8fff77b805ba9::t_c22b37491fe4dd 795-796,801-802
+  s_e8fff77b805ba9::t_0f42ae7101efb2 765,771-780
+  s_e8fff77b805ba9::t_dfdf89e50688bd 793-794,799-800
+Sources/TkzCore/Models.swift
+  s_e8fff77b805ba9::t_971ff65cf1d00b 435-437,460-461,484-504
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_e8fff77b805ba9::t_da5f5167e3f353 291-300,302-312,314-343
+  s_e8fff77b805ba9::t_fba4384ceaaef7 301,313
+Tests/TkzCoreTests/AppStoreTests.swift
+  s_e8fff77b805ba9::t_0613bc232b4f0d 48-72
+Sources/TkzApp/Panes/PaneStartupOverlayView.swift
+  s_e8fff77b805ba9::t_0650f8936a1627 1-201
+Sources/TkzApp/MainWindowController.swift
+  s_e8fff77b805ba9::t_af45c4e831651f 1060,1066-1087,1089-1090,1092-1098,1100-1102,1106,1108-1109,1111-1120
+  s_e8fff77b805ba9::t_4ce7153a9250d6 1243-1244
+  s_e8fff77b805ba9::t_e5b6034ba1fa6a 405-407
+  s_e8fff77b805ba9::t_281119acae9d9a 1088,1091,1099,1103-1105,1107,1110
+  s_e8fff77b805ba9::t_ad3a03bc008533 1577
+  s_e8fff77b805ba9::t_82008bcdefb714 2752-2760
+  s_4604a36f81c834::t_3331eb9b083c83 1121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "ad4e2cbcb739a455a526ac4aad210c67dd33478e",
+  "prompts": {},
+  "sessions": {
+    "s_4604a36f81c834": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa9699a4-480d-4da0-b7f3-1605c4cdc58a",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_e8fff77b805ba9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9be674fc-d205-409d-878c-eefec2d8563e",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
