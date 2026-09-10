@@ -31,19 +31,26 @@ None of these can be scripted; do them once, in order.
    private key is missing (a certificate downloaded on another Mac is useless without it —
    export a `.p12` from the Mac that generated the CSR).
 3. **Create an App Store Connect API key** (App Store Connect › Users and Access › Integrations
-   › App Store Connect API): download the `AuthKey_<KEYID>.p8` **once**, and note the Key ID and
-   the Issuer UUID. An API key is preferred over an app-specific password: it does not expire
-   with the Apple ID password and it is what CI would use.
-4. **Store the notary credentials in the keychain** under the profile name the Makefile expects:
+   › App Store Connect API › Team Keys, role *Developer*): download the `AuthKey_<KEYID>.p8`
+   **once**, and note the Key ID and the Issuer UUID. CI (§8) needs this key. An API key is
+   preferred over an app-specific password: it is scoped to App Store Connect and does not die
+   with the Apple ID password.
+4. **Store the notary credentials in the keychain** under the profile name the Makefile expects.
+   Keep the command out of `~/.zsh_history`: `setopt HIST_IGNORE_SPACE` (off in vanilla zsh),
+   then type a leading space. The app-specific-password form otherwise leaves a plaintext
+   password there.
 
    ```sh
-   xcrun notarytool store-credentials tkzmux-notary \
+   setopt HIST_IGNORE_SPACE
+    xcrun notarytool store-credentials tkzmux-notary \
      --key ~/private_keys/AuthKey_XXXXXXXXXX.p8 \
      --key-id XXXXXXXXXX \
      --issuer 00000000-0000-0000-0000-000000000000
    ```
 
-   Override the name with `NOTARY_PROFILE=…` if you prefer another.
+   The Apple-ID form (`--apple-id … --team-id … --password <app-specific password>`) also works
+   for a laptop profile and is what the development Mac currently uses; `make dist` does not
+   care which. Override the name with `NOTARY_PROFILE=…` if you prefer another.
 
 **Entitlements: none, expected.** tkzmux does not JIT, does not allocate unsigned executable
 memory, does not load third-party plug-ins, and does not disable library validation —
@@ -129,8 +136,8 @@ SIGN_IDENTITY="Developer ID Application: … (TEAMID)" make dist
 
 Pushing that tag also starts `.github/workflows/release.yml`, which runs this same `make dist`
 on a runner — and the two would race for `gh release create`. **CI owns a pushed `v*` tag.** To
-cut a release by hand instead, put `[skip release]` in the tag message — or, for a lightweight
-tag, in the tagged commit's message:
+cut a release by hand instead, put `[skip release]` (or `[skip-release]`, both spellings are
+accepted) in the tag message — or, for a lightweight tag, in the tagged commit's message:
 
 ```sh
 git tag -a v0.1.2 -m 'tkzmux 0.1.2 [skip release]'
@@ -325,31 +332,58 @@ different repository, which is why it needs a PAT of its own.
 ### Producing them
 
 **Signing certificate.** Keychain Access › *login* › *My Certificates* › the *Developer ID
-Application* entry › right-click › *Export…* › `.p12`. Export the **certificate**, not the bare
-key, so the *Developer ID Certification Authority* (G2) intermediate travels with it — without
-the intermediate the key imports fine but `security find-identity -v -p codesigning` lists
-nothing valid and codesign fails with a useless error. The workflow's import step re-runs that
-same `find-identity` and greps for `Developer ID Application` precisely to catch a badly exported
-`.p12` in the first minute rather than twenty minutes into a build.
+Application* entry › right-click › *Export…* › `.p12`. Export the **certificate** entry, not the
+bare private key: a key without its certificate imports fine but `security find-identity -v -p
+codesigning` lists nothing valid. The identity also needs its issuer, Apple's *Developer ID
+Certification Authority* (G2) intermediate, which the workflow imports from apple.com on its own
+rather than relying on the export having carried it. The import step re-runs that same
+`find-identity` and greps for `Developer ID Application` precisely to catch a bad `.p12` in the
+first minute rather than twenty minutes into a build. Prove the export locally first, in a
+throwaway keychain:
 
 ```sh
-base64 -i DeveloperID.p12 | pbcopy          # → APPLE_DEVELOPER_ID_P12_BASE64
-security find-identity -v -p codesigning    # → APPLE_SIGN_IDENTITY, copy the quoted string
+security create-keychain -p x "$TMPDIR/probe.keychain-db"
+security import DeveloperID.p12 -k "$TMPDIR/probe.keychain-db" -P "$P12_PASSWORD"
+security find-identity -v -p codesigning "$TMPDIR/probe.keychain-db"   # → 1 valid identity
+security delete-keychain "$TMPDIR/probe.keychain-db"
 ```
 
 **Notarization key.** The `.p8` from §1 step 3; the key needs the **Developer** role or higher,
 *Admin* is not required. It is downloadable **once** — losing it means issuing a new key. The Key
-ID is in the App Store Connect key table; the Issuer ID sits above it and is the same for every
-key on the team.
+ID is in the file name (`AuthKey_<KEYID>.p8`) and in the App Store Connect key table; the Issuer
+ID sits above that table and is the same for every key on the team. This key is independent of
+whatever the development Mac's `tkzmux-notary` profile was made from; the two rotate separately.
+Prove it before uploading:
 
 ```sh
-base64 -i AuthKey_XXXXXXXXXX.p8 | pbcopy    # → ASC_API_KEY_P8_BASE64
+xcrun notarytool history --key AuthKey_XXXXXXXXXX.p8 --key-id XXXXXXXXXX --issuer <issuer-uuid>
 ```
 
 **Tap token.** github.com › Settings › Developer settings › *Personal access tokens* ›
 *Fine-grained tokens* › *Generate new token*. Resource owner `tkz0`, **Only select repositories ›
-`tkz0/homebrew-tap`**, Repository permissions › *Contents: Read and write*. Nothing else, and
-never a classic token — a classic `repo` token can write to every repository on the account.
+`tkz0/homebrew-tap`**, Repository permissions › *Contents: Read and write*, expiry at most one
+year (note the date; see *Rotation*). Nothing else, and never a classic token — a classic `repo`
+token can write to every repository on the account.
+
+**Setting them.** Pipe files through `gh secret set` so no value passes through a browser, a
+clipboard, or a chat transcript. The two without a `--body`/stdin form prompt for the value.
+
+```sh
+R=tkz0/tkzmux
+base64 -i DeveloperID.p12       | gh secret set APPLE_DEVELOPER_ID_P12_BASE64 -R $R
+gh secret set APPLE_DEVELOPER_ID_P12_PASSWORD -R $R                    # prompts
+gh secret set APPLE_SIGN_IDENTITY -R $R --body "$(security find-identity -v -p codesigning \
+  | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')"
+base64 -i AuthKey_XXXXXXXXXX.p8 | gh secret set ASC_API_KEY_P8_BASE64 -R $R
+gh secret set ASC_API_KEY_ID    -R $R --body XXXXXXXXXX
+gh secret set ASC_API_ISSUER_ID -R $R --body 00000000-0000-0000-0000-000000000000
+gh secret set HOMEBREW_TAP_TOKEN -R $R                                 # prompts
+gh secret list -R $R                                                   # → all seven
+```
+
+Afterwards delete the `.p12` and `.p8` from disk. The private key behind the `.p12` still lives
+in the login keychain; the `.p8` then exists only as the GitHub secret, so decide first whether
+you want a copy in a password manager.
 
 ### On the runner
 
@@ -357,6 +391,8 @@ The keychain is created and destroyed inside the job, so no secret outlives it:
 
 - A keychain in `$RUNNER_TEMP`, unlocked with an `openssl rand` password generated in-job (it only
   has to be unguessable for the life of the job, so it is *not* a stored secret).
+- Apple's Developer ID G2 intermediate, fetched from apple.com and imported before the `.p12`, so
+  the identity validates whether or not the export carried its chain.
 - `security set-keychain-settings -lut 21600` — otherwise it auto-locks partway through a long
   notarization wait.
 - Made the **default** keychain and put on the search list, then given a key partition list of
@@ -403,8 +439,9 @@ staples for real but publishes a **draft** release and leaves the cask alone. A 
 marked *Latest*, so `livecheck strategy :github_latest` cannot see it and no user can install it.
 
 The three credentials fail early and distinguishably, all before the long build: a bad PAT at
-*Clone the Homebrew tap*, a bad `.p12` at *Import the Developer ID signing identity*, bad ASC
-credentials at *Store notarytool credentials*. Afterwards:
+*Clone the Homebrew tap* — at its `git push --dry-run`, not the clone itself, because the tap is
+public and clones with any token or none — a bad `.p12` at *Import the Developer ID signing
+identity*, bad ASC credentials at *Store notarytool credentials*. Afterwards:
 
 ```sh
 gh release delete v0.0.1-rc1 --yes
