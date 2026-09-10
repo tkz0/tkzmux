@@ -1,0 +1,23 @@
+Tests/TkzAppTests/SessionMemoryTests.swift
+  s_ad98c58921660e::t_077c6e70082a62 117-118
+  s_ad98c58921660e::t_a1bdc7e1966393 38-72,74-75,77
+  s_ad98c58921660e::t_9057548f27c775 147,149,157,159
+  s_ad98c58921660e::t_579cfcd84ac587 182-184,192,195
+  s_ad98c58921660e::t_faec21184c0384 106,112,116,123,128-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "dcb9745bfaf2d7b15f707fc2ab1efd385bed17cd",
+  "prompts": {},
+  "sessions": {
+    "s_ad98c58921660e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72fdb54e-0f85-45a5-bd4c-499abb3f4409",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
