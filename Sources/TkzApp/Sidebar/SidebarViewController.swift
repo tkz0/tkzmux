@@ -12,7 +12,8 @@
 //   | `groups`    | `expandItem`/`collapseItem` + a one-row reload of the header             |
 //   | `sessions`  | `reloadData(forRowIndexes:)` for exactly the rows named                   |
 //   | `selection` | `selectRowIndexes` + a reload of the two rows whose `isSelected` flipped  |
-//   | `usage`/`chrome` | ignored — no sidebar row depends on them                            |
+//   | `usage`     | chips re-derived only when an account's *label* changed                  |
+//   | `chrome`    | the update card under the list is re-derived (TKZ-50); rows ignore it    |
 //
 // `reloadData()` is called exactly once, at load. `SidebarOutlineView` counts every one of these
 // calls so the tests can assert the table above rather than eyeball it.
@@ -175,15 +176,17 @@ final class SidebarOutlineView: NSOutlineView {
 // MARK: - Container
 
 /// Root view. Stacks, top to bottom, the fixed-height summary strip (under the toolbar, as
-/// artboard 2c draws it — moved there 2026-09-08), the scroll view and the "＋ New group" footer,
-/// and tells the controller when it changes window so occlusion notifications can follow. The
-/// strip starts at the top safe-area inset, so with the content extending under the titlebar the
-/// strip and the rows still start below it.
+/// artboard 2c draws it — moved there 2026-09-08), the scroll view, the "Update available" card
+/// when there is one (TKZ-50) and the "＋ New group" footer, and tells the controller when it
+/// changes window so occlusion notifications can follow. The strip starts at the top safe-area
+/// inset, so with the content extending under the titlebar the strip and the rows still start
+/// below it.
 final class SidebarContainerView: NSView {
     var onWindowChange: (@MainActor (NSWindow?) -> Void)?
     var scrollView: NSScrollView?
     var summaryStrip: SummaryStripView?
     var newGroupFooter: NewGroupFooterView?
+    var updateNotice: UpdateNoticeView?
 
     override var isFlipped: Bool { false }
 
@@ -198,11 +201,19 @@ final class SidebarContainerView: NSView {
         let stripHeight = CGFloat(SidebarMetrics.summaryStripHeight)
         let topInset = safeAreaInsets.top
         newGroupFooter?.frame = NSRect(x: 0, y: 0, width: bounds.width, height: footerHeight)
-        let stripY = max(footerHeight, bounds.height - topInset - stripHeight)
+        // Non-flipped: the card sits on the footer, and the list starts above the card — its
+        // origin moves up *and* its height shrinks, or the card would cover the last row.
+        var listBottom = footerHeight
+        if let updateNotice, !updateNotice.isHidden {
+            let noticeHeight = CGFloat(SidebarMetrics.updateNoticeHeight)
+            updateNotice.frame = NSRect(x: 0, y: footerHeight, width: bounds.width, height: noticeHeight)
+            listBottom += noticeHeight
+        }
+        let stripY = max(listBottom, bounds.height - topInset - stripHeight)
         summaryStrip?.frame = NSRect(x: 0, y: stripY, width: bounds.width, height: stripHeight)
         scrollView?.frame = NSRect(
-            x: 0, y: footerHeight, width: bounds.width,
-            height: max(0, stripY - footerHeight))
+            x: 0, y: listBottom, width: bounds.width,
+            height: max(0, stripY - listBottom))
     }
 }
 
@@ -234,6 +245,12 @@ public final class SidebarViewController: NSViewController {
     /// The `×` that appears on a hovered row was clicked (2026-09-08). The assembler removes the
     /// session, with the same confirmation ⌘W has.
     public var onRemoveSession: (@MainActor (SessionID) -> Void)?
+
+    /// A link on the update card was clicked (TKZ-50). The `✕` is handled here — it is a store
+    /// write — but what "Update via Homebrew" or "Restart" *does* belongs to the assembler.
+    public var onUpdateAction: (@MainActor (UpdateAction) -> Void)? {
+        didSet { notice.onAction = onUpdateAction }
+    }
 
     private func wireContextMenu() {
         outline.onContextMenu = { [weak self] kind in
@@ -271,6 +288,10 @@ public final class SidebarViewController: NSViewController {
     /// The scroll view the outline lives in; the split view sets its width constraints.
     public var scrollView: NSScrollView { scroll }
 
+    /// The "Update available" card between the list and the footer (TKZ-50); hidden when there
+    /// is nothing to say.
+    public var updateNoticeView: UpdateNoticeView { notice }
+
     // MARK: Storage
 
     private let store: AppStore
@@ -279,6 +300,7 @@ public final class SidebarViewController: NSViewController {
     private let scroll = NSScrollView()
     private let strip = SummaryStripView()
     private let footer = NewGroupFooterView()
+    private let notice = UpdateNoticeView()
     /// Internal rather than private: `LastMessagePopoverTests` asserts `isShown` on this directly,
     /// since `showLastMessage(for:)` deliberately returns nothing to check against.
     var lastMessagePopover: LastMessagePopover
@@ -377,9 +399,15 @@ public final class SidebarViewController: NSViewController {
         footer.configure(theme: theme)
         footer.onNewGroup = onNewGroup
         container.addSubview(footer)
+        notice.isHidden = true
+        notice.configure(theme: theme)
+        notice.onAction = onUpdateAction
+        notice.onDismiss = { [weak self] in self?.dismissUpdateNotice() }
+        container.addSubview(notice)
         container.scrollView = scroll
         container.summaryStrip = strip
         container.newGroupFooter = footer
+        container.updateNotice = notice
         container.onWindowChange = { [weak self] window in self?.windowChanged(to: window) }
 
         view = container
@@ -389,6 +417,7 @@ public final class SidebarViewController: NSViewController {
         super.viewDidLoad()
         strip.configure(SidebarRowAdapter.summaryModel(for: store.state), theme: theme)
         rebuild()
+        applyUpdateNotice()
         store.addObserver { [weak self] change in self?.apply(change) }
     }
 
@@ -400,6 +429,7 @@ public final class SidebarViewController: NSViewController {
         scroll.backgroundColor = theme.sidebarBackground.nsColor
         strip.configure(SidebarRowAdapter.summaryModel(for: store.state), theme: theme)
         footer.configure(theme: theme)
+        notice.configure(theme: theme)
         lastMessagePopover.close()
         lastMessagePopover = LastMessagePopover(theme: theme)
         outline.reloadData(
@@ -459,6 +489,34 @@ public final class SidebarViewController: NSViewController {
         if change.usage { applyAccountLabels() }
         if change.selection { syncSelectionToOutline() }
         if change.structure || !change.sessions.isEmpty { updateSummary() }
+        if change.chrome { applyUpdateNotice() }
+    }
+
+    // MARK: Update card (TKZ-50)
+
+    /// Re-derives the card from the store. Showing or hiding it re-runs the container's layout,
+    /// which moves the list; a wording change inside a visible card does not.
+    private func applyUpdateNotice() {
+        let model = SidebarRowAdapter.updateNotice(for: store.state)
+        let wasHidden = notice.isHidden
+        if let model {
+            notice.configure(model, theme: theme)
+            notice.isHidden = false
+        } else {
+            notice.isHidden = true
+        }
+        if wasHidden != notice.isHidden { view.needsLayout = true }
+    }
+
+    /// The card's `✕`: never for this version again. The upgrade phase goes back to idle with it,
+    /// so a failed or not-yet-in-Homebrew attempt is not inherited by the next release's card;
+    /// `UpdateIntegration` re-syncs the runner from the store before it starts brew again.
+    private func dismissUpdateNotice() {
+        guard let update = store.state.visibleUpdate else { return }
+        store.update {
+            $0.dismissUpdate(version: update.version)
+            $0.setUpgradePhase(.idle)
+        }
     }
 
     /// An account picked up a new label (a usage file naming it, a newly discovered account), so

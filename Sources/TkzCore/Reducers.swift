@@ -367,6 +367,27 @@ extension AppState {
         statuslineOffered = offered
     }
 
+    // MARK: Update card (TKZ-50)
+
+    /// What the release check found: a newer release, or `nil` when the running build is current
+    /// (a withdrawn release clears the card). A failed check calls nothing.
+    public mutating func setAvailableUpdate(_ available: AvailableUpdate?) {
+        update.available = available
+    }
+
+    public mutating func setUpgradePhase(_ phase: UpgradePhase) {
+        update.phase = phase
+    }
+
+    public mutating func setCanUpgradeInPlace(_ can: Bool) {
+        update.canUpgradeInPlace = can
+    }
+
+    /// The card's `✕`: this version is never offered again. A later release is a new card.
+    public mutating func dismissUpdate(version: String) {
+        dismissedUpdateVersion = version
+    }
+
     // MARK: Accounts, usage, presets
 
     public mutating func setAccount(_ account: Account) {

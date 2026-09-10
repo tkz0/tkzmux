@@ -53,8 +53,10 @@ public struct ChangeSet: Hashable, Sendable {
     /// `AppState.usage` or `AppState.accounts` differ.
     public var usage: Bool
     /// Window chrome and settings that belong to no row: `sidebarVisible`, `sidebarWidth`,
-    /// `windowFrame`, `presets`, `shortcuts`. The new-session menu ("From preset… (n saved)")
-    /// listens to this; the outline view ignores it. `StateAutosaver` deliberately does *not*:
+    /// `windowFrame`, `presets`, `shortcuts`, and the update card's `update` /
+    /// `dismissedUpdateVersion` (TKZ-50). The new-session menu ("From preset… (n saved)") and the
+    /// sidebar's update card listen to this; the outline rows ignore it. `StateAutosaver`
+    /// deliberately does *not*:
     /// a durable change can arrive in any bucket, and `sessions` carries mostly non-durable ones,
     /// so it compares projections on every delivery rather than trusting a bit here (M5.1).
     public var chrome: Bool
@@ -149,6 +151,8 @@ public struct ChangeSet: Hashable, Sendable {
             || old.presets != new.presets || old.shortcuts != new.shortcuts
             || old.autoResumeOnLaunch != new.autoResumeOnLaunch
             || old.statuslineOffered != new.statuslineOffered
+            || old.dismissedUpdateVersion != new.dismissedUpdateVersion
+            || old.update != new.update
         {
             change.chrome = true
         }

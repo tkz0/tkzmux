@@ -281,6 +281,24 @@ notes template.
 also needs the tap installed: `brew audit` no longer accepts a file path — it answers
 *"Calling `brew audit [path ...]` is disabled!"* — only a `tap/cask` name.
 
+### The in-app update check (TKZ-50)
+
+A release build asks `https://api.github.com/repos/tkz0/tkzmux/releases/latest` 15 s after
+launch and every 4 h (`Sources/TkzApp/Update/`), and shows the sidebar's "Update available" card
+when `tag_name` is newer than `CFBundleShortVersionString`. Two consequences for cutting a release:
+
+- *Latest* is what it reads — the same thing `livecheck strategy :github_latest` reads — so a
+  **draft or prerelease is invisible** to running apps until it is published as the latest
+  release. A `dry_run` (§8) can never trip a user's card.
+- "Update via Homebrew" runs `brew update` then `brew upgrade --cask tkz0/tap/tkzmux`, and only
+  offers "Restart to update" once `/Applications/tkzmux.app/Contents/Info.plist` differs from the
+  running version. In the seconds between `gh release create` and the cask bump the card says
+  *Homebrew doesn't have it yet* and offers *Try again* — expected, not a bug.
+- The release that *ships* the card cannot be used to test it against itself; the first real
+  end-to-end run is from that release to the next one. A dev build can rehearse everything but
+  the actual bundle swap with `TKZMUX_UPDATE_URL=file:///…/latest.json` (a JSON object with
+  `tag_name` and `html_url`) and `TKZMUX_UPDATE_BREW=1`.
+
 ---
 
 ## 7. Rollback

@@ -100,7 +100,34 @@ private func makeState() -> AppState {
     var restored = AppState()
     decoded.state.apply(to: &restored)
     #expect(restored.autoResumeOnLaunch == false)
+    #expect(restored.dismissedUpdateVersion == nil)
     #expect(restored.sessions.count == state.sessions.count)
+}
+
+@Test func dismissedUpdateVersionRoundTripsAndTheRestOfUpdateDoesNot() throws {
+    // TKZ-50: the `✕` on the update card is forever, so the version goes to disk; the fetched
+    // release and the upgrade phase are process state and must not.
+    try withTemporaryFile { file in
+        var original = makeState()
+        original.dismissUpdate(version: "0.8.0")
+        original.setAvailableUpdate(AvailableUpdate(version: "0.9.0", releaseURL: "https://example.invalid"))
+        original.setUpgradePhase(.running(step: "update"))
+        original.setCanUpgradeInPlace(true)
+        try file.save(StateDocument(state: PersistedState(original)))
+
+        var restored = AppState()
+        try #require(file.load().document).state.apply(to: &restored)
+        #expect(restored.dismissedUpdateVersion == "0.8.0")
+        #expect(restored.update == UpdateState())
+
+        // A preferences block written before TKZ-50 has no key at all: nil, not "".
+        var object = try JSONDecoder().decode(
+            [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(original))))
+        object["preferences"] = .object(["autoResumeOnLaunch": .bool(true)])
+        let decoded = try StateFile.decode(try JSONEncoder().encode(object))
+        #expect(decoded.state.preferences.dismissedUpdateVersion == nil)
+        #expect(decoded.state.preferences.autoResumeOnLaunch)
+    }
 }
 
 @Test func groupsAndSessionsAreArraysInSidebarOrder() throws {
