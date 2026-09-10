@@ -35,14 +35,46 @@ struct SessionMemoryTests {
             .first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
-    /// `sh` → `sh` → `python3` holding `mb` megabytes. Returns the outer `sh`.
-    private static func spawnNestedHog(mb: Int) throws -> Process? {
+    /// A python script holding `mb` megabytes, plus the marker file it creates once the
+    /// allocation is complete.
+    ///
+    /// The marker matters: `bytearray(n)` zero-fills its pages one by one, so the process's
+    /// footprint keeps climbing for a while after the process exists. A sample taken while that is
+    /// still going on is a snapshot of an arbitrary instant — on the 3-core CI runner the subtree
+    /// total crossed the byte threshold while the hog itself was still below it, and two readings
+    /// of the same pid taken microseconds apart differed by a few pages. Waiting for the marker
+    /// means asserting against a process that is asleep and holds all of what it is going to hold.
+    private static func makeHog(mb: Int) throws -> (script: URL, ready: URL) {
+        let script = try makeScript(
+            "hog.py",
+            """
+            a = bytearray(\(mb) * 1024 * 1024)
+            import time
+            open("hog.ready", "w").close()
+            time.sleep(30)
+            """)
+        let ready = script.deletingLastPathComponent().appending(path: "hog.ready")
+        return (script, ready)
+    }
+
+    /// The shell line that runs a hog from its own directory, so `hog.ready` lands next to it.
+    private static func hogCommand(_ hog: (script: URL, ready: URL), python: String) -> String {
+        "cd \(hog.script.deletingLastPathComponent().path) && \(python) \(hog.script.path)"
+    }
+
+    /// True once the hog has finished allocating (see `makeHog`).
+    private static func waitForHog(_ ready: URL) -> Bool {
+        waitFor { FileManager.default.fileExists(atPath: ready.path) }
+    }
+
+    /// `sh` → `sh` → `python3` holding `mb` megabytes. Returns the outer `sh` and the hog's ready
+    /// marker.
+    private static func spawnNestedHog(mb: Int) throws -> (process: Process, ready: URL)? {
         guard let python else { return nil }
-        let hog = try makeScript(
-            "hog.py", "a = bytearray(\(mb) * 1024 * 1024)\nimport time\ntime.sleep(30)\n")
-        let inner = try makeScript("inner.sh", "\(python) \(hog.path)\nexit 0\n")
+        let hog = try makeHog(mb: mb)
+        let inner = try makeScript("inner.sh", "\(hogCommand(hog, python: python))\nexit 0\n")
         let outer = try makeScript("outer.sh", "/bin/sh \(inner.path)\nexit 0\n")
-        return try spawn(["/bin/sh", outer.path])
+        return (try spawn(["/bin/sh", outer.path]), hog.ready)
     }
 
     private static func spawn(_ argv: [String]) throws -> Process {
@@ -71,32 +103,36 @@ struct SessionMemoryTests {
     @Test("a sample finds a grandchild and reports the memory it really holds")
     func findsNestedHog() throws {
         let mb = 300
-        guard let process = try Self.spawnNestedHog(mb: mb) else { return }  // no python3 here
+        guard let (process, ready) = try Self.spawnNestedHog(mb: mb) else { return }  // no python3 here
         defer {
             SessionMemory.terminateTree(rootPid: process.processIdentifier, includingRoot: true)
             process.waitUntilExit()
         }
         let root = process.processIdentifier
+        #expect(Self.waitForHog(ready), "the hog never finished allocating")
 
         // The allocation lives two levels down, so this only passes if the walk descends.
-        let grew = Self.waitFor {
-            SessionMemory.sample(rootPid: root).footprintBytes > UInt64(mb - 60) * 1024 * 1024
-        }
-        #expect(grew, "expected the subtree to report at least ~\(mb) MB")
-
         let sample = SessionMemory.sample(rootPid: root)
+        #expect(
+            sample.footprintBytes > UInt64(mb - 60) * 1024 * 1024,
+            "expected the subtree to report at least ~\(mb) MB")
         #expect(sample.processCount >= 3, "root sh + inner sh + python3")
         #expect(sample.largestPid != root, "the hog is a descendant, not the root shell")
         // `p_comm` casing varies by build (Homebrew's reports "Python").
         #expect(sample.largestName.lowercased().contains("python"))
-        // The biggest single process should account for essentially all of it; the two shells are
-        // ~1 MB each.
+        // The biggest single process holds the whole array; the two shells are ~1 MB each.
         #expect(sample.largestBytes > UInt64(mb - 60) * 1024 * 1024)
         #expect(!sample.truncated)
 
         // Cross-check the reading against the same accounting the OS exposes for that one pid.
-        let direct = try #require(SessionMemory.footprint(of: sample.largestPid))
-        #expect(direct == sample.largestBytes)
+        // Polled rather than compared once: even asleep, the interpreter can touch a page or two
+        // between two reads (closing the marker, entering `sleep`), and the contract under test is
+        // "same accounting", not "same instant".
+        let hog = sample.largestPid
+        let agrees = Self.waitFor {
+            SessionMemory.footprint(of: hog) == SessionMemory.sample(rootPid: root).largestBytes
+        }
+        #expect(agrees, "sample.largestBytes never matched a direct footprint(of:) reading")
     }
 
     /// The user-facing point of the kill action: the memory actually comes back, and the session's
@@ -108,10 +144,9 @@ struct SessionMemoryTests {
         // The root must outlive its children for "spared" to be observable, so it backgrounds the
         // hog and then `exec`s `sleep` — becoming a process with no children of its own, which a
         // plain `sleep 30` statement would not be (the shell forks for that too).
-        let hog = try Self.makeScript(
-            "hog.py", "a = bytearray(\(mb) * 1024 * 1024)\nimport time\ntime.sleep(30)\n")
+        let hog = try Self.makeHog(mb: mb)
         let outer = try Self.makeScript(
-            "outer.sh", "\(python) \(hog.path) &\nexec sleep 30\n")
+            "outer.sh", "(\(Self.hogCommand(hog, python: python))) &\nexec sleep 30\n")
         let process = try Self.spawn(["/bin/sh", outer.path])
         let root = process.processIdentifier
         defer {
@@ -119,8 +154,9 @@ struct SessionMemoryTests {
             process.waitUntilExit()
         }
 
+        #expect(Self.waitForHog(hog.ready), "the hog never finished allocating")
         let threshold = UInt64(mb - 60) * 1024 * 1024
-        #expect(Self.waitFor { SessionMemory.sample(rootPid: root).footprintBytes > threshold })
+        #expect(SessionMemory.sample(rootPid: root).footprintBytes > threshold)
 
         SessionMemory.terminateTree(rootPid: root)
 
@@ -143,9 +179,9 @@ struct SessionMemoryTests {
     func rootIsSeparatedFromDescendants() throws {
         guard let python = Self.python else { return }
         let mb = 250
-        let hog = try Self.makeScript(
-            "hog.py", "a = bytearray(\(mb) * 1024 * 1024)\nimport time\ntime.sleep(30)\n")
-        let outer = try Self.makeScript("outer.sh", "\(python) \(hog.path)\nexit 0\n")
+        let hog = try Self.makeHog(mb: mb)
+        let outer = try Self.makeScript(
+            "outer.sh", "\(Self.hogCommand(hog, python: python))\nexit 0\n")
         let process = try Self.spawn(["/bin/sh", outer.path])
         let root = process.processIdentifier
         defer {
@@ -153,9 +189,10 @@ struct SessionMemoryTests {
             process.waitUntilExit()
         }
 
+        #expect(Self.waitForHog(hog.ready), "the hog never finished allocating")
         let threshold = UInt64(mb - 60) * 1024 * 1024
-        #expect(Self.waitFor { SessionMemory.sample(rootPid: root).footprintBytes > threshold })
         let sample = SessionMemory.sample(rootPid: root)
+        #expect(sample.footprintBytes > threshold)
 
         #expect(sample.largestPid != root)
         #expect(sample.rootBytes > 0, "the root shell has a footprint of its own")
