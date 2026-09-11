@@ -1,0 +1,39 @@
+Sources/TkzApp/MainWindowController.swift
+  s_b64952d35c884f::t_408fe11a0213e2 1239-1243
+Tests/TkzTerminalCoreTests/KeyEncoderTests.swift
+  s_b64952d35c884f::t_d79be78aae21e7 87-110
+README.md
+  s_b64952d35c884f::t_718ec81fdf4b33 229-232
+Sources/TkzApp/DevWindowController.swift
+  s_b64952d35c884f::t_b850b16372e020 171-174
+  s_b64952d35c884f::t_38523c02d451d8 189
+Tests/TkzTerminalViewTests/TerminalInputControllerTests.swift
+  s_b64952d35c884f::t_943842926eea6e 320-364
+Sources/TkzTerminalView/MouseController.swift
+  s_b64952d35c884f::t_dd3bf737123a65 28
+  s_b64952d35c884f::t_2f6c35f1950f26 16-18
+  s_b64952d35c884f::t_ebfa563708cd77 679-684
+  s_b64952d35c884f::t_8ce2953fa04f5c 654-658,661-665
+  s_b64952d35c884f::t_55470ee8d0bc2c 196-201
+Sources/TkzTerminalView/TerminalInputController.swift
+  s_b64952d35c884f::t_207cd9ae723a0a 318-353
+  s_b64952d35c884f::t_1c9b604b9e8629 525-529,537,539,541,544
+Tests/TkzTerminalViewTests/MouseControllerTests.swift
+  s_b64952d35c884f::t_ee8b0657b10ab8 528-591
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1edc19f0bbeda0b27bc3cad908ed6e0b4185b38c",
+  "prompts": {},
+  "sessions": {
+    "s_b64952d35c884f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9a6c5315-3247-47fd-87d6-cf3513fa778d",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
