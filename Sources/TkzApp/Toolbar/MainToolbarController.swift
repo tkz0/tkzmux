@@ -2,8 +2,8 @@
 //
 // design.md → App architecture → Toolbar:
 //   title “<session> — <group>”; `NSMenuToolbarItem` “＋ New session…” scoped to the selected group;
-//   “Search sessions…” (⌘P); the four right-hand buttons from the design
-//   (`>_` new terminal, `◍` browser, `◫`/`⬓` splits — last three disabled in v1).
+//   “Search sessions…” (⌘P); the three right-hand buttons (`>_` new terminal, `◫`/`⬓` splits).
+//   The design's fourth button, `◍` browser, was dropped in TKZ-57 rather than shipped disabled.
 //
 // This wave builds the chrome only. The controller owns no application state and holds no
 // reference to a window controller or store: every action is a closure the assembler assigns, and
@@ -19,7 +19,7 @@ public extension NSToolbarItem.Identifier {
     static let tkzTitle = NSToolbarItem.Identifier("tkzmux.title")
     /// `NSSearchToolbarItem` — “Search sessions…” (⌘P).
     static let tkzSearch = NSToolbarItem.Identifier("tkzmux.search")
-    /// The four-button `NSSegmentedControl` cluster; only `>_` is enabled in v1.
+    /// The three-button `NSSegmentedControl` cluster: `>_`, `◫`, `⬓`.
     static let tkzViewCluster = NSToolbarItem.Identifier("tkzmux.viewCluster")
 }
 
@@ -29,17 +29,15 @@ public extension NSToolbarItem.Identifier {
 /// whenever the selection changes.
 @MainActor
 public final class MainToolbarController: NSObject, NSToolbarDelegate {
-    /// The four right-hand buttons, in order. The browser is still later work.
+    /// The three right-hand buttons, in order. `rawValue` doubles as the segment index.
     public enum ViewButton: Int, CaseIterable, Sendable {
         case terminal = 0   // >_
-        case browser = 1    // ◍
-        case splitV = 2     // ◫
-        case splitH = 3     // ⬓
+        case splitV = 1     // ◫
+        case splitH = 2     // ⬓
 
         var glyph: String {
             switch self {
             case .terminal: ">_"
-            case .browser: "\u{25CD}"   // ◍
             case .splitV: "\u{25EB}"    // ◫
             case .splitH: "\u{2B13}"    // ⬓
             }
@@ -51,18 +49,15 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
             // another terminal inside this one. ⌘T is the latter (TKZ-36), and the two would
             // otherwise read as the same verb.
             case .terminal: "New shell session"
-            case .browser: "Browser"
             case .splitV: "Split vertically"
             case .splitH: "Split horizontally"
             }
         }
-
-        /// The browser pane is still later work; the two splits landed in TKZ-36.
-        var isAvailableInV1: Bool { self != .browser }
     }
 
-    /// Tooltip on every button that v1 does not implement.
-    public static let unavailableTooltip = "Coming later"
+    /// Point size of the cluster glyphs. Toolbar chrome, not a theme token: the sidebar's 10 pt
+    /// `detail` size read too small for `◫`/`⬓` in the 48 pt bar (TKZ-57).
+    static let clusterGlyphSize: Double = 12
 
     public let toolbar: NSToolbar
 
@@ -157,16 +152,14 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
 
     // MARK: Actions
 
-    /// Runs the action behind one cluster button, ignoring any the app does not implement yet.
-    /// The `@objc` click handler funnels through here; tests drive it directly because a
-    /// `.momentary` `NSSegmentedControl` does not keep `selectedSegment` outside a real click.
+    /// Runs the action behind one cluster button. The `@objc` click handler funnels through here;
+    /// tests drive it directly because a `.momentary` `NSSegmentedControl` does not keep
+    /// `selectedSegment` outside a real click.
     func activate(_ button: ViewButton) {
-        guard button.isAvailableInV1 else { return }
         switch button {
         case .terminal: onNewTerminal?()
         case .splitV: onSplitVertically?()
         case .splitH: onSplitHorizontally?()
-        case .browser: break
         }
     }
 
@@ -258,13 +251,9 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
             action: #selector(segmentClicked(_:))
         )
         control.segmentStyle = .texturedRounded
-        control.font = Theme.Fonts.mono(theme.fontMono.detail, weight: .medium)
+        control.font = Theme.Fonts.mono(Self.clusterGlyphSize, weight: .medium)
         for button in ViewButton.allCases {
-            control.setEnabled(button.isAvailableInV1, forSegment: button.rawValue)
-            control.setToolTip(
-                button.isAvailableInV1 ? button.label : Self.unavailableTooltip,
-                forSegment: button.rawValue
-            )
+            control.setToolTip(button.label, forSegment: button.rawValue)
         }
         segmented = control
 
