@@ -113,33 +113,23 @@ struct MainToolbarTests {
         #expect(seen == ["tkz"])
     }
 
-    @Test func onlyTheBrowserButtonIsStillDisabled() throws {
+    @Test func everyClusterButtonIsEnabled() throws {
         let controller = MainToolbarController()
         let item = try #require(Self.item(controller, .tkzViewCluster))
         let control = try #require(item.view as? NSSegmentedControl)
 
-        #expect(control.segmentCount == 4)
-        // TKZ-36 turned the two splits on; the browser pane is still later work.
-        let enabled = (0..<control.segmentCount).filter { control.isEnabled(forSegment: $0) }
-        #expect(
-            enabled == [
-                MainToolbarController.ViewButton.terminal.rawValue,
-                MainToolbarController.ViewButton.splitV.rawValue,
-                MainToolbarController.ViewButton.splitH.rawValue,
-            ])
+        // TKZ-57 dropped the disabled ◍ browser placeholder: three buttons, all live.
+        #expect(control.segmentCount == 3)
+        #expect(control.segmentCount == MainToolbarController.ViewButton.allCases.count)
+        for button in MainToolbarController.ViewButton.allCases {
+            #expect(control.isEnabled(forSegment: button.rawValue))
+            #expect(control.toolTip(forSegment: button.rawValue) == button.label)
+        }
 
-        // The one unavailable button says so.
-        #expect(
-            control.toolTip(forSegment: MainToolbarController.ViewButton.browser.rawValue)
-                == MainToolbarController.unavailableTooltip)
-        #expect(
-            control.toolTip(forSegment: MainToolbarController.ViewButton.splitV.rawValue)
-                == MainToolbarController.ViewButton.splitV.label)
-        #expect(control.toolTip(forSegment: 0) == MainToolbarController.ViewButton.terminal.label)
-
-        // The glyphs are the design's.
-        #expect((0..<4).map { control.label(forSegment: $0) }
+        // The glyphs are the design's, drawn at the cluster size rather than the sidebar's.
+        #expect((0..<control.segmentCount).map { control.label(forSegment: $0) }
                 == MainToolbarController.ViewButton.allCases.map(\.glyph))
+        #expect(control.font.map { Double($0.pointSize) } == MainToolbarController.clusterGlyphSize)
     }
 
     @Test func terminalButtonInvokesTheClosure() throws {
@@ -157,7 +147,7 @@ struct MainToolbarTests {
         controller.activate(.terminal)
         #expect(fired == 1)
 
-        // The three unavailable buttons must never reach a closure.
+        // Buttons with no closure assigned fire nothing.
         for button in MainToolbarController.ViewButton.allCases where button != .terminal {
             controller.activate(button)
         }
