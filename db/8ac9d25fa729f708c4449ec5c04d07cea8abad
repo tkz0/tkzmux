@@ -1,0 +1,21 @@
+Tests/TkzAppTests/MainToolbarTests.swift
+  s_fbcf5f1ad6bb3d::t_4b7bed0e90b2b0 116,121-130,132,150
+Sources/TkzApp/Toolbar/MainToolbarController.swift
+  s_fbcf5f1ad6bb3d::t_f89dd1d158f988 5-6,22,32,35-36,58-60,155-157,254,256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "db8ac9d25fa729f708c4449ec5c04d07cea8abad",
+  "prompts": {},
+  "sessions": {
+    "s_fbcf5f1ad6bb3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b726538-4961-436a-9f77-226e057be47c",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
