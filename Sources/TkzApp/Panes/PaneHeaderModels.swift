@@ -55,14 +55,16 @@ public enum PaneHeaderAdapter {
     ///
     /// The pane's own cwd (OSC 7) comes first; a pane that has not reported yet — a split in its
     /// first second — shows the row's `effectiveCwd`, which is what its shell is about to start
-    /// in anyway.
+    /// in anyway. The pane running Claude shows Claude's cwd instead (`Session.paneDirectory`):
+    /// after `claude -w` the shell's OSC 7 still names the main checkout, and the header would
+    /// otherwise contradict the git strip beneath it.
     public static func model(
         for terminal: TerminalID, in state: AppState, home: String
     ) -> PaneHeaderModel? {
         guard let session = state.session(owning: terminal),
             let tab = session.tab(containing: terminal)
         else { return nil }
-        let cwd = state.paneCwd(terminal) ?? session.effectiveCwd
+        let cwd = session.paneDirectory(terminal)
         return PaneHeaderModel(
             title: Session.title(forPath: cwd),
             path: abbreviatingHome(cwd, home: home),

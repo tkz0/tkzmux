@@ -266,6 +266,34 @@ public struct Session: Hashable, Sendable, Identifiable {
         return cwd
     }
 
+    /// Where `terminal`'s shell is standing, for the pane header and for git: its own OSC 7,
+    /// or the row's `effectiveCwd` while it has not reported one (a split in its first second).
+    ///
+    /// **Except in the pane that is running Claude**, where the shell's OSC 7 is stale by
+    /// construction: `claude -w <name>` is typed in the main checkout and chdirs into
+    /// `.claude/worktrees/<name>` itself, and the shell underneath never `cd`s. That pane
+    /// (`live.claudeTerminal`, or the row's only pane) answers with Claude's own cwd while a live
+    /// descriptor is bound. Every other pane keeps its shell's answer.
+    public func paneDirectory(_ terminal: TerminalID) -> String {
+        guard let live else { return effectiveCwd }
+        if let claudeCwd = live.descriptor?.cwd, !claudeCwd.isEmpty, paneHostsClaude(terminal) {
+            return claudeCwd
+        }
+        return live.paneCwds[terminal] ?? effectiveCwd
+    }
+
+    /// `terminal` is where the bound `claude` runs: the pane the shim's `launch` frame was placed
+    /// in, or — when the frame could not be placed — the row's only pane, since a *live*
+    /// descriptor means Claude is running in *some* pane of this row. A dead one (a stale
+    /// descriptor from before a crash, matched to a resumed row by its conversation id) is no
+    /// such evidence, and its cwd may name a worktree that no longer exists.
+    public func paneHostsClaude(_ terminal: TerminalID) -> Bool {
+        guard let live, live.descriptor != nil, live.alive else { return false }
+        if let claudeTerminal = live.claudeTerminal { return claudeTerminal == terminal }
+        let panes = terminalIDs
+        return panes.count == 1 && panes[0] == terminal
+    }
+
     /// The `WT` badge: the session is a `claude -w` session, or it currently sits inside a
     /// `.claude/worktrees/<name>` directory.
     public var showsWorktreeBadge: Bool {
@@ -443,6 +471,12 @@ public struct LiveSessionState: Hashable, Sendable {
     /// The Claude launch this row is waiting on, while the boot command is still starting up —
     /// what the pane's "Starting Claude…" overlay reads. Process state, never persisted.
     public var claudeStartup: ClaudeStartup?
+    /// The pane whose shell is running the bound `claude` process, once the shim's `launch`
+    /// frame has said which. That pane's OSC 7 is stale by construction: `claude -w` chdirs into
+    /// the worktree it created and the shell underneath never follows, so the git strip must
+    /// read Claude's own cwd there and the shell's everywhere else (`GitIntegration`). Process
+    /// state: cleared when the descriptor is lost or the pane closes, never persisted.
+    public var claudeTerminal: TerminalID?
 
     public init(
         pid: pid_t? = nil,
@@ -466,7 +500,8 @@ public struct LiveSessionState: Hashable, Sendable {
         shellCwd: String? = nil,
         panePids: [TerminalID: pid_t] = [:],
         paneCwds: [TerminalID: String] = [:],
-        claudeStartup: ClaudeStartup? = nil
+        claudeStartup: ClaudeStartup? = nil,
+        claudeTerminal: TerminalID? = nil
     ) {
         self.pid = pid
         self.shellPid = shellPid
@@ -490,6 +525,7 @@ public struct LiveSessionState: Hashable, Sendable {
         self.panePids = panePids
         self.paneCwds = paneCwds
         self.claudeStartup = claudeStartup
+        self.claudeTerminal = claudeTerminal
     }
 }
 

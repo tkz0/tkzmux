@@ -156,10 +156,18 @@ public final class GitIntegration {
     /// comes from. The title and the `WT` badge deliberately do not follow pane focus; the git
     /// facts do, everywhere they are shown: the strip and the sidebar row's `⎇ branch` line both
     /// read `GitSummary`, so both name the focused pane's branch.
+    ///
+    /// **Except in the pane that is running Claude** (2026-09-11): there the shell's OSC 7 is
+    /// stale by construction. `claude -w <name>` is typed in the main checkout and chdirs into
+    /// `.claude/worktrees/<name>` itself; the shell underneath never `cd`s, so its last report
+    /// names the main checkout — `develop`, `+0 −0`, and a `WT` pill next to it that came from
+    /// the descriptor. `Session.paneDirectory` carries that rule (the pane header reads the same
+    /// one), so the pane hosting Claude is watched at Claude's own cwd while a live descriptor
+    /// is bound, and a second pane in another repo still steers the strip when it has focus.
     static func trackingTargets(in state: AppState) -> [SessionID: String] {
         var out: [SessionID: String] = [:]
         for session in state.sessions.values where session.live != nil {
-            let directory = session.live?.paneCwds[session.focusedTerminalID] ?? session.effectiveCwd
+            let directory = session.paneDirectory(session.focusedTerminalID)
             guard !directory.isEmpty else { continue }
             out[session.id] = directory
         }

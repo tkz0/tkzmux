@@ -400,7 +400,13 @@ public final class ClaudeIntegration {
         }
         logger.info("launch pid \(launch.pid) → \(id.rawValue, privacy: .public) config_dir=\(launch.configDir, privacy: .public)")
         pidToSession[launch.pid] = id
-        store.update { $0.updateLive(id) { $0.pid = launch.pid } }
+        // Which pane the frame came from, resolved *before* the descriptor below is applied —
+        // applying a live descriptor is what clears `claudeStartup`, the cheap answer.
+        let terminal = claudeTerminal(for: launch, in: id)
+        store.update { state in
+            state.updateLive(id) { $0.pid = launch.pid }
+            state.setClaudeTerminal(id, terminal)
+        }
         learnAccount(configDir: launch.configDir, for: id)
         for (key, state) in watcher.snapshot() where state.info.pid == launch.pid {
             // Seen before the frame: it was filed as external; it has an owner now.
@@ -408,6 +414,25 @@ public final class ClaudeIntegration {
             store.update { $0.applyDescriptor(state.info, alive: state.alive, to: id, now: Date()) }
             learnAccount(configDir: state.info.configDir, for: id)
         }
+    }
+
+    /// The pane whose shell is running the `claude` the shim just announced. A boot command or a
+    /// resume recorded its pane in `claudeStartup`; a `claude` typed by hand in a split did not,
+    /// so the frame's pid (the shim's `$$`, a child of the pane's login shell) is walked up
+    /// `panePids` the same way `sessionID(forProcess:)` walks it. `nil` when neither places it;
+    /// `GitIntegration` then falls back to "the row's only pane".
+    func claudeTerminal(for launch: LaunchAnnouncement, in id: SessionID) -> TerminalID? {
+        guard let live = store.state.sessions[id]?.live else { return nil }
+        if let startup = live.claudeStartup { return startup.terminal }
+        guard !live.panePids.isEmpty else { return nil }
+        var current = launch.pid
+        for _ in 0..<8 {
+            guard current > 1 else { return nil }
+            if let match = live.panePids.first(where: { $0.value == current }) { return match.key }
+            guard let parent = ProcessTree.parent(of: current), parent != current else { return nil }
+            current = parent
+        }
+        return nil
     }
 
     /// `sid` → `payload.session_id` → the `ppid` tree, per design.md → *tkzmux-hook*.

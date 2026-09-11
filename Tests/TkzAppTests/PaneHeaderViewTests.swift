@@ -82,6 +82,34 @@ struct PaneHeaderViewTests {
         #expect(PaneHeaderAdapter.model(for: .generate(), in: state, home: "/") == nil)
     }
 
+    /// `claude -w` chdirs into the worktree; the shell under it never does. The pane running
+    /// Claude names Claude's directory, the same answer the git strip gives, and a plain pane in
+    /// the same row keeps its own.
+    @Test func thePaneRunningClaudeShowsClaudesDirectory() throws {
+        var state = AppState()
+        let group = state.addGroup(name: "g", repoRoot: "/Users/someone/dev/repo")
+        let session = state.createSession(groupID: group.id, cwd: "/Users/someone/dev/repo")
+        state.setLive(LiveSessionState(shellPid: 1), for: session.id)
+        let first = try #require(state.sessions[session.id]?.focusedTerminalID)
+        let split = state.splitPane(first, axis: .horizontal)
+        let second = try #require(split)
+        state.setPaneCwd(first, path: "/Users/someone/dev/repo")
+        state.setPaneCwd(second, path: "/Users/someone/dev/repo")
+        state.updateLive(session.id) {
+            $0.descriptor = ClaudeSessionInfo(
+                configDir: "/home/.claude", pid: 99, sessionId: "s",
+                cwd: "/Users/someone/dev/repo/.claude/worktrees/wt")
+        }
+        state.setClaudeTerminal(session.id, first)
+
+        let a = try #require(PaneHeaderAdapter.model(for: first, in: state, home: "/Users/someone"))
+        #expect(a.title == "wt")
+        #expect(a.path == "~/dev/repo/.claude/worktrees/wt")
+        let b = try #require(PaneHeaderAdapter.model(for: second, in: state, home: "/Users/someone"))
+        #expect(b.title == "repo")
+        #expect(b.path == "~/dev/repo")
+    }
+
     // MARK: Structure
 
     @Test func isExactlyTwentyEightPointsTall() {

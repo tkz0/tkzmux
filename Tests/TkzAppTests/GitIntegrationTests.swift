@@ -89,6 +89,79 @@ struct GitIntegrationTests {
         #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/first-repo")
     }
 
+    // MARK: The pane running Claude
+
+    /// `claude -w` is typed in the main checkout and chdirs into the worktree itself; the shell's
+    /// OSC 7 still names the main checkout. A single-pane row with a bound descriptor is watched
+    /// at Claude's cwd even before the launch frame has placed the pane.
+    @Test func aWorktreeSessionIsWatchedAtClaudesCwdNotTheShells() throws {
+        var (state, id) = Self.stateWithSession(cwd: "/tmp/main")
+        let pane = try #require(state.sessions[id]?.focusedTerminalID)
+        state.setPaneCwd(pane, path: "/tmp/main")
+        state.updateLive(id) {
+            $0.descriptor = ClaudeSessionInfo(
+                configDir: "/home/.claude", pid: 99, sessionId: "s",
+                cwd: "/tmp/main/.claude/worktrees/x")
+        }
+        #expect(state.sessions[id]?.live?.claudeTerminal == nil)
+        #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/main/.claude/worktrees/x")
+    }
+
+    /// In a split, only the pane the launch frame was placed in reads Claude's cwd; a second pane
+    /// in another repo still steers the strip when it has focus (design 2c.3/2c.4 stands).
+    @Test func onlyThePaneHostingClaudeReadsClaudesCwd() throws {
+        var (state, id) = Self.stateWithSession(cwd: "/tmp/main")
+        let first = try #require(state.sessions[id]?.focusedTerminalID)
+        let split = state.splitPane(first, axis: .horizontal)
+        let second = try #require(split)
+        state.setPaneCwd(first, path: "/tmp/main")
+        state.setPaneCwd(second, path: "/tmp/other-repo")
+        state.updateLive(id) {
+            $0.descriptor = ClaudeSessionInfo(
+                configDir: "/home/.claude", pid: 99, sessionId: "s",
+                cwd: "/tmp/main/.claude/worktrees/x")
+        }
+        // Two panes and no placement yet: nobody is known to host Claude, the shell rule holds.
+        state.focusPane(first)
+        #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/main")
+
+        state.setClaudeTerminal(id, first)
+        #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/main/.claude/worktrees/x")
+        state.focusPane(second)
+        #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/other-repo")
+    }
+
+    /// Claude gone (`descriptorLost`): the pane is a plain shell again and its own OSC 7 is the
+    /// truth — the strip returns to the main checkout the shell never left.
+    @Test func withoutADescriptorTheShellsCwdIsBackInCharge() throws {
+        var (state, id) = Self.stateWithSession(cwd: "/tmp/main")
+        let pane = try #require(state.sessions[id]?.focusedTerminalID)
+        state.setPaneCwd(pane, path: "/tmp/main")
+        state.updateLive(id) {
+            $0.descriptor = ClaudeSessionInfo(
+                configDir: "/home/.claude", pid: 99, sessionId: "s",
+                cwd: "/tmp/main/.claude/worktrees/x")
+        }
+        state.setClaudeTerminal(id, pane)
+        #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/main/.claude/worktrees/x")
+        state.descriptorLost(for: id)
+        #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/main")
+    }
+
+    /// A stale descriptor from before a crash, matched to a resumed row by its conversation id,
+    /// says nothing about where Claude runs now — and its cwd may be a worktree that is gone.
+    @Test func aDeadDescriptorDoesNotSteerTheStrip() throws {
+        var (state, id) = Self.stateWithSession(cwd: "/tmp/main")
+        let pane = try #require(state.sessions[id]?.focusedTerminalID)
+        state.setPaneCwd(pane, path: "/tmp/main")
+        state.applyDescriptor(
+            ClaudeSessionInfo(
+                configDir: "/home/.claude", pid: 99, sessionId: "s",
+                cwd: "/tmp/main/.claude/worktrees/gone"),
+            alive: false, to: id)
+        #expect(GitIntegration.trackingTargets(in: state)[id] == "/tmp/main")
+    }
+
     // MARK: Ports
 
     @Test func aScanBecomesPortsAndOwnerTooltips() {
