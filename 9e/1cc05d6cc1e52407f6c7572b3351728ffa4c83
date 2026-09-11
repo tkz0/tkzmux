@@ -1,0 +1,77 @@
+Sources/TkzApp/Palette/CommandPaletteController.swift
+  s_00bc2594e07d3b::t_327cc089a39aa7 18-24,32,34-35,37-43,46-69,75-97,101-111,117-119,127-138,143,155,157,162,164-179,183-216,221,224-287,290-312,317-321,348-355,359-371,374,379-386,391-392,398,409-499,577-588,591,593,595-604,609-616,629-630,632-633,713-723,735-737,742-755
+Sources/ClaudeBridge/TranscriptReader.swift
+  s_bf70e063c9ef85::t_088986dcbaffdb 68,189,199,214,220,228
+Sources/ClaudeBridge/TranscriptSearch.swift
+  s_bf70e063c9ef85::t_1d22e4cad17eda 1-320
+Sources/GitStatus/GitStatusParsing.swift
+  s_bf70e063c9ef85::t_6841ca1ddba550 16-28,53-60,71-72,83,115,118,123,131-167
+Sources/GitStatus/GitStatusService.swift
+  s_bf70e063c9ef85::t_4eef910711e852 95-98,283-289,503,513-516,531-537,564,576
+Sources/TkzApp/Palette/FuzzyMatch.swift
+  s_bf70e063c9ef85::t_f5b76b45b08f8f 114-170
+Sources/TkzApp/Palette/PaletteDataSource.swift
+  s_bf70e063c9ef85::t_cc2d118345dc13 18-35,139-141,155,184-187
+Sources/TkzApp/Palette/SearchRowViews.swift
+  s_bf70e063c9ef85::t_1426b0495d7911 1-376
+Sources/TkzApp/Palette/SearchRows.swift
+  s_bf70e063c9ef85::t_d65aa8b0c257da 1-124
+Sources/TkzApp/Palette/SearchScope.swift
+  s_bf70e063c9ef85::t_e0b4f08580f13f 1-62
+Sources/TkzApp/Prompt/PromptCardController.swift
+  s_bf70e063c9ef85::t_31fdd340d9514d 59-60,84-92,118,150
+Sources/TkzApp/Prompt/PromptCardView.swift
+  s_bf70e063c9ef85::t_f156618751c206 31-43,46,53,109-115,131-136,326-337,340
+Sources/TkzApp/Search/TranscriptSearchService.swift
+  s_bf70e063c9ef85::t_40e6c7fd8b0a08 1-174
+Sources/TkzCore/Theme.swift
+  s_bf70e063c9ef85::t_e755008a4aae2a 53-58,210-211,269-270,332-333,395-396,458-459
+Tests/ClaudeBridgeTests/TranscriptSearchTests.swift
+  s_bf70e063c9ef85::t_391852b887f359 1-273
+Tests/GitStatusTests/ChangedPathsTests.swift
+  s_bf70e063c9ef85::t_d8b2f27b0de36c 1-75
+Tests/TkzAppTests/ChangedFileSearchTests.swift
+  s_bf70e063c9ef85::t_5ac1ec3ae98374 1-113
+Tests/TkzAppTests/FuzzyMatchTests.swift
+  s_bf70e063c9ef85::t_88118d31ae8aa7 108-173
+Tests/TkzAppTests/PaletteTests.swift
+  s_bf70e063c9ef85::t_22def94e170010 175
+Tests/TkzAppTests/PromptCardTests.swift
+  s_bf70e063c9ef85::t_05f36b3f697407 252-306
+Tests/TkzAppTests/SearchOverlayTests.swift
+  s_bf70e063c9ef85::t_25c2b9da7255a0 1-346
+Tests/TkzAppTests/TranscriptSearchServiceTests.swift
+  s_bf70e063c9ef85::t_a207e03f2d1d95 1-206
+Sources/TkzApp/MainWindowController.swift
+  s_bf70e063c9ef85::t_a9fed71cf80d59 31,315-320,906-908,911-977,981-1060,1063-1068,1088-1100,1491-1492,2221-2270
+Sources/TkzApp/Toolbar/MainToolbarController.swift
+  s_bf70e063c9ef85::t_52db69b9aaa982 74-88,293,296-303,309-350
+Tests/TkzAppTests/ToolbarSearchTests.swift
+  s_bf70e063c9ef85::t_96f6eee37373f2 1-286
+docs/shortcuts.md
+  s_bf70e063c9ef85::t_1ba76252544b31 16,43-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9e1cc05d6cc1e52407f6c7572b3351728ffa4c83",
+  "prompts": {},
+  "sessions": {
+    "s_00bc2594e07d3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cb9df81c-0ab1-4061-ba48-331c1d6f1033",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_bf70e063c9ef85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "75d264fc-64de-4f38-9918-15d44b032195",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
