@@ -4,6 +4,8 @@ import Foundation
 import Synchronization
 import Testing
 
+import TkzCore
+
 @testable import TkzTerminalCore
 
 private func tempDir(_ name: String) throws -> URL {
@@ -13,10 +15,12 @@ private func tempDir(_ name: String) throws -> URL {
     return url
 }
 
-/// Everything a session inherits in these tests is explicit — nothing depends on the real `~`.
-private func hostEnvironment(home: String) -> [String: String] {
+/// Everything a session inherits in these tests is explicit — nothing depends on the real `~`,
+/// and `SHELL` is zsh whatever the machine's login shell is (TKZ-33).
+private func hostEnvironment(home: String, shell: String = "/bin/zsh") -> [String: String] {
     [
         "HOME": home,
+        "SHELL": shell,
         "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
         "TERM": "xterm-256color",
         "TERM_PROGRAM": "Apple_Terminal",
@@ -152,6 +156,76 @@ private func hostEnvironment(home: String) -> [String: String] {
         #expect(env["TKZMUX_ZDOTDIR"] == env["ZDOTDIR"])
         #expect(env["TKZMUX_USER_ZDOTDIR"] == home.path)
         #expect(env["TKZMUX_SOCKET"] == support.appending(path: "tkzmux.sock").path)
+    }
+
+    /// TKZ-33: the ZDOTDIR trio is zsh's mechanism. Set for a bash or fish session, a nested
+    /// `zsh` started from it would read tkzmux's wrappers. Everything else in the contract stays.
+    @Test func bashAndFishGetNoZdotdir() throws {
+        let home = try tempDir("nozdotdir")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let support = home.appending(path: "support")
+        for shellPath in ["/bin/bash", "/opt/homebrew/bin/fish"] {
+            let env = TerminalEnvironment.make(
+                sessionID: "S1", tkzmuxDir: support,
+                baseEnvironment: hostEnvironment(home: home.path, shell: shellPath), home: home.path,
+                shell: LoginShell(path: shellPath)
+            )
+            #expect(env["ZDOTDIR"] == nil, "\(shellPath)")
+            #expect(env["TKZMUX_ZDOTDIR"] == nil, "\(shellPath)")
+            #expect(env["TKZMUX_USER_ZDOTDIR"] == nil, "\(shellPath)")
+            #expect(env["TKZMUX_BIN"] == support.appending(path: "bin").path)
+            #expect(env["TKZMUX_SESSION_ID"] == "S1")
+            #expect(env["TERM_PROGRAM"] == "ghostty")
+            // The wrapper does the prepend, after the user's files.
+            #expect(env["PATH"] == hostEnvironment(home: home.path)["PATH"])
+        }
+    }
+
+    /// A shell tkzmux has no wrapper for gets the best available: `TKZMUX_BIN` first on PATH from
+    /// the pty, exactly once, and a plain login argv.
+    @Test func unsupportedShellsGetThePathPrependHere() throws {
+        let home = try tempDir("tcsh")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let support = home.appending(path: "support")
+        let bin = support.appending(path: "bin").path
+        var base = hostEnvironment(home: home.path, shell: "/bin/tcsh")
+        base["PATH"] = "/usr/bin:\(bin):/bin"
+        let spawn = TerminalEnvironment.loginShellSpawn(
+            sessionID: "S1", cwd: home.path, size: TerminalSize(rows: 24, cols: 80),
+            tkzmuxDir: support, baseEnvironment: base, home: home.path,
+            shell: LoginShell(path: "/bin/tcsh"), wrapperPresent: false
+        )
+        #expect(spawn.executablePath == "/bin/tcsh")
+        #expect(spawn.argv == ["-tcsh"])
+        #expect(spawn.environment["PATH"] == "\(bin):/usr/bin:/bin")
+        #expect(spawn.environment["ZDOTDIR"] == nil)
+    }
+
+    /// The spawn follows `SHELL` when no shell is passed, and the argv follows whether the
+    /// wrapper is on disk: a `bash --rcfile <missing file>` would print an error into the
+    /// user's terminal, so without the wrapper bash is a plain login shell.
+    @Test func spawnFollowsShellAndWrapperPresence() throws {
+        let home = try tempDir("bashspawn")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let support = home.appending(path: "support")
+        let base = hostEnvironment(home: home.path, shell: "/bin/bash")
+
+        let plain = TerminalEnvironment.loginShellSpawn(
+            sessionID: "S1", cwd: home.path, size: TerminalSize(rows: 24, cols: 80),
+            tkzmuxDir: support, baseEnvironment: base, home: home.path
+        )
+        #expect(plain.executablePath == "/bin/bash")
+        #expect(plain.argv == ["-bash", "-l"])
+
+        let wrapper = support.appending(path: "bash/tkzmux.bashrc")
+        try FileManager.default.createDirectory(
+            at: wrapper.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "# wrapper\n".write(to: wrapper, atomically: true, encoding: .utf8)
+        let integrated = TerminalEnvironment.loginShellSpawn(
+            sessionID: "S1", cwd: home.path, size: TerminalSize(rows: 24, cols: 80),
+            tkzmuxDir: support, baseEnvironment: base, home: home.path
+        )
+        #expect(integrated.argv == ["bash", "--rcfile", wrapper.path])
     }
 
     @Test func claudeConfigDirOnlyForNonPrimaryAccounts() throws {

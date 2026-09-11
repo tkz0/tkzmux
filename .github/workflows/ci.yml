@@ -33,6 +33,12 @@ jobs:
       - name: swift build
         run: swift build
 
+      # The shell-integration harness (TKZ-33) runs every supported login shell -- zsh and bash
+      # ship with macOS, fish does not -- and records an issue rather than silently shrinking the
+      # run when fish is missing. Bottled, so this is seconds.
+      - name: Install fish for the shell-integration harness
+        run: brew install fish
+
       # Swift Testing. No GUI session on a runner, so anything needing a window must be marked
       # .disabled/.enabled(if:) in the test target rather than skipped here.
       #

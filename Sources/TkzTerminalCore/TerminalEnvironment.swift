@@ -1,19 +1,18 @@
-// TerminalEnvironment — the environment contract every tkzmux session runs under.
-// See docs/design.md → Terminal engine → Pty. M1.2 (TKZ-8).
+// TerminalEnvironment — the environment contract every tkzmux session runs under. M1.2 (TKZ-8);
+// the user's own login shell instead of a fixed `/bin/zsh` since TKZ-33 (see `LoginShell`).
 import Foundation
+import TkzCore
 
 /// Builds the environment (and the shell command line) for a session's pty.
 ///
 /// We identify as Ghostty on purpose: we literally run Ghostty's VT, and Claude Code gates
 /// Shift+Enter (kitty keyboard) and synchronized output on a `TERM_PROGRAM` allow-list.
+///
+/// The shell is the user's login shell (`LoginShell.detect`), spawned with login semantics from a
+/// dash-prefixed argv[0] rather than `/usr/bin/login`, so the environment we hand over survives.
 public enum TerminalEnvironment {
     /// Reported as `TERM_PROGRAM_VERSION`. Keep in sync with `CFBundleShortVersionString`.
     public static let version = "0.1.0"
-
-    /// The shell we spawn. Login semantics come from `-l` + an argv[0] starting with `-`, not from
-    /// `/usr/bin/login`, so the environment we hand over survives.
-    public static let shellPath = "/bin/zsh"
-    public static let shellArgv = ["-zsh", "-l"]
 
     /// Variables the host terminal may have set that must not leak into the session: the session id
     /// belongs to whoever spawned *us*, and `TERMINFO_DIRS` could point ncurses at a different
@@ -74,18 +73,24 @@ public enum TerminalEnvironment {
     ///   - home: the user's home directory (`TKZMUX_USER_ZDOTDIR`). Defaults to `HOME` from
     ///     `baseEnvironment`, then to `NSHomeDirectory()`.
     ///   - terminfoDirectory: overrides the bundled terminfo database (tests, or a bundle-less build).
+    ///   - shell: the shell the environment is for. Defaults to the login shell `baseEnvironment`
+    ///     names (`LoginShell.detect`). Only zsh gets the `ZDOTDIR` trio: set for a bash or fish
+    ///     session, a nested `zsh` started from it would pick up tkzmux's wrappers.
     ///
-    /// **No PATH prepend on purpose**: this machine's `.zshrc` ends by sourcing `~/.local/bin/env`,
-    /// which prepends to PATH, so anything we set here loses. The `ZDOTDIR` wrapper (M3.3) puts
-    /// `TKZMUX_BIN` on PATH *after* the user's rc files have run.
+    /// **No PATH prepend on purpose** for the shells with a wrapper: this machine's `.zshrc` ends
+    /// by sourcing `~/.local/bin/env`, which prepends to PATH, so anything we set here loses. The
+    /// wrapper puts `TKZMUX_BIN` on PATH *after* the user's rc files have run. A shell tkzmux has
+    /// no wrapper for (tcsh, dash…) gets the prepend here, as the best that can be done.
     public static func make(
         sessionID: String,
         accountConfigDir: String? = nil,
         tkzmuxDir: URL,
         baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         home: String? = nil,
-        terminfoDirectory: URL? = TerminalEnvironment.bundledTerminfoDirectory
+        terminfoDirectory: URL? = TerminalEnvironment.bundledTerminfoDirectory,
+        shell: LoginShell? = nil
     ) -> [String: String] {
+        let shell = shell ?? LoginShell.detect(environment: baseEnvironment)
         var env = baseEnvironment
         for key in strippedKeys { env.removeValue(forKey: key) }
         // `filter` first: removing while iterating `env.keys` would mutate the collection underneath.
@@ -105,11 +110,21 @@ public enum TerminalEnvironment {
         }
         env["LANG"] = baseEnvironment["LANG"] ?? "en_US.UTF-8"
 
-        let zdotdir = tkzmuxDir.appending(path: "zsh", directoryHint: .isDirectory).path
-        env["ZDOTDIR"] = zdotdir
-        env["TKZMUX_ZDOTDIR"] = zdotdir
-        env["TKZMUX_USER_ZDOTDIR"] = userHome
-        env["TKZMUX_BIN"] = tkzmuxDir.appending(path: "bin", directoryHint: .isDirectory).path
+        let bin = tkzmuxDir.appending(path: "bin", directoryHint: .isDirectory).path
+        switch shell.family {
+        case .zsh:
+            let zdotdir = tkzmuxDir.appending(path: "zsh", directoryHint: .isDirectory).path
+            env["ZDOTDIR"] = zdotdir
+            env["TKZMUX_ZDOTDIR"] = zdotdir
+            env["TKZMUX_USER_ZDOTDIR"] = userHome
+        case .bash, .fish:
+            break
+        case .other:
+            let rest = (env["PATH"] ?? "").split(separator: ":", omittingEmptySubsequences: false)
+                .map(String.init).filter { $0 != bin }
+            env["PATH"] = ([bin] + rest).joined(separator: ":")
+        }
+        env["TKZMUX_BIN"] = bin
         env["TKZMUX_SOCKET"] = tkzmuxDir.appending(path: "tkzmux.sock", directoryHint: .notDirectory).path
         env["TKZMUX_SESSION_ID"] = sessionID
 
@@ -121,7 +136,13 @@ public enum TerminalEnvironment {
         return env
     }
 
-    /// A ready-to-use login-zsh spawn for a session.
+    /// A ready-to-use login-shell spawn for a session.
+    ///
+    /// - Parameters:
+    ///   - shell: defaults to the login shell `baseEnvironment` names (`LoginShell.detect`).
+    ///   - wrapperPresent: whether the shell's entry wrapper exists under `tkzmuxDir`; decides
+    ///     between the integrated and the plain login argv for bash and fish (see
+    ///     `LoginShell.argv`). Defaults to looking at the disk.
     public static func loginShellSpawn(
         sessionID: String,
         cwd: String,
@@ -130,18 +151,25 @@ public enum TerminalEnvironment {
         tkzmuxDir: URL,
         baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         home: String? = nil,
-        terminfoDirectory: URL? = TerminalEnvironment.bundledTerminfoDirectory
+        terminfoDirectory: URL? = TerminalEnvironment.bundledTerminfoDirectory,
+        shell: LoginShell? = nil,
+        wrapperPresent: Bool? = nil
     ) -> PtySpawn {
-        PtySpawn(
-            executablePath: shellPath,
-            argv: shellArgv,
+        let shell = shell ?? LoginShell.detect(environment: baseEnvironment)
+        let wrapperPresent = wrapperPresent ?? shell.entryWrapper(in: tkzmuxDir).map {
+            FileManager.default.fileExists(atPath: $0.path)
+        } ?? false
+        return PtySpawn(
+            executablePath: shell.path,
+            argv: shell.argv(tkzmuxDir: tkzmuxDir, wrapperPresent: wrapperPresent),
             environment: make(
                 sessionID: sessionID,
                 accountConfigDir: accountConfigDir,
                 tkzmuxDir: tkzmuxDir,
                 baseEnvironment: baseEnvironment,
                 home: home,
-                terminfoDirectory: terminfoDirectory
+                terminfoDirectory: terminfoDirectory,
+                shell: shell
             ),
             cwd: cwd,
             size: size

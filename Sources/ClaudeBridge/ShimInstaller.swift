@@ -1,36 +1,39 @@
-// ShimInstaller — writes the `claude` shim and the ZDOTDIR wrappers into tkzmux's application
-// support directory. See docs/design.md -> Claude integration -> Shim install, Shim, and
-// Sources/ClaudeBridge/Resources/{shim,zsh}. Never touches ~/.claude/settings.json.
+// ShimInstaller — writes the `claude` shim and the shell wrappers into tkzmux's application
+// support directory. See Sources/ClaudeBridge/Resources/{shim,zsh,bash,fish} and `LoginShell`
+// (TkzCore) for the layout both this and the pty agree on. Never touches ~/.claude/settings.json.
 //
 // Layout written under `directory` (normally
 // `~/Library/Application Support/tkzmux`):
-//     bin/claude          0755  the shim, from Resources/shim/claude.sh
-//     bin/tkzmux-hook     0755  copied from `hookBinary`
-//     zsh/.zshenv         0644
-//     zsh/.zprofile       0644
-//     zsh/.zshrc          0644
-//     zsh/.zlogin         0644
-//     VERSION             0644  content hash; see `version(resources:hookBinary:)`
+//     bin/claude              0755  the shim, from Resources/shim/claude.sh
+//     bin/tkzmux-hook         0755  copied from `hookBinary`
+//     zsh/.zshenv             0644  the ZDOTDIR wrappers (M3.3)
+//     zsh/.zprofile           0644
+//     zsh/.zshrc              0644
+//     zsh/.zlogin             0644
+//     bash/tkzmux.bashrc      0644  `bash --rcfile` (TKZ-33)
+//     fish/tkzmux.fish        0644  `fish -C 'source …'` (TKZ-33)
+//     VERSION                 0644  content hash; see `version(resources:hookBinary:)`
 //
 // `zsh/` may already exist and be empty: `TerminalViewHost` creates it at startup so a login zsh
 // spawned before the installer runs still finds *a* ZDOTDIR (see TerminalHost.swift).
 import Foundation
 import CryptoKit
+import TkzCore
 
 public enum ShimInstallerError: Error, Equatable, Sendable {
     case resourceMissing(String)
     case writeFailed(path: String, errno: Int32)
 }
 
-/// The two pieces of content the installer writes: the shim script and the four zsh wrappers,
-/// keyed by their un-dotted name (`"zshenv"` -> content of `.zshenv`).
+/// The content the installer writes: the shim script and every shell wrapper, keyed by the
+/// path it is installed at relative to the tkzmux directory (`"zsh/.zshrc"`, `"bash/tkzmux.bashrc"`).
 public struct ShimResources: Sendable {
     public var shimScript: String
-    public var zshFiles: [String: String]
+    public var wrappers: [String: String]
 
-    public init(shimScript: String, zshFiles: [String: String]) {
+    public init(shimScript: String, wrappers: [String: String]) {
         self.shimScript = shimScript
-        self.zshFiles = zshFiles
+        self.wrappers = wrappers
     }
 
     /// Loads the shim and wrapper contents from this module's resource bundle. Works both under
@@ -44,19 +47,38 @@ public struct ShimResources: Sendable {
         }
         let shimScript = try String(contentsOf: shimURL, encoding: .utf8)
 
-        var zshFiles: [String: String] = [:]
-        for name in Self.zshFileNames {
-            guard let url = bundle.url(forResource: name, withExtension: nil, subdirectory: "zsh")
+        var wrappers: [String: String] = [:]
+        for file in LoginShell.allWrapperFiles {
+            guard let url = bundle.url(
+                forResource: file.resourceName, withExtension: nil,
+                subdirectory: file.resourceDirectory)
             else {
-                throw ShimInstallerError.resourceMissing("zsh/\(name)")
+                throw ShimInstallerError.resourceMissing(
+                    "\(file.resourceDirectory)/\(file.resourceName)")
             }
-            zshFiles[name] = try String(contentsOf: url, encoding: .utf8)
+            wrappers[file.installedPath] = try String(contentsOf: url, encoding: .utf8)
         }
-        return ShimResources(shimScript: shimScript, zshFiles: zshFiles)
+        return ShimResources(shimScript: shimScript, wrappers: wrappers)
     }
 
-    /// Un-dotted resource names, in the order the wrappers are read by an interactive login shell.
-    public static let zshFileNames = ["zshenv", "zprofile", "zshrc", "zlogin"]
+    /// Un-dotted zsh resource names, in the order an interactive login zsh reads the wrappers.
+    public static let zshFileNames: [String] =
+        (LoginShell.wrapperFiles[.zsh] ?? []).map(\.resourceName)
+
+    /// The zsh wrappers keyed by their un-dotted name (`"zshenv"` -> content of `.zshenv`).
+    public var zshFiles: [String: String] {
+        var files: [String: String] = [:]
+        for file in LoginShell.wrapperFiles[.zsh] ?? [] {
+            if let content = wrappers[file.installedPath] { files[file.resourceName] = content }
+        }
+        return files
+    }
+
+    /// The wrapper content for one shell family's entry file (`bash/tkzmux.bashrc`, …), if any.
+    public func wrapper(for family: LoginShell.Family) -> String? {
+        guard let file = LoginShell.wrapperFiles[family]?.first else { return nil }
+        return wrappers[file.installedPath]
+    }
 }
 
 public enum ShimInstallOutcome: Sendable, Equatable {
@@ -84,7 +106,7 @@ public struct ShimInstaller: Sendable {
             .appendingPathComponent("tkzmux-hook")
     }
 
-    /// Content-derived install version: a SHA-256 over the shim script, every zsh wrapper, and
+    /// Content-derived install version: a SHA-256 over the shim script, every shell wrapper, and
     /// the hook binary's size + modification time. Bump-free — any edit to a resource or a
     /// rebuilt hook binary changes this automatically, so `ensureInstalled()` stays idempotent
     /// without a hand-maintained version constant.
@@ -93,9 +115,9 @@ public struct ShimInstaller: Sendable {
     ) -> String {
         var hasher = SHA256()
         hasher.update(data: Data(resources.shimScript.utf8))
-        for name in ShimResources.zshFileNames {
-            hasher.update(data: Data(name.utf8))
-            hasher.update(data: Data((resources.zshFiles[name] ?? "").utf8))
+        for file in LoginShell.allWrapperFiles {
+            hasher.update(data: Data(file.installedPath.utf8))
+            hasher.update(data: Data((resources.wrappers[file.installedPath] ?? "").utf8))
         }
         if let attributes = try? fileManager.attributesOfItem(atPath: hookBinary.path) {
             let size = (attributes[.size] as? UInt64) ?? 0
@@ -106,14 +128,13 @@ public struct ShimInstaller: Sendable {
     }
 
     private var binDirectory: URL { directory.appendingPathComponent("bin", isDirectory: true) }
-    private var zshDirectory: URL { directory.appendingPathComponent("zsh", isDirectory: true) }
+    private var wrapperDirectories: [URL] {
+        LoginShell.wrapperDirectories.map { directory.appendingPathComponent($0, isDirectory: true) }
+    }
     private var versionURL: URL { directory.appendingPathComponent("VERSION", isDirectory: false) }
     private var claudeURL: URL { binDirectory.appendingPathComponent("claude", isDirectory: false) }
     private var hookDestinationURL: URL {
         binDirectory.appendingPathComponent("tkzmux-hook", isDirectory: false)
-    }
-    private func zshDestinationURL(_ name: String) -> URL {
-        zshDirectory.appendingPathComponent(".\(name)", isDirectory: false)
     }
 
     public var isInstalled: Bool {
@@ -121,8 +142,8 @@ public struct ShimInstaller: Sendable {
         guard fm.fileExists(atPath: claudeURL.path), fm.fileExists(atPath: hookDestinationURL.path),
               fm.fileExists(atPath: versionURL.path)
         else { return false }
-        for name in ShimResources.zshFileNames where !fm.fileExists(atPath: zshDestinationURL(name).path)
-        {
+        for file in LoginShell.allWrapperFiles
+        where !fm.fileExists(atPath: file.url(in: directory).path) {
             return false
         }
         return true
@@ -133,7 +154,9 @@ public struct ShimInstaller: Sendable {
     @discardableResult
     public func ensureInstalled(fileManager: FileManager = .default) throws -> ShimInstallOutcome {
         try fileManager.createDirectory(at: binDirectory, withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: zshDirectory, withIntermediateDirectories: true)
+        for wrapperDirectory in wrapperDirectories {
+            try fileManager.createDirectory(at: wrapperDirectory, withIntermediateDirectories: true)
+        }
 
         let newVersion = Self.version(
             resources: resources, hookBinary: hookBinary, fileManager: fileManager)
@@ -149,10 +172,10 @@ public struct ShimInstaller: Sendable {
             fileManager: fileManager)
         try Self.copyAtomically(
             from: hookBinary, to: hookDestinationURL, permissions: 0o755, fileManager: fileManager)
-        for name in ShimResources.zshFileNames {
+        for file in LoginShell.allWrapperFiles {
             try Self.writeAtomically(
-                Data((resources.zshFiles[name] ?? "").utf8), to: zshDestinationURL(name),
-                permissions: 0o644, fileManager: fileManager)
+                Data((resources.wrappers[file.installedPath] ?? "").utf8),
+                to: file.url(in: directory), permissions: 0o644, fileManager: fileManager)
         }
         try Self.writeAtomically(
             Data(newVersion.utf8), to: versionURL, permissions: 0o644, fileManager: fileManager)
@@ -160,10 +183,11 @@ public struct ShimInstaller: Sendable {
         return wasInstalled ? .updated : .installed
     }
 
-    /// Deletes only what the installer itself wrote: `bin/`, `zsh/`, `VERSION`. Never touches
-    /// `sessions/`, `state.json`/`state.json.bak`, or `tkzmux.sock`.
+    /// Deletes only what the installer itself wrote: `bin/`, the wrapper directories (`zsh/`,
+    /// `bash/`, `fish/`), `VERSION`. Never touches `sessions/`, `state.json`/`state.json.bak`, or
+    /// `tkzmux.sock`.
     public func remove(fileManager: FileManager = .default) throws {
-        for url in [binDirectory, zshDirectory, versionURL] {
+        for url in [binDirectory] + wrapperDirectories + [versionURL] {
             if fileManager.fileExists(atPath: url.path) {
                 try fileManager.removeItem(at: url)
             }

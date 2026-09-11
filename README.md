@@ -24,7 +24,8 @@ driven; parts are stubs (see *Known gaps*). Use it if it helps you, fork it if i
 - macOS 26 (Tahoe) or later — `LSMinimumSystemVersion` is 26.0 and the code targets it.
 - Apple Silicon. The vendored libghostty-vt xcframework is **arm64 only**; there is no Intel build.
 - [Claude Code](https://claude.com/claude-code) installed and working in your shell.
-- `zsh` as your login shell, for the shell integration (see *Known gaps*).
+- `zsh`, `bash` or `fish` as your login shell, for the shell integration (see *Known gaps* for
+  what differs between them).
 - Optional: the [GitHub CLI](https://cli.github.com) (`gh`), authenticated, for the PR badge. Without
   it everything else works and the badge stays empty.
 
@@ -169,8 +170,8 @@ config dir — is read, never written:
   (`Sources/Persistence/Snapshots.swift`). **These contain your terminal's screen and scrollback
   verbatim, unencrypted.** Anything printed in a tkzmux terminal — including whatever Claude Code
   prints — can end up in one of these files. They are deleted with the session.
-- `bin/claude`, `bin/tkzmux-hook`, `zsh/.{zshenv,zprofile,zshrc,zlogin}`, `VERSION` — the shell
-  integration (`Sources/ClaudeBridge/ShimInstaller.swift`).
+- `bin/claude`, `bin/tkzmux-hook`, `zsh/.{zshenv,zprofile,zshrc,zlogin}`, `bash/tkzmux.bashrc`,
+  `fish/tkzmux.fish`, `VERSION` — the shell integration (`Sources/ClaudeBridge/ShimInstaller.swift`).
 - `statusline/usage-<account>.json`, `statusline/context-<session id>.json` — what the status line
   command captures: quota percentages and reset times, and per session the context percentage,
   model name, session name, working directory, repo and open PR
@@ -178,19 +179,22 @@ config dir — is read, never written:
 - `statusline/previous-<account>.json` — the `statusLine` you had before, kept so it can be restored.
 - `tkzmux.sock` — the local hook socket.
 
-**Shell integration and hooks.** Terminals tkzmux opens run with `ZDOTDIR` pointed at its own `zsh/`
-directory. Those wrappers source your real rc files and then put tkzmux's `bin/` first on `PATH`, so
-inside a tkzmux terminal `claude` resolves to a small bash shim
-(`Sources/ClaudeBridge/Resources/shim/claude.sh`). The shim `exec`s the real `claude` with a
+**Shell integration and hooks.** Terminals tkzmux opens run your login shell (`$SHELL`, else the
+account database) with a wrapper that runs *after* your own startup files and puts tkzmux's `bin/`
+first on `PATH`, so inside a tkzmux terminal `claude` resolves to a small bash shim
+(`Sources/ClaudeBridge/Resources/shim/claude.sh`). For zsh the wrapper is a set of `ZDOTDIR` files
+that source your real rc files (`Sources/ClaudeBridge/Resources/zsh/`); for bash it is an `--rcfile`
+that sources `/etc/profile` and your `.bash_profile` itself (`Resources/bash/tkzmux.bashrc`); for
+fish it is an `--init-command` that runs after `config.fish` (`Resources/fish/tkzmux.fish`). None
+of them touches a file in your home directory. The shim `exec`s the real `claude` with a
 `--settings` document that adds tkzmux's own hooks (SessionStart, SessionEnd, UserPromptSubmit, Stop,
 and a Notification matcher) pointing at `tkzmux-hook`. It **never edits `~/.claude/settings.json`**,
 and it passes straight through for `-p`, `--bare`, subcommands and anything else it does not
-recognise. The wrappers also point `HISTFILE` back at your own `~/.zsh_history` so tkzmux shells
-share your history rather than starting a private one
-(`Sources/ClaudeBridge/Resources/zsh/zshrc`). The command a session is opened to run (`claude`,
-`claude -w`, `claude --resume`) is run at the shell's first prompt, after hooks such as direnv's have
-exported their environment, so Claude sees your `.envrc`. *Remove Shell Integration* in the app menu deletes
-`bin/` and `zsh/` again.
+recognise. The zsh wrappers also point `HISTFILE` back at your own `~/.zsh_history` so tkzmux shells
+share your history rather than starting a private one. The command a session is opened to run
+(`claude`, `claude -w`, `claude --resume`) is run at the shell's first prompt, after hooks such as
+direnv's have exported their environment, so Claude sees your `.envrc`. *Remove Shell Integration*
+in the app menu deletes `bin/` and the wrapper directories again.
 
 **The status line — the one file tkzmux writes outside its own directory.** Claude Code hands rate
 limits and context usage to the `statusLine` command on stdin and writes them nowhere else, so the
@@ -242,9 +246,12 @@ signed.
   installed and authenticated, and only appears for repos whose origin is on GitHub — on any other
   host the lookup is skipped by design, and the badge stays empty. A merge made outside the
   session is noticed within five minutes.
-- **zsh only.** The shell integration is a set of `ZDOTDIR` wrappers; there is no bash or fish
-  equivalent, and in another shell tkzmux degrades to descriptor-only status with no hooks
-  (Linear TKZ-33).
+- **Shell integration differs a little per shell.** bash is started as an interactive non-login
+  shell with `--rcfile` (a login bash ignores it), so the wrapper reads `/etc/profile` and your
+  `.bash_profile` itself; `shopt -q login_shell` is false and `$0` is `bash`. In fish the command a
+  session was opened to run goes into the history with `history append`. Any other login shell
+  (tcsh, dash…) is spawned as a plain login shell with `bin/` prepended to `PATH` from the outside,
+  which your own startup files can undo.
 - **One Claude per session.** Splits and tabs share the row's Claude session: every pane of a
   row shows the same status dot, and the status bar's Context and model are the row's. The
   git facts — the status bar and the row's `⎇ branch` line — follow the *focused* pane's

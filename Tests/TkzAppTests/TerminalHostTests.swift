@@ -68,7 +68,10 @@ private func testEnvironment() -> [String: String] {
 }
 
 @MainActor
-private func makeHost(_ temp: TempDirectory, compressor: TerminalIdleCompressor? = nil) throws -> (
+private func makeHost(
+    _ temp: TempDirectory, compressor: TerminalIdleCompressor? = nil,
+    environment: [String: String] = testEnvironment()
+) throws -> (
     TerminalRenderContext, TerminalMetalView, TerminalViewHost
 )? {
     guard MTLCreateSystemDefaultDevice() != nil else { return nil }
@@ -82,7 +85,7 @@ private func makeHost(_ temp: TempDirectory, compressor: TerminalIdleCompressor?
         },
         snapshots: temp.snapshots,
         tkzmuxDirectory: temp.supportDirectory,
-        baseEnvironment: testEnvironment(),
+        baseEnvironment: environment,
         compressor: compressor)
     return (context, view, host)
 }
@@ -384,6 +387,26 @@ struct BackgroundSessionTests {
         #expect(isDirectory.boolValue)
         // Empty is the point: zsh must still find no rc files there until M3.3 ships them.
         #expect(try FileManager.default.contentsOfDirectory(atPath: zdotdir.path).isEmpty)
+    }
+
+    /// TKZ-33: the host spawns the login shell `SHELL` names, and a pane is titled after it until
+    /// the shell sets a title of its own. The wrapper is not on disk here, so bash is started as a
+    /// plain login shell rather than with `--rcfile <missing file>`.
+    @Test("the host follows the login shell in its environment")
+    func hostFollowsTheLoginShell() throws {
+        let temp = try TempDirectory()
+        var environment = testEnvironment()
+        environment["SHELL"] = "/bin/bash"
+        guard let (_, view, host) = try makeHost(temp, environment: environment) else { return }
+        defer { host.closeAll(signal: SIGKILL) }
+        #expect(host.shell == LoginShell(path: "/bin/bash"))
+
+        let id = TerminalID.generate()
+        _ = try host.open(
+            id, session: SessionID(uuid: id.uuid), cwd: NSHomeDirectory(), env: [:],
+            size: view.gridSizeForBounds())
+        #expect(host.title(of: id) == "bash")
+        #expect(host.isAlive(id))
     }
 
     /// End-to-end (2026-09-09): a session opened with a boot command really runs it in the spawned
