@@ -4,7 +4,7 @@
 // reads, so a draft or a prerelease is invisible to both — decoded in the forgiving
 // `PRLookup.parsePR` style and compared with `AppVersion.isNewer`. Nothing about the user or the
 // session leaves the machine: the request carries `Accept` and a `User-Agent` of
-// `tkzmux/<version>`, which README → *What it touches* states verbatim.
+// `tkzmux/<version>`, which docs/privacy.md states verbatim.
 //
 // The transport is injected (`fetch`), so the tests never open a socket, and the URL can be
 // overridden with `TKZMUX_UPDATE_URL` — a `file://` fixture works, because a non-HTTP response

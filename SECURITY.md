@@ -7,7 +7,8 @@ That said, reports are welcome. Open a GitHub issue describing the problem. If y
 details are dangerous to publish, open an issue saying only that you have a security report and
 asking for a private channel, and one will be arranged.
 
-What is in scope is anything that makes tkzmux leak or expose data it holds — see the README's
-*What it touches* section for what that is, in particular the unencrypted terminal snapshots under
-`~/Library/Application Support/tkzmux/sessions` and the local hook socket. Vulnerabilities in
-Claude Code itself belong to Anthropic, and vulnerabilities in libghostty-vt to the Ghostty project.
+What is in scope is anything that makes tkzmux leak or expose data it holds — see
+[docs/privacy.md](docs/privacy.md) for what that is, in particular the unencrypted terminal
+snapshots under `~/Library/Application Support/tkzmux/sessions` and the local hook socket.
+Vulnerabilities in Claude Code itself belong to Anthropic, and vulnerabilities in libghostty-vt to
+the Ghostty project.
