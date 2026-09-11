@@ -1,0 +1,80 @@
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 172
+Sources/TkzApp/SessionLauncher.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 107,122,183,270,310,488-489,496
+  s_a64a643f9fd9f5::t_745ee81f90d318 189
+Sources/TkzApp/Palette/PaletteItem.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 4,17
+Sources/Persistence/Migrations.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 8-10,36-37,67-91
+  s_a64a643f9fd9f5::t_3b3884ce12b692 92
+docs/shortcuts.md
+  s_a64a643f9fd9f5::t_c82e84660b0140 17
+Sources/TkzCore/Models.swift
+  s_a64a643f9fd9f5::t_4f1d1e8c4bf4d5 9,313-314,395,817
+Tests/ClaudeBridgeTests/ZshWrapperTests.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 266-267
+Tests/TkzCoreTests/ReducersTests.swift
+  s_a64a643f9fd9f5::t_68904f5cd4b88b 206
+Sources/TkzApp/Toolbar/MainToolbarController.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 138-139
+Sources/Persistence/PersistedState.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 93,96,111,136
+Sources/TkzApp/MainWindowController.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 1992
+Sources/TkzApp/CheatSheet/CheatSheetModel.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 40
+Tests/TkzAppTests/CheatSheetTests.swift
+  s_a64a643f9fd9f5::t_68904f5cd4b88b 172
+Tests/PersistenceTests/StateFileTests.swift
+  s_a64a643f9fd9f5::t_68904f5cd4b88b 77,140,219
+Tests/TkzAppTests/MainMenuTests.swift
+  s_a64a643f9fd9f5::t_68904f5cd4b88b 199
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_a64a643f9fd9f5::t_68904f5cd4b88b 81,86-87
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_a64a643f9fd9f5::t_68904f5cd4b88b 1151
+Sources/TkzApp/Palette/FuzzyMatch.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 2
+Sources/TkzApp/Palette/CommandPaletteController.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 4,66,145
+Sources/TkzApp/Palette/PaletteDataSource.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 11,32,162
+Tests/TkzCoreTests/AppStoreTests.swift
+  s_a64a643f9fd9f5::t_68904f5cd4b88b 222-223,234
+Sources/TkzCore/Reducers.swift
+  s_a64a643f9fd9f5::t_4f1d1e8c4bf4d5 389
+README.md
+  s_a64a643f9fd9f5::t_c82e84660b0140 164,190-191
+Sources/ClaudeBridge/Resources/zsh/zlogin
+  s_a64a643f9fd9f5::t_c82e84660b0140 21-22
+Sources/TkzCore/Panes.swift
+  s_a64a643f9fd9f5::t_4c45a491e2b190 379
+Tests/TkzCoreTests/ModelsTests.swift
+  s_a64a643f9fd9f5::t_68904f5cd4b88b 186
+Sources/TkzApp/Menus/NewSessionMenu.swift
+  s_a64a643f9fd9f5::t_c82e84660b0140 4-6,23-26,33,46-48,57,158,175
+Sources/TkzCore/AppStore.swift
+  s_a64a643f9fd9f5::t_4f1d1e8c4bf4d5 28,56-58,151
+docs/perf.md
+  s_a64a643f9fd9f5::t_c82e84660b0140 349,663
+Tests/PersistenceTests/MigrationsTests.swift
+  s_a64a643f9fd9f5::t_070bea38417bbc 103-105,207
+  s_a64a643f9fd9f5::t_68904f5cd4b88b 16,19,23-88,184-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "660cb6badd2592ca61b77e0be1936c1f9e274362",
+  "prompts": {},
+  "sessions": {
+    "s_a64a643f9fd9f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40d84cf2-2359-4c20-afe8-05c40da20016",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
