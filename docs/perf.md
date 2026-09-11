@@ -347,10 +347,12 @@ Three things about the corpus, because they make these numbers **not comparable*
    same bare-prompt size and `head` never ran. The delay is why this harness still works, and it is
    a real constraint on `TerminalHost.run(_:command:)` — but the app no longer depends on getting
    it right: a session's own command (`claude --resume …`, a preset) is handed to the shell as
-   `TKZMUX_BOOT_COMMAND` and run from the ZDOTDIR `.zlogin`, after every rc file and before the
-   interactive loop, so there is nothing left to flush. Waiting for the output to go quiet was the
-   previous approach and it lost the race often enough to leave sessions at a bare prompt with
-   Claude never started (2026-09-09).
+   `TKZMUX_BOOT_COMMAND`; the ZDOTDIR `.zlogin` takes it out of the environment and a one-shot
+   precmd hook runs it at the first prompt, so nothing goes through the tty and there is nothing
+   left to flush. Waiting for the output to go quiet was the previous approach and it lost the
+   race often enough to leave sessions at a bare prompt with Claude never started (2026-09-09).
+   The first-prompt timing is what lets direnv, mise and similar precmd hooks export their
+   environment before the command runs (2026-09-10).
 
 Also note the harness spawns thirty shells; as in section 1, **every number is the tkzmux host
 process only**. The thirty `zsh` children are not counted anywhere.
