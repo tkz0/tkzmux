@@ -5,8 +5,9 @@
 // migrated to v2. It also means a migration is written once, against the shape that was actually on
 // disk, rather than against whatever the models look like today.
 //
-// v2 (TKZ-36) gives every session a pane tree. The interesting half of this file is still the
-// *refusal*: see `MigrationError.futureVersion`.
+// v2 (TKZ-36) gives every session a pane tree; v3 drops the presets feature and the keys it
+// wrote. The interesting half of this file is still the *refusal*: see
+// `MigrationError.futureVersion`.
 
 import Foundation
 
@@ -32,7 +33,8 @@ public enum Migrations {
         // the chain composes however far back the file is.
         switch version {
         case 1: return try migrate(liftV1ToV2(object))
-        case 2: return object
+        case 2: return try migrate(liftV2ToV3(object))
+        case 3: return object
         default: throw MigrationError.notAStateFile
         }
     }
@@ -60,6 +62,32 @@ public enum Migrations {
         }
         object["schemaVersion"] = .number(2)
         return object
+    }
+
+    /// v2 → v3: the presets feature is gone, and so are the keys it wrote — the top-level
+    /// `presets` array and each session's `presetID`.
+    ///
+    /// A bump rather than a silent drop, for two reasons. `StateFile` carries every top-level key
+    /// it does not know as a *newer* build's and re-emits it on every save, so without the bump a
+    /// stale `presets` array would ride along in the file forever. And a v2 reader decodes
+    /// `presets` as a required key, so a file without it would fail typed decoding there; a v3
+    /// version number makes that build refuse the file cleanly instead.
+    ///
+    /// Idempotent — an object with neither key is passed through unchanged.
+    static func liftV2ToV3(_ object: [String: JSONValue]) -> [String: JSONValue] {
+        var object = object
+        object["presets"] = nil
+        if case .array(let sessions)? = object["sessions"] {
+            object["sessions"] = .array(sessions.map(dropPresetID))
+        }
+        object["schemaVersion"] = .number(3)
+        return object
+    }
+
+    private static func dropPresetID(_ value: JSONValue) -> JSONValue {
+        guard case .object(var fields) = value, fields["presetID"] != nil else { return value }
+        fields["presetID"] = nil
+        return .object(fields)
     }
 
     private static func liftSession(_ value: JSONValue) -> JSONValue {

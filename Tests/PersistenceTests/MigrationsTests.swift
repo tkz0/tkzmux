@@ -13,11 +13,77 @@ private func makeMinimalState() -> PersistedState {
     return PersistedState(state)
 }
 
-@Test func v2IsANoOp() throws {
+@Test func theCurrentVersionIsANoOp() throws {
     let object = try JSONDecoder().decode(
         [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
-    #expect(object["schemaVersion"]?.intValue == 2)
+    #expect(object["schemaVersion"]?.intValue == 3)
     #expect(try Migrations.migrate(object) == object)
+}
+
+/// The v2 → v3 lift: the presets feature's keys leave the file, top level and per session.
+@Test func aV2FileLosesItsPresetsAndPresetIDs() throws {
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
+    object["schemaVersion"] = .number(2)
+    object["presets"] = .array([
+        .object(["id": .string("A"), "name": .string("p"), "command": .string("claude")])
+    ])
+    object["sessions"] = .array(
+        try #require(object["sessions"]?.arrayValue).map { value in
+            guard case .object(var fields) = value else { return value }
+            fields["presetID"] = .string("A")
+            return .object(fields)
+        })
+
+    let lifted = try Migrations.migrate(object)
+    #expect(lifted["schemaVersion"]?.intValue == 3)
+    #expect(lifted["presets"] == nil)
+    let session = try #require(lifted["sessions"]?.arrayValue?.first)
+    guard case .object(let fields) = session else { Issue.record("not an object"); return }
+    #expect(fields["presetID"] == nil)
+    #expect(fields["tabs"] != nil, "nothing else about the session is touched")
+
+    // And a v2 file that never had presets is only renumbered.
+    var bare = object
+    bare["presets"] = nil
+    let expected = try Migrations.migrate(object)
+    #expect(try Migrations.migrate(bare) == expected)
+}
+
+@Test func theV2LiftIsIdempotent() throws {
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
+    object["schemaVersion"] = .number(2)
+    object["presets"] = .array([])
+    let once = Migrations.liftV2ToV3(object)
+    #expect(Migrations.liftV2ToV3(once) == once)
+}
+
+/// A v1 file chains through both lifts: it gains pane trees *and* loses its presets.
+@Test func aV1FileMigratesAllTheWayToTheCurrentVersion() throws {
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
+    object["schemaVersion"] = .number(1)
+    object["presets"] = .array([])
+    object["sessions"] = .array(
+        try #require(object["sessions"]?.arrayValue).map { value in
+            guard case .object(var fields) = value else { return value }
+            fields["tabs"] = nil
+            fields["activeTab"] = nil
+            fields["presetID"] = .string("A")
+            return .object(fields)
+        })
+
+    let lifted = try Migrations.migrate(object)
+    #expect(lifted["schemaVersion"]?.intValue == PersistedState.currentSchemaVersion)
+    #expect(lifted["presets"] == nil)
+    let session = try #require(lifted["sessions"]?.arrayValue?.first)
+    guard case .object(let fields) = session else { Issue.record("not an object"); return }
+    #expect(fields["presetID"] == nil)
+    #expect(fields["tabs"]?.arrayValue?.count == 1)
+    // Typed decoding accepts the result — the whole point of migrating before decoding.
+    let normalized = try StateFile.makeEncoder().encode(lifted)
+    _ = try JSONDecoder().decode(PersistedState.self, from: normalized)
 }
 
 /// The v1 → v2 lift, and the property the whole migration was shaped around: the migrated leaf's
@@ -34,7 +100,9 @@ private func makeMinimalState() -> PersistedState {
             return .object(fields)
         })
 
-    let lifted = try Migrations.migrate(object)
+    // The lift on its own, not `migrate`: this test is about v1 → v2, and `migrate` carries on
+    // to the current version (`aV1FileMigratesAllTheWayToTheCurrentVersion` covers the chain).
+    let lifted = Migrations.liftV1ToV2(object)
     #expect(lifted["schemaVersion"]?.intValue == 2)
 
     let session = try #require(lifted["sessions"]?.arrayValue?.first)
@@ -113,8 +181,9 @@ private func makeMinimalState() -> PersistedState {
 @Test func aFutureVersionIsRefusedRatherThanGuessedAt() throws {
     var object = try JSONDecoder().decode(
         [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
-    object["schemaVersion"] = .number(3)
-    #expect(throws: MigrationError.futureVersion(found: 3, supported: 2)) {
+    let future = Migrations.supportedSchemaVersion + 1
+    object["schemaVersion"] = .number(Double(future))
+    #expect(throws: MigrationError.futureVersion(found: future, supported: Migrations.supportedSchemaVersion)) {
         try Migrations.migrate(object)
     }
 }
@@ -135,7 +204,7 @@ private func makeMinimalState() -> PersistedState {
     try StateFile.makeEncoder().encode(object).write(to: file.url)
 
     let loaded = file.load()
-    #expect(loaded.source == .futureVersion(found: 9, supported: 2))
+    #expect(loaded.source == .futureVersion(found: 9, supported: Migrations.supportedSchemaVersion))
     #expect(loaded.document == nil)
     #expect(loaded.isWritable == false)
     #expect(loaded.quarantined.isEmpty)   // a newer build's file is not damaged; do not touch it
@@ -171,7 +240,6 @@ private func makeMinimalState() -> PersistedState {
     state.select(session.id)
     state.windowFrame = CGRect(x: 1, y: 2, width: 3, height: 4)
     state.sidebarWidth = 320
-    _ = state.addPreset(Preset(name: "p", command: "claude"))
     state.shortcuts = ["a": "cmd+a"]
     state.setAutoResumeOnLaunch(true)
 

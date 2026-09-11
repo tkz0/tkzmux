@@ -135,8 +135,8 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
     }
 
     /// The stub menu for this wave. M2.4 (TKZ-20) replaces it with the real, group-scoped menu
-    /// (*New worktree (claude -w)*, *In repo root (claude)*, *In another repo…*, *From preset…*,
-    /// Account submenu).
+    /// (*New worktree (claude -w)*, *In repo root (claude)*, *In another repo…*, Account
+    /// submenu).
     public static func stubNewSessionMenu() -> NSMenu {
         let menu = NSMenu()
         let placeholder = NSMenuItem(title: "New session\u{2026}", action: nil, keyEquivalent: "")

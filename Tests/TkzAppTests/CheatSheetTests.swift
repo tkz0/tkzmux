@@ -169,7 +169,7 @@ struct CheatSheetTests {
         let titles = CheatSheetModel.sections(from: Self.makeMenu()).flatMap(\.rows).map(\.title)
         #expect(!titles.contains("Next Session"))
         #expect(!titles.contains("Previous Session"))
-        #expect(!titles.contains("Manage Presets\u{2026}"))
+        #expect(!titles.contains("Resume All in Group"))
     }
 
     /// Reading the menu rather than a private table is what buys this: the AppKit standards are

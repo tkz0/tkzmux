@@ -203,7 +203,7 @@ import Testing
     }
 
     @Test func resumeDirectoryCandidatesPutTheStartDirectoryBeforeTheRepoRoot() {
-        // A fixed-path preset: Claude ran in `cwd`, which is the project `--resume` looks under,
+        // A session opened elsewhere: Claude ran in `cwd`, which is the project `--resume` looks under,
         // so it outranks the group's repo root. The launcher takes the first that exists (M5.2).
         let fixed = Session(groupID: .generate(), cwd: "/elsewhere", repoRoot: "/repo",
                             accountKey: "claude")
@@ -486,24 +486,6 @@ import Testing
         #expect(state.selection == ordered.last)  // wraps
     }
 
-    @Test func presetsAreAddedUpdatedAndRemoved() {
-        var state = AppState()
-        var preset = Preset(name: "wt", command: "claude -w")
-        state.addPreset(preset)
-        preset.name = "worktree"
-        state.addPreset(preset)
-        #expect(state.presets.count == 1)
-        #expect(state.preset(preset.id)?.name == "worktree")
-        state.removePreset(preset.id)
-        #expect(state.presets.isEmpty)
-    }
-
-    @Test func cwdModeResolvesTheLaunchDirectory() {
-        // `claude -w` must run from the main checkout, so worktree mode still launches at the root.
-        #expect(CwdMode.worktree(name: "x").directory(repoRoot: "/repo", fallback: "/tmp") == "/repo")
-        #expect(CwdMode.repoRoot.directory(repoRoot: nil, fallback: "/tmp") == "/tmp")
-        #expect(CwdMode.fixed(path: "/srv").directory(repoRoot: "/repo", fallback: "/tmp") == "/srv")
-    }
 }
 
 @MainActor
@@ -869,7 +851,6 @@ import Testing
         #expect(state.sessions.values.contains { $0.live?.git?.pr != nil })
         #expect(state.usage.count == 2)
         #expect(state.accounts.count == 2)
-        #expect(state.presets.count == 3)
         #expect(state.selection != nil)
     }
 

@@ -183,23 +183,15 @@ import Testing
         #expect(back.accountKey == "claude")
     }
 
-    @Test func groupsPresetsAndAccountsRoundTrip() throws {
+    @Test func groupsAndAccountsRoundTrip() throws {
         let group = Group(name: "Repo", repoRoot: "~/dev/repo", color: RGB(hex: 0x41c6a8, alpha: 0.5),
                           isCollapsed: true, order: 3, defaultAccountKey: "claude-work")
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
         #expect(try decoder.decode(Group.self, from: encoder.encode(group)) == group)
 
-        let preset = Preset(name: "wt", command: "claude -w", cwdMode: .worktree(name: "x"),
-                            accountKey: "claude", env: ["A": "1"])
-        #expect(try decoder.decode(Preset.self, from: encoder.encode(preset)) == preset)
-
         let account = Account(key: "claude", configDir: "~/.claude", label: "Claude", plan: "Max")
         #expect(try decoder.decode(Account.self, from: encoder.encode(account)) == account)
-
-        for mode in [CwdMode.repoRoot, .worktree(name: nil), .fixed(path: "/tmp")] {
-            #expect(try decoder.decode(CwdMode.self, from: encoder.encode(mode)) == mode)
-        }
     }
 
     @Test func statusAndWaitReasonHaveStableNames() {

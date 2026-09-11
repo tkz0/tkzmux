@@ -6,7 +6,7 @@
 // and `TkzCoreTests.noUIFrameworksInTkzCore` enforces that mechanically.
 //
 // Persistence note (M5 / `state.json` v1): the *durable* fields are the stored properties of
-// `Group`, `Session` (minus `live`), `Preset` and the selection/window fields of `AppState`.
+// `Group`, `Session` (minus `live`) and the selection/window fields of `AppState`.
 // Everything that describes a running process — `LiveSessionState` and everything it holds —
 // is rebuilt at launch, never written to disk, hence `Session.live` is excluded from `Codable`.
 
@@ -171,8 +171,6 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// The most recent Claude `sessionId`, used for `claude --resume <id>`. Rotates on
     /// `/clear`, resume and fork, so it is updated whenever a descriptor or SessionStart says so.
     public var claudeSessionId: String?
-    /// The preset this session was created from, if any.
-    public var presetID: UUID?
     public var createdAt: Date
     public var lastActiveAt: Date
 
@@ -196,7 +194,6 @@ public struct Session: Hashable, Sendable, Identifiable {
         isWorktree: Bool = false,
         accountKey: String,
         claudeSessionId: String? = nil,
-        presetID: UUID? = nil,
         createdAt: Date = Date(),
         lastActiveAt: Date = Date(),
         tabs: [Tab]? = nil,
@@ -213,7 +210,6 @@ public struct Session: Hashable, Sendable, Identifiable {
         self.isWorktree = isWorktree
         self.accountKey = accountKey
         self.claudeSessionId = claudeSessionId
-        self.presetID = presetID
         self.createdAt = createdAt
         self.lastActiveAt = lastActiveAt
         // A default argument cannot reference another parameter, so the single-leaf seed is built
@@ -314,8 +310,8 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// root, which is the "missing worktree → repoRoot" rule in design.md → *Session flows*.
     ///
     /// `cwd` outranks `repoRoot` deliberately: for a repo-root or worktree launch the two are the
-    /// same directory, and for a fixed-path preset `cwd` is where Claude actually ran, which is
-    /// the project `--resume` looks the conversation up under.
+    /// same directory, and for a session opened elsewhere `cwd` is where Claude actually ran,
+    /// which is the project `--resume` looks the conversation up under.
     public var resumeDirectoryCandidates: [String] {
         var out: [String] = []
         if isWorktree, let worktreePath, !worktreePath.isEmpty { out.append(worktreePath) }
@@ -396,7 +392,7 @@ extension Session: Codable {
     /// `live` is deliberately absent: process state is rebuilt at launch, never persisted.
     private enum CodingKeys: String, CodingKey {
         case id, groupID, order, title, cwd, repoRoot, worktreePath, isWorktree
-        case accountKey, claudeSessionId, presetID, createdAt, lastActiveAt
+        case accountKey, claudeSessionId, createdAt, lastActiveAt
         case tabs, activeTab
     }
 }
@@ -818,7 +814,7 @@ public struct Account: Hashable, Sendable, Codable, Identifiable {
 }
 
 extension Account {
-    /// The account a session falls back to when neither the group nor the preset names one:
+    /// The account a session falls back to when the group names none:
     /// the key of the default `~/.claude` config dir.
     public static let defaultKey = "claude"
 
@@ -1255,83 +1251,5 @@ public struct HookEvent: Hashable, Sendable, Codable {
         self.reason = reason
         self.pid = pid
         self.receivedAt = receivedAt
-    }
-}
-
-// MARK: - Presets
-
-/// A saved way to start a session — the "From preset…" entries in the new-session menu.
-public struct Preset: Hashable, Sendable, Codable, Identifiable {
-    public var id: UUID
-    public var name: String
-    /// The command line run in the pty, e.g. `claude -w` or `claude --resume`.
-    public var command: String
-    public var cwdMode: CwdMode
-    /// `nil` = the group's `defaultAccountKey`.
-    public var accountKey: String?
-    /// Extra environment for the child, merged over `TerminalEnvironment`'s.
-    public var env: [String: String]
-
-    public init(
-        id: UUID = UUID(),
-        name: String,
-        command: String,
-        cwdMode: CwdMode = .repoRoot,
-        accountKey: String? = nil,
-        env: [String: String] = [:]
-    ) {
-        self.id = id
-        self.name = name
-        self.command = command
-        self.cwdMode = cwdMode
-        self.accountKey = accountKey
-        self.env = env
-    }
-}
-
-/// Where a preset starts. `claude -w` must run from the main checkout, hence `worktree` still
-/// resolves its cwd to the repo root — the *name* is what it passes to `-w`.
-public enum CwdMode: Hashable, Sendable {
-    case repoRoot
-    case worktree(name: String?)
-    case fixed(path: String)
-
-    /// The directory to launch in, given the group's repo root.
-    public func directory(repoRoot: String?, fallback: String) -> String {
-        switch self {
-        case .repoRoot, .worktree: repoRoot ?? fallback
-        case .fixed(let path): path
-        }
-    }
-}
-
-/// Hand-written rather than synthesized: this lands in `state.json` (M5.1), and the compiler's
-/// enum-with-payload wire form is an implementation detail of the Swift version that built the app,
-/// not a contract. The shape below is the contract — `{"mode": "worktree", "name": "review"}`.
-extension CwdMode: Codable {
-    private enum CodingKeys: String, CodingKey { case mode, name, path }
-    private enum Mode: String, Codable { case repoRoot, worktree, fixed }
-
-    public init(from decoder: any Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        switch try c.decode(Mode.self, forKey: .mode) {
-        case .repoRoot: self = .repoRoot
-        case .worktree: self = .worktree(name: try c.decodeIfPresent(String.self, forKey: .name))
-        case .fixed: self = .fixed(path: try c.decode(String.self, forKey: .path))
-        }
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        switch self {
-        case .repoRoot:
-            try c.encode(Mode.repoRoot, forKey: .mode)
-        case .worktree(let name):
-            try c.encode(Mode.worktree, forKey: .mode)
-            try c.encodeIfPresent(name, forKey: .name)
-        case .fixed(let path):
-            try c.encode(Mode.fixed, forKey: .mode)
-            try c.encode(path, forKey: .path)
-        }
     }
 }

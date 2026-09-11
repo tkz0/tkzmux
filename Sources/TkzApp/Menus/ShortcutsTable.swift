@@ -63,8 +63,6 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     public static let resumeSession = ShortcutAction("resumeSession")
     /// No key: resume every resumable row in the selected session's group (M5.2).
     public static let resumeAllInGroup = ShortcutAction("resumeAllInGroup")
-    /// No key: the presets sheet (M5.2).
-    public static let managePresets = ShortcutAction("managePresets")
     /// No key: the "auto-resume on launch" preference, shown with a checkmark (M5.2).
     public static let toggleAutoResume = ShortcutAction("toggleAutoResume")
 
@@ -171,7 +169,7 @@ public enum ShortcutsTable {
             .closeTerminal, .closeSession, .jumpToNeedsYou, .notifications, .settings,
             .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
             .showFirstPrompt, .removeShellIntegration, .statusLineIntegration, .resumeSession, .resumeAllInGroup,
-            .managePresets, .toggleAutoResume,
+            .toggleAutoResume,
             .newTerminal, .splitVertically, .splitHorizontally,
             .focusPaneLeft, .focusPaneRight, .focusPaneUp, .focusPaneDown,
             .equalizeSplits, .zoomPane, .previousTab, .nextTab,
@@ -237,7 +235,6 @@ public enum ShortcutsTable {
         case .statusLineIntegration: "Status Line Integration\u{2026}"
         case .resumeSession: "Resume Session"
         case .resumeAllInGroup: "Resume All in Group"
-        case .managePresets: "Manage Presets\u{2026}"
         case .toggleAutoResume: "Auto-resume Sessions on Launch"
         case .newTerminal: "New Terminal"
         case .splitVertically: "Split Vertically"

@@ -876,7 +876,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         newSessionMenu.configureForSelection(state: store.state)
         newSessionMenu.onLaunch = { [weak self] launch in self?.launch(launch) }
         newSessionMenu.onChooseAnotherRepo = { [weak self] in self?.presentAnotherRepoPanel() }
-        newSessionMenu.onManagePresets = { [weak self] in self?.presentPresetsSheet() }
         newSessionMenu.onSelectAccount = { [weak self] groupID, key in
             self?.setGroupDefaultAccount(groupID, key: key)
         }
@@ -1649,7 +1648,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             applySidebarVisible(store.state.sidebarVisible)
             applySidebarWidth()
             applyWindowFrame()
-            newSessionMenu.presets = store.state.presets
         }
         if change.structure || change.selection {
             newSessionMenu.configureForSelection(state: store.state)
@@ -1991,7 +1989,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let changed = splitViewController.applyCollapsed(!visible)
         // Only when the sidebar actually re-expanded. Unconditionally re-placing the divider on
         // every `chrome` delivery threw away whatever width the user had dragged to, because this
-        // runs for a preset edit or a window move just as much as for ⌘B.
+        // runs for a shortcut edit or a window move just as much as for ⌘B.
         if visible, changed {
             splitViewController.applyWidth {
                 splitViewController.splitView.setPosition(restoredSidebarWidth, ofDividerAt: 0)
@@ -2062,14 +2060,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             if let id = item.groupID { presentNewSessionMenu(for: id) }
         case .command:
             dispatcher.perform(ShortcutAction(item.actionID))
-        case .preset:
-            newSessionMenu.configureForSelection(state: store.state)
-            if let uuid = UUID(uuidString: String(item.actionID.dropFirst("preset:".count))),
-               let preset = store.state.preset(uuid),
-               let launch = newSessionMenu.launch(for: preset)
-            {
-                newSessionMenu.perform(launch)
-            }
         }
     }
 
@@ -2712,31 +2702,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    // MARK: - Presets
-
-    /// Overrides the presets sheet. Tests set it.
-    public var presetsPrompt: (([Preset]) -> [Preset]?)?
-
-    /// "Manage presets…": the sheet edits a copy and commits the whole list on Done.
-    public func presentPresetsSheet() {
-        let current = store.state.presets
-        if let presetsPrompt {
-            if let edited = presetsPrompt(current) { commitPresets(edited) }
-            return
-        }
-        let sheet = PresetsSheetController(
-            presets: current, accounts: Array(store.state.accounts.values), theme: theme)
-        sheet.present(over: window) { [weak self] edited in
-            guard let self, let edited else { return }
-            self.commitPresets(edited)
-            self.focusTerminalIfSessionShown()
-        }
-    }
-
-    private func commitPresets(_ presets: [Preset]) {
-        store.update { $0.presets = presets }
-    }
-
     // MARK: - Periodic snapshots
 
     /// Ticks the status strip so the `resets` countdown stays true without any service reporting.
@@ -2906,7 +2871,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // M5.2
         dispatcher.setHandler(.resumeSession) { [weak self] in self?.resumeSelectedSession() }
         dispatcher.setHandler(.resumeAllInGroup) { [weak self] in self?.resumeAll() }
-        dispatcher.setHandler(.managePresets) { [weak self] in self?.presentPresetsSheet() }
         dispatcher.setHandler(.toggleAutoResume) { [weak self] in self?.toggleAutoResume() }
         dispatcher.setCheckmark(.toggleAutoResume) { [weak self] in self?.store.state.autoResumeOnLaunch ?? false }
         dispatcher.setHandler(.nextSession) { [weak self] in
