@@ -54,7 +54,9 @@ Everything else is plain SwiftPM, no `.xcodeproj`: `swift build`, `swift test`, 
 xcodebuild -downloadComponent MetalToolchain
 ```
 
-Signing and releasing are covered in [docs/release.md](docs/release.md).
+A real (non-ad-hoc) signature is one variable: `SIGN_IDENTITY="Developer ID Application: …" make app` adds the
+hardened runtime and a secure timestamp. `make notarize` notarizes and staples an already-signed app,
+and `make dist` cuts a tagged, notarized release.
 
 ## Privacy
 

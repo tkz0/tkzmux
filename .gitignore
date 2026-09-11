@@ -7,3 +7,9 @@ build/
 
 # claude -w worktrees and the Agent tool's isolated checkouts
 .claude/worktrees/
+
+# Local-only docs: kept in the working tree, not published with the source.
+# docs/perf.md is a log of numbers measured on one machine; docs/release.md is
+# the personal signing/notarization runbook.
+docs/perf.md
+docs/release.md
