@@ -1,0 +1,28 @@
+SECURITY.md
+  s_e41b5b45970683::t_b80e7c61105110 10
+  s_e41b5b45970683::t_89f3295856d110 11-14
+docs/privacy.md
+  s_e41b5b45970683::t_81b846aed7b233 1-2,5-152
+  s_e41b5b45970683::t_816d18b6145109 3-4
+README.md
+  s_e41b5b45970683::t_4f5c60552d6e94 80
+  s_e41b5b45970683::t_bee66b8a31c78a 3-10,16-18,22,24-25,35-38,45,49,51,57,59,61-66,68-69,71,75-79,81-83,89-90,92-93
+Sources/TkzApp/Update/UpdateChecker.swift
+  s_e41b5b45970683::t_b80e7c61105110 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fbb357d1c6384d595f33514a6e0dfb81c0ae5f82",
+  "prompts": {},
+  "sessions": {
+    "s_e41b5b45970683": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1c67a49-d285-47dc-987f-daf85a323a9a",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
