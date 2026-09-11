@@ -92,6 +92,10 @@ public final class GitStatusService: Sendable {
         var watchPath: String
         var info: RepoInfo
         var lastPosted: GitSummary?
+        /// The paths behind the last posted counts, for the search overlay's "Files changed"
+        /// section (TKZ-52). Kept here rather than in `GitSummary` so it never reaches the store
+        /// or the change-set gate; see `PorcelainStatus.paths`.
+        var changedPaths: [ChangedPath] = []
         /// When the last *successful* refresh completed — the input to `refreshIfStale`.
         var lastRefreshAt: Date?
         /// When the last refresh *started* — the input to the `minimumInterval` floor.
@@ -274,6 +278,13 @@ public final class GitStatusService: Sendable {
     /// The last summary handed to `onSummary`, or `nil`. Diagnostics and tests.
     public func summary(for id: SessionID) -> GitSummary? {
         storage.withLock { $0.sessions[id]?.lastPosted }
+    }
+
+    /// The working tree's changed and untracked paths as of the last refresh — what the search
+    /// overlay's "Files changed" section lists. Cheap (a lock and a copy) and never blocks on git;
+    /// a session that has not been refreshed yet simply has none yet.
+    public func changedPaths(for id: SessionID) -> [ChangedPath] {
+        storage.withLock { $0.sessions[id]?.changedPaths ?? [] }
     }
 
     /// Test seam: refresh every tracked session synchronously, on the caller's thread. Drains the
@@ -489,7 +500,7 @@ public final class GitStatusService: Sendable {
         }
         guard let target else { return }
         guard
-            let fresh = Self.computeSummary(
+            let fresh = Self.compute(
                 directory: target.directory, info: target.info, gitPath: gitPath)
         else { return }  // git failed or the directory went away: keep the last known value.
 
@@ -499,7 +510,10 @@ public final class GitStatusService: Sendable {
                 state.directory == target.directory
             else { return nil }
             state.lastRefreshAt = Date()
-            var summary = fresh
+            // The path list is refreshed even when the counts did not move: a file can be swapped
+            // for another one without either number changing.
+            state.changedPaths = fresh.paths
+            var summary = fresh.summary
             summary.pr = state.pr  // one writer of the whole value (rule 4).
             if let last = state.lastPosted, Self.matchesIgnoringTimestamp(last, summary) {
                 return nil  // THE EQUATABLE RULE: only `updatedAt` moved, so nothing to re-render.
@@ -514,6 +528,13 @@ public final class GitStatusService: Sendable {
     /// session's own, not the repo root — a worktree has its own status). `nil` only when `status`
     /// itself failed.
     static func computeSummary(directory: String, info: RepoInfo, gitPath: String) -> GitSummary? {
+        compute(directory: directory, info: info, gitPath: gitPath)?.summary
+    }
+
+    /// The same two calls, keeping the paths `git status` already printed (TKZ-52).
+    static func compute(
+        directory: String, info: RepoInfo, gitPath: String
+    ) -> (summary: GitSummary, paths: [ChangedPath])? {
         guard
             let statusOutput = try? GitProcess.git(
                 ["status", "--porcelain=v2", "--branch", "-z"], in: directory, gitPath: gitPath),
@@ -540,7 +561,7 @@ public final class GitStatusService: Sendable {
             return nil
         }
 
-        return GitSummary(
+        let summary = GitSummary(
             branch: status.branch,
             upstream: status.upstream,
             ahead: status.ahead ?? 0,
@@ -552,6 +573,7 @@ public final class GitStatusService: Sendable {
             isWorktree: info.isWorktree,
             pr: nil,
             updatedAt: Date())
+        return (summary, status.paths)
     }
 
     /// Two summaries that differ only in `updatedAt`. The whole point of rule 3, in one function so

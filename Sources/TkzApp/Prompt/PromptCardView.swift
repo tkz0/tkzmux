@@ -28,15 +28,29 @@ final class PromptCardView: NSView {
         static let minTextHeight: CGFloat = 22
     }
 
+    /// One transcript hit, when the card was opened from the search overlay (design 2c.6's
+    /// "↵ jumps into the transcript at the hit"). It takes over the card's *top* block — the one
+    /// that normally holds the first prompt — and leaves the recap below it, so the card answers
+    /// both "what did I search for" and "what is this conversation".
+    struct HitContent: Equatable {
+        let turn: Int
+        /// The kind glyph the overlay's row used, so the two read as the same line.
+        let glyph: String
+        let text: String
+        let at: Date?
+        let sessionTitle: String
+    }
+
     /// What the card is showing, kept so a theme change can re-render it.
     private(set) var summary: TranscriptSummary?
+    private(set) var hit: HitContent?
     private(set) var isLoading = true
     /// Peeking: shown by a scroll, not by the chord, with the keyboard and the mouse still the
     /// terminal's. The buttons are inert and the hint says how to pin the card instead of "esc".
     private(set) var isPeeking = false
 
     /// The text the Copy buttons put on the pasteboard; `nil` when there is nothing to copy.
-    var promptText: String? { summary?.firstPrompt }
+    var promptText: String? { hit?.text ?? summary?.firstPrompt }
     var recapText: String? { summary?.recap }
 
     var onCopyPrompt: (() -> Void)?
@@ -92,6 +106,13 @@ final class PromptCardView: NSView {
         render()
     }
 
+    /// The search overlay's hit, or `nil` to go back to the first prompt.
+    func setHit(_ hit: HitContent?, now: Date = Date()) {
+        guard hit != self.hit else { return }
+        self.hit = hit
+        render(now: now)
+    }
+
     func setPeeking(_ peeking: Bool) {
         guard peeking != isPeeking else { return }
         isPeeking = peeking
@@ -105,6 +126,12 @@ final class PromptCardView: NSView {
     static func metaLine(startedAt: Date?, now: Date) -> String {
         guard let startedAt else { return "" }
         return "Started \(Self.clock(startedAt, now: now)) \u{00B7} \(Self.age(from: startedAt, to: now))"
+    }
+
+    /// "Fix websocket reconnect · 1 h ago" — which conversation the hit came out of, and when.
+    static func hitMetaLine(_ hit: HitContent, now: Date) -> String {
+        guard let at = hit.at else { return hit.sessionTitle }
+        return "\(hit.sessionTitle) \u{00B7} \(Self.age(from: at, to: now))"
     }
 
     /// The recap's provenance, so a hook fallback is never passed off as Claude's own summary.
@@ -292,16 +319,25 @@ final class PromptCardView: NSView {
 
     private func render(now: Date = Date()) {
         let summary = summary ?? TranscriptSummary()
-        promptMeta.stringValue = Self.metaLine(startedAt: summary.firstPromptAt, now: now)
         recapMeta.stringValue = Self.recapMetaLine(summary, now: now)
 
         let promptPlaceholder = isLoading ? "Loading\u{2026}" : "No prompt yet"
         let recapPlaceholder = isLoading ? "Loading\u{2026}" : "No recap yet"
-        set(promptView, text: summary.firstPrompt, placeholder: promptPlaceholder,
-            font: Theme.Fonts.mono(theme.fontUI.title), color: theme.foreground)
+        if let hit {
+            promptPill.text = "TURN \(hit.turn)"
+            promptMeta.stringValue = Self.hitMetaLine(hit, now: now)
+            set(promptView, text: hit.glyph + " " + hit.text, placeholder: promptPlaceholder,
+                font: Theme.Fonts.mono(theme.fontUI.title), color: theme.foreground)
+        } else {
+            promptPill.text = "FIRST PROMPT"
+            promptMeta.stringValue = Self.metaLine(startedAt: summary.firstPromptAt, now: now)
+            set(promptView, text: summary.firstPrompt, placeholder: promptPlaceholder,
+                font: Theme.Fonts.mono(theme.fontUI.title), color: theme.foreground)
+        }
+        copyPromptButton.title = hit == nil ? "Copy prompt" : "Copy line"
         set(recapView, text: summary.recap, placeholder: recapPlaceholder,
             font: Theme.Fonts.ui(theme.fontUI.title), color: theme.foregroundMuted)
-        copyPromptButton.isEnabled = !isPeeking && summary.firstPrompt != nil
+        copyPromptButton.isEnabled = !isPeeking && promptText != nil
         copyRecapButton.isEnabled = !isPeeking && summary.recap != nil
         relayoutText()
     }

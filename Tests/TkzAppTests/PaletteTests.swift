@@ -172,7 +172,7 @@ struct PaletteTests {
         let controller = CommandPaletteController(state: Self.state, mode: .sessions)
         var activated: PaletteResult?
         var dismissed = 0
-        controller.onActivate = { activated = $0 }
+        controller.onActivate = { if case .result(let r) = $0 { activated = r } }
         controller.onDismiss = { dismissed += 1 }
 
         controller.updateQuery("rounding")

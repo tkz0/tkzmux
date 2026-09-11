@@ -71,6 +71,21 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
     public var onSearchChanged: ((String) -> Void)?
     /// Invoked when the user presses Return in the search field.
     public var onSearchSubmit: ((String) -> Void)?
+    /// ⌘↵ — 2c.6 prints it next to the Actions row, so it skips the selection and runs that.
+    public var onSearchCommandSubmit: ((String) -> Void)?
+    /// ↓ = `+1`, ↑ = `-1`. The results overlay (design 2c.6) is a separate window that never takes
+    /// key, so the list keys have to be relayed from this field's editor.
+    public var onSearchMove: ((Int) -> Void)?
+    /// Tab / → = `+1`, ⇧Tab / ← = `-1` — cycles the overlay's scope chips.
+    ///
+    /// Returns whether it was handled, because ← and → mean something else when there is no
+    /// overlay: they move the caret. Consuming them unconditionally would break editing a query
+    /// in a field that is not searching anything.
+    public var onSearchCycleScope: ((Int) -> Bool)?
+    /// Escape in the search field.
+    public var onSearchCancel: (() -> Void)?
+    /// The field stopped editing — focus went somewhere else, so nothing should be left floating.
+    public var onSearchEndEditing: (() -> Void)?
 
     /// The menu shown by “＋ New session…”. Defaults to ``stubNewSessionMenu()``; M2.4 replaces it
     /// with the group-scoped menu from design.md. Setting it updates the live toolbar item.
@@ -275,19 +290,63 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
     var titleLabel: NSTextField? { titleField }
 }
 
-// MARK: - Search submit
+// MARK: - Search keys
 
 extension MainToolbarController: NSSearchFieldDelegate {
-    /// Return in the search field means "commit this query" (⌘P's jump-to-session). Keystrokes
-    /// already arrive through ``onSearchChanged``; this only adds the explicit submit.
+    /// The search field keeps first responder for the whole life of the results overlay, so every
+    /// key the overlay needs arrives here as an editor command and is relayed to the window
+    /// controller. Returning `true` consumes the key — that is what stops ↑/↓ moving the caret and
+    /// tab walking the responder chain out of the field.
+    ///
+    /// Plain keystrokes are *not* handled here: they come through the field's target/action
+    /// (``searchChanged(_:)``) already, and adding `controlTextDidChange` as well would rebuild the
+    /// list twice per character.
     public func control(
         _ control: NSControl,
         textView: NSTextView,
         doCommandBy commandSelector: Selector
     ) -> Bool {
-        guard commandSelector == #selector(NSResponder.insertNewline(_:)),
-              let field = control as? NSSearchField else { return false }
-        onSearchSubmit?(field.stringValue)
-        return true
+        guard let field = control as? NSSearchField else { return false }
+        switch commandSelector {
+        case #selector(NSResponder.insertNewline(_:)):
+            // Cocoa sends the same editor command for ↵ and ⌘↵; the live event is what tells them
+            // apart, and 2c.6 gives them different jobs.
+            if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+                onSearchCommandSubmit?(field.stringValue)
+            } else {
+                onSearchSubmit?(field.stringValue)
+            }
+            return true
+        case #selector(NSResponder.moveDown(_:)):
+            onSearchMove?(1)
+            return true
+        case #selector(NSResponder.moveUp(_:)):
+            onSearchMove?(-1)
+            return true
+        case #selector(NSResponder.insertTab(_:)):
+            // Tab is consumed either way: letting it through walks the responder chain out of the
+            // field, which is never what a half-typed query wants.
+            _ = onSearchCycleScope?(1)
+            return true
+        case #selector(NSResponder.insertBacktab(_:)):
+            _ = onSearchCycleScope?(-1)
+            return true
+        case #selector(NSResponder.moveRight(_:)):
+            // ← / → cycle the chips while the overlay is up, and move the caret when it is not.
+            // Word-wise movement (⌥← / ⌥→) and Home/End are untouched either way.
+            return onSearchCycleScope?(1) ?? false
+        case #selector(NSResponder.moveLeft(_:)):
+            return onSearchCycleScope?(-1) ?? false
+        case #selector(NSResponder.cancelOperation(_:)):
+            onSearchCancel?()
+            return true
+        default:
+            return false
+        }
+    }
+
+    public func controlTextDidEndEditing(_ obj: Notification) {
+        guard obj.object as? NSSearchField === searchItem?.searchField else { return }
+        onSearchEndEditing?()
     }
 }

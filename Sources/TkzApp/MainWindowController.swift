@@ -28,6 +28,7 @@
 import AppKit
 import ClaudeBridge
 import Foundation
+import GitStatus
 import Persistence
 import TkzCore
 import TkzTerminalCore
@@ -311,6 +312,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public let toolbarController: MainToolbarController
     public let statusBar: StatusBarView
     public let palette: CommandPaletteController
+    /// The overlay's Transcripts section (design 2c.6). Indexes nothing until the user types.
+    let transcriptSearch = TranscriptSearchService()
+    /// The in-flight async half of a query, cancelled by the next keystroke.
+    private var searchTask: Task<Void, Never>?
+    /// Stamps each async run so a slow one cannot overwrite a newer one's results.
+    private var searchGeneration = 0
     public let newSessionMenu: NewSessionMenu
     public let dispatcher: MenuDispatcher
     /// Every way a shell gets behind a row (M5.2): start, reopen, resume, close, remove.
@@ -896,23 +903,169 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         toolbarController.onSplitHorizontally = { [weak self] in
             self?.addTerminal(splitting: .vertical)
         }
+        // Design 2c.6 / TKZ-52: typing in the toolbar field opens the results overlay under the
+        // window's top-right corner and keeps the caret where it is. Emptying the field closes it
+        // again — the field is the only state, so there is nothing left filtered or floating.
         toolbarController.onSearchChanged = { [weak self] query in
-            guard let self, !query.isEmpty else { return }
-            self.palette.update(state: self.store.state, mode: .sessions)
-            self.palette.updateQuery(query)
-        }
-        toolbarController.onSearchSubmit = { [weak self] query in
             guard let self else { return }
-            self.palette.update(state: self.store.state, mode: .sessions)
-            self.palette.updateQuery(query)
-            self.palette.activateSelection()
+            // Backspacing to empty closes the overlay but leaves the caret in the field: the user
+            // is mid-edit, and moving focus to the terminal here means the next characters they
+            // type go into the shell (GUI pass 2026-09-11).
+            guard !query.isEmpty else { return closeSearchOverlay() }
+            palette.present(anchoredTo: window, state: store.state, mode: .sessions)
+            palette.updateQuery(query)
+            // Sessions are ranked synchronously and are already on screen; transcripts and changed
+            // files read files, so they arrive when they arrive.
+            scheduleSlowSearch(for: query)
         }
+        toolbarController.onSearchMove = { [weak self] offset in
+            self?.palette.moveSelection(by: offset)
+        }
+        toolbarController.onSearchSubmit = { [weak self] _ in
+            guard let self, palette.isPresented else { return }
+            palette.activateSelection()
+            endSearch()
+        }
+        toolbarController.onSearchCommandSubmit = { [weak self] _ in
+            guard let self, palette.isPresented else { return }
+            guard palette.activateActionRow() else { return }
+            endSearch()
+        }
+        toolbarController.onSearchCycleScope = { [weak self] offset in
+            guard let self, palette.isPresented else { return false }
+            palette.cycleScope(by: offset)
+            return true
+        }
+        toolbarController.onSearchCancel = { [weak self] in
+            self?.endSearch()
+        }
+        // Clicking a row makes the overlay key, which ends the field's editing session — so this
+        // fires *before* the click is delivered. Deferring one turn lets the click land, and the
+        // overlay only closes when focus really went somewhere else.
+        toolbarController.onSearchEndEditing = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self, !self.palette.ownsKeyWindow else { return }
+                self.palette.dismiss()
+            }
+        }
+    }
+
+    /// The sections that have to read something. Debounced, cancellable, and stamped: a result
+    /// only lands if its query is still the one in the field.
+    private func scheduleSlowSearch(for query: String) {
+        searchTask?.cancel()
+        searchGeneration += 1
+        let generation = searchGeneration
+        let targets = transcriptTargets()
+        // Changed paths are already in memory — the git service keeps them from its last refresh —
+        // so this half needs no disk and no debounce.
+        palette.setFileRows(changedFileRows(matching: query))
+        guard !targets.isEmpty else {
+            palette.setTranscriptRows([])
+            return
+        }
+        searchTask = Task { [weak self] in
+            // One typed word arrives as several keystrokes; only the pause at the end is worth a
+            // disk read.
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled, let self else { return }
+            let results = await transcriptSearch.search(
+                query, in: targets, limit: CommandPaletteController.resultLimit)
+            guard !Task.isCancelled, generation == searchGeneration, palette.query == query else {
+                return
+            }
+            palette.setTranscriptRows(results.map { $0.row() })
+        }
+    }
+
+    /// 2c.6's "Files changed": the working-tree paths of every open session, fuzzy-ranked against
+    /// the query. Paths, unlike prose, are exactly what fuzzy matching is good at.
+    func changedFileRows(matching query: String) -> [FileRow] {
+        guard let git else { return [] }
+        return Self.fileRows(
+            matching: query,
+            sessions: store.state.orderedSessions.map { ($0.id, $0.displayTitle) },
+            paths: { git.service.changedPaths(for: $0) },
+            limit: CommandPaletteController.resultLimit)
+    }
+
+    /// The pure half, so the ranking can be asserted without a repo on disk.
+    ///
+    /// A one-character query is not a search here either (`TranscriptSearchService` draws the same
+    /// line): every path in every tree contains every letter.
+    static func fileRows(
+        matching query: String,
+        sessions: [(id: SessionID, title: String)],
+        paths: (SessionID) -> [ChangedPath],
+        limit: Int
+    ) -> [FileRow] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return [] }
+        let pattern = FuzzyMatch.Pattern(trimmed)
+
+        var scored: [(row: FileRow, score: Int)] = []
+        for session in sessions {
+            for changed in paths(session.id) {
+                // Contiguous, like the rest of the overlay: `almi` must not match
+                // `M<a>inToo<l>bar<M>anager.sw<i>ft`.
+                guard let match = FuzzyMatch.substring(pattern, in: FuzzyMatch.Target(changed.path))
+                else { continue }
+                scored.append(
+                    (
+                        FileRow(
+                            sessionID: session.id, sessionTitle: session.title,
+                            path: changed.path, status: changed.status,
+                            matchRanges: match.ranges),
+                        match.score
+                    ))
+            }
+        }
+        scored.sort { lhs, rhs in
+            if lhs.score != rhs.score { return lhs.score > rhs.score }
+            // Same score: the shorter path is the more specific hit, as in `PaletteDataSource`.
+            return lhs.row.path.count < rhs.row.path.count
+        }
+        return scored.prefix(limit).map(\.row)
+    }
+
+    /// Every open session that has a transcript on disk. The group filter is *not* applied here:
+    /// narrowing the chip must not throw away an index the next keystroke would rebuild.
+    private func transcriptTargets() -> [TranscriptSearchService.Target] {
+        guard let claude else { return [] }
+        return store.state.orderedSessions.compactMap { session in
+            guard let path = claude.transcriptPath(for: session.id) else { return nil }
+            return TranscriptSearchService.Target(
+                sessionID: session.id, title: session.displayTitle, path: path)
+        }
+    }
+
+    /// Takes the overlay down and drops what it was showing, **without touching focus**.
+    func closeSearchOverlay() {
+        searchTask?.cancel()
+        searchTask = nil
+        palette.setTranscriptRows([])
+        palette.setFileRows([])
+        palette.dismiss()
+    }
+
+    /// Ends the search outright: overlay down, field empty, keyboard back to the terminal. Esc and
+    /// an activated row end here; an emptied field does not (see ``closeSearchOverlay()``).
+    func endSearch() {
+        closeSearchOverlay()
+        if let field = toolbarController.searchField, !field.stringValue.isEmpty {
+            field.stringValue = ""
+        }
+        focusTerminalIfSessionShown()
     }
 
     private func wirePalette() {
         palette.onActivate = { [weak self] result in
-            self?.activate(result)
-            self?.palette.dismiss()
+            guard let self else { return }
+            let wasAnchored = palette.presentation == .anchored
+            activate(result)
+            // A click on a row of the toolbar overlay activates without ever going through the
+            // field, so the field has to be emptied here too.
+            if wasAnchored { endSearch() } else { palette.dismiss() }
         }
     }
 
@@ -930,6 +1083,19 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             return
         }
         promptCard.toggle(for: id, over: detailAnchor())
+    }
+
+    /// Opens the first-prompt card on a search hit rather than on the first prompt.
+    private func showTranscriptHit(_ hit: TranscriptRow) {
+        promptCard.present(
+            hit: PromptCardView.HitContent(
+                turn: hit.turn,
+                glyph: hit.kind.glyph,
+                text: hit.excerpt,
+                at: hit.at,
+                sessionTitle: hit.sessionTitle),
+            for: hit.sessionID,
+            over: detailAnchor())
     }
 
     /// The detail area in screen coordinates — what the card centres itself over.
@@ -1322,6 +1488,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public func shutdown() {
         sidebarSettleTask?.cancel()
         sidebarSettleTask = nil
+        searchTask?.cancel()
+        searchTask = nil
         recordSidebarWidth()
         noticeTimer?.cancel()
         noticeTimer = nil
@@ -2050,17 +2218,56 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     /// Routes a palette hit. Sessions and groups select; a command row carries a bare
     /// `ShortcutAction` id (see `PaletteDataSource.item(for:shortcut:)`), which is exactly what the
-    /// menu dispatches on — one vocabulary for both.
-    func activate(_ result: PaletteResult) {
-        let item = result.item
-        switch item.kind {
-        case .session:
-            if let id = item.sessionID { store.update { $0.select(id) } }
-        case .group:
-            if let id = item.groupID { presentNewSessionMenu(for: id) }
-        case .command:
-            dispatcher.perform(ShortcutAction(item.actionID))
+    /// menu dispatches on — one vocabulary for both. The overlay's own rows (design 2c.6) land on
+    /// the session the hit belongs to.
+    func activate(_ activation: PaletteActivation) {
+        switch activation {
+        case .result(let result):
+            let item = result.item
+            switch item.kind {
+            case .session:
+                if let id = item.sessionID { store.update { $0.select(id) } }
+            case .group:
+                if let id = item.groupID { presentNewSessionMenu(for: id) }
+            case .command:
+                dispatcher.perform(ShortcutAction(item.actionID))
+            }
+        case .transcript(let hit):
+            // 2c.6: "↵ jumps into the transcript at the hit". There is no transcript view and the
+            // terminal's scrollback is not the conversation, so the honest jump is: select the
+            // session, then put the matching turn on screen in the 2c.5 card.
+            store.update { $0.select(hit.sessionID) }
+            showTranscriptHit(hit)
+        case .file(let hit):
+            store.update { $0.select(hit.sessionID) }
+        case .action(let action):
+            perform(action)
+        case .showMore:
+            break  // handled inside the palette; it never reaches here
         }
+    }
+
+    /// 2c.6's Actions row: start a session in the named group with the typed text as its first
+    /// prompt. `Launch.command` is a command line, so the prompt is simply `claude`'s argument.
+    private func perform(_ action: SearchAction) {
+        guard let groupID = action.groupID else { return }
+        newSessionMenu.configure(state: store.state, groupID: groupID)
+        guard var launch = newSessionMenu.repoRootLaunch() ?? newSessionMenu.shellLaunch(
+            fallbackDirectory: NSHomeDirectory())
+        else { return }
+        launch = NewSessionMenu.Launch(
+            kind: launch.kind,
+            command: "claude \(Self.shellQuoted(action.prompt))",
+            cwd: launch.cwd,
+            accountKey: launch.accountKey,
+            groupID: launch.groupID)
+        newSessionMenu.perform(launch)
+    }
+
+    /// Single-quoted for `/bin/sh`, the way the pty will read it: the only character that needs
+    /// care inside single quotes is the single quote itself.
+    static func shellQuoted(_ text: String) -> String {
+        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     // MARK: - Launching

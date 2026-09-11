@@ -15,6 +15,24 @@ import TkzCore
 
 public struct PaletteDataSource: Sendable {
 
+    /// How a query is compared to an item's fields.
+    ///
+    /// ⇧⌘P is a command launcher and wants ``fuzzy`` (type `nsw`, get "New session window"). The
+    /// toolbar's search overlay is a *search* field and wants ``substring``: typing `almi` there
+    /// must not list every path that happens to contain an `a`, an `l`, an `m` and an `i`
+    /// (GUI pass 2026-09-11).
+    public enum Matching: Sendable {
+        case fuzzy
+        case substring
+
+        func match(_ pattern: FuzzyMatch.Pattern, in target: FuzzyMatch.Target) -> FuzzyMatch.Match? {
+            switch self {
+            case .fuzzy: FuzzyMatch.match(pattern, in: target)
+            case .substring: FuzzyMatch.substring(pattern, in: target)
+            }
+        }
+    }
+
     public enum Mode: Sendable {
         /// ⌘P — sessions only.
         case sessions
@@ -118,7 +136,9 @@ public struct PaletteDataSource: Sendable {
 
     /// Ranked hits for `query`. An empty query returns every item in construction order with score 0,
     /// so ⌘P opens on the session list rather than on nothing.
-    public func search(_ query: String, limit: Int? = nil) -> [PaletteResult] {
+    public func search(
+        _ query: String, limit: Int? = nil, matching: Matching = .fuzzy
+    ) -> [PaletteResult] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty {
             let all = items.map {
@@ -132,7 +152,7 @@ public struct PaletteDataSource: Sendable {
         for (order, item) in items.enumerated() {
             var best: (score: Int, field: PaletteItem.Field, text: String, ranges: [Range<String.Index>])?
             for searchable in item.fields {
-                guard let match = FuzzyMatch.match(pattern, in: searchable.target) else { continue }
+                guard let match = matching.match(pattern, in: searchable.target) else { continue }
                 let score = match.score + searchable.field.weight
                 if best == nil || score > best!.score {
                     best = (score, searchable.field, searchable.text, match.ranges)
@@ -161,8 +181,10 @@ public struct PaletteDataSource: Sendable {
 
     /// The same hits, split into the panel's sections (Sessions, Groups, Commands) and
     /// ordered inside each by score. Empty sections are dropped.
-    public func sections(for query: String, limit: Int? = nil) -> [PaletteSection] {
-        let results = search(query, limit: limit)
+    public func sections(
+        for query: String, limit: Int? = nil, matching: Matching = .fuzzy
+    ) -> [PaletteSection] {
+        let results = search(query, limit: limit, matching: matching)
         var buckets: [PaletteItem.Kind: [PaletteResult]] = [:]
         for result in results { buckets[result.item.kind, default: []].append(result) }
         return PaletteItem.Kind.allCases

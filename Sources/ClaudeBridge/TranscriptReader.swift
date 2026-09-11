@@ -65,7 +65,7 @@ public enum TranscriptReader {
     public static let tailLimit = 512 * 1024
 
     /// Prefixes of a `user` line that is a local command echo, not a prompt.
-    private static let commandEchoPrefixes = ["<command-name>", "<local-command-caveat>", "<local-command-stdout>"]
+    static let commandEchoPrefixes = ["<command-name>", "<local-command-caveat>", "<local-command-stdout>"]
 
     // MARK: - Files
 
@@ -186,7 +186,7 @@ public enum TranscriptReader {
 
     /// A string, or the `text` blocks of a content array joined — an image block contributes
     /// nothing, and a line that is only `tool_result` blocks is not a prompt.
-    private static func userText(of content: Any?) -> String? {
+    static func userText(of content: Any?) -> String? {
         if let text = content as? String { return text }
         guard let blocks = content as? [[String: Any]] else { return nil }
         let texts = blocks.compactMap { block -> String? in
@@ -196,7 +196,7 @@ public enum TranscriptReader {
         return texts.isEmpty ? nil : texts.joined(separator: "\n")
     }
 
-    private static func assistantTextBlock(of object: [String: Any]) -> String? {
+    static func assistantTextBlock(of object: [String: Any]) -> String? {
         guard let message = object["message"] as? [String: Any],
               let blocks = message["content"] as? [[String: Any]]
         else { return nil }
@@ -211,13 +211,13 @@ public enum TranscriptReader {
 
     /// `2026-09-10T08:01:02.000Z`, with or without the fraction. `ISO8601FormatStyle` is a value
     /// type, unlike `ISO8601DateFormatter`, so it can sit in a static under strict concurrency.
-    private static func timestamp(of object: [String: Any]) -> Date? {
+    static func timestamp(of object: [String: Any]) -> Date? {
         guard let raw = object["timestamp"] as? String else { return nil }
         return (try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(raw))
             ?? (try? Date.ISO8601FormatStyle().parse(raw))
     }
 
-    private static func decode(_ line: Data) -> [String: Any]? {
+    static func decode(_ line: Data) -> [String: Any]? {
         guard !line.isEmpty,
               let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any]
         else { return nil }
@@ -225,7 +225,7 @@ public enum TranscriptReader {
     }
 
     /// Non-empty lines, as slices of `data`.
-    private static func lines(of data: Data) -> [Data] {
+    static func lines(of data: Data) -> [Data] {
         var out: [Data] = []
         var start = data.startIndex
         while start < data.endIndex {
