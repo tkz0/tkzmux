@@ -1,4 +1,4 @@
-// ZshWrapperTests — runs a real `/bin/zsh -l -i -c` against the installed ZDOTDIR wrappers and a
+// ZshWrapperTests — runs a real login `/bin/zsh -l -i` against the installed ZDOTDIR wrappers and a
 // fake HOME with the user's own dotfiles, verifying every startup file ran, in order, and that
 // HISTFILE / PATH / ZDOTDIR end up where the contract in the TKZ-23 ticket says they should. See
 // docs/design.md -> Claude integration -> Shim install, and TerminalEnvironment.swift for the env
@@ -14,9 +14,10 @@ private func makeTempDirectory(_ label: String) throws -> URL {
     try ShimTestSupport.makeTempDirectory(label)
 }
 private func run(
-    _ executable: URL, _ arguments: [String] = [], environment: [String: String]
+    _ executable: URL, _ arguments: [String] = [], environment: [String: String],
+    stdin: String? = nil
 ) throws -> ProcessResult {
-    try ShimTestSupport.run(executable, arguments, environment: environment)
+    try ShimTestSupport.run(executable, arguments, environment: environment, stdin: stdin)
 }
 
 private struct WrapperFixture {
@@ -64,9 +65,9 @@ private func makeWrapperFixture() throws -> WrapperFixture {
         fakeHome: fakeHome, tkzmuxZdotdir: tkzmuxZdotdir, tkzmuxBin: tkzmuxBin, log: log)
 }
 
-private func runInteractiveLoginShell(
+private func wrapperEnvironment(
     _ fixture: WrapperFixture, extraEnv: [String: String] = [:]
-) throws -> ProcessResult {
+) -> [String: String] {
     var env: [String: String] = [
         "HOME": fixture.fakeHome.path,
         "ZDOTDIR": fixture.tkzmuxZdotdir.path,
@@ -78,15 +79,33 @@ private func runInteractiveLoginShell(
         "PATH": "/usr/bin:/bin",
     ]
     for (key, value) in extraEnv { env[key] = value }
+    return env
+}
 
-    return try run(
+private func runInteractiveLoginShell(
+    _ fixture: WrapperFixture, extraEnv: [String: String] = [:]
+) throws -> ProcessResult {
+    try run(
         URL(fileURLWithPath: "/bin/zsh"),
         [
             "-l", "-i", "-c",
             "print -r -- $PATH; print -r -- $HISTFILE; print -r -- ${ZDOTDIR:-unset};"
                 + " print -r -- $TKZMUX_ZDOTDIR",
         ],
-        environment: env)
+        environment: wrapperEnvironment(fixture, extraEnv: extraEnv))
+}
+
+/// A login shell that really reaches its prompt. `-c` never enters zsh's interactive read loop, so
+/// `precmd` never fires there; feeding the script on stdin does, once per line, the way a typed
+/// session would (prompts go to stderr, so stdout stays clean). This is what the boot-command
+/// tests need: the command runs from a precmd hook, not from `.zlogin` directly.
+private func runLoginShellToPrompt(
+    _ fixture: WrapperFixture, script: String = "print -r -- END\n",
+    extraEnv: [String: String] = [:]
+) throws -> ProcessResult {
+    try run(
+        URL(fileURLWithPath: "/bin/zsh"), ["-l", "-i"],
+        environment: wrapperEnvironment(fixture, extraEnv: extraEnv), stdin: script)
 }
 
 @Test func allFourUserFilesRunInOrder() throws {
@@ -251,11 +270,12 @@ private func runInteractiveLoginShell(
 /// after the spawn could not be made reliable: zsh's line editor calls `tcsetattr(…, TCSAFLUSH, …)`
 /// while it starts up, discarding whatever is queued on the tty, and no dependable signal says when
 /// the last such flush has happened. Sessions were observed sitting at a bare prompt with Claude
-/// never started. `.zlogin` runs after every rc file and before the interactive loop, so there is
-/// nothing left to flush.
+/// never started. Nothing goes through the tty now: `.zlogin` takes the command out of the
+/// environment and hands it to a one-shot precmd hook, which runs it at the first prompt
+/// (2026-09-10, see `bootCommandSeesWhatThePrecmdHooksExported`).
 @Test func bootCommandRuns() throws {
     let fixture = try makeWrapperFixture()
-    let result = try runInteractiveLoginShell(
+    let result = try runLoginShellToPrompt(
         fixture, extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- BOOT-RAN"])
     #expect(result.stdout.contains("BOOT-RAN"), "boot command never ran: \(result.stdout)")
 }
@@ -264,7 +284,7 @@ private func runInteractiveLoginShell(
 /// inherited value would run the command a second time.
 @Test func bootCommandIsUnsetBeforeItRuns() throws {
     let fixture = try makeWrapperFixture()
-    let result = try runInteractiveLoginShell(
+    let result = try runLoginShellToPrompt(
         fixture,
         extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- INNER=${TKZMUX_BOOT_COMMAND:-unset}"])
     #expect(result.stdout.contains("INNER=unset"), "\(result.stdout)")
@@ -278,7 +298,7 @@ private func runInteractiveLoginShell(
     try "#!/bin/sh\n".write(to: shim, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shim.path)
 
-    let result = try runInteractiveLoginShell(
+    let result = try runLoginShellToPrompt(
         fixture, extraEnv: ["TKZMUX_BOOT_COMMAND": "command -v claude"])
     #expect(result.stdout.contains(shim.path), "\(result.stdout)")
 }
@@ -288,7 +308,7 @@ private func runInteractiveLoginShell(
 /// down when a launch fails straight back to the prompt; nothing else says so.
 @Test func bootCommandIsBracketedInProgressReports() throws {
     let fixture = try makeWrapperFixture()
-    let result = try runInteractiveLoginShell(
+    let result = try runLoginShellToPrompt(
         fixture,
         extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- BOOT-RAN", "TKZMUX_OSC7_TO_STDOUT": "1"])
     let start = "\u{1b}]9;4;3\u{07}"
@@ -300,18 +320,22 @@ private func runInteractiveLoginShell(
     #expect(startAt < ranAt && ranAt < removeAt, "\(out)")
 
     // Piped stdout without the override: no escape bytes at all.
-    let quiet = try runInteractiveLoginShell(
+    let quiet = try runLoginShellToPrompt(
         fixture, extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- BOOT-RAN"])
     #expect(quiet.stdout.contains("BOOT-RAN"))
     #expect(!quiet.stdout.contains("\u{1b}]9;4;"))
 }
 
-/// A `.shell` session carries no command, and the block must then do nothing at all.
+/// A `.shell` session carries no command, and the block must then do nothing at all: no output,
+/// no progress bytes, and no hook left on `precmd_functions`.
 @Test func noBootCommandIsANoOp() throws {
     let fixture = try makeWrapperFixture()
-    let result = try runInteractiveLoginShell(fixture, extraEnv: ["TKZMUX_OSC7_TO_STDOUT": "1"])
+    let result = try runLoginShellToPrompt(
+        fixture, script: "print -r -- HOOKS=${precmd_functions:-none}\n",
+        extraEnv: ["TKZMUX_OSC7_TO_STDOUT": "1"])
     #expect(!result.stdout.contains("BOOT-RAN"))
     #expect(!result.stdout.contains("\u{1b}]9;4;"))
+    #expect(!result.stdout.contains("__tkzmux_run_boot_command"), "\(result.stdout)")
     let markers = (try? String(contentsOf: fixture.log, encoding: .utf8)) ?? ""
     #expect(markers.split(separator: "\n").map(String.init) == ["zshenv", "zprofile", "zshrc", "zlogin"])
 }
@@ -322,7 +346,71 @@ private func runInteractiveLoginShell(
     let fixture = try makeWrapperFixture()
     try "echo zlogin >> \"$MARKER_LOG\"\nreturn 0\n".write(
         to: fixture.fakeHome.appendingPathComponent(".zlogin"), atomically: true, encoding: .utf8)
-    let result = try runInteractiveLoginShell(
+    let result = try runLoginShellToPrompt(
         fixture, extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- BOOT-RAN"])
     #expect(result.stdout.contains("BOOT-RAN"), "\(result.stdout)")
+}
+
+/// Appends a precmd hook in direnv's exact shape to the fixture's fake `~/.zshrc`: *prepended* to
+/// `precmd_functions`, exporting what a `.envrc` would, and logging that it ran.
+private func installFakeDirenv(_ fixture: WrapperFixture) throws {
+    let rc = fixture.fakeHome.appendingPathComponent(".zshrc")
+    let hook = """
+
+    __fake_direnv() {
+        export FAKE_ENVRC=loaded
+        echo fake-direnv >> "$MARKER_LOG"
+    }
+    typeset -ag precmd_functions
+    precmd_functions=(__fake_direnv $precmd_functions)
+
+    """
+    try (String(contentsOf: rc, encoding: .utf8) + hook)
+        .write(to: rc, atomically: true, encoding: .utf8)
+}
+
+/// The bug (2026-09-10): a session opened straight into `claude` started it without the project's
+/// `.envrc`. direnv puts its environment in place from a precmd hook, which had not fired yet when
+/// `.zlogin` ran the command inline; exiting Claude showed `direnv: loading …` and a second launch
+/// worked. The command must see what the user's precmd hooks exported.
+@Test func bootCommandSeesWhatThePrecmdHooksExported() throws {
+    let fixture = try makeWrapperFixture()
+    try installFakeDirenv(fixture)
+    let result = try runLoginShellToPrompt(
+        fixture, extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- MARK=${FAKE_ENVRC:-unset}"])
+    #expect(result.stdout.contains("MARK=loaded"), "\(result.stdout)")
+}
+
+/// After the user's hooks, not before: direnv prepends itself, tkzmux appends, and the order in
+/// which they run at the first prompt is what makes the test above hold.
+@Test func bootCommandRunsAfterTheUsersPrecmdHooks() throws {
+    let fixture = try makeWrapperFixture()
+    try installFakeDirenv(fixture)
+    _ = try runLoginShellToPrompt(
+        fixture, extraEnv: ["TKZMUX_BOOT_COMMAND": "echo boot >> \"$MARKER_LOG\""])
+    let markers = (try? String(contentsOf: fixture.log, encoding: .utf8)) ?? ""
+    let lines = markers.split(separator: "\n").map(String.init)
+    #expect(
+        Array(lines.prefix(6)) == ["zshenv", "zprofile", "zshrc", "zlogin", "fake-direnv", "boot"],
+        "\(lines)")
+}
+
+/// One shot: several prompts, one run, and the hook is gone from `precmd_functions` afterwards so
+/// nothing about it leaks into the rest of the session.
+@Test func bootCommandRunsOnceAndUnhooksItself() throws {
+    let fixture = try makeWrapperFixture()
+    let script = """
+    print -r -- line-1
+    print -r -- line-2
+    print -r -- HOOKS=${precmd_functions:-none}
+    print -r -- LEFTOVER=${__tkzmux_boot_command:-unset}
+
+    """
+    let result = try runLoginShellToPrompt(
+        fixture, script: script, extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- BOOT-RAN"])
+    let runs = result.stdout.components(separatedBy: "BOOT-RAN").count - 1
+    #expect(runs == 1, "\(result.stdout)")
+    #expect(result.stdout.contains("line-2"), "\(result.stdout)")
+    #expect(!result.stdout.contains("__tkzmux_run_boot_command"), "\(result.stdout)")
+    #expect(result.stdout.contains("LEFTOVER=unset"), "\(result.stdout)")
 }

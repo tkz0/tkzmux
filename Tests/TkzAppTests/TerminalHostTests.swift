@@ -392,7 +392,8 @@ struct BackgroundSessionTests {
     /// The spy-host tests assert the wiring and `ZshWrapperTests` covers `.zlogin` on its own; this
     /// is the one that exercises the whole path through `TerminalViewHost` and a real pty — the
     /// place the old readiness heuristic silently lost `claude --resume` when zsh's line-editor
-    /// setup flushed the tty's input queue out from under it.
+    /// setup flushed the tty's input queue out from under it. Since 2026-09-10 `.zlogin` defers the
+    /// command to a precmd hook, so this also proves the app's spawn reaches a first prompt.
     @Test("a boot command runs in a real shell and its output reaches the screen")
     func bootCommandReachesTheShell() async throws {
         let temp = try TempDirectory()

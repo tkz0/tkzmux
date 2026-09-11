@@ -135,7 +135,8 @@ public final class SessionLauncher {
         }
 
         // The command is not typed in: it rides along as `TKZMUX_BOOT_COMMAND` and the ZDOTDIR
-        // `.zlogin` runs it. `.shell` carries no command, so that file no-ops.
+        // `.zlogin` runs it from a one-shot precmd hook at the first prompt, after direnv-style
+        // hooks have exported their environment. `.shell` carries no command, so that file no-ops.
         logLaunch(kind: spec.kind.rawValue, id: id, cwd: cwd, env: env, command: spec.command)
         return .success(id)
     }

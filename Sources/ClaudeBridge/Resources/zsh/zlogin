@@ -19,32 +19,46 @@ if [[ -n "${TKZMUX_ZDOTDIR:-}" && -n "${TKZMUX_USER_ZDOTDIR:-}" ]]; then
 fi
 
 # The command this session was opened to run: `claude --resume <id>` for a resume, a preset's
-# command for a new session. Deliberately *run here* rather than typed into the pty.
+# command for a new session. Deliberately *run from here* rather than typed into the pty, and
+# deliberately run at the *first prompt* rather than right now.
 #
-# Typing it in cannot be made reliable: zsh's line editor sets up the tty with
-# `tcsetattr(…, TCSAFLUSH, …)`, which discards whatever is already sitting in the input queue, and
-# the shell's startup output gives no dependable signal for when the last such flush has happened.
-# Waiting for the output to go quiet was the previous approach and it lost the race often enough
-# to leave sessions sitting at a bare prompt with Claude never started (2026-09-09). `.zlogin` is
-# read after every rc file and before the interactive loop begins, so there is nothing left to
-# flush by the time this runs.
+# Not typed in: zsh's line editor sets up the tty with `tcsetattr(…, TCSAFLUSH, …)`, which
+# discards whatever is already sitting in the input queue, and the shell's startup output gives no
+# dependable signal for when the last such flush has happened. Waiting for the output to go quiet
+# was the previous approach and it lost the race often enough to leave sessions sitting at a bare
+# prompt with Claude never started (2026-09-09). Nothing below goes through the tty, so that race
+# does not apply.
 #
-# Outside the guard above on purpose: a `return` in the user's own .zlogin must not skip it.
+# Not run right now: `.zlogin` is read before the interactive loop begins, and the hooks that put
+# per-directory environment in place -- direnv's `_direnv_hook`, mise, asdf, lazy nvm -- live on
+# `precmd_functions` and have not fired yet. A `claude` started from here saw no `.envrc`; the same
+# command typed at the prompt did (2026-09-10). So the command is run by a one-shot precmd hook,
+# appended after every hook the user's rc files installed (direnv prepends its own), which is the
+# state a command typed at the first prompt would see.
+#
+# Outside the guard above on purpose: a `return` in the user's own .zlogin must not skip it. Plain
+# array operations rather than `add-zsh-hook`, whose autoload sits inside .zshrc's guard.
 if [[ -n "${TKZMUX_BOOT_COMMAND:-}" ]]; then
     __tkzmux_boot_command="$TKZMUX_BOOT_COMMAND"
-    # Out of the environment before it runs: nothing this command starts -- claude itself, a
-    # nested shell -- may inherit it and run it a second time.
+    # Out of the environment before anything else can start: nothing this command starts --
+    # claude itself, a nested shell -- may inherit it and run it a second time.
     unset TKZMUX_BOOT_COMMAND
-    # Into the history, so the command behaves like one that was typed and Up repeats it.
-    print -s -- "$__tkzmux_boot_command"
-    # Bracketed in OSC 9;4 progress (indeterminate, then remove) so tkzmux can tell when the
-    # command has *returned* -- the only signal for a launch that fails straight back to the
-    # prompt (`claude: command not found`), and what takes the "Starting Claude…" overlay down
-    # in that case. Only to a terminal, like the OSC 7 in .zshrc; TKZMUX_OSC7_TO_STDOUT is the
-    # tests' way to see it. The guards sit on their own lines so the command's exit status is
-    # its own.
-    if [[ -t 1 || -n "${TKZMUX_OSC7_TO_STDOUT:-}" ]]; then printf '\e]9;4;3\a'; fi
-    eval "$__tkzmux_boot_command"
-    if [[ -t 1 || -n "${TKZMUX_OSC7_TO_STDOUT:-}" ]]; then printf '\e]9;4;0\a'; fi
-    unset __tkzmux_boot_command
+    __tkzmux_run_boot_command() {
+        # Remove first, run second: one shot, whatever the command does.
+        precmd_functions=(${precmd_functions:#__tkzmux_run_boot_command})
+        local cmd="$__tkzmux_boot_command"
+        unset __tkzmux_boot_command
+        # Into the history, so the command behaves like one that was typed and Up repeats it.
+        print -s -- "$cmd"
+        # Bracketed in OSC 9;4 progress (indeterminate, then remove) so tkzmux can tell when the
+        # command has *returned* -- the only signal for a launch that fails straight back to the
+        # prompt (`claude: command not found`), and what takes the "Starting Claude…" overlay down
+        # in that case. Only to a terminal, like the OSC 7 in .zshrc; TKZMUX_OSC7_TO_STDOUT is the
+        # tests' way to see it. The guards sit on their own lines so the command's exit status is
+        # its own.
+        if [[ -t 1 || -n "${TKZMUX_OSC7_TO_STDOUT:-}" ]]; then printf '\e]9;4;3\a'; fi
+        eval "$cmd"
+        if [[ -t 1 || -n "${TKZMUX_OSC7_TO_STDOUT:-}" ]]; then printf '\e]9;4;0\a'; fi
+    }
+    precmd_functions+=(__tkzmux_run_boot_command)
 fi
