@@ -84,6 +84,30 @@ func controlLetters() throws {
     #expect(try encode(empty) == [0x03])
 }
 
+@Test("the ⌘V clipboard-image chord encodes exactly like a physical Ctrl-V in every mode")
+func clipboardImageChordMatchesPhysicalControlV() throws {
+    // The field shape `TerminalInputController.clipboardImageChord` builds (no text, since no
+    // keyboard translation happened) must produce the Ctrl+V row of docs/keys.md byte for byte:
+    // that is what makes ⌘V on a screenshot indistinguishable from Ctrl-V to Claude Code.
+    let chord = KeyPress(
+        action: .press, key: GHOSTTY_KEY_V, mods: .control, consumedMods: [], text: "",
+        unshiftedCodepoint: 0x76, composing: false)
+    let physical = controlLetter(GHOSTTY_KEY_V, "v")
+
+    #expect(try encode(chord) == [0x16])
+    #expect(try encode(chord) == (try encode(physical)))
+    for flags in [KittyFlags.disambiguate, KittyFlags.claudeCode] {
+        #expect(try encode(chord, kittyFlags: flags) == bytes("\u{1b}[118;5u"))
+        #expect(try encode(chord, kittyFlags: flags) == (try encode(physical, kittyFlags: flags)))
+    }
+
+    // The release the chord sends afterwards is silent without REPORT_EVENTS.
+    var release = chord
+    release.action = .release
+    #expect(try encode(release) == [])
+    #expect(try encode(release, kittyFlags: KittyFlags.claudeCode) == [])
+}
+
 @Test("Shift+Tab survives the C0 text AppKit reports for it")
 func shiftTab() throws {
     // macOS reports Shift+Tab's characters as U+0019, and subtracting .control does not change

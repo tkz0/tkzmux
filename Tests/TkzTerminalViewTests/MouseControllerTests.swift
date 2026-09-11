@@ -525,6 +525,70 @@ struct MouseControllerRoutingTests {
         #expect(rig.controller.pasteboard.string(forType: .string) == "alpha")
     }
 
+    /// A 1×1 PNG, the shape of a screenshot on the clipboard (image types, no string).
+    private static func putImageOnly(_ pasteboard: NSPasteboard) {
+        let image = NSImage(size: NSSize(width: 1, height: 1))
+        image.lockFocus()
+        NSColor.red.setFill()
+        NSRect(x: 0, y: 0, width: 1, height: 1).fill()
+        image.unlockFocus()
+        pasteboard.clearContents()
+        pasteboard.writeObjects([image])
+    }
+
+    @Test("⌘V with an image and no text sends the Ctrl-V chord instead of pasting")
+    func imageOnlyPasteSendsTheChord() throws {
+        guard let rig = try makeRig() else { return }
+        Self.putImageOnly(rig.controller.pasteboard)
+        #expect(rig.controller.pasteboard.string(forType: .string) == nil)
+
+        var chords = 0
+        rig.controller.pasteClipboardImage = { _ in chords += 1; return true }
+
+        #expect(rig.controller.pasteFromPasteboard(in: rig.view))
+        #expect(chords == 1)
+        #expect(rig.terminal.pasteCalls.isEmpty, "an image is never pasted as text")
+    }
+
+    @Test("⌘V with text and an image pastes the text — text wins")
+    func textWinsOverImage() throws {
+        guard let rig = try makeRig() else { return }
+        Self.putImageOnly(rig.controller.pasteboard)
+        // A spreadsheet or rich-text copy: an image representation next to the text.
+        rig.controller.pasteboard.setString("A1\tB1", forType: .string)
+        rig.terminal.pasteOutcomes = [.written]
+
+        var chords = 0
+        rig.controller.pasteClipboardImage = { _ in chords += 1; return true }
+
+        #expect(rig.controller.pasteFromPasteboard(in: rig.view))
+        #expect(chords == 0)
+        #expect(rig.terminal.pasteCalls.map(\.0) == ["A1\tB1"])
+    }
+
+    @Test("⌘V with an empty pasteboard declines without sending a chord")
+    func emptyPasteboardDeclines() throws {
+        guard let rig = try makeRig() else { return }
+        rig.controller.pasteboard.clearContents()
+
+        var chords = 0
+        rig.controller.pasteClipboardImage = { _ in chords += 1; return true }
+
+        #expect(!rig.controller.pasteFromPasteboard(in: rig.view))
+        #expect(chords == 0)
+        #expect(rig.terminal.pasteCalls.isEmpty)
+    }
+
+    @Test("an image-only ⌘V declines when no chord sink is wired")
+    func imageOnlyPasteDeclinesUnwired() throws {
+        guard let rig = try makeRig() else { return }
+        Self.putImageOnly(rig.controller.pasteboard)
+        rig.controller.pasteClipboardImage = nil
+
+        #expect(!rig.controller.pasteFromPasteboard(in: rig.view))
+        #expect(rig.terminal.pasteCalls.isEmpty)
+    }
+
     @Test("an unsafe paste is confirmed, then retried with allowUnsafe")
     func unsafePasteConfirmation() throws {
         guard let rig = try makeRig() else { return }

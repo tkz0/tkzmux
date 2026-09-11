@@ -315,6 +315,42 @@ public final class TerminalInputController: TerminalViewInputDelegate {
         }
     }
 
+    // MARK: - Clipboard image chord
+
+    /// ⌘V with an image and no text on the pasteboard.
+    ///
+    /// A program running in the terminal cannot read the pasteboard through the pty, so the ones
+    /// that want an image (Claude Code) read the system clipboard *themselves* when they see a
+    /// Ctrl-V keystroke. `MouseController.pasteFromPasteboard` calls this through its
+    /// `pasteClipboardImage` seam when there is nothing to paste as text, and the chord is
+    /// encoded exactly like a physical Ctrl-V — through the session's key encoder, so the bytes
+    /// are `0x16` in legacy mode and `CSI 118;5u` under the kitty protocol Claude Code turns on —
+    /// rather than a hard-coded control byte. The image itself never passes through tkzmux.
+    ///
+    /// Press then release: the release encodes to nothing in legacy mode and to a proper event
+    /// under kitty `REPORT_EVENTS`. Returns true when the press produced bytes.
+    @discardableResult
+    public func sendClipboardImageChord(in view: TerminalMetalView) -> Bool {
+        lastView = view
+        let press = Self.clipboardImageChord(.press)
+        let wrote = send(press, in: view)
+        _ = send(Self.clipboardImageChord(.release), in: view)
+        return wrote
+    }
+
+    /// Ctrl-V as the view layer would deliver a real one: `text` empty because control-character
+    /// encoding is libghostty's job from `key` + `mods` (see `KeyPress.text`).
+    static func clipboardImageChord(_ action: KeyPress.Action) -> KeyPress {
+        KeyPress(
+            action: action,
+            key: GHOSTTY_KEY_V,
+            mods: .control,
+            consumedMods: [],
+            text: "",
+            unshiftedCodepoint: UInt32(UnicodeScalar("v").value),
+            composing: false)
+    }
+
     func setPreedit(_ text: String, selectedRange: NSRange) {
         guard preedit != text || preeditSelectedRange != selectedRange else { return }
         preedit = text
@@ -486,7 +522,11 @@ public final class TerminalInputController: TerminalViewInputDelegate {
     ///
     /// Key bytes are **returned** by the session, never written by it — `writeInput` is the only
     /// thing that puts them on the pty. (Paste is the opposite; see `insertPastedText`.)
-    private func send(_ press: KeyPress, in view: TerminalMetalView) {
+    ///
+    /// Returns true when bytes were written. An empty encoding (a release in legacy mode, a bare
+    /// modifier) is normal and returns false without logging.
+    @discardableResult
+    private func send(_ press: KeyPress, in view: TerminalMetalView) -> Bool {
         do {
             let bytes: [UInt8]
             if let encodeKey {
@@ -494,12 +534,14 @@ public final class TerminalInputController: TerminalViewInputDelegate {
             } else if let session = view.session {
                 bytes = try session.encodeKey(press, optionAsAlt: optionAsAlt)
             } else {
-                return
+                return false
             }
-            guard !bytes.isEmpty else { return }
+            guard !bytes.isEmpty else { return false }
             writeInput?(Data(bytes))
+            return true
         } catch {
             logger.error("key encode failed: \(String(describing: error), privacy: .public)")
+            return false
         }
     }
 }

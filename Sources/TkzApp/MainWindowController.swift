@@ -1236,6 +1236,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         pane.input.mouseHandler = pane.mouse
         pane.mouse.attach(to: metal)
         pane.mouse.sendBytes = { [weak host] bytes in host?.writeInput(id, Data(bytes)) }
+        // ⌘V with an image and no text: the Ctrl-V chord Claude Code reads the clipboard on, sent
+        // through this pane's own key path so kitty vs legacy encoding is honoured.
+        pane.mouse.pasteClipboardImage = { [weak input = pane.input] view in
+            input?.sendClipboardImageChord(in: view) ?? false
+        }
         // Both scroll signals the first-prompt card peeks on: the viewport position on the primary
         // screen, the wheel itself on the alternate one (design 2c.5, `ScrollRevealPolicy`).
         metal.onScrollMetricsChanged = { [weak self] metrics in

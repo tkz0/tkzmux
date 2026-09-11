@@ -13,7 +13,9 @@
 //
 //   * it never touches a `Pty`. Report bytes go out through `sendBytes`, which the input
 //     controller wires to the session; paste bytes are produced *inside* libghostty and leave
-//     through the terminal's own WRITE_PTY sink.
+//     through the terminal's own WRITE_PTY sink. The one thing ⌘V sends that is neither is the
+//     Ctrl-V chord for an image-only pasteboard, and that goes through `pasteClipboardImage` to
+//     the input controller's key path — it is a keystroke, not a paste.
 //   * it never clears `surface.needsDisplay`; it only ever calls `frameDriver.requestFrame()`.
 //   * it does not consume `session.events`. `handle(_ event: TerminalEvent)` is called by whoever
 //     owns that stream, for the OSC 52 `.clipboardWrite` case.
@@ -23,6 +25,7 @@ import Foundation
 import QuartzCore
 import TkzTerminalCore
 import TkzTerminalRender
+import UniformTypeIdentifiers
 
 // MARK: - The terminal port
 
@@ -189,6 +192,12 @@ public final class MouseController: NSObject, TerminalMouseHandling {
     /// The pasteboard used for ⌘C / ⌘V / OSC 52. Injected so tests can use a named scratch board
     /// instead of the user's real clipboard.
     public var pasteboard: NSPasteboard = .general
+
+    /// ⌘V found an image and **no text** on the pasteboard. The host wires this to
+    /// `TerminalInputController.sendClipboardImageChord(in:)`, which sends the Ctrl-V keystroke
+    /// that makes Claude Code read the clipboard image itself. Returns whether anything was sent;
+    /// nil (unwired) means an image-only ⌘V declines, exactly as it did before.
+    public var pasteClipboardImage: (@MainActor (TerminalMetalView) -> Bool)?
 
     /// Opens a vetted link. Injected so the tests never launch anything.
     public var openURL: @MainActor (TerminalLinkAction) -> Void = MouseController.defaultOpen
@@ -642,10 +651,18 @@ public final class MouseController: NSObject, TerminalMouseHandling {
     /// ⌘V. Tries the paste; libghostty rejects an unsafe one *knowing the terminal's state*
     /// (a multi-line paste into a bracketed-paste program is fine, the same text at a bare prompt
     /// is not), so the confirm sheet is driven by `.rejectedUnsafe` rather than by a pre-check.
+    ///
+    /// **Text wins.** A pasteboard with text is pasted as text even when an image representation
+    /// rides along — a spreadsheet range or a rich-text snippet routinely carries a TIFF or PDF
+    /// next to its text, and pasting that as an image chord would break ordinary paste. Only an
+    /// image with *no* text goes to `pasteClipboardImage`.
     @discardableResult
     public func pasteFromPasteboard(in view: TerminalMetalView) -> Bool {
-        guard let terminal = terminalForView(view),
-              let text = pasteboard.string(forType: .string), !text.isEmpty else { return false }
+        guard let terminal = terminalForView(view) else { return false }
+        guard let text = pasteboard.string(forType: .string), !text.isEmpty else {
+            guard Self.holdsImage(pasteboard) else { return false }
+            return pasteClipboardImage?(view) ?? false
+        }
 
         let outcome = (try? terminal.pasteText(text, allowUnsafe: false)) ?? .nothingToPaste
         guard outcome == .rejectedUnsafe else { return outcome == .written }
@@ -657,6 +674,12 @@ public final class MouseController: NSObject, TerminalMouseHandling {
             }
         }
         return true
+    }
+
+    /// Whether the pasteboard carries any image representation (PNG, TIFF, JPEG, …). A screenshot
+    /// taken to the clipboard is TIFF + PNG with no string at all.
+    static func holdsImage(_ pasteboard: NSPasteboard) -> Bool {
+        pasteboard.canReadItem(withDataConformingToTypes: [UTType.image.identifier])
     }
 
     /// OSC 52. `TkzApp`'s `SessionEventHandler` already routes `.clipboardWrite` to its own
