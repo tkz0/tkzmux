@@ -1,0 +1,38 @@
+README.md
+  s_ae154e3ba0f86b::t_709de42e159be5 190-192
+Tests/ClaudeBridgeTests/ZshWrapperTests.swift
+  s_ae154e3ba0f86b::t_9d98ba8ec6035d 82-83,85-88,95-108
+  s_ae154e3ba0f86b::t_f4c5f1d5a7cfbb 349,353-416
+  s_ae154e3ba0f86b::t_5c5ac953bfe7ab 68,70
+  s_ae154e3ba0f86b::t_918eaed41ab77e 1
+  s_ae154e3ba0f86b::t_ca9e6e14ad9989 273-275,278
+  s_ae154e3ba0f86b::t_8659c6ba254636 287
+  s_ae154e3ba0f86b::t_d9d3b5d9fa473b 17-18,20
+  s_ae154e3ba0f86b::t_f675442d07fd5f 301
+  s_ae154e3ba0f86b::t_9b415423fa3fbb 323,329-330,333-335,338
+  s_ae154e3ba0f86b::t_cfea76bb4662c6 311
+Sources/TkzApp/SessionLauncher.swift
+  s_ae154e3ba0f86b::t_f9bbcbba243630 138-139
+Sources/ClaudeBridge/Resources/zsh/zlogin
+  s_ae154e3ba0f86b::t_dd8e5488c1292f 22-23,25-30,32-40,43-44,46-63
+docs/perf.md
+  s_ae154e3ba0f86b::t_58e8e10b0100dc 350-355
+Tests/TkzAppTests/TerminalHostTests.swift
+  s_ae154e3ba0f86b::t_2bf7f9978e3e32 395-396
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bec7da2e6aecdc77d281b59ef821044ffc73d028",
+  "prompts": {},
+  "sessions": {
+    "s_ae154e3ba0f86b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98d3c58d-dfb2-4bcb-a1e0-1538b3020e9f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
