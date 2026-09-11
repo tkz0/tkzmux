@@ -226,7 +226,10 @@ directory, `CLAUDE_CONFIG_DIR`, any extra environment and the command, all marke
 so they are readable in Console.app like any other app's log
 (`Sources/TkzApp/SessionLauncher.swift`). A program running in a terminal can **set** your clipboard
 through OSC 52, which tkzmux honours (`Sources/TkzTerminalView/MouseController.swift`); clipboard
-*reads* are refused. The app is not sandboxed and ships no entitlements; a default build is ad-hoc
+*reads* are refused. ⌘V pastes the clipboard's text; when the clipboard holds an image and no text
+(a screenshot), ⌘V instead sends the Ctrl-V keystroke Claude Code reads the clipboard image on, so
+⌘V attaches a screenshot the way it does in cmux. Text always wins when both are present. The app
+is not sandboxed and ships no entitlements; a default build is ad-hoc
 signed.
 
 ## Known gaps

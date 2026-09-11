@@ -317,6 +317,51 @@ func emptyEncodingWritesNothing() throws {
     #expect(writes == 0)
 }
 
+// MARK: - Clipboard image chord (⌘V with an image-only pasteboard)
+
+@MainActor
+@Test("the clipboard image chord is a Ctrl-V press then release, through the key encoder")
+func clipboardImageChordIsControlV() throws {
+    let view = try makeView()
+    let controller = TerminalInputController()
+
+    var presses: [KeyPress] = []
+    var written: [Data] = []
+    controller.encodeKey = { press in
+        presses.append(press)
+        // What libghostty returns in legacy mode: the C0 control for the press, nothing for the
+        // release. The real encoder is covered by KeyEncoderTests (docs/keys.md, Ctrl+V row).
+        return press.action == .press ? [0x16] : []
+    }
+    controller.writeInput = { written.append($0) }
+
+    #expect(controller.sendClipboardImageChord(in: view))
+
+    #expect(presses.map(\.action) == [.press, .release])
+    for press in presses {
+        #expect(press.key == GHOSTTY_KEY_V)
+        #expect(press.mods == [.control])
+        #expect(press.consumedMods == [])
+        #expect(press.text == "", "control-character encoding is libghostty's job, not text")
+        #expect(press.unshiftedCodepoint == UInt32(UnicodeScalar("v").value))
+        #expect(!press.composing)
+    }
+    #expect(written == [Data([0x16])], "only the press produced bytes")
+}
+
+@MainActor
+@Test("the clipboard image chord reports false when the encoder produced nothing")
+func clipboardImageChordReportsNothingWritten() throws {
+    let view = try makeView()
+    let controller = TerminalInputController()
+    var writes = 0
+    controller.encodeKey = { _ in [] }
+    controller.writeInput = { _ in writes += 1 }
+
+    #expect(!controller.sendClipboardImageChord(in: view))
+    #expect(writes == 0)
+}
+
 // MARK: - flagsChanged
 
 @MainActor

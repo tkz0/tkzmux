@@ -168,6 +168,10 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
             guard let self, let id = self.visibleTerminalID else { return }
             self.host.writeInput(id, Data(bytes))
         }
+        // ⌘V with an image and no text: the Ctrl-V chord Claude Code reads the clipboard on.
+        mouseController.pasteClipboardImage = { [weak inputController] view in
+            inputController?.sendClipboardImageChord(in: view) ?? false
+        }
 
         installCommandKeyMonitor()
     }
@@ -182,6 +186,7 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
 
     /// Returns true when the event was consumed. ⌘C with no selection and ⌘V with an empty
     /// pasteboard both decline, so the event falls through to AppKit as it would have anyway.
+    /// ⌘V with an image-only pasteboard sends the Ctrl-V chord instead (`pasteClipboardImage`).
     private func handleCommandKey(_ event: NSEvent) -> Bool {
         guard event.window === window, window.firstResponder === terminalView else { return false }
         // Caps Lock is a lock, not a chord: ⌘V with it on is still ⌘V.
