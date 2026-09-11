@@ -1,0 +1,25 @@
+Sources/ClaudeBridge/TranscriptSearch.swift
+  s_bf70e063c9ef85::t_466735c97c7b22 103-108,112,119,175,193,196-198,201-203,212-234
+Sources/TkzApp/Search/TranscriptSearchService.swift
+  s_bf70e063c9ef85::t_ae0f3c02996239 49-52,54-56,126-130
+Tests/ClaudeBridgeTests/TranscriptSearchTests.swift
+  s_bf70e063c9ef85::t_9c62a908ffa25f 254-256,258-262,264,267-285
+Tests/TkzAppTests/TranscriptSearchServiceTests.swift
+  s_bf70e063c9ef85::t_09470d466ff51f 167-170,172-175,179-180,183,185-202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f2edede65ab6341ca2f6f166168a43f235ee9c52",
+  "prompts": {},
+  "sessions": {
+    "s_bf70e063c9ef85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "75d264fc-64de-4f38-9918-15d44b032195",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
