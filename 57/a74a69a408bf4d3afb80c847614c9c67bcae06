@@ -1,0 +1,45 @@
+Sources/TkzCore/Reducers.swift
+  s_240ba2d282d81b::t_dc6957c14359e1 569,574-578
+  s_240ba2d282d81b::t_5e47f33d441935 579-580
+Sources/TkzApp/GitIntegration.swift
+  s_240ba2d282d81b::t_b81ee8d19029ab 159-163
+  s_240ba2d282d81b::t_7e5b4dd396bb68 164-166,170
+Tests/TkzCoreTests/ReducersTests.swift
+  s_240ba2d282d81b::t_ce7b0511f9ea59 942-943,948-949
+  s_240ba2d282d81b::t_e41e0a8390084c 904-941,946-947,952-955
+  s_240ba2d282d81b::t_ed65b0f9698a27 944-945,950-951
+Sources/TkzApp/ClaudeIntegration.swift
+  s_240ba2d282d81b::t_6fe392a023ddfb 403-409
+  s_240ba2d282d81b::t_6f091270f53708 419-437
+Tests/TkzAppTests/GitIntegrationTests.swift
+  s_240ba2d282d81b::t_89542d14442bff 115-116
+  s_240ba2d282d81b::t_ca52ad196fb108 151-164
+  s_240ba2d282d81b::t_7872852c1089b8 92-114,117-150
+Sources/TkzCore/Models.swift
+  s_240ba2d282d81b::t_fab25442461bb8 269-296
+  s_240ba2d282d81b::t_3e6795f029d875 474-479
+  s_240ba2d282d81b::t_3e6bbf350351dd 528
+  s_240ba2d282d81b::t_93158f7ae8ed66 503-504
+Tests/TkzAppTests/PaneHeaderViewTests.swift
+  s_240ba2d282d81b::t_3a5f2518769f75 85-112
+Sources/TkzApp/Panes/PaneHeaderModels.swift
+  s_240ba2d282d81b::t_624e258922512d 58-60,67
+Sources/TkzCore/PaneReducers.swift
+  s_240ba2d282d81b::t_c30269de597861 109-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "57a74a69a408bf4d3afb80c847614c9c67bcae06",
+  "prompts": {},
+  "sessions": {
+    "s_240ba2d282d81b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e619f7f1-68f0-46d2-ac2e-eecf99004227",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
