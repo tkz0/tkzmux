@@ -376,7 +376,7 @@ public struct Tab: Hashable, Sendable, Identifiable {
 
 // MARK: - Codable
 
-/// The wire form is written by hand for the same reason `CwdMode`'s is: the compiler's
+/// The wire form is written by hand rather than synthesized: the compiler's
 /// enum-with-payload encoding is an implementation detail of the Swift version that compiled the
 /// app, and `state.json` is a file a human is invited to read and repair. The contract is
 ///

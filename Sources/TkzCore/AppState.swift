@@ -24,7 +24,6 @@ public struct AppState: Hashable, Sendable {
     public var sidebarWidth: CGFloat?
     /// Restored on launch; `nil` = let AppKit place the window.
     public var windowFrame: CGRect?
-    public var presets: [Preset]
     /// Command id → key-equivalent string (e.g. `"newSession": "cmd+t"`). Persisted verbatim;
     /// M2.4 owns the vocabulary.
     public var shortcuts: [String: String]
@@ -51,7 +50,6 @@ public struct AppState: Hashable, Sendable {
         sidebarVisible: Bool = true,
         sidebarWidth: CGFloat? = nil,
         windowFrame: CGRect? = nil,
-        presets: [Preset] = [],
         shortcuts: [String: String] = [:],
         autoResumeOnLaunch: Bool = false,
         statuslineOffered: Bool = false,
@@ -66,7 +64,6 @@ public struct AppState: Hashable, Sendable {
         self.sidebarVisible = sidebarVisible
         self.sidebarWidth = sidebarWidth
         self.windowFrame = windowFrame
-        self.presets = presets
         self.shortcuts = shortcuts
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered

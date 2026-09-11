@@ -32,7 +32,6 @@ extension AppState {
         worktreePath: String? = nil,
         isWorktree: Bool = false,
         accountKey: String? = nil,
-        presetID: UUID? = nil,
         now: Date = Date()
     ) -> Session {
         let group = groups[groupID]
@@ -46,7 +45,6 @@ extension AppState {
             worktreePath: worktreePath,
             isWorktree: isWorktree,
             accountKey: accountKey ?? group?.defaultAccountKey ?? Account.defaultKey,
-            presetID: presetID,
             createdAt: now,
             lastActiveAt: now
         )
@@ -388,7 +386,7 @@ extension AppState {
         dismissedUpdateVersion = version
     }
 
-    // MARK: Accounts, usage, presets
+    // MARK: Accounts, usage
 
     public mutating func setAccount(_ account: Account) {
         accounts[account.key] = account
@@ -436,24 +434,6 @@ extension AppState {
             .first(where: { $0.live?.context?.sessionId == claudeSessionId })?.id
         else { return }
         updateLive(id) { $0.context = nil }
-    }
-
-    @discardableResult
-    public mutating func addPreset(_ preset: Preset) -> Preset {
-        if let index = presets.firstIndex(where: { $0.id == preset.id }) {
-            presets[index] = preset
-        } else {
-            presets.append(preset)
-        }
-        return preset
-    }
-
-    public mutating func removePreset(_ id: UUID) {
-        presets.removeAll { $0.id == id }
-    }
-
-    public func preset(_ id: UUID) -> Preset? {
-        presets.first { $0.id == id }
     }
 }
 

@@ -8,7 +8,7 @@
 //
 // Two modes, because the design gives the two shortcuts different jobs:
 //   * ⌘P  "Search sessions…" — sessions only.
-//   * ⇧⌘P command palette   — sessions, groups, commands and presets.
+//   * ⇧⌘P command palette   — sessions, groups and commands.
 
 import Foundation
 import TkzCore
@@ -29,7 +29,7 @@ public struct PaletteDataSource: Sendable {
         }
     }
 
-    /// Every item, in "empty query" order: sessions in sidebar order, then groups, commands, presets.
+    /// Every item, in "empty query" order: sessions in sidebar order, then groups, then commands.
     public let items: [PaletteItem]
     public let mode: Mode
 
@@ -52,11 +52,6 @@ public struct PaletteDataSource: Sendable {
             let table = ShortcutsTable.resolved(state: state)
             for action in ShortcutsTable.allActions {
                 items.append(Self.item(for: action, shortcut: table[action]))
-            }
-        }
-        if kinds.contains(.preset) {
-            for preset in state.presets {
-                items.append(Self.item(for: preset, in: state))
             }
         }
         self.items = items
@@ -119,19 +114,6 @@ public struct PaletteDataSource: Sendable {
         )
     }
 
-    static func item(for preset: Preset, in state: AppState) -> PaletteItem {
-        let subtitle = preset.command
-        return PaletteItem(
-            id: "preset:\(preset.id.uuidString)",
-            kind: .preset,
-            title: preset.name,
-            subtitle: subtitle,
-            trailing: preset.accountKey.flatMap { state.accounts[$0]?.label ?? $0 },
-            actionID: "preset:\(preset.id.uuidString)",
-            fields: [.init(.title, preset.name), .init(.subtitle, subtitle)]
-        )
-    }
-
     // MARK: Search
 
     /// Ranked hits for `query`. An empty query returns every item in construction order with score 0,
@@ -177,7 +159,7 @@ public struct PaletteDataSource: Sendable {
         return limit.map { Array(results.prefix($0)) } ?? results
     }
 
-    /// The same hits, split into the panel's sections (Sessions, Groups, Commands, Presets) and
+    /// The same hits, split into the panel's sections (Sessions, Groups, Commands) and
     /// ordered inside each by score. Empty sections are dropped.
     public func sections(for query: String, limit: Int? = nil) -> [PaletteSection] {
         let results = search(query, limit: limit)

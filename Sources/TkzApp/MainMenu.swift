@@ -153,7 +153,6 @@ public enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(command(.settings, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.reloadConfig, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.managePresets, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.toggleAutoResume, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.statusLineIntegration, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.removeShellIntegration, shortcuts: shortcuts, dispatcher: dispatcher))

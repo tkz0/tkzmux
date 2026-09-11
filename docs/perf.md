@@ -346,7 +346,7 @@ Three things about the corpus, because they make these numbers **not comparable*
    already in the tty input queue. Measured: with no delay all thirty snapshots came back at the
    same bare-prompt size and `head` never ran. The delay is why this harness still works, and it is
    a real constraint on `TerminalHost.run(_:command:)` — but the app no longer depends on getting
-   it right: a session's own command (`claude --resume …`, a preset) is handed to the shell as
+   it right: a session's own command (`claude --resume …`, `claude -w`) is handed to the shell as
    `TKZMUX_BOOT_COMMAND`; the ZDOTDIR `.zlogin` takes it out of the environment and a one-shot
    precmd hook runs it at the first prompt, so nothing goes through the tty and there is nothing
    left to flush. Waiting for the output to go quiet was the previous approach and it lost the
@@ -660,7 +660,7 @@ launch kind=reopen   session=<SessionID> cwd=/Users/x/dev/repo/.claude/worktrees
 resume <SessionID>: claude --resume <claudeSessionId>
 ```
 
-`kind` is the menu entry (`worktree`, `repoRoot`, `preset`, `shell`) or `reopen` (a restored or
+`kind` is the menu entry (`worktree`, `repoRoot`, `shell`) or `reopen` (a restored or
 hung-up row getting its shell back). `CLAUDE_CONFIG_DIR=default` means the variable was **not**
 set, i.e. the primary account. To pull a day's worth:
 

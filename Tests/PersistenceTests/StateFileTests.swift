@@ -36,8 +36,6 @@ private func makeState() -> AppState {
         groupID: beta.id, cwd: "/tmp/beta", repoRoot: "/tmp/beta",
         worktreePath: "/tmp/beta/.claude/worktrees/x", isWorktree: true, accountKey: "claude-work")
     state.select(one.id)
-    _ = state.addPreset(Preset(name: "worktree", command: "claude -w", cwdMode: .worktree(name: "x")))
-    _ = state.addPreset(Preset(name: "fixed", command: "claude", cwdMode: .fixed(path: "/tmp")))
     state.shortcuts = ["newSession": "cmd+t", "palette": "cmd+shift+p"]
     state.windowFrame = CGRect(x: 12, y: 34, width: 1100, height: 760)
     state.sidebarWidth = 372
@@ -76,8 +74,7 @@ private func makeState() -> AppState {
 
         #expect(restored.groups == original.groups)
         #expect(restored.sessions == original.sessions)
-        #expect(restored.presets == original.presets)
-        #expect(restored.selection == original.selection)
+            #expect(restored.selection == original.selection)
         #expect(restored.sidebarVisible == original.sidebarVisible)
         #expect(restored.sidebarWidth == original.sidebarWidth)
         #expect(restored.windowFrame == original.windowFrame)
@@ -140,7 +137,7 @@ private func makeState() -> AppState {
     #expect(groups.first?.objectValue?["name"]?.stringValue == "Alpha")
     guard case .array(let sessions)? = object["sessions"] else { Issue.record("no sessions"); return }
     #expect(sessions.count == 2)
-    #expect(object["schemaVersion"]?.intValue == 2)
+    #expect(object["schemaVersion"]?.intValue == 3)
     // Explicit keys, not CGRect's `[[x,y],[w,h]]`.
     #expect(object["windowFrame"]?.objectValue?["width"] != nil)
 }
@@ -182,14 +179,6 @@ private func makeState() -> AppState {
     #expect(restored.sessions[session.id]?.lastActiveAt == session.lastActiveAt)
 }
 
-@Test(arguments: [CwdMode.repoRoot, .worktree(name: nil), .worktree(name: "x"), .fixed(path: "/tmp")])
-func cwdModeRoundTrips(_ mode: CwdMode) throws {
-    // Hand-written coding, because the synthesized enum wire form is not a contract.
-    let preset = Preset(name: "p", command: "claude", cwdMode: mode)
-    let data = try JSONEncoder().encode(preset)
-    #expect(try JSONDecoder().decode(Preset.self, from: data) == preset)
-}
-
 // MARK: - Property test
 
 @Test func aThousandMutationSequencesRoundTrip() throws {
@@ -227,7 +216,7 @@ func cwdModeRoundTrips(_ mode: CwdMode) throws {
         case 6:
             state.select(state.orderedSessions.randomElement(using: &generator)?.id)
         case 7:
-            _ = state.addPreset(Preset(name: "p\(step)", command: "claude", cwdMode: .repoRoot))
+            state.sidebarWidth = CGFloat(200 + step % 300)
         case 8:
             state.shortcuts["k\(step % 7)"] = "cmd+\(step % 9)"
             state.setSidebarVisible(step % 2 == 0)

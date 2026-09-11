@@ -67,37 +67,6 @@ struct NewSessionMenuTests {
         #expect(hintFont?.fontName == Theme.Fonts.mono(Theme.default.fontMono.detail).fontName)
     }
 
-    @Test func presetsSubmenuCountsAndNamesEachPreset() throws {
-        let menu = Self.menu(for: Self.northwind)
-        let presets = try #require(Self.item(menu, NewSessionMenu.ItemID.presets))
-        #expect(presets.title == "From preset\u{2026} (3 saved)")
-        // Three presets, a separator, and "Manage presets…" (M5.2).
-        #expect(presets.submenu?.items.count == 5)
-        #expect(presets.submenu?.items.filter { $0.identifier == NewSessionMenu.ItemID.presetRow }.count == 3)
-        let first = try #require(presets.submenu?.items.first)
-        #expect(Self.text(first).hasPrefix("Worktree from ticket"))
-        #expect(Self.text(first).contains("claude -w"))
-        #expect(Self.text(first).contains("~/dev/northwind"))
-        let manage = try #require(presets.submenu?.items.last)
-        #expect(manage.identifier == NewSessionMenu.ItemID.managePresets)
-        var asked = 0
-        menu.onManagePresets = { asked += 1 }
-        #expect(menu.performItem(NewSessionMenu.ItemID.managePresets))
-        #expect(asked == 1)
-
-        // Nothing saved → the entry says so, and the submenu still offers "Manage presets…" so the
-        // first preset can be made from here.
-        let empty = NewSessionMenu()
-        var bare = Self.state
-        bare.presets = []
-        empty.configure(state: bare, groupID: Self.northwind)
-        let none = try #require(Self.item(empty, NewSessionMenu.ItemID.presets))
-        #expect(none.title == "From preset\u{2026} (none saved)")
-        #expect(none.isEnabled)
-        #expect(none.submenu?.items.count == 1)
-        #expect(none.submenu?.items.first?.identifier == NewSessionMenu.ItemID.managePresets)
-    }
-
     @Test func accountSubmenuIsTheGroupsDefault() throws {
         let menu = Self.menu(for: Self.northwind)
         #expect(menu.effectiveAccountKey == "claude-work")
@@ -263,27 +232,6 @@ struct NewSessionMenuTests {
 
         // The menu also records the last resolved launch, which is what the no-closure stub logs.
         #expect(menu.lastLaunch == launches.last)
-    }
-
-    @Test func presetLaunchesResolveCommandCwdAndAccount() throws {
-        let menu = Self.menu(for: Self.northwind)
-        var launches: [NewSessionMenu.Launch] = []
-        menu.onLaunch = { launches.append($0) }
-
-        let presets = try #require(Self.item(menu, NewSessionMenu.ItemID.presets))
-        presets.submenu!.performActionForItem(at: 2)   // "Plan mode": claude --permission-mode plan
-        #expect(launches.first?.command == "claude --permission-mode plan")
-        #expect(launches.first?.cwd == "~/dev/northwind")
-        #expect(launches.first?.accountKey == "claude", "the preset's own account wins over the group's")
-        #expect(launches.first?.presetID == Self.state.presets[2].id)
-
-        // A named worktree preset passes the name to -w; a fixed cwd is used verbatim.
-        let named = Preset(name: "Ticket", command: "claude -w", cwdMode: .worktree(name: "tkz-20"))
-        #expect(menu.launch(for: named)?.command == "claude -w tkz-20")
-        #expect(menu.launch(for: named)?.cwd == "~/dev/northwind", "a worktree starts from the main checkout")
-        let fixed = Preset(name: "Elsewhere", command: "claude", cwdMode: .fixed(path: "~/dev/other"))
-        #expect(menu.launch(for: fixed)?.cwd == "~/dev/other")
-        #expect(menu.launch(for: fixed)?.accountKey == "claude-work", "no preset account → the group's")
     }
 
     @Test func anotherRepoIsHandedToTheAssembler() throws {

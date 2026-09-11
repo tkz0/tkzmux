@@ -37,7 +37,7 @@ public struct CheatSheetSection: Equatable, Sendable {
 public enum CheatSheetModel {
 
     /// Every top-level submenu becomes a section; every item in it that has a key equivalent
-    /// becomes a row. Items without one (`Next Session`, `Manage Presets…`, separators) drop out
+    /// becomes a row. Items without one (`Next Session`, `Resume All in Group`, separators) drop out
     /// on their own, so there is no exclusion list to keep in step with the table.
     public static func sections(from menu: NSMenu) -> [CheatSheetSection] {
         menu.items.compactMap { item in

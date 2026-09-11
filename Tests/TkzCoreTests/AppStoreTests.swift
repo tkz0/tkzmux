@@ -219,8 +219,8 @@ import Testing
         #expect(change.structure == false)
     }
 
-    /// Presets, shortcuts, the window frame and the sidebar toggle are `chrome`: they must be
-    /// delivered (the preset menu and M5's writer need them) but must never force a row reload.
+    /// Shortcuts, the window frame and the sidebar toggle are `chrome`: they must be delivered
+    /// (the menu bar and M5's writer need them) but must never force a row reload.
     @Test func chromeChangesDeliverWithoutTouchingRows() {
         let probe = Probe()
         let store = probe.store
@@ -231,7 +231,7 @@ import Testing
         #expect(change.structure == false)
         #expect(change.sessions.isEmpty)
 
-        store.update { $0.addPreset(Preset(name: "p", command: "claude")) }
+        store.update { $0.windowFrame = CGRect(x: 1, y: 2, width: 300, height: 200) }
         store.flush()
         #expect(probe.last.chrome)
 

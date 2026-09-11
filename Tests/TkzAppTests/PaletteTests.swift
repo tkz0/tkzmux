@@ -90,16 +90,6 @@ struct PaletteTests {
         #expect(top.item.trailing == "\u{21E7}\u{2318}P")
     }
 
-    @Test func presetRowsAreSearchableByNameAndCommand() throws {
-        let byName = Self.source().search("plan mode")
-        #expect(byName.first?.item.kind == .preset)
-        #expect(byName.first?.item.actionID.hasPrefix("preset:") == true)
-
-        let byCommand = Self.source().search("permission-mode")
-        #expect(byCommand.first?.item.kind == .preset)
-        #expect(byCommand.first?.field == .subtitle)
-    }
-
     @Test func sectionsComeBackGroupedInDisplayOrder() throws {
         let sections = Self.source().sections(for: "e")
         #expect(!sections.isEmpty)

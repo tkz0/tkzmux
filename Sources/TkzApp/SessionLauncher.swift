@@ -104,8 +104,7 @@ public final class SessionLauncher {
         // keeps "a `.ghsnap` basename maps back to its row" true for new rows as well as migrated
         // ones (see `Migrations.liftV1ToV2`).
         let terminal = TerminalID(uuid: id.uuid)
-        let env = environment(
-            accountKey: spec.accountKey, extra: spec.env, bootCommand: spec.command)
+        let env = environment(accountKey: spec.accountKey, bootCommand: spec.command)
         let pid: pid_t
         do {
             pid = try host.open(
@@ -120,7 +119,7 @@ public final class SessionLauncher {
             // them) and expansion belongs at the `chdir` boundary above.
             $0.createSession(
                 id: id, groupID: spec.groupID, cwd: spec.cwd,
-                accountKey: spec.accountKey, presetID: spec.presetID)
+                accountKey: spec.accountKey)
             // `live` is what says the row has a shell; without it the reopen path would fire.
             $0.setLive(
                 LiveSessionState(shellPid: pid, status: .idle, panePids: [terminal: pid]),
@@ -181,13 +180,13 @@ public final class SessionLauncher {
             store.update { $0.clearWorktreeBadge(id) }
         }
 
-        let env = environment(accountKey: session.accountKey, extra: [:])
+        let env = environment(accountKey: session.accountKey)
         let focused = session.focusedTerminalID
         // The boot command rides only the focused pane's environment — every other pane in the
         // tab gets a bare shell, or `.zlogin` would run it once per pane.
         let focusedEnv = bootCommand == nil
             ? env
-            : environment(accountKey: session.accountKey, extra: [:], bootCommand: bootCommand)
+            : environment(accountKey: session.accountKey, bootCommand: bootCommand)
         var pids: [TerminalID: pid_t] = [:]
         var restoredContent = false
         var firstFailure: Failure?
@@ -268,7 +267,7 @@ public final class SessionLauncher {
         guard let cwd = resolved.directory else {
             return .failure(.missingDirectory(resolved.tried.first ?? session.cwd))
         }
-        let env = environment(accountKey: session.accountKey, extra: [:])
+        let env = environment(accountKey: session.accountKey)
         switch spawnTerminal(terminal, in: session.id, cwd: cwd, env: env) {
         case .success(let outcome):
             store.update { $0.setPanePid(terminal, pid: outcome.pid) }
@@ -308,7 +307,7 @@ public final class SessionLauncher {
         }
         guard let terminal = created else { return .failure(.spawnFailed("the tab is full")) }
 
-        let env = environment(accountKey: session.accountKey, extra: [:])
+        let env = environment(accountKey: session.accountKey)
         do {
             let pid = try host.open(
                 terminal, session: id, cwd: cwd, env: env, size: gridSize(terminal))
@@ -486,23 +485,20 @@ public final class SessionLauncher {
 
     // MARK: - Environment
 
-    /// `CLAUDE_CONFIG_DIR` for the account named by `accountKey` — the primary included — then
-    /// the caller's extras on top. `nil` means "no account was chosen": the variable is left
+    /// `CLAUDE_CONFIG_DIR` for the account named by `accountKey` — the primary included.
+    /// `nil` means "no account was chosen": the variable is left
     /// alone, the user's environment decides, and the shim's `launch` frame reports what that was
     /// (`ClaudeIntegration.learnAccount`).
     ///
     /// The same value goes out as `TKZMUX_CLAUDE_CONFIG_DIR`: the ZDOTDIR wrapper re-exports it
     /// after the user's own rc files have run, so an `export CLAUDE_CONFIG_DIR=…` in a `.zshrc`
     /// cannot override an account the user picked in the app.
-    public func environment(
-        accountKey: String?, extra: [String: String], bootCommand: String? = nil
-    ) -> [String: String] {
+    public func environment(accountKey: String?, bootCommand: String? = nil) -> [String: String] {
         var env: [String: String] = [:]
         if let key = accountKey, let dir = configDirectory(forKey: key) {
             env["CLAUDE_CONFIG_DIR"] = dir
             env["TKZMUX_CLAUDE_CONFIG_DIR"] = dir
         }
-        env.merge(extra) { _, override in override }
         // Read and `unset` by the ZDOTDIR `.zlogin` before it runs the command, so nothing the
         // command starts inherits it and runs it a second time. Not in `strippedKeys`: the strip
         // happens after this is merged into the spawn environment and would take our own value.

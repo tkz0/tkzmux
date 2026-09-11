@@ -90,16 +90,15 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     }
 }
 
-/// `state.json` v1.
+/// `state.json`, at `currentSchemaVersion`.
 public struct PersistedState: Hashable, Sendable, Codable {
     /// The version this build writes. Bumping it needs a `Migrations` case.
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public var schemaVersion: Int
     /// Display order, so the file reads top to bottom like the sidebar does.
     public var groups: [Group]
     public var sessions: [Session]
-    public var presets: [Preset]
     public var selection: SessionID?
     public var sidebar: PersistedSidebar
     public var windowFrame: PersistedFrame?
@@ -109,7 +108,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
     /// The keys this build writes. Anything else in the file is a newer build's and is carried in
     /// `StateDocument.extras`.
     static let knownKeys: Set<String> = [
-        "schemaVersion", "groups", "sessions", "presets", "selection", "sidebar", "windowFrame",
+        "schemaVersion", "groups", "sessions", "selection", "sidebar", "windowFrame",
         "shortcuts", "preferences",
     ]
 
@@ -117,7 +116,6 @@ public struct PersistedState: Hashable, Sendable, Codable {
         schemaVersion: Int = PersistedState.currentSchemaVersion,
         groups: [Group] = [],
         sessions: [Session] = [],
-        presets: [Preset] = [],
         selection: SessionID? = nil,
         sidebar: PersistedSidebar = PersistedSidebar(visible: true, width: nil),
         windowFrame: PersistedFrame? = nil,
@@ -127,7 +125,6 @@ public struct PersistedState: Hashable, Sendable, Codable {
         self.schemaVersion = schemaVersion
         self.groups = groups
         self.sessions = sessions
-        self.presets = presets
         self.selection = selection
         self.sidebar = sidebar
         self.windowFrame = windowFrame
@@ -136,7 +133,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, groups, sessions, presets, selection, sidebar, windowFrame, shortcuts
+        case schemaVersion, groups, sessions, selection, sidebar, windowFrame, shortcuts
         case preferences
     }
 
@@ -146,7 +143,6 @@ public struct PersistedState: Hashable, Sendable, Codable {
         schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
         groups = try c.decode([Group].self, forKey: .groups)
         sessions = try c.decode([Session].self, forKey: .sessions)
-        presets = try c.decode([Preset].self, forKey: .presets)
         selection = try c.decodeIfPresent(SessionID.self, forKey: .selection)
         sidebar = try c.decode(PersistedSidebar.self, forKey: .sidebar)
         windowFrame = try c.decodeIfPresent(PersistedFrame.self, forKey: .windowFrame)
@@ -171,7 +167,6 @@ public struct PersistedState: Hashable, Sendable, Codable {
                 durable.live = nil
                 return durable
             },
-            presets: state.presets,
             selection: state.selection,
             sidebar: PersistedSidebar(
                 visible: state.sidebarVisible, width: state.sidebarWidth.map { Double($0) }),
@@ -221,7 +216,6 @@ public struct PersistedState: Hashable, Sendable, Codable {
             warnings.append("\(sessions.count) session(s) with no groups; dropped")
         }
 
-        state.presets = presets
         if let selection, state.sessions[selection] == nil {
             warnings.append("selection \(selection) names no session; cleared")
             state.selection = nil
