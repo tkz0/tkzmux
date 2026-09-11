@@ -398,7 +398,7 @@ public final class DevWindowController: NSObject, NSWindowDelegate {
             window.title = "tkzmux — dev terminal (no session)"
             return
         }
-        let title = host.title(of: id) ?? "zsh"
+        let title = host.title(of: id) ?? host.shell.name
         window.title = "tkzmux — \(title) [\(index + 1)/\(host.sessionCount)]"
     }
 

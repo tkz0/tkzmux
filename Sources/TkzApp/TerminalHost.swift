@@ -154,17 +154,19 @@ final class HostSession {
     let sessionID: SessionID
     let session: TerminalSession
     private(set) var pty: Pty
-    var title: String = "zsh"
+    /// The shell's name until the shell sets a title of its own.
+    var title: String
     var isAlive = true
     var eventsTask: Task<Void, Never>?
     /// Set when the session's content came from a `.ghsnap` at launch.
     var wasRestored = false
 
-    init(id: TerminalID, sessionID: SessionID, session: TerminalSession, pty: Pty) {
+    init(id: TerminalID, sessionID: SessionID, session: TerminalSession, pty: Pty, title: String) {
         self.id = id
         self.sessionID = sessionID
         self.session = session
         self.pty = pty
+        self.title = title
     }
 
     deinit { eventsTask?.cancel() }
@@ -190,6 +192,9 @@ public final class TerminalViewHost: TerminalHost {
     public let snapshots: SnapshotStore
     /// tkzmux's application-support directory — `ZDOTDIR`, `TKZMUX_BIN`, the socket.
     public let tkzmuxDirectory: URL
+    /// The login shell every session runs (TKZ-33): `SHELL` from `baseEnvironment`, then the
+    /// account database, then `/bin/zsh`. Decided once; a `chsh` takes effect at the next launch.
+    public let shell: LoginShell
     /// What a session's environment is built on top of.
     public let baseEnvironment: [String: String]
 
@@ -239,6 +244,7 @@ public final class TerminalViewHost: TerminalHost {
                 .appending(path: "tkzmux", directoryHint: .isDirectory)
             ?? URL(filePath: NSTemporaryDirectory()).appending(path: "tkzmux", directoryHint: .isDirectory)
         self.baseEnvironment = baseEnvironment
+        self.shell = LoginShell.detect(environment: baseEnvironment)
         self.compressor = compressor
         TerminalViewHost.createShellDirectory(in: self.tkzmuxDirectory)
         var escapee: AsyncStream<(TerminalID, TerminalEvent)>.Continuation!
@@ -248,9 +254,10 @@ public final class TerminalViewHost: TerminalHost {
 
     deinit { continuation.finish() }
 
-    /// Creates the `ZDOTDIR` the spawned shells are pointed at.
+    /// Creates the `ZDOTDIR` the spawned zsh shells are pointed at. zsh only: bash and fish are
+    /// started without their wrapper when it is missing (`LoginShell.argv`), and need no directory.
     ///
-    /// `TerminalEnvironment.make` sets `ZDOTDIR` to `<tkzmuxDirectory>/zsh` unconditionally, and
+    /// `TerminalEnvironment.make` sets `ZDOTDIR` to `<tkzmuxDirectory>/zsh` for every zsh, and
     /// before M3.3's `ShimInstaller` wrote the wrapper rc files into it nothing created it — so every
     /// login zsh failed to lock its history file and printed
     /// `zsh: locking failed for …/zsh/.zsh_history: no such file or directory` into the user's
@@ -305,7 +312,7 @@ public final class TerminalViewHost: TerminalHost {
 
     // MARK: - open
 
-    /// Spawns a login zsh for `id` under the full tkzmux environment.
+    /// Spawns the login shell for `id` under the full tkzmux environment.
     ///
     /// `env` is applied as **overrides on top of `baseEnvironment`**, before
     /// `TerminalEnvironment.make` gets its hands on it — so a caller can set `CLAUDE_CONFIG_DIR`
@@ -320,7 +327,7 @@ public final class TerminalViewHost: TerminalHost {
         let pty = try spawn(
             sessionID: sessionID, session: session, cwd: cwd, env: env, size: size)
         evict(id)
-        adopt(HostSession(id: id, sessionID: sessionID, session: session, pty: pty))
+        adopt(HostSession(id: id, sessionID: sessionID, session: session, pty: pty, title: shell.name))
         return pty.pid
     }
 
@@ -373,7 +380,8 @@ public final class TerminalViewHost: TerminalHost {
             cwd: cwd,
             size: size,
             tkzmuxDir: tkzmuxDirectory,
-            baseEnvironment: baseEnvironment.merging(env) { _, override in override })
+            baseEnvironment: baseEnvironment.merging(env) { _, override in override },
+            shell: shell)
 
         let pty = try Pty(
             spawn: spawn,
@@ -424,7 +432,7 @@ public final class TerminalViewHost: TerminalHost {
     private func observe(_ event: TerminalEvent, for id: TerminalID) {
         switch event {
         case .title(let title):
-            sessions[id]?.title = title.isEmpty ? "zsh" : title
+            sessions[id]?.title = title.isEmpty ? shell.name : title
         case .exited:
             sessions[id]?.isAlive = false
             // A dead terminal keeps its screen but must stop blinking a cursor at the user.
@@ -653,7 +661,8 @@ public final class TerminalViewHost: TerminalHost {
             cellWidthPx: grid.cellWidthPx, cellHeightPx: grid.cellHeightPx)
         let pty = try spawn(
             sessionID: sessionID, session: session, cwd: cwd, env: env, size: size)
-        let host = HostSession(id: id, sessionID: sessionID, session: session, pty: pty)
+        let host = HostSession(
+            id: id, sessionID: sessionID, session: session, pty: pty, title: shell.name)
         host.wasRestored = true
         evict(id)
         adopt(host)

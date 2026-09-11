@@ -30,9 +30,16 @@ private func modificationDate(of url: URL) throws -> Date {
     let resources = try ShimResources.bundled()
     #expect(resources.shimScript.contains("#!/bin/bash"))
     #expect(resources.zshFiles.keys.sorted() == ["zlogin", "zprofile", "zshenv", "zshrc"])
-    for content in resources.zshFiles.values {
+    #expect(resources.wrappers.keys.sorted() == [
+        "bash/tkzmux.bashrc", "fish/tkzmux.fish",
+        "zsh/.zlogin", "zsh/.zprofile", "zsh/.zshenv", "zsh/.zshrc",
+    ])
+    for content in resources.wrappers.values {
         #expect(!content.isEmpty)
     }
+    #expect(resources.wrapper(for: .bash)?.contains("TKZMUX_BIN") == true)
+    #expect(resources.wrapper(for: .fish)?.contains("TKZMUX_BIN") == true)
+    #expect(resources.wrapper(for: .other) == nil)
 }
 
 @Test func installWritesFilesModesAndVersion() throws {
@@ -60,6 +67,11 @@ private func modificationDate(of url: URL) throws -> Date {
         let dotfile = dir.appendingPathComponent("zsh/.\(name)")
         #expect(FileManager.default.fileExists(atPath: dotfile.path))
         #expect(try posixPermissions(of: dotfile) == 0o644)
+    }
+    for path in ["bash/tkzmux.bashrc", "fish/tkzmux.fish"] {
+        let wrapper = dir.appendingPathComponent(path)
+        #expect(FileManager.default.fileExists(atPath: wrapper.path), "\(path)")
+        #expect(try posixPermissions(of: wrapper) == 0o644)
     }
 
     #expect(installer.isInstalled)
@@ -124,6 +136,8 @@ private func modificationDate(of url: URL) throws -> Date {
 
     #expect(!FileManager.default.fileExists(atPath: appSupport.appendingPathComponent("bin").path))
     #expect(!FileManager.default.fileExists(atPath: appSupport.appendingPathComponent("zsh").path))
+    #expect(!FileManager.default.fileExists(atPath: appSupport.appendingPathComponent("bash").path))
+    #expect(!FileManager.default.fileExists(atPath: appSupport.appendingPathComponent("fish").path))
     #expect(!FileManager.default.fileExists(atPath: appSupport.appendingPathComponent("VERSION").path))
     #expect(FileManager.default.fileExists(atPath: marker.path))
     #expect(FileManager.default.fileExists(atPath: stateFile.path))
