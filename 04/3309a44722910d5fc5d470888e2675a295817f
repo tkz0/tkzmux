@@ -1,0 +1,19 @@
+.github/workflows/ci.yml
+  s_8d4241c43de07d::t_27590160192c7b 36-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "043309a44722910d5fc5d470888e2675a295817f",
+  "prompts": {},
+  "sessions": {
+    "s_8d4241c43de07d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "daa508a2-3a2c-4469-9f98-e05c3fd0740f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
