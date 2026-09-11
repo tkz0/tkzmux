@@ -901,3 +901,55 @@ import Testing
         #expect(big.orderedSessions.count == 120)
     }
 }
+
+/// Which pane runs the bound `claude`: set from the shim's `launch` frame, gone with the
+/// descriptor or the pane. The rule that reads it lives in `GitIntegration` (TkzAppTests).
+@Suite struct ClaudeTerminalTests {
+    let now = Fixture.now
+
+    func makeState() -> (AppState, SessionID, TerminalID) {
+        var state = AppState()
+        let group = state.addGroup(name: "g")
+        let session = state.createSession(groupID: group.id, cwd: "/tmp")
+        let terminal = TerminalID(uuid: session.id.uuid)
+        state.setLive(LiveSessionState(shellPid: 1, panePids: [terminal: 1]), for: session.id)
+        return (state, session.id, terminal)
+    }
+
+    @Test func setRecordsThePaneAndNeedsALiveRow() {
+        var (state, id, terminal) = makeState()
+        state.setClaudeTerminal(id, terminal)
+        #expect(state.sessions[id]?.live?.claudeTerminal == terminal)
+
+        state.sessions[id]?.live = nil
+        state.setClaudeTerminal(id, terminal)
+        #expect(state.sessions[id]?.live == nil)
+    }
+
+    @Test func losingTheDescriptorClearsIt() {
+        var (state, id, terminal) = makeState()
+        state.applyDescriptor(
+            ClaudeSessionInfo(configDir: "/x/.claude", pid: 9, sessionId: "abc", status: .idle),
+            alive: true, to: id, now: now)
+        state.setClaudeTerminal(id, terminal)
+        state.descriptorLost(for: id, now: now)
+        #expect(state.sessions[id]?.live?.claudeTerminal == nil)
+    }
+
+    @Test func closingTheClaudePaneClearsItAndClosingAnotherDoesNot() throws {
+        var (state, id, terminal) = makeState()
+        state.setClaudeTerminal(id, terminal)
+        let split = state.splitPane(terminal, axis: .horizontal)
+        let other = try #require(split)
+        let closedOther = state.closePane(other)
+        #expect(closedOther)
+        #expect(state.sessions[id]?.live?.claudeTerminal == terminal)
+
+        let splitAgain = state.splitPane(terminal, axis: .horizontal)
+        let another = try #require(splitAgain)
+        let closedClaude = state.closePane(terminal)
+        #expect(closedClaude)
+        #expect(state.sessions[id]?.live?.claudeTerminal == nil)
+        #expect(state.sessions[id]?.terminalIDs == [another])
+    }
+}

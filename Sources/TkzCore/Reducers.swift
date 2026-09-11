@@ -566,8 +566,16 @@ extension AppState {
             live.descriptor = nil
             live.pid = nil
             live.alive = true
+            live.claudeTerminal = nil
         }
         rederiveStatus(for: id, now: now)
+    }
+
+    /// Which pane's shell is running the bound `claude` process, from the shim's `launch` frame
+    /// (`ClaudeIntegration.bind`). `nil` when the frame could not be placed in a pane.
+    public mutating func setClaudeTerminal(_ id: SessionID, _ terminal: TerminalID?) {
+        guard sessions[id]?.live != nil else { return }
+        updateLive(id) { $0.claudeTerminal = terminal }
     }
 
     /// Sets whether the process behind this session (the `claude` process when bound, else the
