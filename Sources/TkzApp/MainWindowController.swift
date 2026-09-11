@@ -2214,8 +2214,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// returns whether to go ahead. Only asked for a group that still has rows. Tests set it.
     public var confirmRemoveGroup: ((Group, [Session]) -> Bool)?
 
-    /// Overrides the "restart to finish updating?" alert (TKZ-50): gets the relaunch plan,
-    /// returns whether to go ahead. Tests set it. See `restartForUpdate(installed:)`.
+    /// Vetoes the relaunch after an update (TKZ-50): gets the relaunch plan, returns whether to
+    /// go ahead. Unset, the app relaunches without asking. Tests set it. See
+    /// `restartForUpdate(installed:)`.
     public var confirmRestartForUpdate: ((RelaunchPlan) -> Bool)?
 
     /// Overrides the relaunch itself (TKZ-50). Tests set it; the default spawns the `open` waiter

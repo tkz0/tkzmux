@@ -2,16 +2,18 @@
 //
 //     ┌──────────────────────────────────────────────┐
 //     │ ┌──┐  Update available — v0.8.0            ✕ │   40 pt card, 9 pt radius, 1 pt border
-//     │ │ ↓│  Update via Homebrew · What's new        │   22 pt tile, 6 pt radius
+//     │ │ ↓│  Update via Homebrew · What's new        │   22 pt tile, 6 pt radius; 12 pt title, 11 pt links
 //     │ └──┘                                          │
 //     └──────────────────────────────────────────────┘
 //       10 pt side margins, 2 pt above, 6 pt below → 48 pt strip
 //
 // Built like `NewGroupFooterView`: every visible thing is a layer, so the card rasterises in the
-// headless bitmap tests, with transparent `NSButton`s on top purely for hit-testing, tooltips and
-// accessibility — one per clickable run on the second line, plus the `✕`. The view is a pure
-// function of `UpdateNoticeModel` and the theme; what a click *does* is the owner's
-// (`onAction` / `onDismiss`).
+// headless bitmap tests, with transparent `NSButton`s on top purely for hit-testing, tooltips,
+// the pointing-hand cursor and accessibility — one per clickable run on the second line, plus the
+// `✕`. The links read as links: accent-coloured, a pointing hand over them, and the one under the
+// pointer underlined (a tracking area on the card; tests set the hovered run directly). The view
+// is a pure function of `UpdateNoticeModel`, the theme and the hovered run; what a click *does*
+// is the owner's (`onAction` / `onDismiss`).
 //
 // Tokens rather than the artboard's literals: the tile is the WT badge pair (`wtBackground` /
 // `wtText` — the design's `rgba(139,147,248,.18)` / `#c3c8fd` *are* those tokens), the fill and
@@ -36,8 +38,10 @@ public final class UpdateNoticeView: NSView {
     static let closeSide: CGFloat = 20
     static let separator = " \u{00B7} "   // " · "
 
-    private let titleFont = Theme.Fonts.ui(11, weight: .semibold)
-    private let lineFont = Theme.Fonts.ui(10)
+    // 12 / 11 rather than the artboard's 11 / 10: read next to the session rows they were too
+    // small (2026-09-11). The two lines still stack inside the 40 pt card with room to spare.
+    private let titleFont = Theme.Fonts.ui(12, weight: .semibold)
+    private let lineFont = Theme.Fonts.ui(Theme.Fonts.ui.body)
     private let glyphFont = Theme.Fonts.ui(12, weight: .semibold)
     private let closeFont = Theme.Fonts.ui(11)
 
@@ -48,15 +52,25 @@ public final class UpdateNoticeView: NSView {
     private lazy var closeLayer = SidebarLayers.text(closeFont, color: NSColor.clear.cgColor, alignment: .center)
     private var runLayers: [CATextLayer] = []
     private var runButtons: [NSButton] = []
+    private var trackingArea: NSTrackingArea?
 
     /// The transparent hit target over the `✕`.
-    public let closeButton = NSButton(frame: .zero)
+    public let closeButton: NSButton = LinkHitButton(frame: .zero)
 
     public var onAction: (@MainActor (UpdateAction) -> Void)?
     public var onDismiss: (@MainActor () -> Void)?
 
     private var model = UpdateNoticeModel(title: "", runs: [], showsClose: true)
     private var theme: Theme = .default
+
+    /// Index into `model.runs` of the link under the pointer, underlined. `nil` when the pointer
+    /// is elsewhere — and always at first, so the headless renders are the resting state.
+    public private(set) var hoveredRun: Int? {
+        didSet {
+            guard hoveredRun != oldValue else { return }
+            applyRunStrings()
+        }
+    }
 
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -92,6 +106,8 @@ public final class UpdateNoticeView: NSView {
     public func configure(_ model: UpdateNoticeModel, theme: Theme) {
         self.model = model
         self.theme = theme
+        // The runs are re-worded (a phase change); the index under the pointer means nothing now.
+        hoveredRun = nil
         apply()
         needsLayout = true
     }
@@ -128,6 +144,47 @@ public final class UpdateNoticeView: NSView {
         button.setAccessibilityLabel(label)
     }
 
+    /// A transparent hit target that also owns the pointing-hand cursor for its bounds. Cursor
+    /// rects live on the view that is hit, so they go on the button rather than on the card
+    /// beneath it (the pattern `StatusBarView.resetCursorRects` uses for its badges).
+    final class LinkHitButton: NSButton {
+        override func resetCursorRects() {
+            super.resetCursorRects()
+            addCursorRect(bounds, cursor: .pointingHand)
+        }
+    }
+
+    // MARK: Hover
+
+    public override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    public override func mouseMoved(with event: NSEvent) {
+        hoveredRun = run(at: convert(event.locationInWindow, from: nil))
+    }
+
+    public override func mouseEntered(with event: NSEvent) {
+        hoveredRun = run(at: convert(event.locationInWindow, from: nil))
+    }
+
+    public override func mouseExited(with event: NSEvent) { hoveredRun = nil }
+
+    /// Tests have no pointer; they set the hovered run directly.
+    public func setHoveredRun(_ index: Int?) { hoveredRun = index }
+
+    /// The run whose hit button contains `point`, in the view's coordinates.
+    private func run(at point: NSPoint) -> Int? {
+        runButtons.first { !$0.isHidden && $0.frame.contains(point) }?.tag
+    }
+
     // MARK: Model → layers
 
     private func apply() {
@@ -162,11 +219,10 @@ public final class UpdateNoticeView: NSView {
             }
             let color = run.action == nil ? theme.foregroundMuted : accent
             let text = SidebarLayers.text(lineFont, color: color.cgColor)
-            text.string = run.text
             layer?.addSublayer(text)
             runLayers.append(text)
             if run.action != nil {
-                let button = NSButton(frame: .zero)
+                let button = LinkHitButton(frame: .zero)
                 Self.configureHitTarget(button, tooltip: run.text, label: run.text)
                 button.tag = index
                 button.target = self
@@ -174,6 +230,32 @@ public final class UpdateNoticeView: NSView {
                 addSubview(button)
                 runButtons.append(button)
             }
+        }
+        applyRunStrings()
+    }
+
+    /// The run texts: plain strings, except the hovered link, which carries an underline. A
+    /// `CATextLayer` ignores its own `font` / `foregroundColor` for an attributed string, so the
+    /// hovered one restates both in its attributes.
+    private func applyRunStrings() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        var layerIndex = 0
+        for (index, run) in model.runs.enumerated() {
+            if index > 0 { layerIndex += 1 }   // the separator before this run
+            guard runLayers.indices.contains(layerIndex) else { break }
+            let layer = runLayers[layerIndex]
+            if index == hoveredRun, run.action != nil {
+                layer.string = NSAttributedString(string: run.text, attributes: [
+                    .font: lineFont,
+                    .foregroundColor: theme.accent.nsColor,
+                    .underlineStyle: NSUnderlineStyle.single.rawValue,
+                ])
+            } else {
+                layer.string = run.text
+            }
+            layerIndex += 1
         }
     }
 
@@ -221,14 +303,15 @@ public final class UpdateNoticeView: NSView {
         var runIndex = 0
         var buttonIndex = 0
         for (i, layer) in runLayers.enumerated() {
-            let text = (layer.string as? String) ?? ""
+            // Separators sit at odd positions when there is more than one run. Widths come from
+            // the model's text, not `layer.string`: the hovered run's is an attributed string.
+            let isSeparator = model.runs.count > 1 && i % 2 == 1
+            let text = isSeparator ? Self.separator : (model.runs.indices.contains(runIndex) ? model.runs[runIndex].text : "")
             let natural = SidebarLayers.width(of: text, font: lineFont)
             let available = max(0, textMaxX - x)
             let width = min(natural, available)
             layer.frame = NSRect(x: x, y: lineY, width: width, height: lineHeight)
             layer.isHidden = width <= 0
-            // Separators sit at odd positions when there is more than one run.
-            let isSeparator = model.runs.count > 1 && i % 2 == 1
             if !isSeparator {
                 if model.runs.indices.contains(runIndex), model.runs[runIndex].action != nil,
                     runButtons.indices.contains(buttonIndex)
@@ -241,6 +324,9 @@ public final class UpdateNoticeView: NSView {
             }
             x += width
         }
+        // The hit targets moved: their pointing-hand rects must follow (as `StatusBarView` does).
+        for button in runButtons { window?.invalidateCursorRects(for: button) }
+        window?.invalidateCursorRects(for: closeButton)
     }
 
     // MARK: Test hooks (internal)

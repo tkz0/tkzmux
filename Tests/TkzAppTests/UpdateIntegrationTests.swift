@@ -34,7 +34,8 @@ struct UpdateIntegrationTests {
         tag: String = "v9.9.9",
         status: Int? = 200,
         running: String = "0.7.0",
-        scripted: [FakeCommandRunner.Scripted] = []
+        scripted: [FakeCommandRunner.Scripted] = [],
+        bundleURL: URL = URL(fileURLWithPath: "/nonexistent/tkzmux.app")
     ) -> Fixture {
         let body = try! JSONSerialization.data(withJSONObject: ["tag_name": tag, "html_url": "https://example.invalid/\(tag)"])
         let checker = UpdateChecker(feedURL: feed, running: running, environment: [:]) { _ in (body, status) }
@@ -45,7 +46,7 @@ struct UpdateIntegrationTests {
         let runner = UpgradeRunner(
             capability: capability, runner: fake,
             runningVersion: AppVersion(marketingVersion: running, build: "1", ghosttyCommit: "x"),
-            bundleURL: URL(fileURLWithPath: "/nonexistent/tkzmux.app"),
+            bundleURL: bundleURL,
             logURL: FileManager.default.temporaryDirectory.appending(path: "tkzmux-\(UUID().uuidString).log"),
             queue: DispatchQueue(label: "test.update.integration"))
         let integration = UpdateIntegration(store: store, checker: checker, capability: capability, runner: runner, now: { clock.now })
@@ -177,6 +178,41 @@ struct UpdateIntegrationTests {
         f.store.flush()
         #expect(f.store.state.update.phase == .failed(reason: "Could not run brew: unscripted call"))
     }
+
+    @Test("An upgrade that lands asks for the restart by itself, once, after the store knows")
+    func autoRestart() async throws {
+        let bundle = try UpgradeRunnerTests.TempBundle()
+        defer { bundle.remove() }
+        bundle.writePlist(version: "0.7.0", build: "300")
+        let f = Self.make(
+            scripted: [
+                .init(result: UpdateCommandResult(status: 0)),
+                .init(result: UpdateCommandResult(status: 0), sideEffect: { bundle.writePlist(version: "9.9.9", build: "310") }),
+            ],
+            bundleURL: bundle.app)
+        defer { f.integration.stop() }
+        f.integration.start()
+        var restartRequests: [String] = []
+        var phaseAtRequest: [UpgradePhase] = []
+        f.integration.onRestartRequested = { installed in
+            f.store.flush()
+            restartRequests.append(installed)
+            phaseAtRequest.append(f.store.state.update.phase)
+        }
+
+        f.integration.perform(.upgrade)
+        try await Self.settle { !restartRequests.isEmpty }
+        // No click on the card: the finished upgrade is the request. The store already says so,
+        // so the card reads "Update installed" should the relaunch not happen.
+        #expect(restartRequests == ["9.9.9"])
+        #expect(phaseAtRequest == [.restartReady(installed: "9.9.9")])
+
+        // Nothing else fires it again — and the card's fallback link still works.
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(restartRequests.count == 1)
+        f.integration.perform(.restart)
+        #expect(restartRequests == ["9.9.9", "9.9.9"])
+    }
 }
 
 // MARK: - Restart confirmation (window controller side)
@@ -208,6 +244,20 @@ struct UpdateRelaunchTests {
         #expect(asked.last == plan)
     }
 
+    @Test("With no veto injected the relaunch is unconditional: no dialog, straight to the plan")
+    func noDialogByDefault() throws {
+        let harness = MainWindowControllerTests.makeHarness()
+        defer { harness.tearDown() }
+        let controller = harness.controller
+        var performed: [RelaunchPlan] = []
+        controller.performRelaunch = { performed.append($0) }
+        controller.confirmRestartForUpdate = nil
+        controller.restartForUpdate(installed: "9.9.9")
+        let plan = try #require(performed.first)
+        #expect(plan.pid == getpid())
+        #expect(plan.bundlePath == Bundle.main.bundlePath)
+    }
+
     @Test("The waiter script polls our pid and opens — never `open -n`, never an exec of the binary")
     func script() {
         let script = RelaunchPlan.script
@@ -215,8 +265,5 @@ struct UpdateRelaunchTests {
         #expect(script.contains("exec /usr/bin/open \"$2\""))
         #expect(!script.contains("open -n"))
         #expect(!script.contains("Contents/MacOS"))
-        #expect(MainWindowController.restartMessage(liveSessions: 0).contains("No sessions"))
-        #expect(MainWindowController.restartMessage(liveSessions: 1).hasPrefix("1 session will close"))
-        #expect(MainWindowController.restartMessage(liveSessions: 3).hasPrefix("3 sessions will close"))
     }
 }
