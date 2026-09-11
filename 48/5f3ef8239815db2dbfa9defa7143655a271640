@@ -1,0 +1,53 @@
+Sources/TkzApp/Sidebar/UpdateNoticeView.swift
+  s_557b5f2a1ca203::t_2111e2560b99f4 41-44
+  s_557b5f2a1ca203::t_07b55bb51fdc7f 147-187,259
+  s_557b5f2a1ca203::t_771a6f8210b7c2 55,58,66-73
+  s_557b5f2a1ca203::t_9a777489e250b2 327-329
+  s_557b5f2a1ca203::t_8fc5edc907ee18 11-16
+  s_557b5f2a1ca203::t_1f6a60476f67e4 109-110
+  s_557b5f2a1ca203::t_d267ae5270671e 252
+  s_557b5f2a1ca203::t_5da354a18e7ae0 225,234-251,253-258
+  s_557b5f2a1ca203::t_0dccf98f40bd2a 306-309
+  s_557b5f2a1ca203::t_5abdd3d135270a 5
+  s_8d4241c43de07d::t_6b4599504b4c65 74
+Sources/TkzApp/Update/UpdateIntegration.swift
+  s_557b5f2a1ca203::t_80b9e2a28a277b 84-93
+  s_557b5f2a1ca203::t_06a7a5b6dc04d3 35-37
+Sources/TkzApp/Update/UpdateRelaunch.swift
+  s_557b5f2a1ca203::t_4fd06ad7e763a2 53-57,61
+Tests/TkzAppTests/UpdateIntegrationTests.swift
+  s_557b5f2a1ca203::t_62a00bde60cbe6 247-260
+  s_557b5f2a1ca203::t_ee5755ce0c0ffe 37-38
+  s_557b5f2a1ca203::t_6f39d644f23d0d 181-215
+  s_557b5f2a1ca203::t_b074d5a6a510c4 49
+Tests/TkzAppTests/UpdateNoticeTests.swift
+  s_557b5f2a1ca203::t_305fbb2e83ee65 133-169
+Sources/TkzApp/MainWindowController.swift
+  s_557b5f2a1ca203::t_435560ec2ca640 2227-2229
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_557b5f2a1ca203::t_321ed2e20e0f8a 141-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "485f3ef8239815db2dbfa9defa7143655a271640",
+  "prompts": {},
+  "sessions": {
+    "s_557b5f2a1ca203": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc71c7cd-7fdd-4be2-a4e2-7d2a347ad7cd",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_8d4241c43de07d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "daa508a2-3a2c-4469-9f98-e05c3fd0740f",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
