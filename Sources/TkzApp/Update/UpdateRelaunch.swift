@@ -50,25 +50,15 @@ public enum UpdateRelaunch {
 }
 
 extension MainWindowController {
-    /// The card's "Restart to update": count the live rows, confirm, go. `confirmRestartForUpdate`
-    /// and `performRelaunch` (stored on the controller next to `confirmRemove`) are the two
-    /// injection points the tests use; the defaults are an `NSAlert` and the real relaunch.
+    /// The upgrade finished (or the card's fallback "Restart to update" was clicked): count the
+    /// live rows for the plan and go. No dialog (decision 2026-09-11): "Update via Homebrew" was
+    /// the consent, and the rows survive the restart. `confirmRestartForUpdate` and
+    /// `performRelaunch` (stored on the controller next to `confirmRemove`) are the two injection
+    /// points the tests use; unset, the relaunch is unconditional and real.
     public func restartForUpdate(installed: String) {
         let live = store.state.sessions.values.filter { $0.live != nil }.count
         let plan = RelaunchPlan(pid: getpid(), bundlePath: Bundle.main.bundlePath, liveSessionCount: live)
-        let confirmed: Bool
-        if let confirm = confirmRestartForUpdate {
-            confirmed = confirm(plan)
-        } else {
-            let alert = NSAlert()
-            alert.messageText = "Restart tkzmux to finish updating to \(installed)?"
-            alert.informativeText = Self.restartMessage(liveSessions: live)
-            alert.addButton(withTitle: "Restart")
-            alert.addButton(withTitle: "Later")
-            alert.alertStyle = .informational
-            confirmed = alert.runModal() == .alertFirstButtonReturn
-        }
-        guard confirmed else { return }
+        if let confirm = confirmRestartForUpdate, !confirm(plan) { return }
         do {
             if let perform = performRelaunch {
                 try perform(plan)
@@ -78,14 +68,6 @@ extension MainWindowController {
             }
         } catch {
             showNotice("Could not relaunch: \(error.localizedDescription)")
-        }
-    }
-
-    static func restartMessage(liveSessions: Int) -> String {
-        switch liveSessions {
-        case 0: "No sessions are open. tkzmux quits and comes straight back."
-        case 1: "1 session will close. Its row is kept; resume it with ⌘R after tkzmux restarts."
-        default: "\(liveSessions) sessions will close. Their rows are kept; resume them with ⌘R after tkzmux restarts."
         }
     }
 }
