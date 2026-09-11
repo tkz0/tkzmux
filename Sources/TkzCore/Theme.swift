@@ -50,6 +50,12 @@ public struct Theme: Hashable, Sendable {
     public let idle: RGB                  // translucent; kept, but nothing draws it — the idle dot is hidden
     public let needsYouText: RGB          // NEEDS YOU badge
     public let needsYouBackground: RGB
+    /// 2c.6: the `<mark>` behind the matched characters in a search hit. The same amber as
+    /// ``needsYouBackground`` but carried at .35 — a highlight has to read as a highlight over a
+    /// selected row, which the badge's .16 does not.
+    public let searchMatchBackground: RGB
+    /// Text colour inside that highlight (2c.6 lifts it well clear of ``needsYouText``).
+    public let searchMatchText: RGB
 
     // MARK: Badges, groups, diff, separators
     public let wtText: RGB                // WT badge (sidebar row and status bar)
@@ -201,6 +207,8 @@ extension Theme {
             idle: RGB(rgb: 255, 255, 255, alpha: 0.30),
             needsYouText: RGB(hex: 0xfbbf54),
             needsYouBackground: RGB(rgb: 251, 191, 84, alpha: 0.16),
+            searchMatchBackground: RGB(rgb: 251, 191, 84, alpha: 0.35),
+            searchMatchText: RGB(hex: 0xffe9c2),
             wtText: RGB(hex: 0xc3c8fd),
             wtBackground: RGB(rgb: 139, 147, 248, alpha: 0.20),
             groupEdgeDefault: RGB(hex: 0x41c6a8),
@@ -258,6 +266,8 @@ extension Theme {
             idle: RGB(rgb: 255, 255, 255, alpha: 0.30),
             needsYouText: RGB(hex: 0xffb454),
             needsYouBackground: RGB(rgb: 255, 180, 84, alpha: 0.16),
+            searchMatchBackground: RGB(rgb: 255, 180, 84, alpha: 0.35),
+            searchMatchText: RGB(hex: 0xffe4bd),
             wtText: RGB(hex: 0xb9cdf5),
             wtBackground: RGB(rgb: 91, 141, 239, alpha: 0.22),
             groupEdgeDefault: RGB(hex: 0x3fbf9f),
@@ -319,6 +329,8 @@ extension Theme {
             idle: RGB(rgb: 255, 255, 255, alpha: 0.30),
             needsYouText: RGB(hex: 0xffb454),
             needsYouBackground: RGB(rgb: 255, 180, 84, alpha: 0.16),
+            searchMatchBackground: RGB(rgb: 255, 180, 84, alpha: 0.35),
+            searchMatchText: RGB(hex: 0xffe4bd),
             wtText: RGB(hex: 0xf0b39c),
             wtBackground: RGB(rgb: 226, 134, 102, alpha: 0.20),
             groupEdgeDefault: RGB(hex: 0x3fbf9f),
@@ -380,6 +392,8 @@ extension Theme {
             idle: RGB(rgb: 255, 255, 255, alpha: 0.25),
             needsYouText: RGB(hex: 0xf0a03a),
             needsYouBackground: RGB(rgb: 240, 160, 58, alpha: 0.14),
+            searchMatchBackground: RGB(rgb: 240, 160, 58, alpha: 0.35),
+            searchMatchText: RGB(hex: 0xffe0b0),
             wtText: RGB(hex: 0x8fb0e8),
             wtBackground: RGB(rgb: 77, 127, 214, alpha: 0.16),
             groupEdgeDefault: RGB(hex: 0x3fa08c),
@@ -441,6 +455,8 @@ extension Theme {
             idle: RGB(rgb: 0, 0, 0, alpha: 0.22),
             needsYouText: RGB(hex: 0xb06e10),
             needsYouBackground: RGB(rgb: 221, 138, 30, alpha: 0.14),
+            searchMatchBackground: RGB(rgb: 221, 138, 30, alpha: 0.35),
+            searchMatchText: RGB(hex: 0x8a5a12),
             wtText: RGB(hex: 0x3a66b5),
             wtBackground: RGB(rgb: 77, 127, 214, alpha: 0.13),
             // The artboard's shared `groups` data was written for 1a (#3fa08c); 1b uses this darker teal

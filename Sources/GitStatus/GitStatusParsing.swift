@@ -13,6 +13,19 @@
 
 import Foundation
 
+/// One path out of a `git status` record: what changed, and how.
+public struct ChangedPath: Hashable, Sendable {
+    /// Repo-relative, exactly as git printed it.
+    public let path: String
+    /// The porcelain letter — `M`, `A`, `D`, `R`, `C`, `U`, or `?` for untracked.
+    public let status: String
+
+    public init(path: String, status: String) {
+        self.path = path
+        self.status = status
+    }
+}
+
 /// What `git status --porcelain=v2 --branch -z` said.
 ///
 /// `ahead`/`behind` are optional rather than `0`: a branch with no upstream has no `# branch.ab`
@@ -37,6 +50,14 @@ public struct PorcelainStatus: Hashable, Sendable {
     public var isDetached: Bool
     /// `# branch.oid (initial)` — a repo with no commit yet. `branch` is still the head name.
     public var isUnborn: Bool
+    /// The paths behind ``changedFiles`` and ``untrackedFiles``, in git's order, capped at
+    /// ``GitStatusParsing/pathLimit``.
+    ///
+    /// These are parsed out of records that were already being walked, so they cost one array
+    /// append each. They are deliberately **not** part of `GitSummary`: that struct drives the
+    /// store and the "did anything change?" gate, and a path list churns on every keystroke of
+    /// every file save, where the counts do not.
+    public var paths: [ChangedPath]
 
     public init(
         branch: String? = nil,
@@ -47,7 +68,8 @@ public struct PorcelainStatus: Hashable, Sendable {
         untrackedFiles: Int = 0,
         oid: String? = nil,
         isDetached: Bool = false,
-        isUnborn: Bool = false
+        isUnborn: Bool = false,
+        paths: [ChangedPath] = []
     ) {
         self.branch = branch
         self.upstream = upstream
@@ -58,6 +80,7 @@ public struct PorcelainStatus: Hashable, Sendable {
         self.oid = oid
         self.isDetached = isDetached
         self.isUnborn = isUnborn
+        self.paths = paths
     }
 }
 
@@ -89,17 +112,57 @@ public enum GitStatusParsing {
             switch marker {
             case "1", "u":
                 result.changedFiles += 1
+                append(field, marker: marker, to: &result)
             case "2":
                 result.changedFiles += 1
+                append(field, marker: marker, to: &result)
                 // THE `-z` TRAP: the original path of a rename/copy is its own NUL-separated field.
                 index += 1
             case "?":
                 result.untrackedFiles += 1
+                append(field, marker: marker, to: &result)
             default:
                 break  // `!` (ignored) and anything git adds later.
             }
         }
         return result
+    }
+
+    /// How many paths one repo contributes. A `git status` in a tree with a huge untracked build
+    /// directory can print tens of thousands; the search list shows a handful.
+    public static let pathLimit = 2_000
+
+    /// Splits the path off a record. The path is the **last** field and may contain spaces, so the
+    /// split is by a fixed count of leading fields, never by "the last token".
+    ///
+    ///     1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
+    ///     2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <Xscore> <path>
+    ///     u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
+    ///     ? <path>
+    private static func append(_ field: String, marker: Character, to result: inout PorcelainStatus) {
+        guard result.paths.count < pathLimit else { return }
+        let leadingFields: Int
+        switch marker {
+        case "1": leadingFields = 8
+        case "2": leadingFields = 9
+        case "u": leadingFields = 10
+        default: leadingFields = 1
+        }
+        let parts = field.split(
+            separator: " ", maxSplits: leadingFields, omittingEmptySubsequences: false)
+        guard parts.count == leadingFields + 1 else { return }
+        let path = String(parts[leadingFields])
+        guard !path.isEmpty else { return }
+        result.paths.append(ChangedPath(path: path, status: status(marker: marker, fields: parts)))
+    }
+
+    /// `?` is untracked; otherwise the first of the two XY letters that is not `.` — which is the
+    /// staged letter when there is one, and the worktree letter when there is not.
+    private static func status(marker: Character, fields: [Substring]) -> String {
+        guard marker != "?" else { return "?" }
+        guard fields.count > 1 else { return "M" }
+        let xy = fields[1]
+        return xy.first { $0 != "." }.map(String.init) ?? "M"
     }
 
     private static func parseHeader(_ line: String, into result: inout PorcelainStatus) {

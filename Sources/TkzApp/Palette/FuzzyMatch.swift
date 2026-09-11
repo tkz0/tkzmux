@@ -111,6 +111,63 @@ public enum FuzzyMatch {
         match(Pattern(query), in: Target(text))
     }
 
+    /// The **contiguous** match: the query has to appear in the candidate as one run, folded the
+    /// same way ``match(_:in:)`` folds it.
+    ///
+    /// Subsequence matching is right for a command launcher, where "nsw" should find "New session
+    /// window". It is wrong for a search field: typing `almi` and being shown every path with an
+    /// `a`, an `l`, an `m` and an `i` somewhere in it is noise, not a result (GUI pass 2026-09-11).
+    /// The overlay's sections use this; ⇧⌘P keeps the subsequence matcher.
+    ///
+    /// When the query occurs more than once, the best-scoring occurrence wins, so a hit at a word
+    /// boundary outranks one buried mid-word.
+    public static func substring(_ pattern: Pattern, in target: Target) -> Match? {
+        if pattern.isEmpty { return Match(score: 0, ranges: []) }
+        let m = pattern.count
+        let n = target.count
+        guard m <= n else { return nil }
+
+        var best: (start: Int, score: Int)?
+        for start in 0...(n - m) {
+            var matches = true
+            for offset in 0..<m where target.folded[start + offset] != pattern.folded[offset] {
+                matches = false
+                break
+            }
+            guard matches else { continue }
+            let score = substringScore(start: start, length: m, in: target)
+            if best == nil || score > best!.score { best = (start, score) }
+        }
+        guard let best else { return nil }
+
+        let lower = target.indices[best.start]
+        let upper = best.start + m < n ? target.indices[best.start + m] : target.text.endIndex
+        return Match(score: best.score, ranges: [lower..<upper])
+    }
+
+    public static func substring(_ query: String, in text: String) -> Match? {
+        substring(Pattern(query), in: Target(text))
+    }
+
+    /// The same shape of score a contiguous run would earn from ``match(_:in:)`` — there are no
+    /// gaps to decay, so it is the run plus whatever the boundary is worth.
+    private static func substringScore(start: Int, length: Int, in target: Target) -> Int {
+        var score = matchBase * length + consecutiveBonus * (length - 1)
+        if start == 0 {
+            score += startBonus
+        } else {
+            let previous = target.characters[start - 1]
+            if separators.contains(previous) {
+                score += separatorBonus
+            } else if target.characters[start].isUppercase, previous.isLowercase {
+                score += camelBonus
+            }
+            score -= min(start * leadingPenalty, leadingPenaltyCap)
+        }
+        if length == target.count { score += exactBonus }
+        return score
+    }
+
     /// Scores `pattern` against `target`, or `nil` when the query is not a subsequence of it.
     ///
     /// An empty query matches everything with score 0 and no ranges — callers that want "show

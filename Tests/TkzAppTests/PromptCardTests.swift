@@ -249,4 +249,59 @@ struct PromptCardTests {
         harness.mutate { $0.select(ids[1]) }
         #expect(!controller.promptCard.isShown)
     }
+
+    // MARK: The search overlay's hit (TKZ-52, design 2c.6)
+
+    @Test("A transcript hit takes over the top block and keeps the recap below it")
+    func transcriptHit() throws {
+        let id = SessionID(uuid: UUID())
+        let controller = PromptCardController(theme: .default)
+        controller.summaryProvider = { _, done in done(Self.summary()) }
+
+        let hit = PromptCardView.HitContent(
+            turn: 9, glyph: "\u{2733}", text: "the websocket client drops the token",
+            at: Self.now.addingTimeInterval(-3600), sessionTitle: "Fix websocket reconnect")
+        controller.present(hit: hit, for: id, over: NSRect(x: 100, y: 100, width: 900, height: 600))
+
+        let card = try #require(controller.cardViewForTesting)
+        #expect(card.promptText == "the websocket client drops the token")
+        #expect(card.promptTextViewForTesting.string.hasPrefix("\u{2733} "))
+        #expect(card.copyPromptButtonForTesting.title == "Copy line")
+        // The recap half still says what the conversation is.
+        #expect(card.recapText == "Build fixed. Next: ship.")
+        controller.dismiss()
+    }
+
+    @Test("The hit's meta line names the conversation and when the line was written")
+    func transcriptHitMeta() {
+        let hit = PromptCardView.HitContent(
+            turn: 9, glyph: ">", text: "x", at: Self.now.addingTimeInterval(-7200),
+            sessionTitle: "Fix websocket reconnect")
+        #expect(
+            PromptCardView.hitMetaLine(hit, now: Self.now)
+                == "Fix websocket reconnect \u{00B7} 2 h ago")
+
+        let undated = PromptCardView.HitContent(
+            turn: 1, glyph: ">", text: "x", at: nil, sessionTitle: "Fix websocket reconnect")
+        #expect(PromptCardView.hitMetaLine(undated, now: Self.now) == "Fix websocket reconnect")
+    }
+
+    @Test("Opening the card the ordinary way after a hit goes back to the first prompt")
+    func hitIsNotSticky() throws {
+        let id = SessionID(uuid: UUID())
+        let controller = PromptCardController(theme: .default)
+        controller.summaryProvider = { _, done in done(Self.summary()) }
+
+        controller.present(
+            hit: PromptCardView.HitContent(
+                turn: 3, glyph: ">", text: "a hit", at: nil, sessionTitle: "s"),
+            for: id, over: nil)
+        #expect(controller.cardViewForTesting?.promptText == "a hit")
+
+        controller.dismiss()
+        controller.present(for: id, over: nil)
+        #expect(controller.cardViewForTesting?.promptText == "Fix the build")
+        #expect(controller.cardViewForTesting?.copyPromptButtonForTesting.title == "Copy prompt")
+        controller.dismiss()
+    }
 }

@@ -56,6 +56,8 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
     private var watch: TranscriptWatch?
     /// Where the card was last placed, so a refresh that changes its height keeps the top edge.
     private var anchorFrame: NSRect?
+    /// Set just before a `show` that came from the search overlay.
+    private var pendingHit: PromptCardView.HitContent?
 
     public init(theme: Theme = .default) {
         self.theme = theme
@@ -79,6 +81,15 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
     /// coordinates), and starts the read. The cached summary — whatever the last read said — is
     /// shown at once so the card never opens blank when it has been open before.
     public func present(for id: SessionID, over anchor: NSRect?) {
+        pendingHit = nil
+        show(for: id, over: anchor, mode: .pinned)
+    }
+
+    /// The search overlay's ↵ on a transcript hit (design 2c.6): the card, opened on that line
+    /// rather than on the session's first prompt. The recap below it is the session's own, so the
+    /// card still says what the conversation is.
+    func present(hit: PromptCardView.HitContent, for id: SessionID, over anchor: NSRect?) {
+        pendingHit = hit
         show(for: id, over: anchor, mode: .pinned)
     }
 
@@ -104,6 +115,7 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
         apply(mode: mode, to: panel)
         cardView?.maxTextHeight = Self.maxTextHeight(for: anchor)
         cardView?.setSummary(nil)
+        cardView?.setHit(pendingHit)
         // Before the panel is ordered front: the cached summary arrives synchronously, so the
         // card is sized for its real content on its first frame rather than for "Loading…".
         refresh()
@@ -135,6 +147,7 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
         stopWatching()
         sessionID = nil
         mode = nil
+        pendingHit = nil
         panel.orderOut(nil)
         onDismiss?()
     }

@@ -13,7 +13,7 @@ this table; nothing hard-codes a key equivalent.
 | Action id | Keys | What it does |
 |---|---|---|
 | `newSession` | ⌘N | Opens the group-scoped “＋ New session…” menu |
-| `searchSessions` | ⌘P | Palette, sessions only |
+| `searchSessions` | ⌘P | Puts the caret in the toolbar's “Search sessions…” field; typing opens the results overlay (see below). With no toolbar (the field hidden), falls back to the centred palette in sessions mode |
 | `commandPalette` | ⇧⌘P | Palette, everything (sessions, groups, commands) |
 | `toggleSidebar` | ⌘B | Show/hide the sidebar |
 | `renameSession` | ⇧⌘R | Rename the selected session |
@@ -39,6 +39,29 @@ this table; nothing hard-codes a key equivalent.
 | `previousTab` / `nextTab` | ⇧⌘[ / ⇧⌘] | Previous / next terminal in this session |
 | `nextSession` | — | Known action, **no default** (cmux binds none) |
 | `previousSession` | — | Same |
+
+## Inside the search overlay (⌘P, design 2c.6)
+
+The overlay is a child window that never takes the keyboard: the toolbar field keeps the caret and
+relays these keys to it (`MainToolbarController` → `MainWindowController` → `CommandPaletteController`).
+They are **not** in the shortcuts table — they exist only while the field is being edited.
+
+| Keys | What it does |
+|---|---|
+| ↑ / ↓ | Move the selection. Section headers are skipped; no wraparound |
+| ↵ | Open the selected row. A transcript hit selects its session and shows that turn in the 2c.5 card |
+| ⌘↵ | Run the Actions row — a new session in the named group, started with what you typed |
+| ⇥ / ⇧⇥, → / ← | Cycle the scope chips: `All → Sessions → Transcripts → Files changed`, wrapping |
+| esc | Close the overlay, empty the field, and hand the keyboard back to the terminal |
+
+→ and ← only take the chips while the overlay is up; with it down they move the caret as usual.
+⌥→ / ⌥← and Home/End always move the caret, so a typo mid-query is still reachable. ⇥ is consumed
+either way — letting it through walks the responder chain out of the field.
+
+Emptying the field closes the overlay too — the field is the only state, so nothing is left
+filtered or floating. Transcript search covers the sessions currently in the sidebar; a query
+shorter than two characters searches neither transcripts nor changed files, because a single
+character matches almost every line and every path.
 
 ## Overrides
 
