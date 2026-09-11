@@ -70,7 +70,7 @@ struct StatusBarInteractionTests {
             reviewDecision: "APPROVED")
         let item = try #require(Self.items(StatusBarModel(pullRequest: pr)).first)
         #expect(item.segment.plainText == "#123")
-        #expect(item.segment.iconName == StatusBarView.openSymbol)
+        #expect(item.segment.glyph == .pullRequest)
         #expect(item.segment.colors.first == Theme.default.prOpen)
         #expect(item.segment.colors == [Theme.default.prOpen, Theme.default.prOpen])
         #expect(item.url?.absoluteString == "https://github.com/o/r/pull/123")
@@ -81,7 +81,7 @@ struct StatusBarInteractionTests {
         let pr = PRInfo(number: 23, url: "https://github.com/o/r/pull/23", state: "MERGED")
         let item = try #require(Self.items(StatusBarModel(pullRequest: pr)).first)
         #expect(item.segment.plainText == "#23")
-        #expect(item.segment.iconName == StatusBarView.mergedSymbol)
+        #expect(item.segment.glyph == .merge)
         #expect(item.segment.colors.first == Theme.default.prMerged)
         #expect(item.tooltip?.contains("\nMerged") == true)
         // Still clickable after the merge — the PR page is where the discussion lives.
@@ -92,7 +92,7 @@ struct StatusBarInteractionTests {
         let pr = PRInfo(number: 7, state: "OPEN", isDraft: true, reviewDecision: "APPROVED")
         let item = try #require(Self.items(StatusBarModel(pullRequest: pr)).first)
         #expect(item.segment.plainText == "#7")
-        #expect(item.segment.iconName == StatusBarView.openSymbol)
+        #expect(item.segment.glyph == .pullRequest)
         #expect(item.segment.colors.first == Theme.default.foregroundDim)
         #expect(item.tooltip == "Pull request #7\nDraft\nReview approved")
         // No URL in the payload → nothing to click, and no crash constructing one.
@@ -102,7 +102,7 @@ struct StatusBarInteractionTests {
     @Test func aClosedPullRequestUsesTheRemoveColour() throws {
         let pr = PRInfo(number: 9, state: "CLOSED", reviewDecision: "CHANGES_REQUESTED")
         let item = try #require(Self.items(StatusBarModel(pullRequest: pr)).first)
-        #expect(item.segment.iconName == StatusBarView.openSymbol)
+        #expect(item.segment.glyph == .pullRequest)
         #expect(item.segment.colors.first == Theme.default.diffRemove)
         #expect(item.tooltip == "Pull request #9\nClosed\nReview changes requested")
     }
