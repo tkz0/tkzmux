@@ -1,0 +1,22 @@
+Sources/TkzApp/StatusBar/StatusBarView.swift
+  s_b6a66c1ffb2a87::t_793b5e05af6be9 64
+  s_b6a66c1ffb2a87::t_a7a1d42106076d 37-49,51,88-90,358,363,367,371,389,620-664,724-725
+Tests/TkzAppTests/StatusBarInteractionTests.swift
+  s_b6a66c1ffb2a87::t_a7a1d42106076d 73,84,95,105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "72b814b732bb94ff7871c86e0d8f6215a75b5930",
+  "prompts": {},
+  "sessions": {
+    "s_b6a66c1ffb2a87": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b4953d14-cdae-4b85-86e9-b0ad7afbc904",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
