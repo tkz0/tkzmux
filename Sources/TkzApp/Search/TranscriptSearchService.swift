@@ -46,8 +46,14 @@ public actor TranscriptSearchService {
     private var indexes: [SessionID: TranscriptIndex] = [:]
     /// Least-recently-searched first.
     private var recency: [SessionID] = []
+    /// The live budget. Injectable so a test can cross it with a handful of short lines instead of
+    /// megabytes — the first version of the eviction test never actually reached the real cap and
+    /// so asserted nothing.
+    private let characterLimit: Int
 
-    public init() {}
+    public init(characterLimit: Int = TranscriptSearchService.characterLimit) {
+        self.characterLimit = characterLimit
+    }
 
     // MARK: Searching
 
@@ -117,10 +123,11 @@ public actor TranscriptSearchService {
         for id in indexes.keys where !live.contains(id) { drop(id) }
 
         var total = indexes.values.reduce(0) { $0 + $1.retainedCharacters }
-        var index = 0
-        while total > Self.characterLimit, index < recency.count {
-            let id = recency[index]
-            index += 1
+        guard total > characterLimit else { return }
+
+        // Walk a *snapshot* of the recency list: `drop` removes from `recency`, so indexing into
+        // the live array skips an entry every time one goes, and the budget is never reached.
+        for id in recency where total > characterLimit {
             guard let dropped = indexes[id] else { continue }
             total -= dropped.retainedCharacters
             drop(id)

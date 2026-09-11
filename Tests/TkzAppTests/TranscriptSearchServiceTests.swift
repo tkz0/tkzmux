@@ -164,22 +164,42 @@ struct TranscriptSearchServiceTests {
     @Test func theFleetOfIndexesStaysUnderItsCharacterCap() async throws {
         let scratch = try Scratch()
         defer { scratch.tearDown() }
-        // Each file holds ~1.2 M characters of prompts; five of them is past the 8 M cap.
-        let filler = String(repeating: "y", count: 1_200)
+        // Each file holds ~300 characters, and the service is given a 500-character budget: two
+        // files already cross it. Driving the real 8 MB cap would mean writing megabytes, which is
+        // both slow and — as the first version of this test proved — easy to get wrong. That one
+        // wrote 6 M characters against an 8 M cap and so evicted nothing while still passing.
         var targets: [TranscriptSearchService.Target] = []
-        for file in 1...5 {
-            let lines = (1...1_000).map { Self.prompt("\(file)-\($0) \(filler) websocket") }
+        for file in 1...4 {
+            let lines = (1...3).map {
+                Self.prompt("\(file)-\($0) websocket \(String(repeating: "y", count: 90))")
+            }
             targets.append(Self.target(try scratch.write(lines, named: "\(file).jsonl")))
         }
 
-        let service = TranscriptSearchService()
-        _ = await service.search("websocket", in: targets, limit: 10)
+        let service = TranscriptSearchService(characterLimit: 500)
+        _ = await service.search("websocket", in: targets, limit: 40)
 
         let retained = await service.retainedCharactersForTesting
-        #expect(retained <= TranscriptSearchService.characterLimit)
+        #expect(retained <= 500)
         #expect(retained > 0, "the most recently searched sessions stay indexed")
-        // The evictions come off the least-recently-searched end, so the last file survives.
-        #expect(await service.indexedSessionsForTesting.contains(targets[4].sessionID))
+
+        let indexed = await service.indexedSessionsForTesting
+        #expect(indexed.count < targets.count, "something was actually evicted")
+        // Evictions come off the least-recently-searched end, so the last file searched survives
+        // and the first one does not.
+        #expect(indexed.contains(targets[3].sessionID))
+        #expect(!indexed.contains(targets[0].sessionID))
+    }
+
+    @Test func theRealCapIsTheOneTheServiceShipsWith() async throws {
+        // The injected budget above must not be mistaken for a relaxed default.
+        let scratch = try Scratch()
+        defer { scratch.tearDown() }
+        let target = Self.target(try scratch.write([Self.prompt("websocket")], named: "a.jsonl"))
+        let service = TranscriptSearchService()
+        _ = await service.search("websocket", in: [target], limit: 10)
+        #expect(await service.indexedSessionsForTesting == [target.sessionID])
+        #expect(TranscriptSearchService.characterLimit == 8_000_000)
     }
 
     // MARK: Rows

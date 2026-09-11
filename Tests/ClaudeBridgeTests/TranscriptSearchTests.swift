@@ -251,18 +251,38 @@ struct TranscriptSearchTests {
     // MARK: Caps
 
     @Test func theRetainedTextIsBoundedAndKeepsTheNewestLines() {
-        // Each prompt is ~2 KB of text; 2000 of them is well past the 2 MB cap.
+        // A retained line is clipped to 2 000 characters, so ~1 200 of them is comfortably past
+        // the 2 MB cap. One `appending` call rather than 1 200: the incremental path has its own
+        // tests, and this one is about the caps.
         let filler = String(repeating: "y", count: 2_000)
-        var index = TranscriptIndex()
-        for turn in 1...2_000 {
-            let data = Self.prompt("\(turn) \(filler)").data(using: .utf8)!
-            index = index.appending(data, fileSize: 0, readTo: 0)
-        }
+        let turns = 1_200
+        let data = (1...turns)
+            .map { Self.prompt("\($0) \(filler)") }
+            .joined(separator: "\n")
+            .data(using: .utf8)!
 
+        let index = Self.index(data)
         #expect(index.retainedCharacters <= TranscriptIndex.textLimit)
         #expect(index.lines.count <= TranscriptIndex.lineLimit)
-        #expect(index.turns == 2_000, "the turn count survives even when its lines do not")
-        #expect(index.lines.last?.text.hasPrefix("2000 ") == true, "the newest line is kept")
+        #expect(index.lines.count < turns, "the cap really bit")
+        #expect(index.turns == turns, "the turn count survives even when its lines do not")
+        #expect(index.lines.last?.text.hasPrefix("\(turns) ") == true, "the newest line is kept")
+        #expect(index.lines.first?.text.hasPrefix("1 ") == false, "the oldest lines went first")
+    }
+
+    @Test func theRetainedCountStaysInStepWithTheLinesItCounts() {
+        // It is carried incrementally now (a `reduce` per keystroke per session was real work), so
+        // it has to agree with the lines actually held — after a trim as much as before one.
+        var index = Self.index()
+        #expect(index.retainedCharacters == index.lines.reduce(0) { $0 + $1.text.count })
+
+        let filler = String(repeating: "z", count: 2_000)
+        for turn in 1...1_200 {
+            index = index.appending(
+                Self.prompt("\(turn) \(filler)").data(using: .utf8)!, fileSize: 0, readTo: 0)
+        }
+        #expect(index.retainedCharacters == index.lines.reduce(0) { $0 + $1.text.count })
+        #expect(index.retainedCharacters <= TranscriptIndex.textLimit)
     }
 
     @Test func aSingleEnormousLineIsClipped() {

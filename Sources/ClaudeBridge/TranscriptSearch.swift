@@ -100,17 +100,23 @@ public struct TranscriptIndex: Sendable {
     public private(set) var fileSize: Int
 
     /// Characters currently retained — the caller's memory budget is spent in this unit.
-    public var retainedCharacters: Int { lines.reduce(0) { $0 + $1.text.count } }
+    ///
+    /// Stored rather than summed on demand: `TranscriptSearchService` asks every index for this on
+    /// every keystroke to decide what to evict, and summing a 20 000-line index each time (times
+    /// one per open session) is real work for a number that only changes when a line is added or
+    /// dropped.
+    public private(set) var retainedCharacters: Int
 
     init(
         lines: [Line] = [], byteOffset: Int = 0, turns: Int = 0, isPartial: Bool = false,
-        fileSize: Int = 0
+        fileSize: Int = 0, retainedCharacters: Int? = nil
     ) {
         self.lines = lines
         self.byteOffset = byteOffset
         self.turns = turns
         self.isPartial = isPartial
         self.fileSize = fileSize
+        self.retainedCharacters = retainedCharacters ?? lines.reduce(0) { $0 + $1.text.count }
     }
 
     // MARK: Building
@@ -166,6 +172,7 @@ public struct TranscriptIndex: Sendable {
     public func appending(_ data: Data, fileSize: Int, readTo offset: Int) -> TranscriptIndex {
         var lines = self.lines
         var turns = self.turns
+        var characters = retainedCharacters
 
         for raw in TranscriptReader.lines(of: data) {
             guard let object = TranscriptReader.decode(raw) else { continue }
@@ -183,30 +190,48 @@ public struct TranscriptIndex: Sendable {
                 else { continue }
                 // A prompt is what makes a turn; everything after it belongs to that turn.
                 turns += 1
-                lines.append(Self.line(turn: turns, kind: .user, text: text, at: at))
+                append(Self.line(turn: turns, kind: .user, text: text, at: at), to: &lines, &characters)
             case "assistant":
                 if let text = TranscriptReader.assistantTextBlock(of: object) {
-                    lines.append(
-                        Self.line(turn: turns, kind: .assistant, text: text, at: at))
+                    append(
+                        Self.line(turn: turns, kind: .assistant, text: text, at: at),
+                        to: &lines, &characters)
                 }
                 for tool in Self.toolUses(of: object) {
-                    lines.append(Self.line(turn: turns, kind: .tool, text: tool, at: at))
+                    append(
+                        Self.line(turn: turns, kind: .tool, text: tool, at: at),
+                        to: &lines, &characters)
                 }
             default:
                 continue
             }
         }
 
-        // Newest wins when the caps bite: the tail of a conversation is the part being worked on.
-        if lines.count > Self.lineLimit { lines.removeFirst(lines.count - Self.lineLimit) }
-        var characters = lines.reduce(0) { $0 + $1.text.count }
-        while characters > Self.textLimit, !lines.isEmpty {
-            characters -= lines.removeFirst().text.count
-        }
-
         return TranscriptIndex(
             lines: lines, byteOffset: offset, turns: turns, isPartial: isPartial,
-            fileSize: fileSize)
+            fileSize: fileSize, retainedCharacters: characters)
+    }
+
+    /// Appends one line and re-applies both caps.
+    ///
+    /// Newest wins when a cap bites: the tail of a conversation is the part being worked on. The
+    /// trim counts how many lines have to go and drops them in **one** `removeFirst(_:)` — dropping
+    /// them one at a time is quadratic, and a `/loop` session's transcript is exactly where that
+    /// bites (it also made the cap test slow enough to disturb `tkzmux-hook`'s 50 ms budget in a
+    /// shared `swift test` run).
+    private func append(_ line: Line, to lines: inout [Line], _ characters: inout Int) {
+        lines.append(line)
+        characters += line.text.count
+
+        // How many lines the line cap alone wants gone...
+        var drop = max(0, lines.count - Self.lineLimit)
+        for index in 0..<drop { characters -= lines[index].text.count }
+        // ...then the character cap keeps going from there.
+        while characters > Self.textLimit, drop < lines.count {
+            characters -= lines[drop].text.count
+            drop += 1
+        }
+        if drop > 0 { lines.removeFirst(drop) }
     }
 
     private static func line(
