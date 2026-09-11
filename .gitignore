@@ -10,6 +10,8 @@ build/
 
 # Local-only docs: kept in the working tree, not published with the source.
 # docs/perf.md is a log of numbers measured on one machine; docs/release.md is
-# the personal signing/notarization runbook.
+# the personal signing/notarization runbook; docs/conformance.md is a milestone
+# record with an unrun vttest matrix.
+docs/conformance.md
 docs/perf.md
 docs/release.md
