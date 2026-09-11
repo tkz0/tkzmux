@@ -1,7 +1,7 @@
 // CommandPaletteController.swift — ⌘P “Search sessions…” and ⇧⌘P “Command palette” (M2.4 / TKZ-20).
 //
 // design.md → App architecture → Palette: "⇧⌘P; `NSPanel` + `NSVisualEffectView`: fuzzy over
-// sessions (title, branch, cwd, group), groups, commands, presets".
+// sessions (title, branch, cwd, group), groups, commands".
 //
 // Structure: a `.nonactivatingPanel` holding an `NSVisualEffectView`, an `NSSearchField` and a
 // view-based `NSTableView` of section headers and result rows, all themed through `ThemeAppKit`.
@@ -63,7 +63,7 @@ public final class CommandPaletteController: NSObject {
     // MARK: State
 
     /// Rebuilds the searchable items. Call whenever the palette is opened, or when a `ChangeSet`
-    /// touches sessions/groups/presets while it is open.
+    /// touches sessions/groups while it is open.
     public func update(state: AppState, mode: PaletteDataSource.Mode? = nil) {
         if let mode { self.mode = mode }
         dataSource = PaletteDataSource(state: state, mode: self.mode)
@@ -142,7 +142,7 @@ public final class CommandPaletteController: NSObject {
         let panel = makePanelIfNeeded()
         searchField?.stringValue = ""
         searchField?.placeholderString =
-            self.mode == .sessions ? "Search sessions\u{2026}" : "Type a command, session or preset\u{2026}"
+            self.mode == .sessions ? "Search sessions\u{2026}" : "Type a command or session\u{2026}"
 
         let frame = panelFrame(over: parent)
         panel.setFrame(frame, display: false)

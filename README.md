@@ -162,7 +162,7 @@ config dir — is read, never written:
 
 **What it writes.** Everything lives under `~/Library/Application Support/tkzmux`:
 
-- `state.json` (+ `.bak`) — groups, sessions, presets, window frame, shortcuts, preferences.
+- `state.json` (+ `.bak`) — groups, sessions, window frame, shortcuts, preferences.
   Process state (pids, descriptors, statuses, last messages) is deliberately **not** persisted:
   `Session.live` is cleared on the way to disk *and* in memory before comparison
   (`Sources/Persistence/PersistedState.swift`, `StateFile.swift`).
@@ -192,7 +192,7 @@ and a Notification matcher) pointing at `tkzmux-hook`. It **never edits `~/.clau
 and it passes straight through for `-p`, `--bare`, subcommands and anything else it does not
 recognise. The zsh wrappers also point `HISTFILE` back at your own `~/.zsh_history` so tkzmux shells
 share your history rather than starting a private one. The command a session is opened to run
-(`claude`, a preset, `claude --resume`) is run at the shell's first prompt, after hooks such as
+(`claude`, `claude -w`, `claude --resume`) is run at the shell's first prompt, after hooks such as
 direnv's have exported their environment, so Claude sees your `.envrc`. *Remove Shell Integration*
 in the app menu deletes `bin/` and the wrapper directories again.
 

@@ -32,7 +32,9 @@ public final class UpdateIntegration {
     /// Injected so the tests do not open a browser or a Finder window.
     public var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
     public var revealLog: (URL) -> Void = { NSWorkspace.shared.activateFileViewerSelecting([$0]) }
-    /// "Restart to update" was clicked: the window controller confirms and relaunches.
+    /// The upgrade just finished, or the card's fallback "Restart to update" was clicked: the
+    /// window controller relaunches. Clicking "Update via Homebrew" was the consent (decision
+    /// 2026-09-11), so no second click and no dialog stand between brew finishing and the restart.
     public var onRestartRequested: ((String) -> Void)?
 
     /// When the last check was *attempted* — offline attempts count, so an activation storm on a
@@ -79,7 +81,16 @@ public final class UpdateIntegration {
             store.update { $0.setCanUpgradeInPlace(capable) }
         }
         runner.onPhaseChange = { [weak self] phase in
-            self?.store.update { $0.setUpgradePhase(phase) }
+            guard let self else { return }
+            store.update { $0.setUpgradePhase(phase) }
+            // Store first, so the card already reads "Update installed · Restart to update" and
+            // stays as the manual fallback should the relaunch fail. One turn later, never inside
+            // the runner's `phase` didSet: the relaunch terminates the app.
+            if case .restartReady(let installed) = phase {
+                DispatchQueue.main.async { [weak self] in
+                    MainActor.assumeIsolated { self?.onRestartRequested?(installed) }
+                }
+            }
         }
 
         let timer = DispatchSource.makeTimerSource(queue: .main)

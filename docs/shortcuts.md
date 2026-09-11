@@ -14,7 +14,7 @@ this table; nothing hard-codes a key equivalent.
 |---|---|---|
 | `newSession` | ⌘N | Opens the group-scoped “＋ New session…” menu |
 | `searchSessions` | ⌘P | Palette, sessions only |
-| `commandPalette` | ⇧⌘P | Palette, everything (sessions, groups, commands, presets) |
+| `commandPalette` | ⇧⌘P | Palette, everything (sessions, groups, commands) |
 | `toggleSidebar` | ⌘B | Show/hide the sidebar |
 | `renameSession` | ⇧⌘R | Rename the selected session |
 | `closeTerminal` | ⌘W | Close the focused pane; the session's **last** terminal closes the session |

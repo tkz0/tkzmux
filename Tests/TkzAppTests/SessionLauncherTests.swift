@@ -78,13 +78,13 @@ struct SessionLauncherTests {
 
     // MARK: - Start
 
-    @Test("start: the account's config dir and the preset's env reach the child")
+    @Test("start: the account's config dir and the boot command reach the child")
     func startEnvironment() throws {
         let h = try Self.makeHarness()
         defer { h.tree.tearDown() }
         let spec = NewSessionMenu.Launch(
-            kind: .preset, command: "claude -w review", cwd: h.tree.repo, accountKey: "claude-work",
-            groupID: h.group, env: ["TKZ_TEST": "1"])
+            kind: .worktree, command: "claude -w review", cwd: h.tree.repo, accountKey: "claude-work",
+            groupID: h.group)
         let result = h.launcher.start(spec)
         h.store.flush()
         let id = try #require(try? result.get())
@@ -93,7 +93,6 @@ struct SessionLauncherTests {
         #expect(opened.cwd == h.tree.repo)
         // No account in the store: derived from the key, `~/.<key>` under the launcher's home.
         #expect(opened.env["CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude-work")
-        #expect(opened.env["TKZ_TEST"] == "1")
         #expect(opened.env["TKZMUX_BOOT_COMMAND"] == "claude -w review")
         #expect(h.session(id)?.accountKey == "claude-work")
         #expect(h.session(id)?.status == .idle)
@@ -125,16 +124,6 @@ struct SessionLauncherTests {
         // elsewhere — the recorded key is the truth, and the wrapper re-export enforces it.
         #expect(h.host.opened.first?.env["CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
         #expect(h.host.opened.first?.env["TKZMUX_CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
-    }
-
-    @Test("start: a preset env may override the account's config dir, on purpose")
-    func presetEnvOverrides() throws {
-        let h = try Self.makeHarness()
-        defer { h.tree.tearDown() }
-        _ = h.launcher.start(NewSessionMenu.Launch(
-            kind: .preset, command: "claude", cwd: h.tree.repo, accountKey: "claude-work",
-            groupID: h.group, env: ["CLAUDE_CONFIG_DIR": "/custom"]))
-        #expect(h.host.opened[0].env["CLAUDE_CONFIG_DIR"] == "/custom")
     }
 
     @Test("start: a missing directory fails before the host is asked")

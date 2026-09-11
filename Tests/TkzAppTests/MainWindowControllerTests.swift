@@ -1148,14 +1148,13 @@ struct MainWindowControllerTests {
     func unrelatedChromeChangeLeavesTheDividerAlone() {
         // The reported bug: drag the sidebar wider, release, and it snaps back. Both
         // `applySidebarVisible` and `applySidebarWidth` used to re-issue `setPosition` on *every*
-        // `chrome` delivery, so any unrelated mutation — a preset edit, a window move — threw away
+        // `chrome` delivery, so any unrelated mutation — a shortcut edit, a window move — threw away
         // the width the user had just dragged to.
         let harness = Self.makeHarness()
         defer { harness.tearDown() }
         let before = harness.controller.splitViewController.appliedWidthCount
 
         harness.mutate { $0.windowFrame = NSRect(x: 30, y: 40, width: 1100, height: 720) }
-        harness.mutate { _ = $0.addPreset(Preset(name: "p", command: "claude")) }
         harness.mutate { $0.shortcuts["x"] = "cmd+x" }
 
         #expect(harness.controller.splitViewController.appliedWidthCount == before)

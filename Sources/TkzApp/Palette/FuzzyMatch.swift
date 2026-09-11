@@ -1,5 +1,5 @@
 // FuzzyMatch.swift — the subsequence matcher behind ⌘P / ⇧⌘P (design.md → App architecture →
-// Palette: "fuzzy over sessions (title, branch, cwd, group), groups, commands, presets").
+// Palette: "fuzzy over sessions (title, branch, cwd, group), groups, commands").
 //
 // Pure value code: no AppKit, no state, no I/O. Two properties matter beyond "does it match":
 //

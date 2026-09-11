@@ -138,8 +138,10 @@ public enum SidebarRowAdapter {
                 runs: [UpdateNoticeModel.Run("Running brew \(step)")],
                 showsClose: false)
         case .restartReady(let installed):
-            // No ✕: the bundle on disk is already the new one, and a dismissed card would take
-            // the only way to restart with it — the next launch is the update whatever happens.
+            // Normally never seen: the app relaunches on its own the moment the upgrade lands.
+            // This is the fallback for a relaunch that could not be spawned. No ✕: the bundle on
+            // disk is already the new one, and a dismissed card would take the only way to
+            // restart with it — the next launch is the update whatever happens.
             return UpdateNoticeModel(
                 title: "Update installed \u{2014} v\(installed)",
                 runs: [UpdateNoticeModel.Run("Restart to update", action: .restart), whatsNew],

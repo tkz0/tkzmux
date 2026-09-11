@@ -15,7 +15,7 @@
 # no associative arrays, no ${var,,}, no ;& -- and an array PROMPT_COMMAND (5.1+) is handled.
 
 if [ -n "${TKZMUX_BIN:-}" ]; then
-    # The command this session was opened to run (`claude --resume <id>`, a preset). Out of the
+    # The command this session was opened to run (`claude --resume <id>`, `claude -w`). Out of the
     # environment before anything else can start: nothing the profile files or the command itself
     # start may inherit it and run it a second time. Run at the first prompt, not here -- see the
     # hook below.

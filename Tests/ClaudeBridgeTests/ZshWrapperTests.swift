@@ -263,8 +263,8 @@ private func runLoginShellToPrompt(
 
 // MARK: - TKZMUX_BOOT_COMMAND
 
-/// Acceptance (2026-09-09): the command a session is opened to run — `claude --resume <id>`, a
-/// preset — actually runs in the shell.
+/// Acceptance (2026-09-09): the command a session is opened to run — `claude --resume <id>`,
+/// `claude -w` — actually runs in the shell.
 ///
 /// This replaces the readiness heuristic it used to arrive by. Typing the command into the pty
 /// after the spawn could not be made reliable: zsh's line editor calls `tcsetattr(…, TCSAFLUSH, …)`

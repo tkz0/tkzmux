@@ -1,9 +1,9 @@
 // NewSessionMenu.swift — the “＋ New session…” menu (M2.4 / TKZ-20).
 //
 // design.md → App architecture → Toolbar: an `NSMenuToolbarItem` scoped to the selected group with
-// *New worktree (claude -w)*, *In repo root (claude)*, *In another repo…*, *From preset… (n saved)*
-// and an Account submenu; → Session flows: new worktree runs `claude -w [name]` **from the repo
-// root**, repo root runs `claude`, a preset carries its own command/cwd/account.
+// *New worktree (claude -w)*, *In repo root (claude)*, *In another repo…* and an Account submenu;
+// → Session flows: new worktree runs `claude -w [name]` **from the repo root**, repo root runs
+// `claude`.
 //
 // The rule this ticket exists for: **the user must never wonder what "New session" does.** Every
 // entry names its target — the group in the header, the command in a mono hint, the directory the
@@ -20,17 +20,17 @@ import os
 
 /// Builds and owns the group-scoped new-session menu.
 ///
-/// Assign ``group``/``presets``/``accounts`` (or call ``configure(state:groupID:)``), then hand
-/// ``menu`` to `MainToolbarController.newSessionMenu`. The menu rebuilds itself in
-/// `menuNeedsUpdate(_:)`, so a group rename or a new preset shows up on the next open with no
-/// wiring; tests call ``rebuild()`` directly.
+/// Assign ``group``/``accounts`` (or call ``configure(state:groupID:)``), then hand ``menu`` to
+/// `MainToolbarController.newSessionMenu`. The menu rebuilds itself in `menuNeedsUpdate(_:)`, so a
+/// group rename or a new account shows up on the next open with no wiring; tests call
+/// ``rebuild()`` directly.
 @MainActor
 public final class NewSessionMenu: NSObject, NSMenuDelegate {
 
     /// What a chosen entry resolves to — exactly the tuple M2.5 needs to start a session.
     public struct Launch: Hashable, Sendable {
         public enum Kind: String, Sendable {
-            case worktree, repoRoot, preset
+            case worktree, repoRoot
             /// A bare login shell with nothing typed into it — the toolbar's `>_` button. The one
             /// launch that does not depend on `claude` being installed or the group being a repo.
             case shell
@@ -43,33 +43,24 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         /// The directory to start in, **verbatim from the model** — tilde expansion is the real
         /// launcher's job, not the menu's.
         public let cwd: String
-        /// `CLAUDE_CONFIG_DIR` selection: the preset's own account, else the group's default.
-        /// `nil` — a group with no default — leaves `CLAUDE_CONFIG_DIR` unset, so the user's shell
-        /// decides; see ``effectiveAccountKey``.
+        /// `CLAUDE_CONFIG_DIR` selection: the group's default. `nil` — a group with no default —
+        /// leaves `CLAUDE_CONFIG_DIR` unset, so the user's shell decides; see
+        /// ``effectiveAccountKey``.
         public let accountKey: String?
         public let groupID: GroupID
-        /// The preset behind this launch, when there is one.
-        public let presetID: UUID?
-        /// Extra environment for the child (`Preset.env`), applied over the account's
-        /// `CLAUDE_CONFIG_DIR` and under `TerminalEnvironment`'s own keys.
-        public let env: [String: String]
 
         public init(
             kind: Kind,
             command: String,
             cwd: String,
             accountKey: String?,
-            groupID: GroupID,
-            presetID: UUID? = nil,
-            env: [String: String] = [:]
+            groupID: GroupID
         ) {
             self.kind = kind
             self.command = command
             self.cwd = cwd
             self.accountKey = accountKey
             self.groupID = groupID
-            self.presetID = presetID
-            self.env = env
         }
 
         /// The one-line description the stub logs — and what the tests assert on.
@@ -78,7 +69,6 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             if command.isEmpty { return "cd \(cwd)" }
             var line = "cd \(cwd) && "
             if let accountKey { line += "CLAUDE_CONFIG_DIR=\(accountKey) " }
-            for key in env.keys.sorted() { line += "\(key)=\(env[key] ?? "") " }
             return line + command
         }
     }
@@ -93,10 +83,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         public static let worktree = NSUserInterfaceItemIdentifier("tkzmux.newSession.worktree")
         public static let repoRoot = NSUserInterfaceItemIdentifier("tkzmux.newSession.repoRoot")
         public static let anotherRepo = NSUserInterfaceItemIdentifier("tkzmux.newSession.anotherRepo")
-        public static let presets = NSUserInterfaceItemIdentifier("tkzmux.newSession.presets")
         public static let account = NSUserInterfaceItemIdentifier("tkzmux.newSession.account")
-        public static let presetRow = NSUserInterfaceItemIdentifier("tkzmux.newSession.preset")
-        public static let managePresets = NSUserInterfaceItemIdentifier("tkzmux.newSession.managePresets")
         public static let accountRow = NSUserInterfaceItemIdentifier("tkzmux.newSession.accountRow")
         /// One account row, addressed by `Account.key`.
         public static func accountRow(_ key: String) -> NSUserInterfaceItemIdentifier {
@@ -127,8 +114,6 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
 
     /// The group the menu is scoped to. `nil` builds a single disabled "No group selected" row.
     public var group: Group?
-    /// Every saved preset (`AppState.presets`); the submenu shows the count.
-    public var presets: [Preset] = []
     /// Accounts by key, for the Account submenu.
     public var accounts: [String: Account] = [:]
     public var theme: Theme
@@ -141,8 +126,6 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     /// is the assembler's call, and it must re-``configure(state:groupID:)`` afterwards: ``group``
     /// is a value copy, so the next `menuNeedsUpdate` would otherwise rebuild from the old one.
     public var onSelectAccount: ((GroupID, String?) -> Void)?
-    /// "Manage presets…" — the assembler opens the presets sheet (M5.2).
-    public var onManagePresets: (() -> Void)?
 
     /// The last launch the menu resolved — the stub's record, and what tests read.
     public private(set) var lastLaunch: Launch?
@@ -163,7 +146,6 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     /// both go through this, which is what makes the per-group button scope correctly.
     public func configure(state: AppState, groupID: GroupID?) {
         group = groupID.flatMap { state.groups[$0] }
-        presets = state.presets
         accounts = state.accounts
         rebuild()
     }
@@ -173,7 +155,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         configure(state: state, groupID: state.selectedSession?.groupID ?? state.orderedGroups.first?.id)
     }
 
-    /// The account a launch will use when the preset does not override it: **the group's default**,
+    /// The account a launch will use: **the group's default**,
     /// and nothing else. There is deliberately no per-menu override — one used to live here, and
     /// because it was never cleared it followed the user into every other group's menu.
     ///
@@ -190,7 +172,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         rebuild()
     }
 
-    /// Rebuilds the menu from the current group/presets/accounts.
+    /// Rebuilds the menu from the current group/accounts.
     public func rebuild() {
         menu.removeAllItems()
 
@@ -243,50 +225,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         menu.addItem(another)
 
         menu.addItem(.separator())
-        menu.addItem(presetsItem(repoRoot: repoRoot))
-        menu.addItem(.separator())
         menu.addItem(accountItem(group: group))
-    }
-
-    private func presetsItem(repoRoot: String?) -> NSMenuItem {
-        let count = presets.count
-        let item = NSMenuItem(
-            title: count == 0
-                ? "From preset\u{2026} (none saved)"
-                : "From preset\u{2026} (\(count) saved)",
-            action: nil, keyEquivalent: "")
-        item.identifier = ItemID.presets
-        // Always enabled since M5.2: with nothing saved the submenu still offers "Manage presets…",
-        // which is how the first preset gets made.
-        item.isEnabled = true
-
-        let submenu = NSMenu()
-        submenu.autoenablesItems = false
-        for preset in presets {
-            guard let resolved = launch(for: preset, repoRoot: repoRoot) else { continue }
-            let row = entry(
-                title: preset.name,
-                hint: resolved.command,
-                detail: resolved.cwd,
-                enabled: true,
-                action: #selector(runPreset(_:))
-            )
-            row.representedObject = preset.id
-            row.identifier = ItemID.presetRow
-            submenu.addItem(row)
-        }
-        if count > 0 { submenu.addItem(.separator()) }
-        let manage = entry(
-            title: "Manage presets\u{2026}",
-            hint: nil,
-            detail: count == 0 ? "none saved yet" : nil,
-            enabled: true,
-            action: #selector(managePresetsItem)
-        )
-        manage.identifier = ItemID.managePresets
-        submenu.addItem(manage)
-        item.submenu = submenu
-        return item
     }
 
     /// "Default account ▸": which account **every new session in this group** gets.
@@ -427,27 +366,6 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             accountKey: effectiveAccountKey, groupID: group.id)
     }
 
-    /// Account precedence: the preset's own key, else the group's default.
-    /// `nil` when the menu is not scoped to a group — a launch must always name the group it lands in.
-    public func launch(for preset: Preset, repoRoot: String? = nil) -> Launch? {
-        guard let group else { return nil }
-        let root = repoRoot ?? group.repoRoot
-        var command = preset.command
-        if case .worktree(let name) = preset.cwdMode, let name, !name.isEmpty,
-            !command.contains(" -w ") {
-            command += " \(name)"
-        }
-        return Launch(
-            kind: .preset,
-            command: command,
-            cwd: preset.cwdMode.directory(repoRoot: root, fallback: root ?? "~"),
-            accountKey: preset.accountKey ?? effectiveAccountKey,
-            groupID: group.id,
-            presetID: preset.id,
-            env: preset.env
-        )
-    }
-
     /// Hands a resolved launch to ``onLaunch``, or logs it. Public so the assembler can replay one.
     public func perform(_ launch: Launch) {
         lastLaunch = launch
@@ -478,18 +396,6 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
 
     @objc private func chooseAnotherRepo() {
         onChooseAnotherRepo?()
-    }
-
-    @objc private func runPreset(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? UUID,
-            let preset = presets.first(where: { $0.id == id }),
-            let resolved = launch(for: preset)
-        else { return }
-        perform(resolved)
-    }
-
-    @objc private func managePresetsItem() {
-        onManagePresets?()
     }
 
     @objc private func selectAccountItem(_ sender: NSMenuItem) {

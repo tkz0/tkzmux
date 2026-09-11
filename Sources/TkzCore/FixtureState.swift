@@ -192,16 +192,6 @@ public enum Fixture {
         }
         for group in state.orderedGroups { state.normalizeSessionOrder(in: group.id) }
 
-        state.presets = [
-            Preset(
-                id: uuid(2001), name: "Worktree from ticket", command: "claude -w",
-                cwdMode: .worktree(name: nil), accountKey: "claude-work"),
-            Preset(
-                id: uuid(2002), name: "Repo root", command: "claude", cwdMode: .repoRoot),
-            Preset(
-                id: uuid(2003), name: "Plan mode", command: "claude --permission-mode plan",
-                cwdMode: .repoRoot, accountKey: "claude"),
-        ]
         state.shortcuts = [
             // Not "cmd+t": that is `newTerminal` since TKZ-36, and a fixture collision would
             // silently shadow it under TKZMUX_FIXTURE without any test noticing.
@@ -237,7 +227,6 @@ public enum Fixture {
             isWorktree: worktreePath != nil,
             accountKey: spec.account,
             claudeSessionId: String(format: "11111111-2222-4333-8444-%012d", n),
-            presetID: nil,
             createdAt: created,
             lastActiveAt: now.addingTimeInterval(-Double(n) * 60)
         )

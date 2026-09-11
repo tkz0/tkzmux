@@ -1,7 +1,7 @@
 // PaletteItem.swift — what ⌘P / ⇧⌘P search over (M2.4 / TKZ-20).
 //
 // design.md → App architecture → Palette: "fuzzy over sessions (title, branch, cwd, group), groups,
-// commands, presets". One flat item type covers all four; ``PaletteItem/Kind`` is what the panel
+// commands". One flat item type covers all three; ``PaletteItem/Kind`` is what the panel
 // groups rows by, and ``PaletteItem/actionID`` is the only thing wave 3 has to dispatch on.
 //
 // Items carry their fields *pre-folded* (`FuzzyMatch.Target`) because the folding, not the DP, is
@@ -14,7 +14,7 @@ import TkzCore
 public struct PaletteItem: Identifiable, Sendable {
 
     public enum Kind: String, Sendable, CaseIterable {
-        case session, group, command, preset
+        case session, group, command
 
         /// The section header the panel draws above a run of these.
         public var sectionTitle: String {
@@ -22,7 +22,6 @@ public struct PaletteItem: Identifiable, Sendable {
             case .session: "Sessions"
             case .group: "Groups"
             case .command: "Commands"
-            case .preset: "Presets"
             }
         }
 
@@ -32,7 +31,6 @@ public struct PaletteItem: Identifiable, Sendable {
             case .session: 0
             case .group: 1
             case .command: 2
-            case .preset: 3
             }
         }
     }
@@ -86,7 +84,6 @@ public struct PaletteItem: Identifiable, Sendable {
     public let trailing: String?
     /// What wave 3 dispatches on. Sessions: `session:<uuid>`. Groups: `group:<uuid>`.
     /// Commands: the raw `ShortcutAction` id, so the palette and the main menu share one vocabulary.
-    /// Presets: `preset:<uuid>`.
     public let actionID: String
     /// The session this row acts on, when it is a session row.
     public let sessionID: SessionID?

@@ -43,8 +43,8 @@ if set -q TKZMUX_BIN; and test -n "$TKZMUX_BIN"
     end
 end
 
-# The command this session was opened to run: `claude --resume <id>` for a resume, a preset's
-# command for a new session. Run at the *first prompt* rather than now, from a one-shot
+# The command this session was opened to run: `claude --resume <id>` for a resume, `claude` or
+# `claude -w` for a new session. Run at the *first prompt* rather than now, from a one-shot
 # fish_prompt handler defined after every handler the user's configuration installed (direnv's
 # among them), which is the state a command typed at the first prompt would see.
 if set -q TKZMUX_BOOT_COMMAND; and test -n "$TKZMUX_BOOT_COMMAND"

@@ -18,8 +18,8 @@ if [[ -n "${TKZMUX_ZDOTDIR:-}" && -n "${TKZMUX_USER_ZDOTDIR:-}" ]]; then
     fi
 fi
 
-# The command this session was opened to run: `claude --resume <id>` for a resume, a preset's
-# command for a new session. Deliberately *run from here* rather than typed into the pty, and
+# The command this session was opened to run: `claude --resume <id>` for a resume, `claude` or
+# `claude -w` for a new session. Deliberately *run from here* rather than typed into the pty, and
 # deliberately run at the *first prompt* rather than right now.
 #
 # Not typed in: zsh's line editor sets up the tty with `tcsetattr(…, TCSAFLUSH, …)`, which

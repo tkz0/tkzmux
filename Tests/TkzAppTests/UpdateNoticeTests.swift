@@ -130,6 +130,43 @@ struct UpdateNoticeTests {
             SidebarRowViewTests.components(light.titleTextLayer.foregroundColor)))
     }
 
+    @Test("Links read as links: pointing-hand hit targets, and the hovered one underlines")
+    func hover() throws {
+        let idle = try #require(SidebarRowAdapter.updateNotice(for: Self.state()))
+        let view = Self.makeView(idle)
+        for button in view.runHitButtons { #expect(button is UpdateNoticeView.LinkHitButton) }
+        #expect(view.closeButton is UpdateNoticeView.LinkHitButton)
+
+        // Resting: plain strings, nothing hovered.
+        #expect(view.hoveredRun == nil)
+        #expect(view.runTextLayers[0].string as? String == "Update via Homebrew")
+        view.setContentsScale(1)
+        let resting = try SidebarRowViewTests.pixels(SidebarRowViewTests.render(view, scale: 1))
+
+        // Hovered: the run's text is attributed with an underline; the other link is untouched;
+        // the layout (widths) does not move; and the raster actually changes.
+        view.setHoveredRun(0)
+        view.layoutSubtreeIfNeeded()
+        let hovered = try #require(view.runTextLayers[0].string as? NSAttributedString)
+        #expect(hovered.string == "Update via Homebrew")
+        #expect(hovered.attribute(.underlineStyle, at: 0, effectiveRange: nil) as? Int == NSUnderlineStyle.single.rawValue)
+        #expect(view.runTextLayers[2].string as? String == "What\u{2019}s new")
+        #expect(view.runTextLayers[0].frame.width > 0)
+        #expect(try SidebarRowViewTests.pixels(SidebarRowViewTests.render(view, scale: 1)) != resting)
+
+        // Back out, and back to the resting raster.
+        view.setHoveredRun(nil)
+        #expect(view.runTextLayers[0].string as? String == "Update via Homebrew")
+        #expect(try SidebarRowViewTests.pixels(SidebarRowViewTests.render(view, scale: 1)) == resting)
+
+        // A phase change re-words the runs; whatever was hovered no longer means anything.
+        view.setHoveredRun(1)
+        let failed = try #require(SidebarRowAdapter.updateNotice(for: Self.state(phase: .failed(reason: "x"))))
+        view.configure(failed, theme: .default)
+        #expect(view.hoveredRun == nil)
+        #expect(view.runTextLayers.allSatisfy { $0.string is String })
+    }
+
     @Test("Clicks route: a link to onAction with its action, the ✕ to onDismiss")
     func clicks() throws {
         let failed = try #require(SidebarRowAdapter.updateNotice(for: Self.state(phase: .failed(reason: "x"))))

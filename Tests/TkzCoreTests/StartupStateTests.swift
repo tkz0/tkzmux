@@ -13,7 +13,6 @@ import Testing
 
         #expect(state.sessions.isEmpty)
         #expect(state.selection == nil)
-        #expect(state.presets.isEmpty)
         #expect(state.groups.count == 1)
 
         let group = try! #require(state.orderedGroups.first)

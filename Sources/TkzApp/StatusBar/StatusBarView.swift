@@ -34,11 +34,21 @@ struct StatusRun: Equatable, Sendable {
     var color: RGB
 }
 
-/// A small symbol drawn inline before a run of text — the PR badge's pull-request / merge glyph.
-/// An SF Symbol name rather than an image: the app bundles no assets, and a name is a value the
-/// content tests can compare.
+/// The glyphs a ``StatusIcon`` can draw. Drawn as paths in `StatusBarView`, not loaded: the app
+/// bundles no assets, and SF Symbols has no pull-request icon — `arrow.triangle.pull` is Apple's
+/// "pull" arrow, which at 11 pt reads as a broken stub rather than as GitHub's badge.
+enum StatusGlyph: Equatable, Sendable {
+    /// GitHub's `git-pull-request` octicon: two rings on the left joined by a line, and on the
+    /// right a ring with a line rising from it that turns into an arrowhead pointing left.
+    case pullRequest
+    /// GitHub's `git-merge` octicon: the same left column, with a curve sweeping from the top ring
+    /// down and right into a ring at mid-height.
+    case merge
+}
+
+/// A small glyph drawn inline before a run of text — the PR badge's pull-request / merge icon.
 struct StatusIcon: Equatable, Sendable {
-    var symbolName: String
+    var glyph: StatusGlyph
     var color: RGB
 }
 
@@ -51,7 +61,7 @@ enum StatusSegment: Equatable, Sendable {
     case pill(text: String, foreground: RGB, background: RGB)
     /// `Context ▬▬▬▬ 62%`: a label, a 44 × 4 pt bar filled to `fraction`, and the number after it.
     case meter(label: StatusRun, fraction: Double, fill: RGB, track: RGB, value: StatusRun)
-    /// A symbol and the text after it, 4 pt apart (2c.1: the pull-request glyph and `#418`).
+    /// A glyph and the text after it, 4 pt apart (2c.1: the pull-request glyph and `#418`).
     case iconRuns(icon: StatusIcon, runs: [StatusRun])
 
     /// The segment's text with no styling; used for the accessibility value and by tests.
@@ -75,9 +85,9 @@ enum StatusSegment: Equatable, Sendable {
         }
     }
 
-    /// The symbol an `.iconRuns` segment draws; `nil` for every other kind.
-    var iconName: String? {
-        if case .iconRuns(let icon, _) = self { return icon.symbolName }
+    /// The glyph an `.iconRuns` segment draws; `nil` for every other kind.
+    var glyph: StatusGlyph? {
+        if case .iconRuns(let icon, _) = self { return icon.glyph }
         return nil
     }
 }
@@ -345,20 +355,20 @@ public final class StatusBarView: NSView {
     private static func prItem(_ pr: PRInfo, theme: Theme) -> StatusItem {
         let state = pr.state?.uppercased()
         let decision = pr.reviewDecision?.uppercased()
-        let symbol: String
+        let glyph: StatusGlyph
         let color: RGB
         let stateText: String
         switch state {
         case "MERGED":
-            symbol = Self.mergedSymbol
+            glyph = .merge
             color = theme.prMerged
             stateText = "Merged"
         case "CLOSED":
-            symbol = Self.openSymbol
+            glyph = .pullRequest
             color = theme.diffRemove
             stateText = "Closed"
         default:
-            symbol = Self.openSymbol
+            glyph = .pullRequest
             if pr.isDraft {
                 color = theme.foregroundDim
                 stateText = "Draft"
@@ -376,15 +386,11 @@ public final class StatusBarView: NSView {
 
         return StatusItem(
             .iconRuns(
-                icon: StatusIcon(symbolName: symbol, color: color),
+                icon: StatusIcon(glyph: glyph, color: color),
                 runs: [StatusRun(text: "#\(pr.number)", color: color)]),
             tooltip: lines.joined(separator: "\n"),
             url: pr.url.flatMap(URL.init(string:)))
     }
-
-    /// SF Symbols standing in for GitHub's `git-pull-request` and `git-merge` octicons.
-    static let openSymbol = "arrow.triangle.pull"
-    static let mergedSymbol = "arrow.triangle.merge"
 
     /// The segments alone — what the content tests assert against, and what the accessibility
     /// value is built from.
@@ -611,13 +617,51 @@ public final class StatusBarView: NSView {
         }
     }
 
-    /// The glyph for an `.iconRuns` segment, tinted. Built per draw: the image is tiny, and caching
-    /// it would mean invalidating on every theme change for no measurable gain.
-    private func iconImage(_ icon: StatusIcon) -> NSImage? {
-        let configuration = NSImage.SymbolConfiguration(pointSize: Self.iconSize, weight: .medium)
-            .applying(.init(paletteColors: [icon.color.nsColor]))
-        return NSImage(systemSymbolName: icon.symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(configuration)
+    /// The outline of a glyph, laid out on the octicon 16-unit grid and scaled into `rect`. Every
+    /// part is a stroke — rings, spines, the arrowhead — in one path, so a single `stroke()` paints
+    /// it in one colour with round joins, and it stays crisp at any size and scale factor.
+    static func glyphPath(_ glyph: StatusGlyph, in rect: NSRect) -> NSBezierPath {
+        let unit = rect.width / 16
+        // The view is not flipped: grid `y` grows downward, so map it onto `rect.maxY`.
+        func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+            NSPoint(x: rect.minX + x * unit, y: rect.maxY - y * unit)
+        }
+        let ring: CGFloat = 2 * unit           // ring radius, centre to stroke centre
+        let path = NSBezierPath()
+        path.lineWidth = max(1.5 * unit, 1)
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+
+        func addRing(_ x: CGFloat, _ y: CGFloat) {
+            path.appendOval(in: NSRect(
+                x: p(x, y).x - ring, y: p(x, y).y - ring, width: 2 * ring, height: 2 * ring))
+        }
+
+        // Left column, shared: rings at the top and bottom joined by a line.
+        addRing(3.5, 3.5)
+        addRing(3.5, 12.5)
+        path.move(to: p(3.5, 5.5))
+        path.line(to: p(3.5, 10.5))
+
+        switch glyph {
+        case .pullRequest:
+            // Right column: a ring at the bottom, a line up from it that turns left at the top,
+            // and the arrowhead pointing back toward the left column.
+            addRing(12.5, 12.5)
+            path.move(to: p(12.5, 10.5))
+            path.line(to: p(12.5, 5))
+            path.curve(to: p(11, 3.5), controlPoint1: p(12.5, 4.17), controlPoint2: p(11.83, 3.5))
+            path.line(to: p(8.25, 3.5))
+            path.move(to: p(10.25, 1.5))
+            path.line(to: p(8.25, 3.5))
+            path.line(to: p(10.25, 5.5))
+        case .merge:
+            // A curve leaving the top ring, sweeping down and right into a ring at mid-height.
+            addRing(12.5, 8)
+            path.move(to: p(3.5, 5.5))
+            path.curve(to: p(10.5, 8), controlPoint1: p(3.5, 7.5), controlPoint2: p(6.5, 8))
+        }
+        return path
     }
 
     /// Where an `.iconRuns` glyph lands when the item is drawn at `x`: an `iconSize` square on the
@@ -677,21 +721,8 @@ public final class StatusBarView: NSView {
             drawText(string, at: rect.minX + Self.pillPadX, width: textWidth, font: pillFont)
 
         case .iconRuns(let icon, let runs):
-            let rect = iconRect(at: x)
-            if let image = iconImage(icon), image.size.width > 0, image.size.height > 0 {
-                // Symbols are taller than wide (`arrow.triangle.pull` is 10 × 15): fit inside the
-                // square, centred, rather than stretch to it.
-                let scale = min(rect.width / image.size.width, rect.height / image.size.height)
-                let size = NSSize(width: image.size.width * scale, height: image.size.height * scale)
-                let fitted = NSRect(
-                    x: rect.midX - size.width / 2, y: rect.midY - size.height / 2,
-                    width: size.width, height: size.height)
-                image.draw(in: fitted, from: .zero, operation: .sourceOver, fraction: 1)
-            } else {
-                // No such symbol on this system: a filled dot in the same colour, never a gap.
-                icon.color.nsColor.setFill()
-                NSBezierPath(ovalIn: rect.insetBy(dx: 2.5, dy: 2.5)).fill()
-            }
+            icon.color.nsColor.setStroke()
+            Self.glyphPath(icon.glyph, in: iconRect(at: x)).stroke()
             let string = attributed(runs, font: textFont)
             drawText(string, at: x + Self.iconSize + Self.iconGap, width: string.size().width)
         }
