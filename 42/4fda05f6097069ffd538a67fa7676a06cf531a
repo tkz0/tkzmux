@@ -1,0 +1,25 @@
+Sources/TkzApp/ClaudeIntegration.swift
+  s_5f2abb98dae427::t_eeacc152a4e9fb 59-69,356,547-550,554-556
+Sources/TkzApp/MainWindowController.swift
+  s_5f2abb98dae427::t_77789278156c55 977-985,3018-3046,3049,3088-3092
+Sources/TkzApp/TerminalHost.swift
+  s_5f2abb98dae427::t_1b52c390d3371b 327-336,339,751-851
+Tests/TkzAppTests/SessionKillTests.swift
+  s_5f2abb98dae427::t_466e92298eecd8 169,177-181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "424fda05f6097069ffd538a67fa7676a06cf531a",
+  "prompts": {},
+  "sessions": {
+    "s_5f2abb98dae427": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b040ee4-3486-4913-8c04-64f847526671",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
