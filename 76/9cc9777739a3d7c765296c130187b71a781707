@@ -1,0 +1,21 @@
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_5f2abb98dae427::t_eb53667ad80bd9 422-433,435,449
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_5f2abb98dae427::t_c8f9d169c12cd4 358-367,501,602-613,623-628,632,785
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "769cc9777739a3d7c765296c130187b71a781707",
+  "prompts": {},
+  "sessions": {
+    "s_5f2abb98dae427": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b040ee4-3486-4913-8c04-64f847526671",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
