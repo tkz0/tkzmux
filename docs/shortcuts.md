@@ -16,6 +16,7 @@ this table; nothing hard-codes a key equivalent.
 | `searchSessions` | ⌘P | Puts the caret in the toolbar's “Search sessions…” field; typing opens the results overlay (see below). With no toolbar (the field hidden), falls back to the centred palette in sessions mode |
 | `commandPalette` | ⇧⌘P | Palette, everything (sessions, groups, commands) |
 | `toggleSidebar` | ⌘B | Show/hide the sidebar |
+| `toggleTheme` | — | Flip between the dark theme and its light twin. Also the ☀/☾ button at the right of the toolbar; the choice is remembered across launches |
 | `renameSession` | ⇧⌘R | Rename the selected session |
 | `closeTerminal` | ⌘W | Close the focused pane; the session's **last** terminal closes the session |
 | `closeSession` | ⇧⌘W | Close the session, however many panes it has |

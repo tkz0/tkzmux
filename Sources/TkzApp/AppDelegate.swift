@@ -45,9 +45,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         do {
-            let context = try TerminalRenderContext(theme: .default)
-            renderContext = context
             if Self.wantsDevWindow {
+                // The dev window does not restore state (`restoreState`/`wantsFixture` contract),
+                // so it stays on the default preset.
+                let context = try TerminalRenderContext(theme: .default)
+                renderContext = context
                 // Without a menu bar, NSApplication has nothing to match ⌘-key equivalents
                 // against, so ⌘Q, ⌘M and ⌘W are simply dead (reported 2026-09-08).
                 MainMenu.installDefault()
@@ -55,7 +57,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 devWindow = controller
                 controller.showWindow()
             } else {
+                // Read the file *before* building the render context: the preset it carries decides
+                // the context's theme, the window's appearance and every session's palette, and all
+                // three are fixed at construction. Building the context first is what made a stored
+                // light theme flash dark for the first frame.
                 let restored = Self.restoreState()
+                let context = try TerminalRenderContext(
+                    theme: Theme.preset(restored.state.themePreset))
+                renderContext = context
                 let store = AppStore(state: restored.state)
                 self.store = store
                 let controller = MainWindowController(store: store, renderContext: context)

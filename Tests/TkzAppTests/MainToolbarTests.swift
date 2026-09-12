@@ -118,17 +118,18 @@ struct MainToolbarTests {
         let item = try #require(Self.item(controller, .tkzViewCluster))
         let control = try #require(item.view as? NSSegmentedControl)
 
-        // TKZ-57 dropped the disabled ◍ browser placeholder: three buttons, all live.
-        #expect(control.segmentCount == 3)
+        // TKZ-57 dropped the disabled ◍ browser placeholder; the ☾/☀ theme toggle then took the
+        // fourth slot. Four buttons, all live.
+        #expect(control.segmentCount == 4)
         #expect(control.segmentCount == MainToolbarController.ViewButton.allCases.count)
         for button in MainToolbarController.ViewButton.allCases {
             #expect(control.isEnabled(forSegment: button.rawValue))
-            #expect(control.toolTip(forSegment: button.rawValue) == button.label)
+            #expect(control.toolTip(forSegment: button.rawValue) == button.label(isDark: true))
         }
 
         // The glyphs are the design's, drawn at the cluster size rather than the sidebar's.
         #expect((0..<control.segmentCount).map { control.label(forSegment: $0) }
-                == MainToolbarController.ViewButton.allCases.map(\.glyph))
+                == MainToolbarController.ViewButton.allCases.map { $0.glyph(isDark: true) })
         #expect(control.font.map { Double($0.pointSize) } == MainToolbarController.clusterGlyphSize)
     }
 
@@ -149,6 +150,41 @@ struct MainToolbarTests {
 
         // Buttons with no closure assigned fire nothing.
         for button in MainToolbarController.ViewButton.allCases where button != .terminal {
+            controller.activate(button)
+        }
+        #expect(fired == 1)
+    }
+
+    /// The glyph shows the theme that is *on* — 2c draws the moon, its light twin draws the sun —
+    /// so it has to follow a live theme change, not only the build-time value.
+    @Test func themeSegmentGlyphAndTooltipFollowTheTheme() throws {
+        let controller = MainToolbarController()
+        let item = try #require(Self.item(controller, .tkzViewCluster))
+        let control = try #require(item.view as? NSSegmentedControl)
+        let slot = MainToolbarController.ViewButton.theme.rawValue
+
+        #expect(control.label(forSegment: slot) == "\u{263E}")            // moon
+        #expect(control.toolTip(forSegment: slot)?.contains("light") == true)
+
+        controller.theme = .light
+        #expect(control.label(forSegment: slot) == "\u{2600}")            // sun
+        #expect(control.toolTip(forSegment: slot)?.contains("dark") == true)
+
+        // The other three glyphs are constants and must not have moved.
+        #expect(control.label(forSegment: MainToolbarController.ViewButton.terminal.rawValue) == ">_")
+    }
+
+    @Test func themeButtonInvokesTheClosure() throws {
+        let controller = MainToolbarController()
+        _ = try #require(Self.item(controller, .tkzViewCluster))
+
+        var fired = 0
+        controller.onToggleTheme = { fired += 1 }
+
+        controller.activate(.theme)
+        #expect(fired == 1)
+
+        for button in MainToolbarController.ViewButton.allCases where button != .theme {
             controller.activate(button)
         }
         #expect(fired == 1)

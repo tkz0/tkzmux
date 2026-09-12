@@ -453,13 +453,16 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         host: any TerminalHost,
         sharedView: NSView? = nil,
         terminalViewFactory: @escaping (TerminalID) -> NSView,
-        theme: Theme = .default,
+        theme: Theme? = nil,
         home: String = NSHomeDirectory()
     ) {
         self.store = store
         self.host = host
         self.sharedView = sharedView
         self.terminalViewFactory = terminalViewFactory
+        // `nil` means "whatever the restored state says", so the parameter can never silently
+        // disagree with `AppState.themePreset`. Callers that pass one are tests pinning a preset.
+        let theme = theme ?? Theme.preset(store.state.themePreset)
         self.theme = theme
         self.home = home
         self.launcher = SessionLauncher(store: store, host: host, home: home)
@@ -543,7 +546,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         store: AppStore,
         host: any TerminalHost,
         terminalView: NSView,
-        theme: Theme = .default,
+        theme: Theme? = nil,
         home: String = NSHomeDirectory()
     ) {
         self.init(
@@ -566,7 +569,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public convenience init(
         store: AppStore,
         renderContext: TerminalRenderContext,
-        theme: Theme = .default,
+        theme: Theme? = nil,
         snapshots: SnapshotStore = .standard(),
         tkzmuxDirectory: URL? = nil
     ) {
@@ -664,6 +667,16 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// The window's own colours. Split out of `configureWindow` because the ☾/☀ toggle has to redo
+    /// exactly this: the titlebar material, the toolbar and every system control take their colours
+    /// from the window's appearance, not from our tokens, so a dark preset in an `.aqua` window
+    /// gives a white titlebar over dark content. `isDark` is the token the theme file sanctions
+    /// branching on — the palette and the prompt card already use it for their own panels.
+    private func applyWindowAppearance(_ theme: Theme, to window: NSWindow) {
+        window.backgroundColor = theme.windowBackground.nsColor
+        window.appearance = NSAppearance(named: theme.isDark ? .darkAqua : .aqua)
+    }
+
     private func configureWindow() {
         window.title = "tkzmux"
         window.titleVisibility = .hidden
@@ -678,13 +691,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         window.tabbingMode = .disallowed
         window.isReleasedWhenClosed = false
         window.minSize = Self.minimumContentSize
-        window.backgroundColor = theme.windowBackground.nsColor
-        // The titlebar material, the toolbar and every system control take their colours from
-        // the window's appearance, not from our tokens. A dark preset in an `.aqua` window gives
-        // a white titlebar over dark content. Derive it from the theme rather than from the
-        // system setting.
-        window.appearance = NSAppearance(
-            named: theme.windowBackground.relativeLuminance < 0.5 ? .darkAqua : .aqua)
+        applyWindowAppearance(theme, to: window)
         window.contentViewController = chrome
         window.toolbar = toolbarController.toolbar
         window.delegate = self
@@ -902,6 +909,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         toolbarController.onSplitHorizontally = { [weak self] in
             self?.addTerminal(splitting: .vertical)
+        }
+        toolbarController.onToggleTheme = { [weak self] in
+            self?.toggleTheme()
         }
         // Design 2c.6 / TKZ-52: typing in the toolbar field opens the results overlay under the
         // window's top-right corner and keeps the caret where it is. Emptying the field closes it
@@ -1805,6 +1815,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     // MARK: Change-set dispatch
 
     private func apply(_ change: ChangeSet) {
+        // First: a delivery that carries both should re-tint before it re-selects, so the new
+        // selection is drawn once, in the new theme.
+        if change.theme { setTheme(Theme.preset(store.state.themePreset)) }
         if change.selection {
             applySelection(focusTerminal: true)
             updateToolbarTitle()
@@ -2409,6 +2422,50 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     func toggleAutoResume() {
         store.update { $0.setAutoResumeOnLaunch(!$0.autoResumeOnLaunch) }
+    }
+
+    // MARK: - Theme
+
+    /// Flips to the current preset's light/dark counterpart. The store is the only writer; the
+    /// pixels follow from `ChangeSet.theme` → ``setTheme(_:)``.
+    func toggleTheme() {
+        store.update { $0.toggleTheme() }
+    }
+
+    /// The one place a preset change becomes pixels, and the sole observer of `ChangeSet.theme`.
+    ///
+    /// Order is deliberate. The window's appearance goes first because every system control and
+    /// `NSVisualEffectView` in the window resolves from `effectiveAppearance`, and changing it
+    /// cascades a repaint down the whole tree — so the explicit-token passes below land last and
+    /// win wherever both apply. The terminals go last, because their repaint is the expensive one.
+    func setTheme(_ new: Theme) {
+        guard new != theme else { return }
+        theme = new
+
+        applyWindowAppearance(new, to: window)
+        chrome.setTheme(new)
+        sidebar.setTheme(new)
+        toolbarController.theme = new
+        detail.setTheme(new)
+        // `DetailViewController.setTheme` does not reach the tab strip: `TabStripView` has no
+        // setter at all and takes a theme only through `configure(_:theme:)`, so without this the
+        // strip keeps the old colours until the next tab change.
+        applyTabStrip()
+        // `PaneContainerView.apply(theme:)` walks only the panes that are on screen. `panes` keeps
+        // chrome for background tabs and hidden zoom siblings too, and those must not come back
+        // wearing the old theme.
+        for pane in panes.values { pane.chrome.apply(theme: new) }
+        applyPaneHeaders()
+        newSessionMenu.theme = new
+        palette.theme = new
+        promptCard.theme = new
+        cheatSheet.setTheme(new)
+
+        // The palette and the prompt card are separate `NSPanel`s and re-derive their own
+        // `NSAppearance` inside `applyTheme`. The cheat sheet is *not* a panel — it is a subview of
+        // this window's content view — so it inherits the appearance set above and must not
+        // override it.
+        (host as? TerminalViewHost)?.setTheme(new)
     }
 
     // MARK: - Close / remove
@@ -3080,6 +3137,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         dispatcher.setHandler(.resumeSession) { [weak self] in self?.resumeSelectedSession() }
         dispatcher.setHandler(.resumeAllInGroup) { [weak self] in self?.resumeAll() }
         dispatcher.setHandler(.toggleAutoResume) { [weak self] in self?.toggleAutoResume() }
+        dispatcher.setHandler(.toggleTheme) { [weak self] in self?.toggleTheme() }
         dispatcher.setCheckmark(.toggleAutoResume) { [weak self] in self?.store.state.autoResumeOnLaunch ?? false }
         dispatcher.setHandler(.nextSession) { [weak self] in
             self?.store.update { $0.selectAdjacentSession(offset: 1) }

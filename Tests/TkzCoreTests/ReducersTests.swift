@@ -352,6 +352,28 @@ import Testing
         #expect(change.structure == false)
         #expect(change.sessions.isEmpty)
     }
+
+    @Test func togglingTheThemeFlipsBetweenDarkAndLight() {
+        var state = AppState()
+        #expect(Theme.preset(state.themePreset).isDark)
+
+        state.toggleTheme()
+        #expect(Theme.preset(state.themePreset).isDark == false)
+
+        state.toggleTheme()
+        #expect(state.themePreset == Theme.default.preset)
+    }
+
+    @Test func settingThePresetIsAThemeChangeAndNothingElse() {
+        var state = AppState()
+        let before = state
+        state.setThemePreset(.light)
+        let change = ChangeSet.diff(from: before, to: state)
+        #expect(change.theme)
+        #expect(change.chrome == false)
+        #expect(change.structure == false)
+        #expect(change.sessions.isEmpty)
+    }
 }
 
 @Suite struct GroupReducerTests {

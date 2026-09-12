@@ -222,6 +222,7 @@ public enum MainMenu {
     ) -> NSMenu {
         let menu = NSMenu(title: "View")
         menu.addItem(command(.toggleSidebar, shortcuts: shortcuts, dispatcher: dispatcher))
+        menu.addItem(command(.toggleTheme, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(.separator())
         menu.addItem(command(.searchSessions, shortcuts: shortcuts, dispatcher: dispatcher))
         menu.addItem(command(.commandPalette, shortcuts: shortcuts, dispatcher: dispatcher))

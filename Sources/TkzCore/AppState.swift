@@ -37,6 +37,9 @@ public struct AppState: Hashable, Sendable {
     /// The release the user closed the sidebar's update card for (TKZ-50). That version never
     /// shows the card again; a newer one does. Durable, in `PersistedPreferences`.
     public var dismissedUpdateVersion: String?
+    /// The active colour scheme. The ☾/☀ toggle in the toolbar writes it; `MainWindowController` is
+    /// its sole observer, via `ChangeSet.theme`. Durable, in `PersistedPreferences`.
+    public var themePreset: Theme.Preset
     /// The release check's answer and the in-app upgrade's progress. Process state, never
     /// persisted — see `UpdateState`.
     public var update: UpdateState
@@ -54,6 +57,7 @@ public struct AppState: Hashable, Sendable {
         autoResumeOnLaunch: Bool = false,
         statuslineOffered: Bool = false,
         dismissedUpdateVersion: String? = nil,
+        themePreset: Theme.Preset = Theme.default.preset,
         update: UpdateState = UpdateState()
     ) {
         self.groups = groups
@@ -68,6 +72,7 @@ public struct AppState: Hashable, Sendable {
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
         self.dismissedUpdateVersion = dismissedUpdateVersion
+        self.themePreset = themePreset
         self.update = update
     }
 

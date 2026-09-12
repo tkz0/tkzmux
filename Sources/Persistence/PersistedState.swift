@@ -67,19 +67,27 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     public var statuslineOffered: Bool
     /// The release whose "Update available" card was closed (TKZ-50); `nil` = none dismissed.
     public var dismissedUpdateVersion: String?
+    /// `Theme.Preset.rawValue`; `nil` = never chosen, so the default preset stands.
+    ///
+    /// Deliberately a raw `String` rather than `Theme.Preset`: a preset name written by a newer
+    /// build must degrade to a warning in `apply(to:)`, not throw out of `init(from:)` and take the
+    /// whole `state.json` with it.
+    public var themePreset: String?
 
     public init(
         autoResumeOnLaunch: Bool = false,
         statuslineOffered: Bool = false,
-        dismissedUpdateVersion: String? = nil
+        dismissedUpdateVersion: String? = nil,
+        themePreset: String? = nil
     ) {
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
         self.dismissedUpdateVersion = dismissedUpdateVersion
+        self.themePreset = themePreset
     }
 
     private enum CodingKeys: String, CodingKey {
-        case autoResumeOnLaunch, statuslineOffered, dismissedUpdateVersion
+        case autoResumeOnLaunch, statuslineOffered, dismissedUpdateVersion, themePreset
     }
 
     public init(from decoder: any Decoder) throws {
@@ -87,6 +95,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         autoResumeOnLaunch = try c.decodeIfPresent(Bool.self, forKey: .autoResumeOnLaunch) ?? false
         statuslineOffered = try c.decodeIfPresent(Bool.self, forKey: .statuslineOffered) ?? false
         dismissedUpdateVersion = try c.decodeIfPresent(String.self, forKey: .dismissedUpdateVersion)
+        themePreset = try c.decodeIfPresent(String.self, forKey: .themePreset)
     }
 }
 
@@ -175,7 +184,8 @@ public struct PersistedState: Hashable, Sendable, Codable {
             preferences: PersistedPreferences(
                 autoResumeOnLaunch: state.autoResumeOnLaunch,
                 statuslineOffered: state.statuslineOffered,
-                dismissedUpdateVersion: state.dismissedUpdateVersion))
+                dismissedUpdateVersion: state.dismissedUpdateVersion,
+                themePreset: state.themePreset.rawValue))
     }
 
     // MARK: Restore
@@ -229,6 +239,14 @@ public struct PersistedState: Hashable, Sendable, Codable {
         state.autoResumeOnLaunch = preferences.autoResumeOnLaunch
         state.statuslineOffered = preferences.statuslineOffered
         state.dismissedUpdateVersion = preferences.dismissedUpdateVersion
+        if let raw = preferences.themePreset {
+            if let preset = Theme.Preset(rawValue: raw) {
+                state.themePreset = preset
+            } else {
+                warnings.append(
+                    "theme preset \"\(raw)\" is not one this build knows; kept \(state.themePreset.rawValue)")
+            }
+        }
 
         return warnings
     }

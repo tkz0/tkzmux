@@ -1,7 +1,9 @@
 // TkzCore — theme tokens.
 //
 // Source of truth: the Claude Design file `Terminal Main Window.dc.html` (project 452d6955-…), five artboards:
-// 2c.1 Midnight indigo (default), 2a Graphite, 2b Warm charcoal, 1a Dark, 1b Light. Every preset is the same
+// 2c.1 Midnight indigo (default), 2a Graphite, 2b Warm charcoal, 1a Dark, 1b Light. 1b has since been
+// redrawn as the *indigo* light aligned with the 2c family, and the 4a–4f series gives it six feature
+// screens (4a main, 4b changes, 4c/4d splits, 4e first prompt, 4f search); `light` follows those. Every preset is the same
 // token set; nothing in the app may branch on the preset name. Extraction rule per token is listed next to
 // the token; `ThemeTests.printsDesignTable` prints the resulting values as one table.
 
@@ -94,6 +96,18 @@ public struct Theme: Hashable, Sendable {
 
     public static func preset(_ preset: Preset) -> Theme {
         allPresets.first { $0.preset == preset }!
+    }
+
+    /// The preset a light/dark toggle lands on from `preset`.
+    ///
+    /// The pairing is *data in this file* so that no call site ever names a preset — the rule in the
+    /// header. Only 2c and 1b are paired today, because only those two are reachable; when a picker
+    /// gives graphite or warm charcoal a light twin, this table is the one line that changes.
+    public static func toggled(_ preset: Preset) -> Preset {
+        switch preset {
+        case .midnightIndigo, .graphite, .warmCharcoal, .dark: .light
+        case .light: .midnightIndigo
+        }
     }
 }
 
@@ -425,18 +439,25 @@ extension Theme {
         )
     }()
 
-    /// 1b · Light.
+    /// 1b / 4a–4f · Light — the indigo light theme and the ☀ half of the dark/light toggle.
+    ///
+    /// 1b was redrawn as "Light · Indigo, aligned with the 2c family", and the 4a–4f series gives
+    /// that same theme six feature screens. Where the two drift — 1b draws the title `#2a2d33`, dim
+    /// `#9ba1aa`, a `.09` border and a translucent sidebar — the 4a–4f values win: they cover more
+    /// of the app, and 4c/4d are the only *light* split artboards, so this is the one preset besides
+    /// 2c whose pane chrome is measured rather than derived from the footer surface.
     public static let light: Theme = {
         let fg = RGB(hex: 0x26292e), termFg = RGB(hex: 0x3a3e45)
-        let muted = RGB(hex: 0x6a7280), dim = RGB(hex: 0x9ba1aa)
+        let muted = RGB(hex: 0x6a7280), dim = RGB(hex: 0x8a9099)
         let working = RGB(hex: 0x2c9e53), waiting = RGB(hex: 0xdd8a1e), diffRemove = RGB(hex: 0xc04a4a)
+        let indigo = RGB(hex: 0x5661d8)
         return Theme(
             preset: .light, isDark: false,
-            windowBackground: RGB(hex: 0xf5f5f7),
-            titlebar: RGB(rgb: 246, 246, 248, alpha: 0.95),
-            sidebarBackground: RGB(rgb: 236, 238, 241, alpha: 0.96),
+            windowBackground: RGB(hex: 0xf3f4fa),
+            titlebar: RGB(rgb: 243, 244, 251, alpha: 0.96),
+            sidebarBackground: RGB(hex: 0xe9ebf6),
             terminalBackground: RGB(hex: 0xffffff),
-            statusBarBackground: RGB(hex: 0xeff0f3),
+            statusBarBackground: RGB(hex: 0xeceef8),
             foreground: fg,
             terminalForeground: termFg,
             foregroundMuted: muted,
@@ -446,45 +467,47 @@ extension Theme {
             statusBarText: RGB(hex: 0x6e7481),
             meterTrack: RGB(rgb: 0, 0, 0, alpha: 0.12),
             contextMeter: working,
-            usageMeter: RGB(hex: 0x3a66b5),
-            accent: RGB(hex: 0x4d7fd6),
+            usageMeter: indigo,
+            accent: indigo,
             accentText: RGB(hex: 0xffffff),
-            selection: RGB(rgb: 77, 127, 214, alpha: 0.14),
+            selection: RGB(rgb: 86, 97, 216, alpha: 0.14),
             working: working,
             waiting: waiting,
-            idle: RGB(rgb: 0, 0, 0, alpha: 0.22),
+            idle: RGB(rgb: 0, 0, 0, alpha: 0.25),
             needsYouText: RGB(hex: 0xb06e10),
-            needsYouBackground: RGB(rgb: 221, 138, 30, alpha: 0.14),
+            needsYouBackground: RGB(rgb: 221, 138, 30, alpha: 0.16),
             searchMatchBackground: RGB(rgb: 221, 138, 30, alpha: 0.35),
             searchMatchText: RGB(hex: 0x8a5a12),
-            wtText: RGB(hex: 0x3a66b5),
-            wtBackground: RGB(rgb: 77, 127, 214, alpha: 0.13),
-            // The artboard's shared `groups` data was written for 1a (#3fa08c); 1b uses this darker teal
-            // for every other teal element, so the group edge follows it.
+            wtText: RGB(hex: 0x4a54c9),
+            wtBackground: RGB(rgb: 86, 97, 216, alpha: 0.20),
             groupEdgeDefault: RGB(hex: 0x2c8a74),
-            diffAdd: RGB(hex: 0x2c9e53),
+            diffAdd: working,
             diffRemove: diffRemove,
-            border: RGB(rgb: 0, 0, 0, alpha: 0.08),
+            border: RGB(rgb: 0, 0, 0, alpha: 0.07),
+            // 4a draws the badge in GitHub's *dark*-mode green (`#3fb950`), which is 2.2:1 on this
+            // strip. GitHub's light-mode green is the readable equivalent at 4.4:1.
             prOpen: RGB(hex: 0x1a7f37),
             prMerged: RGB(hex: 0x8250df),
-            // No split artboard for this preset: the focused header is the footer surface, the
-            // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
-            // are the accent at the same alphas 2c.3 uses.
-            paneHeaderBackground: RGB(hex: 0xeff0f3),
-            paneHeaderBackgroundInactive: RGB(hex: 0xffffff).mixed(
-                with: RGB(rgb: 236, 238, 241, alpha: 0.96).over(RGB(hex: 0xf5f5f7)), amount: 0.5),
+            // Measured from 4c, not derived: the focused header is the sidebar surface and the
+            // inactive one the footer surface — the reverse of how the dark presets are built.
+            paneHeaderBackground: RGB(hex: 0xe9ebf6),
+            paneHeaderBackgroundInactive: RGB(hex: 0xeceef8),
+            // 4c draws the focused path `#7c828c`, which is 3.3:1 on that header. The muted grey is
+            // the readable choice, and it is what the inactive header already uses.
             paneHeaderPath: muted,
-            // `dim` is 2.4:1 on a near-white header; the muted grey is the readable choice here.
             paneHeaderPathInactive: muted,
-            focusRing: RGB(rgb: 77, 127, 214, alpha: 0.65),
-            dividerGrip: RGB(rgb: 77, 127, 214, alpha: 0.55),
-            dividerShade: RGB(rgb: 0, 0, 0, alpha: 0.12),
-            dividerHighlight: RGB(rgb: 255, 255, 255, alpha: 0.5),
+            focusRing: RGB(rgb: 86, 97, 216, alpha: 0.65),
+            dividerGrip: RGB(rgb: 86, 97, 216, alpha: 0.55),
+            // Inverted from every dark preset: 4c's divider gradient is a blue-grey at both ends and
+            // a *weaker* black in the middle, so over a light pane the middle still reads lighter —
+            // but only once alpha is composited, which is why the invariant test composites.
+            dividerShade: RGB(rgb: 30, 40, 60, alpha: 0.18),
+            dividerHighlight: RGB(rgb: 0, 0, 0, alpha: 0.06),
             terminalPalette16: palette16(
                 isDark: false, black: fg, white: muted, brightBlack: dim, brightWhite: termFg,
                 base: AnsiBase(
                     red: diffRemove, green: working, yellow: waiting,
-                    blue: RGB(hex: 0x3a66b5), magenta: RGB(hex: 0x8352b8), cyan: RGB(hex: 0x2c8a74)
+                    blue: indigo, magenta: RGB(hex: 0x8352b8), cyan: RGB(hex: 0x2c8a74)
                 )
             ),
             fontUI: Fonts.ui, fontMono: Fonts.mono

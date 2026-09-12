@@ -78,7 +78,13 @@ import Testing
         #expect(opaque(theme.focusRing) == opaque(theme.accent), "\(theme.preset) focusRing is the accent")
         #expect(opaque(theme.dividerGrip) == opaque(theme.accent), "\(theme.preset) dividerGrip is the accent")
         #expect(theme.dividerShade.a < 1 && theme.dividerHighlight.a < 1)
-        #expect(theme.dividerShade.relativeLuminance < theme.dividerHighlight.relativeLuminance)
+        // Composite before comparing. Both tokens are translucent, and `relativeLuminance` ignores
+        // alpha — a comparison of the raw colours only says what it means when the highlight is
+        // literally white, which is true of the dark presets and of 1b's old values but not of 4c,
+        // where the gradient is a blue-grey at the ends and a *weaker* black in the middle.
+        let onPane = { (c: RGB) in c.over(theme.terminalBackground).relativeLuminance }
+        #expect(onPane(theme.dividerShade) < onPane(theme.dividerHighlight),
+                "\(theme.preset) the divider's middle must read lighter than its ends")
         // The focused header stands off the inactive one, and both off the terminal.
         #expect(theme.paneHeaderBackground != theme.paneHeaderBackgroundInactive)
         #expect(theme.paneHeaderBackground != theme.terminalBackground)
@@ -183,16 +189,62 @@ import Testing
         #expect(t.summaryText.hexString == "#b6bcd8")     // inactive title
     }
 
-    @Test func lightMatchesArtboard1b() {
+    /// 1b was redrawn as the indigo light aligned with the 2c family; 4a is that same theme's main
+    /// window and is the series these values come from.
+    @Test func lightMatchesArtboard4a() {
         let t = Theme.light
+        #expect(t.windowBackground.hexString == "#f3f4fa")
+        #expect(t.titlebar.hexString == "rgba(243,244,251,.96)")
+        #expect(t.sidebarBackground.hexString == "#e9ebf6")
         #expect(t.terminalBackground.hexString == "#ffffff")
+        #expect(t.statusBarBackground.hexString == "#eceef8")
         #expect(t.foreground.hexString == "#26292e")
-        #expect(t.idle.hexString == "rgba(0,0,0,.22)")
-        #expect(t.needsYouText.hexString == "#b06e10")
+        #expect(t.terminalForeground.hexString == "#3a3e45")
+        #expect(t.foregroundMuted.hexString == "#6a7280")
         #expect(t.groupHeaderText.hexString == "#5f646d")
         #expect(t.statusBarText.hexString == "#6e7481")
         #expect(t.meterTrack.hexString == "rgba(0,0,0,.12)")
-        #expect(t.usageMeter.hexString == "#3a66b5")
+        #expect(t.accent.hexString == "#5661d8")
+        #expect(t.usageMeter.hexString == "#5661d8")
+        #expect(t.selection.hexString == "rgba(86,97,216,.14)")
+        #expect(t.wtText.hexString == "#4a54c9")
+        #expect(t.wtBackground.hexString == "rgba(86,97,216,.20)")
+        #expect(t.idle.hexString == "rgba(0,0,0,.25)")
+        #expect(t.needsYouText.hexString == "#b06e10")
+        #expect(t.border.hexString == "rgba(0,0,0,.07)")
+    }
+
+    /// 4c/4d are the only *light* split artboards, so unlike every preset but 2c these are measured.
+    @Test func lightMatchesArtboard4c() {
+        let t = Theme.light
+        #expect(t.paneHeaderBackground.hexString == "#e9ebf6")
+        #expect(t.paneHeaderBackgroundInactive.hexString == "#eceef8")
+        #expect(t.focusRing.hexString == "rgba(86,97,216,.65)")
+        #expect(t.dividerGrip.hexString == "rgba(86,97,216,.55)")
+        #expect(t.dividerShade.hexString == "rgba(30,40,60,.18)")
+        #expect(t.dividerHighlight.hexString == "rgba(0,0,0,.06)")
+        // 4c draws the focused path #7c828c — 3.3:1 on that header, so the muted grey stands in.
+        #expect(t.paneHeaderPath.hexString == "#6a7280")
+        #expect(t.paneHeaderPathInactive.hexString == "#6a7280")
+    }
+
+    @Test func toggledPairsDarkWithLight() {
+        #expect(Theme.toggled(.midnightIndigo) == .light)
+        #expect(Theme.toggled(.light) == .midnightIndigo)
+        // Involutive on the pair the toggle actually walks.
+        #expect(Theme.toggled(Theme.toggled(.midnightIndigo)) == .midnightIndigo)
+        // Every dark preset has somewhere to go, and it is always a light one.
+        for preset in Theme.Preset.allCases where Theme.preset(preset).isDark {
+            #expect(!Theme.preset(Theme.toggled(preset)).isDark, "\(preset)")
+        }
+    }
+
+    /// Licenses the renderer's "a theme swap needs no atlas rebuild and no `reattachAll()`": the
+    /// only font token that reaches the rasterizer is `thicken`, and no preset varies any of them.
+    @Test func everyPresetSharesTheOneFontSet() {
+        #expect(Theme.allPresets.allSatisfy {
+            $0.fontUI == Theme.Fonts.ui && $0.fontMono == Theme.Fonts.mono
+        })
     }
 
     @Test(arguments: Theme.allPresets)

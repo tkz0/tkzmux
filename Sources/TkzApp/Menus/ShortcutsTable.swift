@@ -65,6 +65,9 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     public static let resumeAllInGroup = ShortcutAction("resumeAllInGroup")
     /// No key: the "auto-resume on launch" preference, shown with a checkmark (M5.2).
     public static let toggleAutoResume = ShortcutAction("toggleAutoResume")
+    /// No key: flip between the dark preset and its light twin — the ☾/☀ segment's command form.
+    /// No checkmark: this is a flip between two named appearances, not a boolean that is on or off.
+    public static let toggleTheme = ShortcutAction("toggleTheme")
 
     // MARK: Panes and tabs (TKZ-36)
 
@@ -169,7 +172,7 @@ public enum ShortcutsTable {
             .closeTerminal, .closeSession, .jumpToNeedsYou, .notifications, .settings,
             .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
             .showFirstPrompt, .removeShellIntegration, .statusLineIntegration, .resumeSession, .resumeAllInGroup,
-            .toggleAutoResume,
+            .toggleAutoResume, .toggleTheme,
             .newTerminal, .splitVertically, .splitHorizontally,
             .focusPaneLeft, .focusPaneRight, .focusPaneUp, .focusPaneDown,
             .equalizeSplits, .zoomPane, .previousTab, .nextTab,
@@ -236,6 +239,9 @@ public enum ShortcutsTable {
         case .resumeSession: "Resume Session"
         case .resumeAllInGroup: "Resume All in Group"
         case .toggleAutoResume: "Auto-resume Sessions on Launch"
+        // Static on purpose: `MainMenuTests` asserts the menu item's title equals this, so a
+        // state-dependent "Switch to Light…" would fail on every toggle.
+        case .toggleTheme: "Toggle Light / Dark Theme"
         case .newTerminal: "New Terminal"
         case .splitVertically: "Split Vertically"
         case .splitHorizontally: "Split Horizontally"

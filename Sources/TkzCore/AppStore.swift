@@ -26,6 +26,7 @@ import Foundation
 /// | selection | `selection` |
 /// | usage / accounts | `usage` |
 /// | sidebar visibility, sidebar width, window frame, shortcuts | `chrome` |
+/// | the active theme preset | `theme` — **never** `chrome` |
 ///
 /// `structure` therefore means exactly "the outline view's rows or their parents moved" — the only
 /// case that needs `insert/remove/moveItem` or a full `reloadData`. Collapsing a group is *not*
@@ -60,6 +61,13 @@ public struct ChangeSet: Hashable, Sendable {
     /// a durable change can arrive in any bucket, and `sessions` carries mostly non-durable ones,
     /// so it compares projections on every delivery rather than trusting a bit here (M5.1).
     public var chrome: Bool
+    /// `AppState.themePreset` differs. Its own bucket rather than a corner of `chrome`, for the same
+    /// reason `layout` is not a corner of `sessions`: `chrome` fires on every window-frame nudge and
+    /// sidebar-divider settle, while reacting to this one re-tints every row, every pane and every
+    /// live terminal. `MainWindowController` is its **sole** observer — the fan-out has an order
+    /// (window appearance first, terminals last), and a second subscriber would make that order
+    /// depend on observer registration order, which is not guaranteed.
+    public var theme: Bool
 
     public init(
         sessions: Set<SessionID> = [],
@@ -68,7 +76,8 @@ public struct ChangeSet: Hashable, Sendable {
         structure: Bool = false,
         selection: Bool = false,
         usage: Bool = false,
-        chrome: Bool = false
+        chrome: Bool = false,
+        theme: Bool = false
     ) {
         self.sessions = sessions
         self.groups = groups
@@ -77,6 +86,7 @@ public struct ChangeSet: Hashable, Sendable {
         self.selection = selection
         self.usage = usage
         self.chrome = chrome
+        self.theme = theme
     }
 
     /// Nothing changed; no delivery happens for one of these.
@@ -84,7 +94,7 @@ public struct ChangeSet: Hashable, Sendable {
 
     public var isEmpty: Bool {
         sessions.isEmpty && groups.isEmpty && layout.isEmpty && !structure && !selection
-            && !usage && !chrome
+            && !usage && !chrome && !theme
     }
 
     public mutating func formUnion(_ other: ChangeSet) {
@@ -95,6 +105,7 @@ public struct ChangeSet: Hashable, Sendable {
         selection = selection || other.selection
         usage = usage || other.usage
         chrome = chrome || other.chrome
+        theme = theme || other.theme
     }
 
     /// Does this change set touch a given session? (The status bar's re-render test.)
@@ -156,6 +167,7 @@ public struct ChangeSet: Hashable, Sendable {
         {
             change.chrome = true
         }
+        if old.themePreset != new.themePreset { change.theme = true }
 
         return change
     }

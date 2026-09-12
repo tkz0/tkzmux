@@ -52,10 +52,16 @@ final class TabStripView: NSView {
     // MARK: Configuration
 
     func configure(_ model: TabStripModel, theme: Theme) {
+        // A theme swap changes no model, so it has to be its own reason to re-tint: without this
+        // the strip keeps the old colours until the next tab is opened or closed.
+        let themeChanged = theme != self.theme
         self.theme = theme
-        guard model != self.model || tabLayers.count != model.items.count else { return }
-        self.model = model
-        rebuildLayers()
+        let modelChanged = model != self.model || tabLayers.count != model.items.count
+        guard themeChanged || modelChanged else { return }
+        if modelChanged {
+            self.model = model
+            rebuildLayers()
+        }
         applyTheme()
         needsLayout = true
     }

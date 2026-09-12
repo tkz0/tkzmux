@@ -29,21 +29,28 @@ public extension NSToolbarItem.Identifier {
 /// whenever the selection changes.
 @MainActor
 public final class MainToolbarController: NSObject, NSToolbarDelegate {
-    /// The three right-hand buttons, in order. `rawValue` doubles as the segment index.
+    /// The four right-hand buttons, in order. `rawValue` doubles as the segment index.
     public enum ViewButton: Int, CaseIterable, Sendable {
         case terminal = 0   // >_
         case splitV = 1     // ◫
         case splitH = 2     // ⬓
+        case theme = 3      // ☾ / ☀
 
-        var glyph: String {
+        /// The glyph reflects the theme that is *on*, which is what the artboards draw: 2c shows ☾,
+        /// its light twin shows ☀. Only `.theme` varies, hence the parameter.
+        func glyph(isDark: Bool) -> String {
             switch self {
             case .terminal: ">_"
             case .splitV: "\u{25EB}"    // ◫
             case .splitH: "\u{2B13}"    // ⬓
+            case .theme: isDark ? "\u{263E}" : "\u{2600}"   // ☾ / ☀
             }
         }
 
-        var label: String {
+        /// Tooltip, and the closest thing the cluster has to an accessibility label. `.theme` names
+        /// the *action*, not the glyph: "☾" alone reads as "last quarter moon" to VoiceOver, and the
+        /// menu item and palette row are the properly labelled path to the same command.
+        func label(isDark: Bool) -> String {
             switch self {
             // Deliberately "session": this button makes a whole new row running a bare shell, not
             // another terminal inside this one. ⌘T is the latter (TKZ-36), and the two would
@@ -51,6 +58,7 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
             case .terminal: "New shell session"
             case .splitV: "Split vertically"
             case .splitH: "Split horizontally"
+            case .theme: isDark ? "Switch to the light theme" : "Switch to the dark theme"
             }
         }
     }
@@ -67,6 +75,8 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
     public var onSplitVertically: (() -> Void)?
     /// `⬓` — split it stacked.
     public var onSplitHorizontally: (() -> Void)?
+    /// `☾`/`☀` — flip between the dark preset and its light twin.
+    public var onToggleTheme: (() -> Void)?
     /// Invoked on every keystroke in the search field, with the current query.
     public var onSearchChanged: ((String) -> Void)?
     /// Invoked when the user presses Return in the search field.
@@ -163,6 +173,14 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
 
     private func applyTheme() {
         titleField?.attributedStringValue = titleString()
+        // The ☾/☀ segment shows the theme that is on, so it has to be relabelled here rather than
+        // only at build time.
+        if let control = segmented {
+            for button in ViewButton.allCases {
+                control.setLabel(button.glyph(isDark: theme.isDark), forSegment: button.rawValue)
+                control.setToolTip(button.label(isDark: theme.isDark), forSegment: button.rawValue)
+            }
+        }
     }
 
     // MARK: Actions
@@ -175,6 +193,7 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
         case .terminal: onNewTerminal?()
         case .splitV: onSplitVertically?()
         case .splitH: onSplitHorizontally?()
+        case .theme: onToggleTheme?()
         }
     }
 
@@ -260,7 +279,7 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
 
     private func makeViewClusterItem() -> NSToolbarItem {
         let control = NSSegmentedControl(
-            labels: ViewButton.allCases.map(\.glyph),
+            labels: ViewButton.allCases.map { $0.glyph(isDark: theme.isDark) },
             trackingMode: .momentary,
             target: self,
             action: #selector(segmentClicked(_:))
@@ -268,7 +287,7 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
         control.segmentStyle = .texturedRounded
         control.font = Theme.Fonts.mono(Self.clusterGlyphSize, weight: .medium)
         for button in ViewButton.allCases {
-            control.setToolTip(button.label, forSegment: button.rawValue)
+            control.setToolTip(button.label(isDark: theme.isDark), forSegment: button.rawValue)
         }
         segmented = control
 
