@@ -1,0 +1,21 @@
+Sources/TkzTerminalRender/TerminalRenderer.swift
+  s_5f2abb98dae427::t_8e682cb40c5fc5 312-323,334-335,343-344,359-360,377,384,388,399-400,447-455,463
+Sources/TkzTerminalRender/TerminalSurface.swift
+  s_5f2abb98dae427::t_cdff56124b4ae2 135-147,240-243,294-295,303-309,312-320,340,342,350-368,377,380,387-402,404
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2f877b93311761a7a2a49391b2cc3875741cf456",
+  "prompts": {},
+  "sessions": {
+    "s_5f2abb98dae427": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b040ee4-3486-4913-8c04-64f847526671",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
