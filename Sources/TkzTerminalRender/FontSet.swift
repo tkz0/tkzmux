@@ -42,8 +42,6 @@ public struct FontRegistration: Sendable, Equatable {
     public let registeredFiles: [URL]
     /// Human-readable failures (a file that neither registered nor was already registered).
     public let failures: [String]
-
-    public var didRegisterAnything: Bool { !registeredFiles.isEmpty }
 }
 
 /// A resolved family of faces at one point size and backing scale.
@@ -142,12 +140,6 @@ public final class FontSet {
             }
         }
         return FontRegistration(directory: dir, registeredFiles: registered, failures: failures)
-    }
-
-    /// The file CoreText resolved a face from. Lets a test see whether the bundled copy or a
-    /// user-installed copy of the family backs the font.
-    public func fontFileURL(for style: FontStyle) -> URL? {
-        FontSet.fileURL(of: font(for: style))
     }
 
     /// The file a `CTFont` was loaded from, if CoreText exposes one.

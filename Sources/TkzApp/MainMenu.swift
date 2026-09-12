@@ -60,8 +60,6 @@ public final class MenuDispatcher: NSObject, NSMenuItemValidation {
         handlers[action] = body
     }
 
-    public func removeHandler(_ action: ShortcutAction) { handlers[action] = nil }
-
     /// Makes `action`'s item show a checkmark whenever `isOn` returns true.
     public func setCheckmark(_ action: ShortcutAction, _ isOn: @escaping () -> Bool) {
         checkmarks[action] = isOn
