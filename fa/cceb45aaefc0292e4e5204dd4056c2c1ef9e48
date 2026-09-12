@@ -1,0 +1,21 @@
+Sources/TkzTerminalRender/FrameBuilder.swift
+  s_5f2abb98dae427::t_8baafa34695665 412-440,460-468,478
+Sources/TkzTerminalRender/GlyphAtlas.swift
+  s_5f2abb98dae427::t_407bb149f66913 300-305,307-309,312-341,343,366-400,410-415,422-433,435-442,444,450-452,454-456,458-462,478,488-490,492-493,504-507
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "facceb45aaefc0292e4e5204dd4056c2c1ef9e48",
+  "prompts": {},
+  "sessions": {
+    "s_5f2abb98dae427": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b040ee4-3486-4913-8c04-64f847526671",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
