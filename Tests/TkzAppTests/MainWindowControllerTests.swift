@@ -821,14 +821,14 @@ struct MainWindowControllerTests {
         #expect(backdrop.mouseDownCanMoveWindow)
     }
 
-    @Test("The status bar is pinned along the bottom at exactly 30 pt")
+    @Test("The status bar is pinned along the bottom at exactly 36 pt")
     func statusBarHeight() {
         let harness = Self.makeHarness()
         defer { harness.tearDown() }
 
         let bar = harness.controller.statusBar
-        #expect(bar.frame.height == 30)
-        #expect(StatusBarView.height == 30)
+        #expect(bar.frame.height == 36)
+        #expect(StatusBarView.height == 36)
         // Bottom of the detail half, full width.
         let detail = harness.controller.detail.view
         #expect(bar.superview === detail)

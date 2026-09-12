@@ -1,8 +1,9 @@
-// StatusBarModel.swift — the value type behind the 30 pt status strip.
+// StatusBarModel.swift — the value type behind the 36 pt status strip.
 //
 // design.md → App architecture → Status bar:
-//   `⎇ branch` · `WT` · model badge · `+142 −38 · 12 files` · `↑0 ↓2` · ports · `Context 62%` ·
-//   `Usage 5% · resets 4d 12h`
+//   `⎇ branch` · `WT` · `FABLE 5.1` · `+142 −38 · 12 files` · `↑0 ↓2` · ports · `Context 62%` ·
+//   `Usage 5% · 41%` (2c.1: the usage meter is two stacked bars — session quota over weekly —
+//   and the reset countdown moved from its own segment into the meter's tooltip)
 //
 // Every field is optional on purpose. The strip is fed by five independent services
 // (`GitStatusService`, `PortScanner`, the session sidecar, `UsageReader`, the descriptor watcher)
@@ -81,22 +82,19 @@ public struct StatusBarModel: Hashable, Sendable {
     /// Rendered `Context 62%`.
     public var contextPercent: Int?
 
-    /// Percentage of the account's rolling seven-day quota used, 0…100, already rounded.
-    /// Rendered `Usage 5%`.
-    public var usagePercent: Int?
+    /// The current session (five-hour) quota window — the **top** bar of the stacked `Usage`
+    /// meter in 2c.1. `nil` draws no bar; if only one of the two windows is known the meter
+    /// falls back to a single bar, so a half-reported account never draws an empty track.
+    public var sessionUsage: UsageQuota?
 
-    /// Time until the quota window resets, rendered `resets 4d 12h` by
-    /// ``StatusBarModel/formatResetsIn(_:)``. Its own segment: `Usage 5%` can appear without it.
-    public var usageResetsIn: Duration?
+    /// The rolling seven-day quota window — the **bottom** bar of the stacked meter, drawn at
+    /// half the fill's alpha while it is in the normal band (2c.1 dims it so the two bars read
+    /// as primary/secondary rather than as two equal claims).
+    public var weeklyUsage: UsageQuota?
 
-    /// The exact reset instant as already-formatted text (`2026-09-12 08:00`), for the tooltip.
-    /// Formatted by the caller, not here: a model that formats a `Date` would render differently
-    /// in a different locale, and the strip's whole contract is that a model renders to fixed
-    /// pixels.
-    public var usageResetsAtText: String?
-
-    /// The usage badge's tooltip — every account's window, one per line, because the quota the
-    /// number describes belongs to one account and the user runs more than one.
+    /// The usage badge's tooltip — the two windows with their resets, then every account's
+    /// seven-day window one per line, because the quota the number describes belongs to one
+    /// account and the user runs more than one.
     public var usageTooltip: String?
 
     /// A transient message that replaces the whole strip: "Restored sidebar from backup" after a
@@ -104,6 +102,28 @@ public struct StatusBarModel: Hashable, Sendable {
     /// that happened once at launch, not something the app persists, and `statusModel(for:)` stays
     /// a pure function of persisted state.
     public var notice: String?
+
+    /// One quota window as the strip needs it: a percentage, and time/instant of its reset.
+    ///
+    /// The reset is *derived text and a duration*, never a `Date`, for the same reason the rest
+    /// of the model is: a given model has to render to the same pixels whenever it is drawn.
+    public struct UsageQuota: Hashable, Sendable {
+        /// 0…100, already rounded. The bar clamps; the number is what is reported.
+        public var percent: Int
+        /// Time until the window resets, rendered `resets 4d 12h` by
+        /// ``StatusBarModel/formatResetsIn(_:)`` into the meter's tooltip.
+        public var resetsIn: Duration?
+        /// The exact reset instant as already-formatted text (`2026-09-12 08:00`), for the
+        /// tooltip. Formatted by the caller, not here — a model that formats a `Date` would
+        /// render differently in a different locale.
+        public var resetsAtText: String?
+
+        public init(percent: Int, resetsIn: Duration? = nil, resetsAtText: String? = nil) {
+            self.percent = percent
+            self.resetsIn = resetsIn
+            self.resetsAtText = resetsAtText
+        }
+    }
 
     public init(
         notice: String? = nil,
@@ -122,9 +142,8 @@ public struct StatusBarModel: Hashable, Sendable {
         ports: [UInt16]? = nil,
         portOwners: [UInt16: String] = [:],
         contextPercent: Int? = nil,
-        usagePercent: Int? = nil,
-        usageResetsIn: Duration? = nil,
-        usageResetsAtText: String? = nil,
+        sessionUsage: UsageQuota? = nil,
+        weeklyUsage: UsageQuota? = nil,
         usageTooltip: String? = nil
     ) {
         self.notice = notice
@@ -143,9 +162,8 @@ public struct StatusBarModel: Hashable, Sendable {
         self.ports = ports
         self.portOwners = portOwners
         self.contextPercent = contextPercent
-        self.usagePercent = usagePercent
-        self.usageResetsIn = usageResetsIn
-        self.usageResetsAtText = usageResetsAtText
+        self.sessionUsage = sessionUsage
+        self.weeklyUsage = weeklyUsage
         self.usageTooltip = usageTooltip
     }
 

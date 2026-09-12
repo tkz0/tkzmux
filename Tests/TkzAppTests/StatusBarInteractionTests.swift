@@ -242,18 +242,18 @@ struct StatusBarInteractionTests {
     // MARK: Trailing group
 
     @Test func portsContextAndUsageSitFlushRight() throws {
-        // The artboards put a spacer before the ports, so ports · Context · Usage · resets end at
-        // the right inset while the branch group starts at the left one.
+        // The artboards put a spacer before the ports, so ports · Context · Usage end at the
+        // right inset while the branch group starts at the left one.
         let view = Self.laidOut(StatusBarViewTests.full, width: 1_240)
         let placed = view.placement()
         let leading = placed.filter { !$0.item.trailing }
         let trailing = placed.filter(\.item.trailing)
         #expect(leading.count == 6)      // branch, WT, model, diff, files, ↑↓
-        #expect(trailing.count == 5)     // :3000, :5173, Context, Usage, resets
+        #expect(trailing.count == 4)     // :3000, :5173, Context, Usage
         let last = try #require(trailing.last)
-        #expect(abs(last.frame.maxX - (view.bounds.maxX - 12)) < 0.5)
+        #expect(abs(last.frame.maxX - (view.bounds.maxX - 15)) < 0.5)
         let first = try #require(leading.first)
-        #expect(first.frame.minX == 12)
+        #expect(first.frame.minX == 15)
         // The two groups never touch, and the trailing group has no separator before its first item.
         let lastLeading = try #require(leading.last)
         let firstTrailing = try #require(trailing.first)
@@ -263,12 +263,13 @@ struct StatusBarInteractionTests {
     }
 
     @Test func aTrailingGroupAloneStillStartsAtTheRight() throws {
-        let view = Self.laidOut(StatusBarModel(contextPercent: 62, usagePercent: 5), width: 600)
+        let view = Self.laidOut(
+            StatusBarModel(contextPercent: 62, weeklyUsage: .init(percent: 5)), width: 600)
         let placed = view.placement()
         #expect(placed.count == 2)
         #expect(placed.first?.separatorX == nil)
         let last = try #require(placed.last)
-        #expect(abs(last.frame.maxX - (view.bounds.maxX - 12)) < 0.5)
+        #expect(abs(last.frame.maxX - (view.bounds.maxX - 15)) < 0.5)
     }
 
     @Test func aNarrowStripFlowsEverythingFromTheLeftInstead() {
@@ -277,7 +278,7 @@ struct StatusBarInteractionTests {
         let view = Self.laidOut(StatusBarViewTests.full, width: 300)
         let placed = view.placement()
         #expect(!placed.isEmpty)
-        #expect(placed.first?.frame.minX == 12)
+        #expect(placed.first?.frame.minX == 15)
         for entry in placed { #expect(entry.frame.maxX <= view.bounds.maxX - 12 + 0.5) }
         #expect(placed.contains { !$0.item.trailing })
     }

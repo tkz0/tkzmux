@@ -1,9 +1,16 @@
-// StatusBarView.swift — the 30 pt strip along the bottom of the main window.
+// StatusBarView.swift — the 36 pt strip along the bottom of the main window.
 //
 // The line, as the artboards draw it:
-//   `⎇ branch` · `WT` · model badge · `+142 −38 · 12 files` · `↑0 ↓2` · `⇅ #418`   …   ports ·
-//   `Context 62%` · `Usage 5% · resets 4d 12h`
+//   `⎇ branch` · `WT` · `FABLE 5.1` · `+142 −38 · 12 files` · `↑0 ↓2` · `⇅ #418`   …   ports ·
+//   `Context 62%` · `Usage 5% · 41%`
 // The group from the ports onward sits flush right (2c.1); the rest flows from the left edge.
+//
+// 2c.1 (and its light twin 4a) were redrawn on 2026-09-12: the band grew 30 → 36 pt, the mono text
+// 10.5 → 12 pt and the PR glyph 11 → 13 pt, the model badge became an *outlined* uppercase pill
+// instead of a filled one, and `Usage` became **two stacked bars** — the five-hour session quota
+// over the rolling seven-day one — which retired the separate `resets 4d 12h` segment into the
+// meter's tooltip. The amber/red steps above 70 % / 90 % are the one thing here that no artboard
+// draws; see ``meterFill(percent:base:theme:)``.
 //
 // One `NSView` with a custom `draw(_:)` and **no subviews**. Reasons:
 //   * the separator between two segments must not exist when either side is missing, which is much
@@ -52,15 +59,27 @@ struct StatusIcon: Equatable, Sendable {
     var color: RGB
 }
 
+/// One bar of a ``StatusSegment/meter``. A meter carries a list so `Context` (one bar) and
+/// `Usage` (session over weekly) are the same segment kind drawn at two different bar heights,
+/// rather than two near-identical cases with two near-identical draw paths.
+struct MeterBar: Equatable, Sendable {
+    /// 0…1, already clamped by whoever built it.
+    var fraction: Double
+    var fill: RGB
+    var track: RGB
+}
+
 /// One logical item on the strip. Segments are joined by ` · ` **only between the ones that are
 /// actually drawn**, which is what makes a `nil` field collapse without leaving a stray separator.
 enum StatusSegment: Equatable, Sendable {
     /// Inline text, one or more differently coloured runs.
     case runs([StatusRun])
-    /// A rounded badge — the `WT` marker and the model name.
-    case pill(text: String, foreground: RGB, background: RGB)
-    /// `Context ▬▬▬▬ 62%`: a label, a 44 × 4 pt bar filled to `fraction`, and the number after it.
-    case meter(label: StatusRun, fraction: Double, fill: RGB, track: RGB, value: StatusRun)
+    /// A rounded badge. `WT` is filled (`background`, no `border`); the model badge is outlined
+    /// (`border` in the text colour over the bare strip) and tracked out, the way 2c.1 draws it.
+    case pill(text: String, foreground: RGB, background: RGB, border: RGB?, tracking: Double)
+    /// `Context ▬▬▬▬ 62%` — one 50 × 4.5 pt bar — or `Usage ▬ / ▬ 5% · 41%`, two 50 × 3.5 pt bars
+    /// stacked 2 pt apart. The label comes first, the numbers last.
+    case meter(label: StatusRun, bars: [MeterBar], value: [StatusRun])
     /// A glyph and the text after it, 4 pt apart (2c.1: the pull-request glyph and `#418`).
     case iconRuns(icon: StatusIcon, runs: [StatusRun])
 
@@ -68,8 +87,10 @@ enum StatusSegment: Equatable, Sendable {
     var plainText: String {
         switch self {
         case .runs(let runs): runs.map(\.text).joined()
-        case .pill(let text, _, _): text
-        case .meter(let label, _, _, _, let value): label.text + value.text
+        case .pill(let text, _, _, _, _): text
+        // The label and the numbers are separate runs with only geometry between them, so the
+        // space that makes `Context 62%` a sentence has to be put back for VoiceOver and tests.
+        case .meter(let label, _, let value): label.text + " " + value.map(\.text).joined()
         case .iconRuns(_, let runs): runs.map(\.text).joined()
         }
     }
@@ -79,8 +100,9 @@ enum StatusSegment: Equatable, Sendable {
     var colors: [RGB] {
         switch self {
         case .runs(let runs): runs.map(\.color)
-        case .pill(_, let fg, let bg): [fg, bg]
-        case .meter(let label, _, let fill, let track, let value): [label.color, fill, track, value.color]
+        case .pill(_, let fg, let bg, let border, _): [fg, bg] + (border.map { [$0] } ?? [])
+        case .meter(let label, let bars, let value):
+            [label.color] + bars.flatMap { [$0.fill, $0.track] } + value.map(\.color)
         case .iconRuns(let icon, let runs): [icon.color] + runs.map(\.color)
         }
     }
@@ -124,27 +146,36 @@ struct StatusItem: Equatable, Sendable {
 /// The status strip. Set ``model`` and ``theme``; the view redraws itself.
 @MainActor
 public final class StatusBarView: NSView {
-    /// Fixed height from the design. Not derived from the font: the bar is a 30 pt band whatever
+    /// Fixed height from the design. Not derived from the font: the bar is a 36 pt band whatever
     /// the text metrics do.
-    public static let height: CGFloat = 30
+    public static let height: CGFloat = 36
 
     /// Horizontal padding at both ends of the strip.
-    private static let insetX: CGFloat = 12
+    private static let insetX: CGFloat = 15
     /// Text drawn between two adjacent visible segments.
     private static let separator = " · "
     /// Horizontal padding inside a pill, and its corner radius / height.
     private static let pillPadX: CGFloat = 5
-    private static let pillHeight: CGFloat = 15
+    private static let pillHeight: CGFloat = 16
     private static let pillRadius: CGFloat = 3
+    /// 2c.1's `letter-spacing:0.03em` on the model badge, in points at the pill's size.
+    static let pillTracking: Double = 0.03 * Theme.Fonts.mono.detail
     /// A segment that does not fit is drawn truncated only if at least this much room is left;
     /// below that it is dropped entirely (a two-character stub reads as damage, not as data).
     private static let minTruncatedWidth: CGFloat = 30
-    /// The meter bar: 44 × 4 pt, fully rounded, 5 pt from the label and from the number.
-    static let meterWidth: CGFloat = 44
-    static let meterHeight: CGFloat = 4
+    /// The meter bar: 50 pt wide, fully rounded, 5 pt from the label and from the number.
+    static let meterWidth: CGFloat = 50
+    /// Height of a meter that has the segment to itself (`Context`).
+    static let meterHeight: CGFloat = 4.5
+    /// Height of each bar, and the space between them, once a meter stacks two (`Usage`).
+    static let stackedBarHeight: CGFloat = 3.5
+    static let stackedBarGap: CGFloat = 2
     static let meterGap: CGFloat = 5
-    /// The PR badge's glyph: 11 pt square, 4 pt before the number (2c.1).
-    static let iconSize: CGFloat = 11
+    /// 2c.1 gives the stacked meter one more point of air on either side of the bars than the
+    /// single one, because the taller block needs it to stop crowding the label.
+    static let stackedMeterGap: CGFloat = 6
+    /// The PR badge's glyph: 13 pt square, 4 pt before the number (2c.1).
+    static let iconSize: CGFloat = 13
     static let iconGap: CGFloat = 4
 
     public var model: StatusBarModel {
@@ -227,15 +258,20 @@ public final class StatusBarView: NSView {
         if model.isWorktree == true {
             let name = model.worktreeName.flatMap { $0.isEmpty ? nil : $0 }
             out.append(StatusItem(
-                .pill(text: "WT", foreground: theme.wtText, background: theme.wtBackground),
+                .pill(
+                    text: "WT", foreground: theme.wtText, background: theme.wtBackground,
+                    border: nil, tracking: 0),
                 tooltip: name.map { "Worktree \($0)" } ?? "Git worktree"))
         }
 
         if let name = model.modelName, !name.isEmpty {
-            // No dedicated badge token exists; `border` is the design's low-alpha overlay and is
-            // defined for every preset (see DESIGN.MD DELTA in the ticket report).
+            // 2c.1 draws this one uppercased, tracked out and *outlined in its own text colour*
+            // over the bare strip — not filled like `WT`. The two badges sit next to each other,
+            // so they have to differ in more than their words.
             out.append(StatusItem(
-                .pill(text: name, foreground: theme.statusBarText, background: theme.border),
+                .pill(
+                    text: name.uppercased(), foreground: theme.statusBarText, background: .clear,
+                    border: theme.statusBarText, tracking: Self.pillTracking),
                 tooltip: "Model \(name)"))
         }
 
@@ -309,43 +345,76 @@ public final class StatusBarView: NSView {
 
         if let context = model.contextPercent {
             out.append(StatusItem(
-                meter("Context ", percent: context, fill: theme.contextMeter, theme: theme),
+                meter("Context", percents: [context], base: theme.contextMeter, theme: theme),
                 tooltip: "\(context)% of the model's context window used",
                 trailing: true))
         }
 
-        if let usage = model.usagePercent {
+        // The two quota windows are one segment: 2c.1 stacks the session bar over the weekly one
+        // behind a single `Usage` label. Either may be missing — a fresh account has no five-hour
+        // window yet — and then the meter quietly becomes the single bar it used to be.
+        let quotas = [("Session", model.sessionUsage), ("Weekly", model.weeklyUsage)]
+            .compactMap { name, quota in quota.map { (name: name, quota: $0) } }
+        if !quotas.isEmpty {
+            var lines = quotas.map { entry -> String in
+                var line = "\(entry.name) quota \(entry.quota.percent)%"
+                if let resets = entry.quota.resetsIn {
+                    line += " · resets \(StatusBarModel.formatResetsIn(resets))"
+                }
+                if let at = entry.quota.resetsAtText { line += " (\(at))" }
+                return line
+            }
+            if let accounts = model.usageTooltip, !accounts.isEmpty { lines.append(accounts) }
             out.append(StatusItem(
-                meter("Usage ", percent: usage, fill: theme.usageMeter, theme: theme),
-                tooltip: model.usageTooltip ?? "\(usage)% of the seven-day quota used",
-                trailing: true))
-        }
-
-        if let resets = model.usageResetsIn {
-            out.append(StatusItem(
-                .runs([
-                    StatusRun(
-                        text: "resets \(StatusBarModel.formatResetsIn(resets))",
-                        color: theme.foregroundDim
-                    )
-                ]),
-                tooltip: model.usageResetsAtText.map { "Quota window resets \($0)" },
+                meter(
+                    "Usage", percents: quotas.map(\.quota.percent), base: theme.usageMeter,
+                    theme: theme),
+                tooltip: lines.joined(separator: "\n"),
                 trailing: true))
         }
 
         return out
     }
 
-    /// A percentage as the artboards draw it: the label in the base text, a bar, the number in the
-    /// terminal foreground. The number is what is *reported*; the bar clamps to 0…100 % so a stray
-    /// 104 % from a reader does not paint outside its track.
-    private static func meter(_ label: String, percent: Int, fill: RGB, theme: Theme) -> StatusSegment {
-        .meter(
-            label: StatusRun(text: label, color: theme.statusBarText),
-            fraction: min(max(Double(percent) / 100, 0), 1),
-            fill: fill,
-            track: theme.meterTrack,
-            value: StatusRun(text: "\(percent)%", color: theme.terminalForeground))
+    /// A meter as the artboards draw it: the label in the base text, one bar per percentage, and
+    /// the numbers in the terminal foreground joined by ` · `. The numbers are what is *reported*;
+    /// each bar clamps to 0…100 % so a stray 104 % from a reader does not paint outside its track.
+    ///
+    /// With two bars the second one — the weekly quota — is carried at half alpha while it is in
+    /// the normal band, which is how 2c.1 keeps the pair reading as primary over secondary. Once
+    /// it crosses into amber or red it goes back to full strength: a warning that has been faded
+    /// out is not a warning.
+    private static func meter(
+        _ label: String, percents: [Int], base: RGB, theme: Theme
+    ) -> StatusSegment {
+        let bars = percents.enumerated().map { index, percent -> MeterBar in
+            var fill = meterFill(percent: percent, base: base, theme: theme)
+            if index > 0, fill == base { fill.a *= 0.5 }
+            return MeterBar(
+                fraction: min(max(Double(percent) / 100, 0), 1),
+                fill: fill,
+                track: theme.meterTrack)
+        }
+        var value: [StatusRun] = []
+        for percent in percents {
+            if !value.isEmpty {
+                value.append(StatusRun(text: " · ", color: theme.statusBarText))
+            }
+            value.append(StatusRun(text: "\(percent)%", color: theme.terminalForeground))
+        }
+        return .meter(
+            label: StatusRun(text: label, color: theme.statusBarText), bars: bars, value: value)
+    }
+
+    /// The colour a bar is filled with at `percent`. **No artboard draws this** — 2c.1 paints
+    /// every meter in one colour. Thomas asked for the two steps so that a quota about to run out
+    /// is visible from across the room without reading the number: past 70 % the bar turns the
+    /// preset's amber, past 90 % its red. Both bounds are exclusive, so exactly 70 % is still
+    /// nominal and exactly 90 % is still a warning.
+    static func meterFill(percent: Int, base: RGB, theme: Theme) -> RGB {
+        if percent > 90 { return theme.meterDanger }
+        if percent > 70 { return theme.meterWarn }
+        return base
     }
 
     /// The PR badge as 2c.1 draws it: the pull-request glyph and `#418`, both in one colour that
@@ -407,7 +476,7 @@ public final class StatusBarView: NSView {
     // MARK: Drawing
 
     private var textFont: NSFont { Theme.Fonts.mono(theme.fontMono.statusBar) }
-    private var pillFont: NSFont { Theme.Fonts.mono(theme.fontMono.detail, weight: .medium) }
+    private var pillFont: NSFont { Theme.Fonts.mono(theme.fontMono.detail, weight: .semibold) }
 
     /// One item as it was placed on the strip. Mouse handling, tooltips and cursor rects all read
     /// the placement rather than re-deriving the line, so what the pointer hits is exactly what was
@@ -605,13 +674,13 @@ public final class StatusBarView: NSView {
         switch segment {
         case .runs(let runs):
             attributed(runs, font: textFont).size().width
-        case .pill(let text, let fg, _):
-            attributed([StatusRun(text: text, color: fg)], font: pillFont).size().width
-                + 2 * Self.pillPadX
-        case .meter(let label, _, _, _, let value):
+        case .pill(let text, let fg, _, _, let tracking):
+            attributed([StatusRun(text: text, color: fg)], font: pillFont, tracking: tracking)
+                .size().width + 2 * Self.pillPadX
+        case .meter(let label, let bars, let value):
             attributed([label], font: textFont).size().width
-                + Self.meterGap + Self.meterWidth + Self.meterGap
-                + attributed([value], font: textFont).size().width
+                + 2 * Self.meterGap(barCount: bars.count) + Self.meterWidth
+                + attributed(value, font: textFont).size().width
         case .iconRuns(_, let runs):
             Self.iconSize + Self.iconGap + attributed(runs, font: textFont).size().width
         }
@@ -672,19 +741,34 @@ public final class StatusBarView: NSView {
             width: Self.iconSize, height: Self.iconSize)
     }
 
-    /// Where a meter's track and fill land when the item is drawn at `x`. Shared by `draw` and
-    /// the pixel tests, so what is asserted is what is painted.
-    func meterRects(_ segment: StatusSegment, at x: CGFloat) -> (track: NSRect, fill: NSRect)? {
-        guard case .meter(let label, let fraction, _, _, _) = segment else { return nil }
+    /// The space between a meter's label and its bars, and between the bars and the numbers.
+    /// One bar gets 2c.1's 5 pt, a stacked pair its 6 pt.
+    static func meterGap(barCount: Int) -> CGFloat {
+        barCount > 1 ? stackedMeterGap : meterGap
+    }
+
+    /// Where a meter's bars land when the item is drawn at `x`, top bar first. Shared by `draw`
+    /// and the pixel tests, so what is asserted is what is painted. Empty for a non-meter.
+    func meterRects(_ segment: StatusSegment, at x: CGFloat) -> [(track: NSRect, fill: NSRect)] {
+        guard case .meter(let label, let bars, _) = segment, !bars.isEmpty else { return [] }
         let labelWidth = attributed([label], font: textFont).size().width
-        let track = NSRect(
-            x: x + labelWidth + Self.meterGap,
-            y: ((bounds.height - Self.meterHeight) / 2).rounded(),
-            width: Self.meterWidth,
-            height: Self.meterHeight)
-        var fill = track
-        fill.size.width = (Self.meterWidth * CGFloat(min(max(fraction, 0), 1))).rounded()
-        return (track, fill)
+        let barHeight = bars.count > 1 ? Self.stackedBarHeight : Self.meterHeight
+        let blockHeight =
+            CGFloat(bars.count) * barHeight + CGFloat(bars.count - 1) * Self.stackedBarGap
+        // Not flipped: `y` grows upward, so the *first* bar is the topmost one.
+        var top = ((bounds.height + blockHeight) / 2).rounded()
+        var out: [(track: NSRect, fill: NSRect)] = []
+        for bar in bars {
+            top -= barHeight
+            let track = NSRect(
+                x: x + labelWidth + Self.meterGap(barCount: bars.count), y: top,
+                width: Self.meterWidth, height: barHeight)
+            var fill = track
+            fill.size.width = (Self.meterWidth * CGFloat(min(max(bar.fraction, 0), 1))).rounded()
+            out.append((track, fill))
+            top -= Self.stackedBarGap
+        }
+        return out
     }
 
     private func draw(_ segment: StatusSegment, at x: CGFloat) {
@@ -693,32 +777,54 @@ public final class StatusBarView: NSView {
             let string = attributed(runs, font: textFont)
             drawText(string, at: x, width: string.size().width)
 
-        case .meter(let label, _, let fill, let track, let value):
-            guard let rects = meterRects(segment, at: x) else { return }
+        case .meter(let label, let bars, let value):
+            let rects = meterRects(segment, at: x)
+            guard let first = rects.first else { return }
             let labelString = attributed([label], font: textFont)
             drawText(labelString, at: x, width: labelString.size().width)
-            let radius = Self.meterHeight / 2
-            track.nsColor.setFill()
-            NSBezierPath(roundedRect: rects.track, xRadius: radius, yRadius: radius).fill()
-            if rects.fill.width > 0 {
-                fill.nsColor.setFill()
-                NSBezierPath(roundedRect: rects.fill, xRadius: radius, yRadius: radius).fill()
+            for (bar, rect) in zip(bars, rects) {
+                let radius = rect.track.height / 2
+                bar.track.nsColor.setFill()
+                NSBezierPath(roundedRect: rect.track, xRadius: radius, yRadius: radius).fill()
+                if rect.fill.width > 0 {
+                    bar.fill.nsColor.setFill()
+                    NSBezierPath(roundedRect: rect.fill, xRadius: radius, yRadius: radius).fill()
+                }
             }
-            let valueString = attributed([value], font: textFont)
-            drawText(valueString, at: rects.track.maxX + Self.meterGap, width: valueString.size().width)
+            let valueString = attributed(value, font: textFont)
+            drawText(
+                valueString, at: first.track.maxX + Self.meterGap(barCount: bars.count),
+                width: valueString.size().width)
 
-        case .pill(let text, let fg, let bg):
-            let string = attributed([StatusRun(text: text, color: fg)], font: pillFont)
+        case .pill(let text, let fg, let bg, let border, let tracking):
+            let string = attributed(
+                [StatusRun(text: text, color: fg)], font: pillFont, tracking: tracking)
             let textWidth = string.size().width
             let rect = NSRect(
                 x: x,
-                y: (bounds.height - Self.pillHeight) / 2,
+                y: ((bounds.height - Self.pillHeight) / 2).rounded(),
                 width: textWidth + 2 * Self.pillPadX,
                 height: Self.pillHeight
             )
-            bg.nsColor.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: Self.pillRadius, yRadius: Self.pillRadius).fill()
-            drawText(string, at: rect.minX + Self.pillPadX, width: textWidth, font: pillFont)
+            let path = NSBezierPath(
+                roundedRect: rect, xRadius: Self.pillRadius, yRadius: Self.pillRadius)
+            if bg.a > 0 {
+                bg.nsColor.setFill()
+                path.fill()
+            }
+            if let border {
+                // Inset by the half stroke so the 1 pt outline lands inside `rect`; otherwise the
+                // badge measures a point wider than the layout pass reserved for it.
+                let outline = NSBezierPath(
+                    roundedRect: rect.insetBy(dx: 0.5, dy: 0.5),
+                    xRadius: Self.pillRadius, yRadius: Self.pillRadius)
+                outline.lineWidth = 1
+                border.nsColor.setStroke()
+                outline.stroke()
+            }
+            drawText(
+                string, at: rect.minX + Self.pillPadX, width: textWidth, font: pillFont,
+                tracking: tracking)
 
         case .iconRuns(let icon, let runs):
             icon.color.nsColor.setStroke()
@@ -733,29 +839,35 @@ public final class StatusBarView: NSView {
         _ string: NSAttributedString,
         at x: CGFloat,
         width: CGFloat,
-        font: NSFont? = nil
+        font: NSFont? = nil,
+        tracking: Double = 0
     ) {
         let font = font ?? textFont
         let lineHeight = font.ascender - font.descender
         let y = (bounds.height - lineHeight) / 2
-        string.draw(with: NSRect(x: x, y: y, width: max(width, 0), height: lineHeight),
+        // Tracking is trailing space on the *last* glyph too, so the run measures one step wider
+        // than it paints; shifting by half a step re-centres it inside the pill.
+        string.draw(with: NSRect(x: x - tracking / 2, y: y, width: max(width, 0), height: lineHeight),
                     options: [.usesLineFragmentOrigin])
     }
 
     private func attributed(
         _ runs: [StatusRun],
         font: NSFont,
-        truncating: Bool = false
+        truncating: Bool = false,
+        tracking: Double = 0
     ) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = truncating ? .byTruncatingTail : .byClipping
         let out = NSMutableAttributedString()
         for run in runs {
-            out.append(NSAttributedString(string: run.text, attributes: [
+            var attributes: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: run.color.nsColor,
                 .paragraphStyle: paragraph,
-            ]))
+            ]
+            if tracking != 0 { attributes[.kern] = tracking }
+            out.append(NSAttributedString(string: run.text, attributes: attributes))
         }
         return out
     }

@@ -3,7 +3,7 @@ import Testing
 import TkzCore
 @testable import TkzApp
 
-/// Headless tests for the 30 pt status strip (TKZ-18, M2.2).
+/// Headless tests for the 36 pt status strip (TKZ-18, M2.2; resized with 2c.1 on 2026-09-12).
 ///
 /// Content is asserted through `StatusBarView.segments(for:theme:)` — the pure function that turns
 /// the model into what gets drawn — and geometry/theming through an offscreen `NSBitmapImageRep`,
@@ -25,8 +25,18 @@ struct StatusBarViewTests {
         behind: 2,
         ports: [5173, 3000],
         contextPercent: 62,
-        usagePercent: 5,
-        usageResetsIn: .seconds(4 * 86_400 + 12 * 3_600)
+        sessionUsage: .init(percent: 5, resetsIn: .seconds(2 * 3_600)),
+        weeklyUsage: .init(percent: 41, resetsIn: .seconds(4 * 86_400 + 12 * 3_600))
+    )
+
+    /// The same strip with every meter past a threshold — the one part of the footer that comes
+    /// from Thomas rather than from an artboard.
+    static let hot = StatusBarModel(
+        branch: "feature/tkz-18-main-window",
+        modelName: "Sonnet 4.5",
+        contextPercent: 88,
+        sessionUsage: .init(percent: 74),
+        weeklyUsage: .init(percent: 96)
     )
 
     /// Renders the view offscreen at 2× so text is legible in the written PNG.
@@ -64,13 +74,13 @@ struct StatusBarViewTests {
 
     // MARK: Geometry
 
-    @Test func isExactlyThirtyPointsTall() {
+    @Test func isExactlyThirtySixPointsTall() {
         let view = StatusBarView()
-        #expect(StatusBarView.height == 30)
-        #expect(view.intrinsicContentSize.height == 30)
+        #expect(StatusBarView.height == 36)
+        #expect(view.intrinsicContentSize.height == 36)
         // The height constraint installed in init pins it regardless of content.
-        #expect(view.fittingSize.height == 30)
-        #expect(view.frame.height == 30)
+        #expect(view.fittingSize.height == 36)
+        #expect(view.frame.height == 36)
     }
 
     // MARK: Empty model
@@ -89,7 +99,7 @@ struct StatusBarViewTests {
 
     @Test func partialModelDoesNotEmitDanglingSeparators() {
         // Only usage%, i.e. a hole on both sides of the strip.
-        let model = StatusBarModel(usagePercent: 5)
+        let model = StatusBarModel(weeklyUsage: .init(percent: 5))
         let view = StatusBarView(theme: .default, model: model)
         #expect(view.accessibilityValue() as? String == "Usage 5%")
         #expect(!((view.accessibilityValue() as? String ?? "").contains("\u{00B7}")))
@@ -108,9 +118,13 @@ struct StatusBarViewTests {
         #expect(Self.texts(StatusBarModel(isWorktree: true)).contains("WT"))
     }
 
-    @Test func modelBadgeAppearsOnlyWhenSet() {
+    @Test func modelBadgeAppearsOnlyWhenSetAndIsUppercased() {
+        // 2c.1 sets the badge in caps; the tooltip keeps the name as the sidecar reported it.
         #expect(Self.texts(.empty).isEmpty)
-        #expect(Self.texts(StatusBarModel(modelName: "Opus 4.6")).contains("Opus 4.6"))
+        #expect(Self.texts(StatusBarModel(modelName: "Opus 4.6")) == ["OPUS 4.6"])
+        let item = StatusBarView.items(
+            for: StatusBarModel(modelName: "Opus 4.6"), theme: .default).first
+        #expect(item?.tooltip == "Model Opus 4.6")
     }
 
     @Test func diffCountsAndFileCountCollapseIndependently() {
@@ -137,24 +151,73 @@ struct StatusBarViewTests {
 
     @Test func contextAndUsageSegments() {
         #expect(Self.texts(StatusBarModel(contextPercent: 62)) == ["Context 62%"])
-        #expect(Self.texts(StatusBarModel(usagePercent: 5)) == ["Usage 5%"])
-        #expect(Self.texts(StatusBarModel(usageResetsIn: .seconds(4 * 86_400 + 12 * 3_600)))
-                == ["resets 4d 12h"])
+        // 2c.1: one `Usage` segment carrying both windows, session first.
+        #expect(Self.texts(StatusBarModel(
+            sessionUsage: .init(percent: 5), weeklyUsage: .init(percent: 41)))
+                == ["Usage 5% \u{00B7} 41%"])
+        // Either window alone collapses the meter back to a single bar and a single number.
+        #expect(Self.texts(StatusBarModel(sessionUsage: .init(percent: 5))) == ["Usage 5%"])
+        #expect(Self.texts(StatusBarModel(weeklyUsage: .init(percent: 41))) == ["Usage 41%"])
+    }
+
+    @Test func theUsageMeterStacksSessionOverWeekly() throws {
+        let segment = try #require(StatusBarView.segments(
+            for: StatusBarModel(
+                sessionUsage: .init(percent: 5), weeklyUsage: .init(percent: 41)),
+            theme: .default).first)
+        guard case .meter(let label, let bars, let value) = segment else {
+            Issue.record("usage should be a meter"); return
+        }
+        #expect(label.text == "Usage")
+        #expect(bars.count == 2)
+        #expect(bars[0].fraction == 0.05)
+        #expect(bars[1].fraction == 0.41)
+        // The weekly bar is the same hue at half alpha while it is in the normal band.
+        #expect(bars[0].fill == Theme.default.usageMeter)
+        #expect(bars[1].fill.a == Theme.default.usageMeter.a * 0.5)
+        #expect(value.map(\.text) == ["5%", " \u{00B7} ", "41%"])
+    }
+
+    @Test func aMeterTurnsAmberPastSeventyAndRedPastNinety() {
+        // Not from an artboard — Thomas' thresholds. Both bounds are exclusive.
+        for theme in Theme.allPresets {
+            func fill(_ percent: Int) -> RGB {
+                StatusBarView.meterFill(percent: percent, base: theme.contextMeter, theme: theme)
+            }
+            #expect(fill(0) == theme.contextMeter)
+            #expect(fill(70) == theme.contextMeter)
+            #expect(fill(71) == theme.meterWarn)
+            #expect(fill(90) == theme.meterWarn)
+            #expect(fill(91) == theme.meterDanger)
+            #expect(fill(100) == theme.meterDanger)
+        }
+    }
+
+    @Test func aWeeklyBarPastAThresholdStopsBeingDimmed() throws {
+        // A warning that has been faded out is not a warning: the half-alpha treatment only
+        // applies while the weekly bar is still in its normal band.
+        let segment = try #require(StatusBarView.segments(
+            for: StatusBarModel(sessionUsage: .init(percent: 5), weeklyUsage: .init(percent: 95)),
+            theme: .default).first)
+        guard case .meter(_, let bars, _) = segment else {
+            Issue.record("usage should be a meter"); return
+        }
+        #expect(bars[1].fill == Theme.default.meterDanger)
+        #expect(bars[1].fill.a == 1)
     }
 
     @Test func fullModelHasEverySegmentInDesignOrder() {
         #expect(Self.texts(Self.full) == [
             "\u{2387} feature/tkz-18-main-window",
             "WT",
-            "Sonnet 4.5",
+            "SONNET 4.5",
             "+142 \u{2212}38",
             "12 files",
             "\u{2191}0 \u{2193}2",
             ":3000",
             ":5173",
             "Context 62%",
-            "Usage 5%",
-            "resets 4d 12h",
+            "Usage 5% \u{00B7} 41%",
         ])
     }
 
@@ -186,7 +249,9 @@ struct StatusBarViewTests {
     @Test func worktreePillUsesWtTokens() {
         for theme in Theme.allPresets {
             let segments = StatusBarView.segments(for: StatusBarModel(isWorktree: true), theme: theme)
-            #expect(segments == [.pill(text: "WT", foreground: theme.wtText, background: theme.wtBackground)])
+            #expect(segments == [.pill(
+                text: "WT", foreground: theme.wtText, background: theme.wtBackground,
+                border: nil, tracking: 0)])
         }
     }
 
@@ -204,9 +269,17 @@ struct StatusBarViewTests {
             #expect(colors(of: ":3000") == [theme.statusBarText])
             #expect(colors(of: "Context 62%")
                     == [theme.statusBarText, theme.contextMeter, theme.meterTrack, theme.terminalForeground])
-            #expect(colors(of: "Usage 5%")
-                    == [theme.statusBarText, theme.usageMeter, theme.meterTrack, theme.terminalForeground])
-            #expect(colors(of: "Sonnet 4.5") == [theme.statusBarText, theme.border])
+            var dimmedUsage = theme.usageMeter
+            dimmedUsage.a *= 0.5
+            #expect(colors(of: "Usage 5% \u{00B7} 41%") == [
+                theme.statusBarText,
+                theme.usageMeter, theme.meterTrack,
+                dimmedUsage, theme.meterTrack,
+                theme.terminalForeground, theme.statusBarText, theme.terminalForeground,
+            ])
+            // 2c.1's model badge is outlined in its own text colour, not filled.
+            #expect(colors(of: "SONNET 4.5")
+                    == [theme.statusBarText, .clear, theme.statusBarText])
         }
     }
 
@@ -214,17 +287,17 @@ struct StatusBarViewTests {
         // The bar is capped at full; the number still says what the reader reported.
         let over = try #require(
             StatusBarView.segments(for: StatusBarModel(contextPercent: 104), theme: .default).first)
-        guard case .meter(_, let fraction, _, _, let value) = over else {
+        guard case .meter(_, let bars, let value) = over else {
             Issue.record("context should be a meter"); return
         }
-        #expect(fraction == 1)
-        #expect(value.text == "104%")
-        let low = try #require(
-            StatusBarView.segments(for: StatusBarModel(usagePercent: 5), theme: .default).first)
-        guard case .meter(_, let usageFraction, _, _, _) = low else {
+        #expect(bars.map(\.fraction) == [1])
+        #expect(value.map(\.text) == ["104%"])
+        let low = try #require(StatusBarView.segments(
+            for: StatusBarModel(weeklyUsage: .init(percent: 5)), theme: .default).first)
+        guard case .meter(_, let usageBars, _) = low else {
             Issue.record("usage should be a meter"); return
         }
-        #expect(usageFraction == 0.05)
+        #expect(usageBars.map(\.fraction) == [0.05])
     }
 
     @Test func meterPaintsItsFillAndTrackWhereItSaysItDoes() throws {
@@ -236,8 +309,9 @@ struct StatusBarViewTests {
             let view = StatusBarView(theme: theme, model: model)
             let rep = Self.render(view, width: 600)
             let placed = try #require(view.placement().first)
-            let rects = try #require(view.meterRects(placed.item.segment, at: placed.frame.minX))
+            let rects = try #require(view.meterRects(placed.item.segment, at: placed.frame.minX).first)
             #expect(rects.track.width == StatusBarView.meterWidth)
+            #expect(rects.track.height == StatusBarView.meterHeight)
             #expect(rects.fill.width == (StatusBarView.meterWidth * 0.62).rounded())
 
             // The bitmap is 2× and y-flipped relative to the view.
@@ -259,8 +333,8 @@ struct StatusBarViewTests {
     @Test func fontSizeComesFromTheTokenNotALiteral() {
         // The family is not asserted: FontSet does not register JetBrains Mono in this process, so
         // resolution legitimately falls back to Menlo. The *size* must still be the design token.
-        #expect(Theme.default.fontMono.statusBar == 10.5)
-        #expect(Theme.Fonts.mono(Theme.default.fontMono.statusBar).pointSize == 10.5)
+        #expect(Theme.default.fontMono.statusBar == 12)
+        #expect(Theme.Fonts.mono(Theme.default.fontMono.statusBar).pointSize == 12)
     }
 
     @Test func nonDefaultPresetProducesDifferentColours() {
@@ -288,7 +362,7 @@ struct StatusBarViewTests {
         let view = StatusBarView(theme: .default, model: Self.full)
         let width: CGFloat = 320
         let rep = Self.render(view, width: width)
-        // The 12 pt trailing inset must stay pure background at every row below the hairline:
+        // The 15 pt trailing inset must stay pure background at every row below the hairline:
         // if a segment had overflowed it would paint here.
         for x in (Int(width) * 2 - 20)..<(Int(width) * 2) {
             for y in stride(from: 6, to: 58, by: 8) {
@@ -316,6 +390,9 @@ struct StatusBarViewTests {
             // Too narrow even for the branch: exercises the `…` truncation branch.
             ("ellipsis-2c", StatusBarView(theme: .midnightIndigo, model: Self.full), 150),
             ("wide-light", StatusBarView(theme: .light, model: Self.full), 1_240),
+            // The amber/red steps, which no artboard draws: context in the warning band, the
+            // weekly quota over the danger one.
+            ("hot-2c", StatusBarView(theme: .midnightIndigo, model: Self.hot), 1_240),
         ]
         for (name, view, width) in cases {
             let rep = Self.render(view, width: width)

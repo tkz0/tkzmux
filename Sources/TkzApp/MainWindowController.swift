@@ -2097,7 +2097,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         guard let session = state.selectedSession else { return .empty }
         let git = session.live?.git
         let sidecar = session.live?.context
-        let usage = state.usage(for: session)?.sevenDay
+        let usage = state.usage(for: session)
 
         var model = StatusBarModel()
         model.branch = git?.branch
@@ -2125,13 +2125,25 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         model.ports = ports.isEmpty ? nil : ports
         model.portOwners = session.live?.portOwners ?? [:]
         model.contextPercent = sidecar?.contextUsedPercentage.map { Int($0.rounded()) }
-        model.usagePercent = usage.map { Int($0.usedPercentage.rounded()) }
-        if let resetsAt = usage?.resetsAt, resetsAt > now {
-            model.usageResetsIn = .seconds(Int(resetsAt.timeIntervalSince(now)))
-            model.usageResetsAtText = Self.resetsAtFormatter.string(from: resetsAt)
-        }
+        // 2c.1 stacks the five-hour session window over the rolling seven-day one. They come
+        // from the same sidecar document and either may be missing on its own.
+        model.sessionUsage = Self.quota(usage?.fiveHour, now: now)
+        model.weeklyUsage = Self.quota(usage?.sevenDay, now: now)
         model.usageTooltip = usageTooltip(for: state)
         return model
+    }
+
+    /// One `UsageWindow` as the strip wants it. A reset already in the past carries no countdown:
+    /// the sidecar keeps publishing the stale window until Claude Code next writes, and
+    /// `resets 0s` would read as a live fact rather than as a file nobody has touched.
+    static func quota(_ window: UsageWindow?, now: Date) -> StatusBarModel.UsageQuota? {
+        guard let window else { return nil }
+        var quota = StatusBarModel.UsageQuota(percent: Int(window.usedPercentage.rounded()))
+        if let resetsAt = window.resetsAt, resetsAt > now {
+            quota.resetsIn = .seconds(Int(resetsAt.timeIntervalSince(now)))
+            quota.resetsAtText = Self.resetsAtFormatter.string(from: resetsAt)
+        }
+        return quota
     }
 
     /// `2026-09-12 08:00`, fixed and locale-independent: the tooltip must read the same on any
