@@ -883,10 +883,13 @@ struct MainWindowControllerTests {
         // backdrop (reported 2026-09-08). With a plain item the view inherits the window's dark
         // appearance directly and paints its own themed background.
         let container = harness.controller.sidebar.view
-        #expect(container.effectiveAppearance.name == .darkAqua)
+        // Derived rather than hardcoded: the harness pins the default preset today, but the
+        // appearance follows whatever theme it was built with.
+        let theme = Theme.preset(harness.store.state.themePreset)
+        #expect(container.effectiveAppearance.name == (theme.isDark ? .darkAqua : .aqua))
         #expect(!(container.superview is NSVisualEffectView))
         let background = try #require(container.layer?.backgroundColor)
-        let expected = Theme.default.sidebarBackground
+        let expected = theme.sidebarBackground
         let components = try #require(background.components)
         #expect(abs(components[0] - expected.r) < 0.01)
         #expect(abs(components[1] - expected.g) < 0.01)

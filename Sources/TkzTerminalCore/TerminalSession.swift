@@ -63,7 +63,9 @@ public struct TerminalSessionOptions: Sendable {
     public var terminfoName: String
     public var cursorStyle: CursorStyle
     public var cursorBlink: Bool
-    /// Answered to `CSI ? 996 n`.
+    /// Answered to `CSI ? 996 n`, and re-reported on a live change when mode 2031 is set.
+    /// Defaults to `theme.isDark` — a light theme that still claimed "dark" would make Claude Code
+    /// render dark-on-light.
     public var darkColorScheme: Bool
 
     public enum CursorStyle: Sendable, Hashable {
@@ -92,7 +94,7 @@ public struct TerminalSessionOptions: Sendable {
         terminfoName: String = "xterm-ghostty",
         cursorStyle: CursorStyle = .block,
         cursorBlink: Bool = true,
-        darkColorScheme: Bool = true
+        darkColorScheme: Bool? = nil
     ) {
         self.cols = cols
         self.rows = rows
@@ -106,7 +108,7 @@ public struct TerminalSessionOptions: Sendable {
         self.terminfoName = terminfoName
         self.cursorStyle = cursorStyle
         self.cursorBlink = cursorBlink
-        self.darkColorScheme = darkColorScheme
+        self.darkColorScheme = darkColorScheme ?? theme.isDark
     }
 }
 
@@ -551,19 +553,38 @@ public final class TerminalSession: Sendable {
         var titleReport = false
         try set(GHOSTTY_TERMINAL_OPT_TITLE_REPORT, &titleReport, "TITLE_REPORT")
 
+        try applyThemeColors(terminal: terminal, theme: options.theme)
+    }
+
+    /// The four colour options, and nothing else — the only part of `applyOptions` that is safe to
+    /// re-run on a live terminal, which is what the ☾/☀ toggle does through ``setTheme(_:)``.
+    ///
+    /// Everything else in `applyOptions` must not re-run: `CONTINUATION_MAX_BYTES` has to be set
+    /// before any bytes are fed (snapshot encoding depends on it), re-setting `SCROLLBACK_MAX_BYTES`
+    /// re-evaluates the prune limit and rehydrates an idle-compressed session, the cursor defaults
+    /// are RIS-restore values that would fight whatever the running program set, and `USERDATA` plus
+    /// the callback pointers are an identity this file's header calls load-bearing.
+    ///
+    /// These options set the *default*; libghostty keeps any per-index OSC 4/10/11/12 override a
+    /// program has applied, so a re-theme never stomps a program's own colours.
+    private static func applyThemeColors(terminal: GhosttyTerminal, theme: Theme) throws {
+        func set(_ option: GhosttyTerminalOption, _ value: UnsafeRawPointer?, _ name: String) throws {
+            try ghosttyCheck(ghostty_terminal_set(terminal, option, value), "ghostty_terminal_set(\(name))")
+        }
+
         // Colors from the theme. 0…15 come from the design tokens; 16…255 stay Ghostty's defaults.
-        var foreground = options.theme.terminalForeground.ghostty
+        var foreground = theme.terminalForeground.ghostty
         try set(GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, &foreground, "COLOR_FOREGROUND")
-        var background = options.theme.terminalBackground.ghostty
+        var background = theme.terminalBackground.ghostty
         try set(GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &background, "COLOR_BACKGROUND")
-        var cursor = options.theme.accent.ghostty
+        var cursor = theme.accent.ghostty
         try set(GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, &cursor, "COLOR_CURSOR")
 
         var palette = [GhosttyColorRgb](repeating: GhosttyColorRgb(), count: 256)
         palette.withUnsafeMutableBufferPointer { buffer in
             ghostty_color_palette_default(buffer.baseAddress)
         }
-        for (index, color) in options.theme.terminalPalette16.enumerated() where index < 16 {
+        for (index, color) in theme.terminalPalette16.enumerated() where index < 16 {
             palette[index] = color.ghostty
         }
         try palette.withUnsafeBufferPointer { buffer in
@@ -636,6 +657,70 @@ public final class TerminalSession: Sendable {
 
     public var size: (cols: UInt16, rows: UInt16) {
         state.withLock { ($0.options.cols, $0.options.rows) }
+    }
+
+    // MARK: Theme
+
+    /// Re-colours a **live** terminal: the ☾/☀ toggle's terminal half.
+    ///
+    /// Only the colour options are re-applied (see ``applyThemeColors(terminal:theme:)`` for what
+    /// must not be). The colour scheme moves with them, so `CSI ? 996 n` answers truthfully
+    /// afterwards, and — only when the program asked for it by setting mode 2031 — an unsolicited
+    /// `CSI ? 997 ; 1|2 n` goes out so it can re-render for the new scheme without being asked.
+    public func setTheme(_ theme: Theme) throws {
+        let (pty, events, sink, signal) = try state.withLock {
+            (state: inout SessionState) -> (Data, [TerminalEvent], (@Sendable (Data) -> Void)?, (@Sendable () -> Void)?) in
+            state.options.theme = theme
+            state.options.darkColorScheme = theme.isDark
+            state.context.colorScheme = theme.isDark ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT
+            try TerminalSession.applyThemeColors(terminal: state.terminal.raw, theme: theme)
+
+            var config = GhosttyTerminalModeConfig(mode: ghostty_mode_new(2031, false), value: false)
+            let readMode = ghostty_terminal_get(state.terminal.raw, GHOSTTY_TERMINAL_DATA_MODE, &config)
+            if readMode == GHOSTTY_SUCCESS, config.value,
+               let report = TerminalSession.colorSchemeReport(state.context.colorScheme) {
+                state.context.pendingPty.append(contentsOf: report)
+            }
+
+            let harvest = state.harvest()
+            return (harvest.pty, harvest.events, state.onWritePty, state.renderSignal)
+        }
+        deliver(pty: pty, events: events, sink: sink, signal: signal)
+    }
+
+    /// Reads one colour back out of libghostty, as `(r, g, b)`. Tests only: proving a re-theme
+    /// actually landed means asking the VT, and the raw handle cannot leave the lock under strict
+    /// concurrency. Pass a `_DEFAULT` key to ignore any OSC override, or the plain key for the
+    /// effective colour.
+    func colorForTesting(_ data: GhosttyTerminalData) -> (r: UInt8, g: UInt8, b: UInt8) {
+        state.withLock { (state: inout SessionState) -> (r: UInt8, g: UInt8, b: UInt8) in
+            var color = GhosttyColorRgb()
+            _ = ghostty_terminal_get(state.terminal.raw, data, &color)
+            return (color.r, color.g, color.b)
+        }
+    }
+
+    /// The 256-entry palette, as `(r, g, b)` triples. Tests only; see ``colorForTesting(_:)``.
+    func paletteForTesting(_ data: GhosttyTerminalData) -> [(r: UInt8, g: UInt8, b: UInt8)] {
+        state.withLock { (state: inout SessionState) -> [(r: UInt8, g: UInt8, b: UInt8)] in
+            var palette = [GhosttyColorRgb](repeating: GhosttyColorRgb(), count: 256)
+            _ = palette.withUnsafeMutableBufferPointer { buffer in
+                ghostty_terminal_get(state.terminal.raw, data, buffer.baseAddress)
+            }
+            return palette.map { ($0.r, $0.g, $0.b) }
+        }
+    }
+
+    /// `ESC [ ? 997 ; 1 n` (dark) or `; 2 n` (light) — byte-identical to the `CSI ? 996 n` reply.
+    /// `nil` when libghostty declines to encode, which the caller treats as "send nothing".
+    static func colorSchemeReport(_ scheme: GhosttyColorScheme) -> [UInt8]? {
+        var buffer = [CChar](repeating: 0, count: 32)
+        var written = 0
+        let result = buffer.withUnsafeMutableBufferPointer { raw in
+            ghostty_color_scheme_report_encode(scheme, raw.baseAddress, raw.count, &written)
+        }
+        guard result == GHOSTTY_SUCCESS, written > 0, written <= buffer.count else { return nil }
+        return buffer.prefix(written).map { UInt8(bitPattern: $0) }
     }
 
     // MARK: Queries

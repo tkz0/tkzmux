@@ -21,7 +21,7 @@ public final class PaneChromeView: NSView {
     /// A sibling above the terminal view, so the body dimming below never touches it.
     let startupOverlay: PaneStartupOverlayView
 
-    private var theme: Theme
+    private(set) var theme: Theme
     private var headerVisible = false
     private var focused = false
 

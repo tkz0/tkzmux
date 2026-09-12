@@ -365,6 +365,16 @@ extension AppState {
         statuslineOffered = offered
     }
 
+    public mutating func setThemePreset(_ preset: Theme.Preset) {
+        themePreset = preset
+    }
+
+    /// Flips to the preset's light/dark counterpart. The pairing is `Theme.toggled`, so nothing
+    /// outside `Theme.swift` names a preset.
+    public mutating func toggleTheme() {
+        themePreset = Theme.toggled(themePreset)
+    }
+
     // MARK: Update card (TKZ-50)
 
     /// What the release check found: a newer release, or `nil` when the running build is current

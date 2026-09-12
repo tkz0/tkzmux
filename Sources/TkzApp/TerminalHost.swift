@@ -285,6 +285,26 @@ public final class TerminalViewHost: TerminalHost {
     /// and so tests can assert on the VT directly.
     public func session(for id: TerminalID) -> TerminalSession? { sessions[id]?.session }
 
+    /// Re-themes the render context and every live terminal — the terminal half of the ☾/☀ toggle.
+    ///
+    /// Order matters: the context first, so a session opened between the two lines still picks the
+    /// new theme up from `renderContext.theme` in `makeSession`. Every session is re-themed, not
+    /// just the attached ones: the alternative is a lazy re-theme on attach, which flashes the old
+    /// colours for a frame on every tab switch. The repaint itself rides `TerminalSession.setTheme`'s
+    /// render signal, so only attached panes actually draw.
+    public func setTheme(_ theme: Theme) {
+        guard theme != renderContext.theme else { return }
+        renderContext.theme = theme
+        for id in order {
+            do {
+                try sessions[id]?.session.setTheme(theme)
+            } catch {
+                logger.error(
+                    "re-theme failed for \(id.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
     /// The size last pushed to the pty — what the shell sees as `TIOCGWINSZ`. Tests only: the
     /// view's grid and the VT's size can agree while the pty still disagrees with both.
     func ptySize(for id: TerminalID) -> TerminalSize? { sessions[id]?.pty.size }

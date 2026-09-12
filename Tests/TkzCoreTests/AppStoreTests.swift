@@ -246,6 +246,42 @@ import Testing
         #expect(change.structure == false)
     }
 
+    /// The theme preset gets its own bucket rather than a corner of `chrome`: `chrome` fires on
+    /// every window-frame nudge and sidebar-divider settle, and reacting to this one re-tints every
+    /// row, every pane and every live terminal.
+    @Test func aThemeChangeGetsItsOwnBucket() {
+        let probe = Probe()
+        let store = probe.store
+
+        store.update { $0.setThemePreset(.light) }
+        store.flush()
+        let change = probe.last
+        #expect(change.theme)
+        #expect(change.chrome == false)
+        #expect(change.structure == false)
+        #expect(change.selection == false)
+        #expect(change.sessions.isEmpty)
+        #expect(change.groups.isEmpty)
+
+        // And the inverse: a chrome change must not claim the theme moved.
+        store.update { $0.setSidebarVisible(false) }
+        store.flush()
+        #expect(probe.last.chrome)
+        #expect(probe.last.theme == false)
+    }
+
+    /// Without a `diff` clause the store's `guard !change.isEmpty` would swallow the update
+    /// entirely — no observer, and no autosave.
+    @Test func settingTheSamePresetDeliversNothing() {
+        let probe = Probe()
+        let store = probe.store
+        let before = store.deliveryCount
+
+        store.update { $0.setThemePreset($0.themePreset) }
+        store.flush()
+        #expect(store.deliveryCount == before)
+    }
+
     @Test func aNoOpUpdateDeliversNothing() {
         let probe = Probe()
         let store = probe.store

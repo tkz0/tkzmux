@@ -127,6 +127,44 @@ private func makeState() -> AppState {
     }
 }
 
+@Test func theThemePresetRoundTripsAndDefaultsWhenAbsent() throws {
+    try withTemporaryFile { file in
+        var original = makeState()
+        original.setThemePreset(.light)
+        try file.save(StateDocument(state: PersistedState(original)))
+
+        var restored = AppState()
+        try #require(file.load().document).state.apply(to: &restored)
+        #expect(restored.themePreset == .light)
+    }
+
+    // A preferences block written before the toggle existed has no key at all, and the default
+    // preset stands.
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(makeState()))))
+    object["preferences"] = .object(["autoResumeOnLaunch": .bool(true)])
+    let decoded = try StateFile.decode(try JSONEncoder().encode(object))
+    #expect(decoded.state.preferences.themePreset == nil)
+    var restored = AppState()
+    _ = decoded.state.apply(to: &restored)
+    #expect(restored.themePreset == Theme.default.preset)
+}
+
+/// A preset name a newer build wrote must warn and keep the default — never throw, which would
+/// take the whole file down with it. That is why the field is a raw `String` on the wire.
+@Test func anUnknownThemePresetWarnsAndKeepsTheDefault() throws {
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(makeState()))))
+    object["preferences"] = .object(["themePreset": .string("solarizedFlamingo")])
+    let decoded = try StateFile.decode(try JSONEncoder().encode(object))
+    #expect(decoded.state.preferences.themePreset == "solarizedFlamingo")
+
+    var restored = AppState()
+    let warnings = decoded.state.apply(to: &restored)
+    #expect(restored.themePreset == Theme.default.preset)
+    #expect(warnings.contains { $0.contains("solarizedFlamingo") })
+}
+
 @Test func groupsAndSessionsAreArraysInSidebarOrder() throws {
     let state = makeState()
     let data = try StateFile.encode(StateDocument(state: PersistedState(state)))
