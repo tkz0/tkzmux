@@ -1,0 +1,35 @@
+Sources/TkzApp/MainMenu.swift
+  s_57c836f51f38fe::t_20d2f61f39c1f8 23-30,75-78,142-146,168-172,194,202-203,205-207,218,220-221,223-226,228-229,231-233,241-242,244-245,247-248,256-257,259-262,264-265,268,270,290-321,323-324
+Sources/TkzApp/MainWindowController.swift
+  s_57c836f51f38fe::t_9576d71ad03456 2236-2239,3123-3129,3132-3134,3166-3168
+Sources/TkzApp/Palette/CommandPaletteController.swift
+  s_57c836f51f38fe::t_350acb880f4c84 140-151,168-169
+Sources/TkzApp/Palette/PaletteDataSource.swift
+  s_57c836f51f38fe::t_fdcb463b0fe172 54-62,79-81
+Tests/TkzAppTests/CheatSheetTests.swift
+  s_57c836f51f38fe::t_d4563b5dbb37ec 128-134,136-137,140,161,183-210
+Tests/TkzAppTests/MainMenuTests.swift
+  s_57c836f51f38fe::t_1b12467529f2b1 24-27,30,168,184-194,202-238,248,256-258,260
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_57c836f51f38fe::t_b230173526e2b4 579-622
+Tests/TkzAppTests/PaletteTests.swift
+  s_57c836f51f38fe::t_42f1209367e7e4 18,94-128
+docs/shortcuts.md
+  s_57c836f51f38fe::t_82ab43da42c5db 25-28,44-56,102-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5f121cef45cef82b2043b60957e2d3ddfa190af9",
+  "prompts": {},
+  "sessions": {
+    "s_57c836f51f38fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c43d19c5-102b-4834-a581-9e22e1067788",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
