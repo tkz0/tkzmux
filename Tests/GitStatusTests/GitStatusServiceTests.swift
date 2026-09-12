@@ -427,6 +427,23 @@ private func makeService(_ recorder: TKZ26Recorder) -> GitStatusService {
         #expect(FSEventsWatcher.isIgnored("/repo/.git/worktrees/feature/index.lock"))
         #expect(!FSEventsWatcher.isIgnored("/repo/Sources/A.swift"))
         #expect(!FSEventsWatcher.isIgnored("/repo/.git/HEAD"))
+
+        // Build output. A build inside a watched session used to spawn two `git` processes every
+        // two seconds for its whole duration, over files the repo ignores anyway.
+        #expect(FSEventsWatcher.isIgnored("/repo/.build/arm64-apple-macosx/debug/tkzmux.o"))
+        #expect(FSEventsWatcher.isIgnored("/repo/.venv/lib/python3.13/site-packages/x.py"))
+        #expect(FSEventsWatcher.isIgnored("/repo/web/.next/cache/chunk.js"))
+        #expect(FSEventsWatcher.isIgnored("/repo/pkg/__pycache__/mod.cpython-313.pyc"))
+        #expect(FSEventsWatcher.isIgnored("/repo/DerivedData/Build/Products/x"))
+        // The directory itself, not only things under it.
+        #expect(FSEventsWatcher.isIgnored("/repo/.build"))
+
+        // Conservative on purpose: these names are commonly *tracked*, so events under them must
+        // still refresh. A missed refresh is a correctness bug; a redundant one is only waste.
+        #expect(!FSEventsWatcher.isIgnored("/repo/target/main.rs"))
+        #expect(!FSEventsWatcher.isIgnored("/repo/build/Makefile"))
+        // A prefix match must not swallow a real directory whose name merely starts the same way.
+        #expect(!FSEventsWatcher.isIgnored("/repo/.buildkite/pipeline.yml"))
     }
 
     @Test func isUnderMatchesDirectoriesNotPrefixes() {
