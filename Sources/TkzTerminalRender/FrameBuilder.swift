@@ -406,20 +406,38 @@ public final class FrameBuilder {
         if graphemeBuffer.count < Int(graphemesLen) {
             graphemeBuffer = [UInt32](repeating: 0, count: Int(graphemesLen))
         }
-        let codepoints: [Unicode.Scalar] = try graphemeBuffer.withUnsafeMutableBufferPointer { buffer in
-            try renderCheck(
-                ghostty_render_state_row_cells_get(
-                    cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, buffer.baseAddress),
-                "ghostty_render_state_row_cells_get(GRAPHEMES_BUF)")
-            return (0..<Int(graphemesLen)).compactMap { Unicode.Scalar(buffer[$0]) }
-        }
-        guard !codepoints.isEmpty else { return }
-
         let fontStyle = hasStyling ? FontStyle(bold: style.bold, italic: style.italic) : .regular
         // libghostty's WIDE is authoritative; the shaper's Unicode heuristic is only the fallback.
         let cellSpan = wide == GHOSTTY_CELL_WIDE_WIDE ? 2 : 1
-        guard let cached = glyphCache.glyph(for: codepoints, style: fontStyle, cellSpan: cellSpan)
-        else { return }
+
+        // Single-scalar clusters — all ASCII, and the large majority of everything else — go
+        // through the scalar entry point, which needs no `[Unicode.Scalar]` and no array-backed
+        // cache key. Building that array per cell was one of three allocations every cell paid.
+        let cached: CachedGlyph?
+        if graphemesLen == 1 {
+            var raw: UInt32 = 0
+            try graphemeBuffer.withUnsafeMutableBufferPointer { buffer in
+                try renderCheck(
+                    ghostty_render_state_row_cells_get(
+                        cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, buffer.baseAddress),
+                    "ghostty_render_state_row_cells_get(GRAPHEMES_BUF)")
+                raw = buffer[0]
+            }
+            guard let scalar = Unicode.Scalar(raw) else { return }
+            cached = glyphCache.glyph(forScalar: scalar, style: fontStyle, cellSpan: cellSpan)
+        } else {
+            let codepoints: [Unicode.Scalar] = try graphemeBuffer.withUnsafeMutableBufferPointer {
+                buffer in
+                try renderCheck(
+                    ghostty_render_state_row_cells_get(
+                        cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_BUF, buffer.baseAddress),
+                    "ghostty_render_state_row_cells_get(GRAPHEMES_BUF)")
+                return (0..<Int(graphemesLen)).compactMap { Unicode.Scalar(buffer[$0]) }
+            }
+            guard !codepoints.isEmpty else { return }
+            cached = glyphCache.glyph(for: codepoints, style: fontStyle, cellSpan: cellSpan)
+        }
+        guard let cached else { return }
 
         var instance = TkzGlyphInstance()
         instance.gridPos = SIMD2<UInt16>(UInt16(column), UInt16(row))
@@ -439,6 +457,15 @@ public final class FrameBuilder {
         glyphScratch.append(instance)
     }
 
+    /// The batch getter's key list. `static` because it is a constant and `cellGetMulti` runs once
+    /// per cell — as a local array literal it was an allocation per cell.
+    private static let multiGetKeys: [GhosttyRenderStateRowCellsData] = [
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW,
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE,
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN,
+        GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_HAS_STYLING,
+    ]
+
     /// The four keys that never fail, in one call. `FG_COLOR` / `BG_COLOR` are deliberately absent
     /// (they return `GHOSTTY_INVALID_VALUE` when unset and would abort the batch).
     private func cellGetMulti(
@@ -448,12 +475,7 @@ public final class FrameBuilder {
         _ graphemesLen: inout UInt32,
         _ hasStyling: inout Bool
     ) throws {
-        let keys: [GhosttyRenderStateRowCellsData] = [
-            GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW,
-            GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE,
-            GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN,
-            GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_HAS_STYLING,
-        ]
+        let keys = Self.multiGetKeys
         let result: GhosttyResult = withUnsafeMutablePointer(to: &rawCell) { pRaw in
             withUnsafeMutablePointer(to: &style) { pStyle in
                 withUnsafeMutablePointer(to: &graphemesLen) { pLen in

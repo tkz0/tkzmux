@@ -297,12 +297,50 @@ public final class GlyphCache {
     public let grayscale: GlyphAtlas
     public let color: GlyphAtlas
 
+    /// The cache key for one grapheme cluster.
+    ///
+    /// Split into `scalar` + `rest` rather than one `[UInt32]` so the common case carries no array:
+    /// a single-scalar cluster — all ASCII, and most everything else — hashes as three integers,
+    /// where a `[UInt32]`-backed key had to allocate the array and then walk it to hash it. On a
+    /// 125×40 grid that allocation happened once per cell per rebuilt row.
     private struct Key: Hashable {
-        let scalars: [UInt32]
+        let scalar: UInt32
+        /// The scalars after the first, or `nil` for a single-scalar cluster.
+        let rest: [UInt32]?
         let style: FontStyle
         let span: Int
+
+        init(scalar: Unicode.Scalar, style: FontStyle, span: Int) {
+            self.scalar = scalar.value
+            self.rest = nil
+            self.style = style
+            self.span = span
+        }
+
+        init(scalars: [Unicode.Scalar], style: FontStyle, span: Int) {
+            self.scalar = scalars.first?.value ?? 0
+            self.rest = scalars.count > 1 ? scalars.dropFirst().map(\.value) : nil
+            self.style = style
+            self.span = span
+        }
     }
-    private var entries: [Key: CachedGlyph] = [:]
+
+    /// What the cache knows about a cluster.
+    ///
+    /// `.empty` is the load-bearing case. A space — and any control character, and anything else
+    /// whose glyph bounds come back empty from `GlyphRasterizer.rasterize` — has nothing to draw,
+    /// and the obvious spelling `entries[key] = nil` does not record that: in Swift it *removes*
+    /// the key. So every blank-but-written cell used to re-shape and re-rasterize on every rebuilt
+    /// row, re-entering CoreText (`CTFontGetBoundingRectsForGlyphs`) each time. Measured with
+    /// `tkzmux-vtdump bench-frame --fill spaces` on a 125×40 grid, that was **4.40 ms per frame**
+    /// for a screen that draws nothing at all — over half the 8.3 ms budget at 120 Hz.
+    private enum CacheEntry {
+        case glyph(CachedGlyph)
+        /// Shaped and rasterized, and there is nothing to draw. Holds no atlas pixels, so unlike
+        /// `.glyph` it survives an atlas rebuild untouched.
+        case empty
+    }
+    private var entries: [Key: CacheEntry] = [:]
 
     /// - Parameter thicken: font smoothing on grayscale glyphs (`GlyphRasterizer.thicken`).
     public init(fontSet: FontSet,
@@ -325,6 +363,41 @@ public final class GlyphCache {
         kind == .grayscale ? grayscale : color
     }
 
+    /// Shapes, rasterizes and packs a single-scalar grapheme, or returns the cached placement.
+    ///
+    /// The hot entry point: `FrameBuilder` calls this for every cell whose cluster is one scalar,
+    /// which avoids building a `[Unicode.Scalar]` per cell on top of avoiding the key array.
+    /// Returns `nil` for anything with nothing to draw (space, control characters).
+    ///
+    /// Spelled `forScalar:` rather than `for:` on purpose: a string literal like `"A"` satisfies
+    /// both `Unicode.Scalar` and `Character`, so a `for:` overload would make every existing
+    /// `glyph(for: "A")` call ambiguous.
+    public func glyph(forScalar scalar: Unicode.Scalar,
+                      style: FontStyle = .regular,
+                      cellSpan: Int? = nil) -> CachedGlyph? {
+        if BoxSprites.covers(scalar) {
+            let key = Key(scalar: scalar, style: .regular, span: 1)
+            switch validated(key) {
+            case .glyph(let entry): return entry
+            case .empty: return nil
+            case nil: break
+            }
+            if let raster = sprites.rasterize(scalar) {
+                return pack(raster, cellSpan: 1, key: key)
+            }
+            // No sprite for this scalar after all: fall through to the font.
+        }
+        if let cellSpan {
+            switch validated(Key(scalar: scalar, style: style, span: cellSpan)) {
+            case .glyph(let entry): return entry
+            case .empty: return nil
+            case nil: break
+            }
+        }
+        // Miss: build the array the shaper and rasterizer need and take the general path.
+        return glyph(for: [scalar], style: style, cellSpan: cellSpan)
+    }
+
     /// Shapes, rasterizes and packs a grapheme, or returns the cached placement.
     /// Returns `nil` for clusters with nothing to draw (space, control characters).
     public func glyph(for scalars: [Unicode.Scalar],
@@ -334,35 +407,59 @@ public final class GlyphCache {
         // cell wide by definition. Keyed as `.regular` so bold text does not cache a second copy.
         let isSprite = BoxSprites.covers(scalars)
         if isSprite {
-            let key = Key(scalars: scalars.map(\.value), style: .regular, span: 1)
-            if let entry = validated(key) { return entry }
+            let key = Key(scalars: scalars, style: .regular, span: 1)
+            switch validated(key) {
+            case .glyph(let entry): return entry
+            case .empty: return nil
+            case nil: break
+            }
             if let raster = sprites.rasterize(scalars[0]) {
                 return pack(raster, cellSpan: 1, key: key)
             }
             // No sprite for this scalar after all: fall through to the font.
         }
 
+        // The span decides the key, and when the caller already knows it — `FrameBuilder` always
+        // does, from libghostty's authoritative WIDE flag — the key is fully determined here. So
+        // the cache is consulted *before* the shaper, which on a hit skips the shaper's own
+        // dictionary lookup and the key array it would have built for it.
+        if let cellSpan {
+            switch validated(Key(scalars: scalars, style: style, span: cellSpan)) {
+            case .glyph(let entry): return entry
+            case .empty: return nil
+            case nil: break
+            }
+        }
+
         let shaped = shaper.shape(scalars, style: style, cellSpan: cellSpan)
-        let key = Key(scalars: scalars.map(\.value), style: style, span: shaped.cellSpan)
-        if let entry = validated(key) { return entry }
+        let key = Key(scalars: scalars, style: style, span: shaped.cellSpan)
+        if cellSpan == nil {
+            switch validated(key) {
+            case .glyph(let entry): return entry
+            case .empty: return nil
+            case nil: break
+            }
+        }
         guard let raster = rasterizer.rasterize(shaped, style: style) else {
-            entries[key] = nil
+            entries[key] = .empty
             return nil
         }
         return pack(raster, cellSpan: shaped.cellSpan, key: key)
     }
 
-    /// The cached placement for `key`, re-stamped after a regrow, or `nil` when it has to be redrawn.
-    private func validated(_ key: Key) -> CachedGlyph? {
+    /// What the cache holds for `key`, re-stamped after a regrow. `nil` means "not cached, draw it";
+    /// `.empty` means "cached, and there is nothing to draw".
+    private func validated(_ key: Key) -> CacheEntry? {
         guard let cached = entries[key] else { return nil }
-        let target = atlas(for: cached.slot.kind)
-        if target.isValid(cached.slot) { return cached }
+        guard case .glyph(let glyph) = cached else { return .empty }
+        let target = atlas(for: glyph.slot.kind)
+        if target.isValid(glyph.slot) { return cached }
         // A regrow moved the goalposts but kept the pixels: just re-stamp the slot.
-        guard let refreshed = target.revalidate(cached.slot) else { return nil }
-        let entry = CachedGlyph(slot: refreshed, bearingX: cached.bearingX,
-                                bearingTop: cached.bearingTop, cellSpan: cached.cellSpan)
-        entries[key] = entry
-        return entry
+        guard let refreshed = target.revalidate(glyph.slot) else { return nil }
+        let entry = CachedGlyph(slot: refreshed, bearingX: glyph.bearingX,
+                                bearingTop: glyph.bearingTop, cellSpan: glyph.cellSpan)
+        entries[key] = .glyph(entry)
+        return .glyph(entry)
     }
 
     /// Packs a freshly drawn bitmap into its atlas and records the placement.
@@ -378,7 +475,7 @@ public final class GlyphCache {
         }
         let entry = CachedGlyph(slot: slot, bearingX: raster.bearingX,
                                 bearingTop: raster.bearingTop, cellSpan: cellSpan)
-        entries[key] = entry
+        entries[key] = .glyph(entry)
         return entry
     }
 
@@ -388,8 +485,12 @@ public final class GlyphCache {
         glyph(for: Array(character.unicodeScalars), style: style, cellSpan: cellSpan)
     }
 
+    /// Drops every entry whose pixels lived in the atlas that was just cleared. `.empty` entries
+    /// hold no pixels, so they are deliberately kept — re-deriving them is the expensive thing this
+    /// cache exists to avoid.
     private func dropEntries(in kind: AtlasKind, keeping key: Key) {
-        for (k, v) in entries where v.slot.kind == kind && k != key {
+        for (k, v) in entries {
+            guard case .glyph(let glyph) = v, glyph.slot.kind == kind, k != key else { continue }
             entries.removeValue(forKey: k)
         }
     }
@@ -400,6 +501,9 @@ public final class GlyphCache {
         color.flush()
     }
 
-    /// Number of cached placements (diagnostics and tests).
+    /// Number of cached clusters (diagnostics and tests).
+    ///
+    /// Counts `.empty` entries too — a cluster with nothing to draw is a cached answer like any
+    /// other, and the whole point of keeping it is that it is never re-derived.
     public var cachedCount: Int { entries.count }
 }
