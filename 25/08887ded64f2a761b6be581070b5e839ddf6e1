@@ -1,0 +1,21 @@
+Sources/tkzmux-vtdump/FrameBenchCommand.swift
+  s_5f2abb98dae427::t_03915ec3da6db4 1-251
+Sources/tkzmux-vtdump/main.swift
+  s_5f2abb98dae427::t_db1e91a6f34f45 603-606
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2508887ded64f2a761b6be581070b5e839ddf6e1",
+  "prompts": {},
+  "sessions": {
+    "s_5f2abb98dae427": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b040ee4-3486-4913-8c04-64f847526671",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
