@@ -600,6 +600,10 @@ do {
         // CPU, compression and snapshot cost. See docs/perf.md.
         try BenchCommands.run(Array(argv.dropFirst()))
 
+    case "bench-frame":
+        // The per-frame CPU harness: FrameBuilder over a full rebuild, plus the encode.
+        try FrameBenchCommand.run(Array(argv.dropFirst()))
+
     case "abi":
         let raw = GhosttyVtInfo.abiManifestJSON
         guard let object = try? JSONSerialization.jsonObject(with: Data(raw.utf8)),
