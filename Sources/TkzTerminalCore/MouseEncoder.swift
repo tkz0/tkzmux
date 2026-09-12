@@ -219,11 +219,6 @@ public final class MouseEncoder {
         ghostty_mouse_encoder_setopt(handle.raw, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size)
     }
 
-    /// Push `geometry` explicitly (equivalent to assigning `geometry`).
-    public func setSize(_ geometry: TerminalPixelGeometry) {
-        self.geometry = geometry
-    }
-
     /// Forget motion de-duplication state and which buttons are held. Call on focus loss and when
     /// the terminal is reset.
     public func reset() {

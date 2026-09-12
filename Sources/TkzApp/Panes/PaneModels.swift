@@ -19,8 +19,6 @@ public enum SplitMetrics {
     /// drags to it, and `PaneSplit.ratioRange` is the model's coarser version of the same idea.
     /// Includes the 28 pt pane header, so 92 pt of terminal remain at the minimum.
     public static let minPaneSide: CGFloat = 120
-    /// What a fresh split gives each side.
-    public static let defaultRatio: Double = 0.5
     /// Ratios closer than this are the same ratio. Guards the drag→store→drag round trip from
     /// oscillating on sub-pixel differences.
     public static let ratioEpsilon: Double = 0.005

@@ -27,7 +27,6 @@
 import Foundation
 import GitStatus
 import TkzCore
-import os
 
 @MainActor
 public final class GitIntegration {
@@ -50,7 +49,6 @@ public final class GitIntegration {
     private var portTimer: DispatchSourceTimer?
     private var started = false
     private let portQueue = DispatchQueue(label: "se.tkz.tkzmux.GitIntegration.ports")
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "git")
 
     /// Injected so a test can drive the port path without spawning listeners.
     let scanPorts: @Sendable (pid_t) -> [ListeningPort]

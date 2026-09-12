@@ -88,9 +88,6 @@ public final class FSEventsWatcher: Sendable {
         }
     }
 
-    /// The paths currently watched, deduplicated and sorted. For tests and diagnostics.
-    public var watchedPaths: [String] { storage.withLock { $0.paths } }
-
     // MARK: - Filtering
 
     /// Paths whose changes must never trigger a refresh.

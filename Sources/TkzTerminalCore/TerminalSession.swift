@@ -808,12 +808,6 @@ public final class TerminalSession: Sendable {
         }
     }
 
-    /// The watchdog timeout, for the app's settings (default 1 s, matching Ghostty).
-    public var syncOutputTimeout: Duration {
-        get { state.withLock { $0.watchdog.timeout } }
-        set { state.withLock { $0.watchdog.timeout = newValue } }
-    }
-
     // MARK: Snapshot
 
     /// Encodes the whole terminal (screens, scrollback, modes, unfinished VT continuation) into a
