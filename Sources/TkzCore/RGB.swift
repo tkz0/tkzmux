@@ -34,6 +34,9 @@ public struct RGB: Hashable, Sendable {
 
     public static let white = RGB(hex: 0xffffff)
     public static let black = RGB(hex: 0x000000)
+    /// Fully transparent — what an *outlined* badge fills with, so "no fill" stays a colour
+    /// rather than a second optional threaded through every drawing path.
+    public static let clear = RGB(r: 0, g: 0, b: 0, a: 0)
 
     /// 8-bit channels, rounded.
     public var bytes: (r: UInt8, g: UInt8, b: UInt8) {

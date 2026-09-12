@@ -25,7 +25,7 @@ public struct Theme: Hashable, Sendable {
     public let titlebar: RGB              // 48 pt title bar (translucent in the design; vibrancy is the app's call)
     public let sidebarBackground: RGB     // <aside>
     public let terminalBackground: RGB    // <main>; also libghostty COLOR_BACKGROUND
-    public let statusBarBackground: RGB   // 30 pt footer
+    public let statusBarBackground: RGB   // 36 pt footer
 
     // MARK: Text
     public let foreground: RGB            // sidebar session title (12.5 pt, weight 500) — primary UI text
@@ -36,10 +36,16 @@ public struct Theme: Hashable, Sendable {
     public let summaryText: RGB           // "N WORKING" / "N NEED YOU" words in the summary strip (the dots carry the status colour)
     public let statusBarText: RGB         // status bar base text (files, ↑↓, ports, "Context"/"Usage" labels)
 
-    // MARK: Meters (status bar `Context ▬▬ 62%` / `Usage ▬ 5%`, 44 × 4 pt)
+    // MARK: Meters (status bar `Context ▬▬ 62%` / stacked `Usage ▬ / ▬ 5% · 41%`, 50 × 4.5 pt)
     public let meterTrack: RGB            // the unfilled part of the bar (translucent)
     public let contextMeter: RGB          // context fill — the preset's working green
     public let usageMeter: RGB            // usage fill — the preset's blue
+    /// A meter past 70 %. **Not from an artboard** — 2c.1 draws every bar in one colour; Thomas
+    /// asked for a warning step so a quota running out is visible without reading the number.
+    /// Every preset reuses its own `waiting` amber rather than introducing a sixth hue.
+    public let meterWarn: RGB
+    /// A meter past 90 %, same story: the preset's own `diffRemove` red.
+    public let meterDanger: RGB
 
     // MARK: Accent & selection
     public let accent: RGB                // "＋ New session…" button background
@@ -131,7 +137,7 @@ extension Theme {
             public let terminal: Double         // terminal cells: 14 pt (cmux runs 14 via its
                                                 // Ghostty config; 12.5 read visibly lighter)
             public let detail: Double           // sidebar "⎇ branch" line: 10 pt
-            public let statusBar: Double        // status bar: 10.5 pt
+            public let statusBar: Double        // status bar: 12 pt (2c.1, raised from 10.5)
             /// Rasterize terminal glyphs with CoreText font smoothing — the stem-darkening pass
             /// Ghostty calls `font-thicken`. Without it JetBrains Mono reads as a lighter face
             /// than cmux draws (compared side by side 2026-09-08).
@@ -145,7 +151,7 @@ extension Theme {
             fallback: "Menlo",
             terminal: 14,
             detail: 10,
-            statusBar: 10.5,
+            statusBar: 12,
             thicken: true
         )
     }
@@ -213,6 +219,8 @@ extension Theme {
             meterTrack: RGB(rgb: 255, 255, 255, alpha: 0.16),
             contextMeter: working,
             usageMeter: RGB(hex: 0x8b93f8),
+            meterWarn: waiting,
+            meterDanger: diffRemove,
             accent: RGB(hex: 0x8b93f8),
             accentText: RGB(hex: 0x14162a),
             selection: RGB(rgb: 139, 147, 248, alpha: 0.22),
@@ -272,6 +280,8 @@ extension Theme {
             meterTrack: RGB(rgb: 255, 255, 255, alpha: 0.16),
             contextMeter: working,
             usageMeter: RGB(hex: 0x5b8def),
+            meterWarn: waiting,
+            meterDanger: diffRemove,
             accent: RGB(hex: 0x5b8def),
             accentText: RGB(hex: 0xffffff),
             selection: RGB(rgb: 91, 141, 239, alpha: 0.24),
@@ -335,6 +345,8 @@ extension Theme {
             meterTrack: RGB(rgb: 255, 255, 255, alpha: 0.16),
             contextMeter: working,
             usageMeter: RGB(hex: 0x7aa2e8),
+            meterWarn: waiting,
+            meterDanger: diffRemove,
             accent: RGB(hex: 0xe28666),
             accentText: RGB(hex: 0x2a1c14),
             selection: RGB(rgb: 226, 134, 102, alpha: 0.22),
@@ -398,6 +410,8 @@ extension Theme {
             meterTrack: RGB(rgb: 255, 255, 255, alpha: 0.16),
             contextMeter: working,
             usageMeter: RGB(hex: 0x4d7fd6),
+            meterWarn: waiting,
+            meterDanger: diffRemove,
             accent: RGB(hex: 0x4d7fd6),
             accentText: RGB(hex: 0xffffff),
             selection: RGB(rgb: 77, 127, 214, alpha: 0.20),
@@ -468,6 +482,8 @@ extension Theme {
             meterTrack: RGB(rgb: 0, 0, 0, alpha: 0.12),
             contextMeter: working,
             usageMeter: indigo,
+            meterWarn: waiting,
+            meterDanger: diffRemove,
             accent: indigo,
             accentText: RGB(hex: 0xffffff),
             selection: RGB(rgb: 86, 97, 216, alpha: 0.14),

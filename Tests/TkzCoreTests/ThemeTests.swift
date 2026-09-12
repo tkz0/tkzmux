@@ -147,7 +147,7 @@ import Testing
         #expect(t.fontMono.family == "JetBrains Mono")
         #expect(t.fontMono.postScriptName == "JetBrainsMono-Regular")
         #expect(t.fontMono.fallback == "Menlo")
-        #expect(t.fontMono.terminal == 14 && t.fontMono.detail == 10 && t.fontMono.statusBar == 10.5)
+        #expect(t.fontMono.terminal == 14 && t.fontMono.detail == 10 && t.fontMono.statusBar == 12)
         #expect(Theme.allPresets.allSatisfy { $0.fontUI == t.fontUI && $0.fontMono == t.fontMono })
     }
 

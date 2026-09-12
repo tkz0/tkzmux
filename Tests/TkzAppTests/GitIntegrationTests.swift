@@ -375,17 +375,22 @@ struct StatusModelMappingTests {
             "Spare: 2%"))
     }
 
-    @Test func theResetsTooltipIsLocaleIndependent() {
+    @Test func theResetsTooltipIsLocaleIndependent() throws {
         var state = Self.state()
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         state.setUsage(UsageSnapshot(
             accountKey: "claude",
             sevenDay: UsageWindow(usedPercentage: 5, resetsAt: now.addingTimeInterval(3_600))))
         let model = MainWindowController.statusModel(for: state, now: now)
-        #expect(model.usageResetsIn == .seconds(3_600))
+        let weekly = try #require(model.weeklyUsage)
+        #expect(weekly.resetsIn == .seconds(3_600))
         // Same instant, same string, on any machine: the formatter is POSIX and fixed-format.
-        #expect(model.usageResetsAtText == MainWindowController.resetsAtFormatter.string(
+        #expect(weekly.resetsAtText == MainWindowController.resetsAtFormatter.string(
             from: now.addingTimeInterval(3_600)))
-        #expect(model.usageResetsAtText?.count == 16)
+        #expect(weekly.resetsAtText?.count == 16)
+        // Since 2c.1 the countdown lives in the meter's tooltip, not in a segment of its own.
+        let usage = try #require(
+            StatusBarView.items(for: model, theme: .default).last { $0.trailing })
+        #expect(usage.tooltip?.contains("Weekly quota 5% \u{00B7} resets 1h") == true)
     }
 }
