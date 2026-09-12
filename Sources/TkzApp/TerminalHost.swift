@@ -324,9 +324,19 @@ public final class TerminalViewHost: TerminalHost {
     ///
     /// One `proc_pid_rusage` syscall per process in each tree, so call it on a slow timer.
     public func sessionMemory() -> [(id: TerminalID, sample: SessionMemorySample)] {
+        sessionPids().map { ($0.id, SessionMemory.sample(rootPid: $0.pid)) }
+    }
+
+    /// Just the root pids, in `order` — everything `sessionMemory()` needs from the main actor and
+    /// nothing that it does with them.
+    ///
+    /// Sampling walks each tree with `proc_listchildpids` (a system-wide scan per node) and one
+    /// `proc_pid_rusage` per process. Handing the pids out lets the caller do that off the main
+    /// thread and come back with the answers, which is what the once-a-minute status tick does.
+    public func sessionPids() -> [(id: TerminalID, pid: pid_t)] {
         order.compactMap { id in
             guard let pid = sessions[id]?.pty.pid, pid > 0 else { return nil }
-            return (id, SessionMemory.sample(rootPid: pid))
+            return (id, pid)
         }
     }
 
@@ -736,6 +746,107 @@ public final class TerminalViewHost: TerminalHost {
         let elapsed = ContinuousClock.now - start
         sweep.elapsed = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
         return sweep
+    }
+
+    /// The periodic sweep: encode on the main queue, write off it.
+    ///
+    /// The encode has to happen here — it reads the terminal under its lock — but the write is a
+    /// temp file, an `fsync` and a rename, and none of that needs the main thread. The unskipped
+    /// sweep was measured at 58.8 ms for 30 sessions (docs/perf.md → *Snapshot on quit*), roughly
+    /// half of it in the write, and it runs every five minutes while the user is looking at the
+    /// window.
+    ///
+    /// Quit keeps using `snapshotAll` instead: there the process is about to go away and a write
+    /// parked on another queue might never land.
+    /// - Note: the encode loop lives in `encodeForSweep()` rather than inline. Swift 6.2.1 crashes
+    ///   in `ClosureLifetimeFixup` when `autoreleasepool`'s non-escaping closure shares a function
+    ///   body with the escaping `async` closures below; keeping them in separate functions is the
+    ///   workaround, and the split reads fine on its own terms.
+    public func snapshotAllOffMain(
+        completion: @escaping @Sendable (SnapshotSweep) -> Void = { _ in }
+    ) {
+        let start = ContinuousClock.now
+        let encoded = encodeForSweep()
+        var sweep = encoded.sweep
+        guard !encoded.pending.isEmpty else {
+            sweep.elapsed = Self.seconds(since: start)
+            completion(sweep)
+            return
+        }
+        let writes = encoded.pending
+        let store = snapshots
+        let logger = logger
+        Self.snapshotWriteQueue.async {
+            var saved: [(id: String, token: UInt64, bytes: Int)] = []
+            var failed: [String] = []
+            for write in writes {
+                autoreleasepool {
+                    do {
+                        let report = try store.save(write.data, for: write.id)
+                        saved.append((write.id, write.token, report.byteCount))
+                    } catch {
+                        failed.append(write.id)
+                        logger.error("snapshot write failed for \(write.id, privacy: .public): \(String(describing: error), privacy: .public)")
+                    }
+                }
+            }
+            let done = saved
+            let lost = failed
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    // Recorded only for writes that actually landed: the token doubles as the
+                    // dirty flag quit reads, so marking a failed write fresh would make quit skip
+                    // a session whose `.ghsnap` was never written.
+                    for entry in done { self.compressor?.noteSnapshotted(entry.id, token: entry.token) }
+                    var finished = sweep
+                    finished.saved = done.map(\.id)
+                    finished.totalBytes = done.reduce(0) { $0 + $1.bytes }
+                    finished.failed.append(contentsOf: lost)
+                    finished.elapsed = Self.seconds(since: start)
+                    completion(finished)
+                }
+            }
+        }
+    }
+
+    /// The main-queue half of `snapshotAllOffMain`: decide what needs saving and encode it.
+    ///
+    /// Skipping is the same rule `snapshotAll` uses — a session the idle compressor already saved,
+    /// whose activity token has not moved since, is left alone rather than re-encoded (which would
+    /// rehydrate the history compression just released).
+    private func encodeForSweep()
+        -> (sweep: SnapshotSweep, pending: [(id: String, token: UInt64, data: Data)]) {
+        var sweep = SnapshotSweep()
+        var pending: [(id: String, token: UInt64, data: Data)] = []
+        for id in order {
+            // One pool per session — see `snapshotAll`; the encoded `Data` of a whole history is
+            // exactly the temporary that must not accumulate across the loop.
+            autoreleasepool {
+                guard let host = sessions[id] else { return }
+                let token = host.session.compressionActivity()
+                if let compressor, compressor.hasFreshSnapshot(id.rawValue, token: token) {
+                    sweep.skipped.append(id.rawValue)
+                    return
+                }
+                do {
+                    pending.append((id.rawValue, token, try host.session.snapshot()))
+                } catch {
+                    sweep.failed.append(id.rawValue)
+                    logger.error("snapshot encode failed for \(id.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+                }
+            }
+        }
+        return (sweep, pending)
+    }
+
+    /// Where `snapshotAllOffMain` writes. One serial queue, so two sweeps cannot interleave their
+    /// writes to the same `.ghsnap`.
+    private static let snapshotWriteQueue = DispatchQueue(
+        label: "tkzmux.snapshot-write", qos: .utility)
+
+    private static func seconds(since start: ContinuousClock.Instant) -> Double {
+        let elapsed = ContinuousClock.now - start
+        return Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
     }
 
     public struct RestoreSweep: Sendable, Equatable {

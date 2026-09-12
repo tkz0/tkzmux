@@ -56,6 +56,17 @@ public final class ClaudeIntegration {
     /// keeps the conversation the first-prompt card (design 2c.5) reads. Process state like
     /// `fullMessages`: a restored row has none and falls back to `TranscriptReader.locate`.
     var transcriptPaths: [SessionID: String] = [:]
+    /// Memoized `TranscriptReader.locate` answers, for rows no hook frame has named.
+    ///
+    /// **Including the misses.** `locate` enumerates `<configDir>/projects` and `stat`s a candidate
+    /// in every project directory — dozens to hundreds of syscalls — and it is reached from
+    /// `transcriptTargets()`, which the search field used to call on *every keystroke* for *every*
+    /// open session, on the main thread. Caching only the hits would have left the common case (a
+    /// row whose conversation is not on disk) paying the full scan every time.
+    ///
+    /// Keyed by the two inputs that decide the answer, so a row that is resumed under a new
+    /// conversation or moved to another account re-resolves instead of returning a stale path.
+    var locatedTranscripts: [SessionID: (claudeID: String, accountKey: String, path: String?)] = [:]
     /// The last good `TranscriptReader` result per session, so reopening the card is instant and a
     /// torn read never blanks it. Same lifecycle as `fullMessages`.
     var transcriptSummaries: [SessionID: TranscriptSummary] = [:]
@@ -342,6 +353,7 @@ public final class ClaudeIntegration {
     public func forget(_ id: SessionID) {
         fullMessages.removeValue(forKey: id)
         transcriptPaths.removeValue(forKey: id)
+        locatedTranscripts.removeValue(forKey: id)
         transcriptSummaries.removeValue(forKey: id)
         pidToSession = pidToSession.filter { $0.value != id }
     }
@@ -532,10 +544,16 @@ public final class ClaudeIntegration {
     public func transcriptPath(for id: SessionID) -> String? {
         if let path = transcriptPaths[id] { return path }
         guard let session = store.state.sessions[id], let claudeID = session.claudeSessionId else { return nil }
+        if let cached = locatedTranscripts[id],
+           cached.claudeID == claudeID, cached.accountKey == session.accountKey {
+            return cached.path
+        }
         let configDir = store.state.accounts[session.accountKey]?.configDir
             ?? Account.configDirectory(forKey: session.accountKey, home: home)
         guard let configDir else { return nil }
-        return TranscriptReader.locate(sessionId: claudeID, configDir: configDir)
+        let located = TranscriptReader.locate(sessionId: claudeID, configDir: configDir)
+        locatedTranscripts[id] = (claudeID, session.accountKey, located)
+        return located
     }
 
     /// The last summary read for this row, if any — what the card shows while a fresh read runs.
