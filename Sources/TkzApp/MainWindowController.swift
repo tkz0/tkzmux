@@ -1697,9 +1697,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     func statusLineIntegration() {
         guard let claude else { return }
         let key = statuslineAccountKey
-        if claude.statuslineProducer(accountKey: key) == .tkzmux {
+        // `.stale` is installed too — a tkzmux statusline naming the wrong hook. The toggle has to
+        // read it as on, or the one command that removes the integration would instead offer to
+        // install it again.
+        switch claude.statuslineProducer(accountKey: key) {
+        case .tkzmux, .stale:
             removeStatusline(accountKey: key)
-        } else {
+        case .none, .other:
             offerStatusline(accountKey: key, automatic: false)
         }
     }
@@ -1716,7 +1720,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             if !automatic { showNotice("Could not read settings.json for \(accountKey)") }
             return
         }
-        guard let plan, plan.producer != .tkzmux else { return }
+        guard let plan else { return }
+        switch plan.producer {
+        case .tkzmux, .stale: return  // Already ours; a stale hook is repaired at start, not offered.
+        case .none, .other: break
+        }
 
         if let confirmInstallStatusline {
             finishStatuslineOffer(confirmed: confirmInstallStatusline(plan), accountKey: accountKey)

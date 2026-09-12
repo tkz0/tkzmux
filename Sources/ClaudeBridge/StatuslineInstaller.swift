@@ -40,6 +40,21 @@ public enum StatuslineProducer: Equatable, Sendable {
     case none
     /// Ours. Nothing to offer.
     case tkzmux
+    /// A `tkzmux-hook statusline`, but not the one this build owns — a hook left behind by an
+    /// older install, a `.build` binary, a second checkout.
+    ///
+    /// This is silent breakage, which is why it gets its own case rather than folding into
+    /// ``tkzmux``. That hook resolves its support directory from its own location
+    /// (`<support>/bin/tkzmux-hook`), so every sidecar it writes lands in a directory this app
+    /// never reads: the status bar stays empty, the menu still says the integration is installed,
+    /// and nothing anywhere says why. Observed 2026-09-11, when a screenshot build pointed
+    /// `~/.claude/settings.json` at `…/.build/shot/support/bin/tkzmux-hook` and quota went dark
+    /// for a day.
+    ///
+    /// The answer is ``StatuslineInstaller/repair(configDir:accountKey:fileManager:)`` and never
+    /// `install`: what came before is already recorded in `previous-<key>.json`, and re-recording
+    /// would save a tkzmux command as the thing to restore.
+    case stale(command: String)
     /// Somebody else's — claude-hud, a hand-written script, anything. This is the interesting case:
     /// tkzmux wraps it and passes its output through untouched.
     case other(command: String)
@@ -110,10 +125,30 @@ public struct StatuslineInstaller: Sendable {
               let command = statusLine["command"] as? String,
               !command.isEmpty
         else { return .none }
-        if command.contains(hookBinary.path) || command.contains("tkzmux-hook\" statusline") {
-            return .tkzmux
-        }
+        if command.contains(hookBinary.path) { return .tkzmux }
+        if Self.runsTkzmuxHookStatusline(command) { return .stale(command: command) }
         return .other(command: command)
+    }
+
+    /// True when `command` runs *a* `tkzmux-hook statusline`, wherever that binary lives and however
+    /// it is quoted.
+    ///
+    /// This used to be `command.contains("tkzmux-hook\" statusline")`, which only ever matched the
+    /// one spelling this installer writes — quoted, because the installed path contains a space. A
+    /// hook at a path without spaces is written unquoted by hand or by a dev script
+    /// (`/Users/me/dev/tkzmux/.build/debug/tkzmux-hook statusline`), read as somebody else's
+    /// statusline, and `install` would then record tkzmux itself as the command to restore — the
+    /// exact outcome the `detect() != .tkzmux` guard in ``install(configDir:accountKey:fileManager:)``
+    /// exists to prevent.
+    static func runsTkzmuxHookStatusline(_ command: String) -> Bool {
+        var remainder = Substring(command)
+        while let hook = remainder.range(of: "tkzmux-hook") {
+            // Whatever closes the executable token — a quote, then the argument separator.
+            let tail = remainder[hook.upperBound...].drop { $0 == "\"" || $0 == "'" || $0 == " " }
+            if tail.hasPrefix("statusline") { return true }
+            remainder = remainder[hook.upperBound...]
+        }
+        return false
     }
 
     public func isInstalled(configDir: String, fileManager: FileManager = .default) -> Bool {
@@ -128,7 +163,7 @@ public struct StatuslineInstaller: Sendable {
         let producer = detect(configDir: configDir, fileManager: fileManager)
         let saved = try runHook(["statusline-settings", path, "value", "-"])
         // `before` is nil when the saved document records `{"statusLine": null}`.
-        let before = saved.contains("\"statusLine\": null") ? nil : saved
+        let before = Self.recordsAStatusline(saved) ? saved : nil
 
         var after: [String: Any] = ["type": "command", "command": command]
         if let data = fileManager.contents(atPath: path),
@@ -161,15 +196,79 @@ public struct StatuslineInstaller: Sendable {
         // Installing twice would save *our own* command as "what came before", and the next
         // uninstall would then restore tkzmux instead of the user's statusline. The UI never asks
         // twice, but the API must not depend on that.
-        guard detect(configDir: configDir, fileManager: fileManager) != .tkzmux else { return }
+        switch detect(configDir: configDir, fileManager: fileManager) {
+        case .tkzmux:
+            return
+        case .stale:
+            // Already a tkzmux statusline, just the wrong hook. Re-point it and keep the record
+            // that is already on disk; recording now would save tkzmux as the restore target.
+            try repair(configDir: configDir, accountKey: accountKey, fileManager: fileManager)
+            return
+        case .none, .other:
+            break
+        }
         let path = Self.settingsPath(configDir: configDir)
         try fileManager.createDirectory(at: statuslineDirectory, withIntermediateDirectories: true)
 
         let saved = try runHook(["statusline-settings", path, "value", "-"])
-        try Self.write(saved, to: previousURL(accountKey: accountKey), fileManager: fileManager)
+        if shouldRecord(saved, accountKey: accountKey, fileManager: fileManager) {
+            try Self.write(saved, to: previousURL(accountKey: accountKey), fileManager: fileManager)
+        }
 
         let rewritten = try runHook(["statusline-settings", path, "install", "-"])
         try Self.write(rewritten, to: URL(fileURLWithPath: path), fileManager: fileManager)
+    }
+
+    /// Re-points a stale tkzmux statusline at *this* build's hook, leaving `previous-<key>.json`
+    /// alone. Returns whether anything was written.
+    ///
+    /// Everything else in `statusLine` — `type`, `refreshInterval`, `padding` — is preserved, so
+    /// this is a one-key repair and not a reinstall.
+    @discardableResult
+    public func repair(
+        configDir: String, accountKey: String, fileManager: FileManager = .default
+    ) throws -> Bool {
+        guard case .stale = detect(configDir: configDir, fileManager: fileManager) else {
+            return false
+        }
+        let path = Self.settingsPath(configDir: configDir)
+        let rewritten = try runHook(["statusline-settings", path, "install", "-"])
+        try Self.write(rewritten, to: URL(fileURLWithPath: path), fileManager: fileManager)
+        return true
+    }
+
+    /// Whether the record `install` is about to save may replace the one already on disk.
+    ///
+    /// `previous-<key>.json` is the only state in this file that cannot be reconstructed from
+    /// anything else, so it is never traded down. A `{"statusLine": null}` — "there was nothing
+    /// here" — written over a file naming a real command destroys that command permanently, and
+    /// that is precisely how this user's claude-hud chain was lost on 2026-09-11: `settings.json`
+    /// had come up without its `statusLine` key, so the install faithfully recorded an absence over
+    /// the record of the real thing, and `uninstall` had nothing left to put back.
+    ///
+    /// Keeping the older, richer record can at worst restore a statusline the user had already
+    /// removed by hand. That is visible the moment it happens and undone by removing it again —
+    /// the opposite trade to losing it silently and forever.
+    private func shouldRecord(
+        _ saved: String, accountKey: String, fileManager: FileManager
+    ) -> Bool {
+        if Self.recordsAStatusline(saved) { return true }
+        let existing = previousURL(accountKey: accountKey)
+        guard let data = fileManager.contents(atPath: existing.path),
+              let text = String(data: data, encoding: .utf8)
+        else { return true }
+        return !Self.recordsAStatusline(text)
+    }
+
+    /// True when a saved `{"statusLine": …}` document names something rather than recording `null`.
+    /// Parsed rather than string-matched: the old `contains("\"statusLine\": null")` was reading the
+    /// hook's pretty-printer's choice of spacing as a protocol.
+    static func recordsAStatusline(_ saved: String) -> Bool {
+        guard let data = saved.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let statusLine = root["statusLine"]
+        else { return false }
+        return !(statusLine is NSNull)
     }
 
     /// Puts back exactly what was there, or removes the key when there was nothing.
@@ -180,8 +279,12 @@ public struct StatuslineInstaller: Sendable {
         configDir: String, accountKey: String, fileManager: FileManager = .default
     ) throws {
         let path = Self.settingsPath(configDir: configDir)
-        guard detect(configDir: configDir, fileManager: fileManager) == .tkzmux else {
-            throw StatuslineInstallerError.notInstalled
+        // A stale hook is still *a* tkzmux statusline, and the record of what it replaced is still
+        // ours to put back. Refusing there would strand the user with a broken statusline and no
+        // menu command that removes it.
+        switch detect(configDir: configDir, fileManager: fileManager) {
+        case .tkzmux, .stale: break
+        case .none, .other: throw StatuslineInstallerError.notInstalled
         }
         let previous = previousURL(accountKey: accountKey)
         guard fileManager.fileExists(atPath: previous.path) else {

@@ -334,6 +334,46 @@ public final class ClaudeIntegration {
         try installer.uninstall(configDir: configDir, accountKey: accountKey)
     }
 
+    /// Re-points any account whose `statusLine` runs a `tkzmux-hook` that is not this build's.
+    /// Returns the account keys it repaired.
+    ///
+    /// Called once per launch from `AppDelegate`, deliberately *not* from ``start()``: this writes
+    /// the user's `settings.json`, and `start()` is called by tests that pass a temp support
+    /// directory but the real `home` — from which every real account would look stale, and get
+    /// "repaired" to point at a hook under `/var/folders`. `AppDelegate` is the seam where the rest
+    /// of the settings-touching startup work already lives.
+    ///
+    /// Worth doing at all because the failure it repairs is invisible: the settings file still
+    /// names a tkzmux hook, so the integration reads as installed, but that hook writes its
+    /// sidecars beside *itself* and this app watches a directory nobody fills. The user sees an
+    /// empty quota band and no error anywhere. One launch of the real app now fixes it.
+    ///
+    /// Not a consent-worthy edit: the user already agreed to tkzmux owning `statusLine` for this
+    /// account, and this only corrects which binary that command names.
+    @discardableResult
+    public func repairStaleStatuslines() -> [String] {
+        guard let installer = statuslineInstaller else { return [] }
+        var repaired: [String] = []
+        for account in store.state.accounts.values.sorted(by: { $0.key < $1.key }) {
+            guard case .stale(let command) = installer.detect(configDir: account.configDir) else {
+                continue
+            }
+            do {
+                guard try installer.repair(configDir: account.configDir, accountKey: account.key)
+                else { continue }
+                repaired.append(account.key)
+                logger.info(
+                    "statusline: re-pointed \(account.key, privacy: .public) at this build's hook, was \(command, privacy: .public)"
+                )
+            } catch {
+                logger.error(
+                    "statusline: could not repair \(account.key, privacy: .public): \(String(describing: error), privacy: .public)"
+                )
+            }
+        }
+        return repaired
+    }
+
     /// Drops every per-session entry for `id`. Called when the row is removed.
     ///
     /// `fullMessages` is the one that matters: a Stop message is an arbitrarily long string (a

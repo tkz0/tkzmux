@@ -581,4 +581,139 @@ enum StatuslineTestSupport {
         #expect(plan.producer == .none)
         #expect(plan.before == nil)
     }
+
+    // MARK: - A tkzmux-hook that is not ours
+
+    /// The 2026-09-11 failure: `settings.json` names a `tkzmux-hook` from another location, so the
+    /// old `contains("tkzmux-hook\" statusline")` read it as ours and nothing ever noticed that
+    /// every sidecar was going to that hook's own support directory.
+    @Test func aHookAtAnotherPathIsStaleAndNotOurs() throws {
+        let settings = """
+            {
+              "statusLine": {
+                "type": "command",
+                "command": "\\"/Users/x/dev/tkzmux/.build/shot/support/bin/tkzmux-hook\\" statusline"
+              }
+            }
+            """
+        let f = try fixture("detect-stale", settings: settings)
+        let producer = f.installer.detect(configDir: f.configDir)
+        #expect(
+            producer
+                == .stale(
+                    command:
+                        "\"/Users/x/dev/tkzmux/.build/shot/support/bin/tkzmux-hook\" statusline"))
+        #expect(!f.installer.isInstalled(configDir: f.configDir))
+    }
+
+    /// A path without spaces needs no quoting, and the old substring required the closing quote.
+    @Test func anUnquotedHookCommandIsRecognised() throws {
+        #expect(StatuslineInstaller.runsTkzmuxHookStatusline("/opt/tkzmux/bin/tkzmux-hook statusline"))
+        #expect(StatuslineInstaller.runsTkzmuxHookStatusline("\"/opt/a b/tkzmux-hook\" statusline"))
+        #expect(!StatuslineInstaller.runsTkzmuxHookStatusline("/opt/tkzmux/bin/tkzmux-hook launch"))
+        #expect(!StatuslineInstaller.runsTkzmuxHookStatusline("node ~/hud.js"))
+    }
+
+    @Test func repairRepointsAStaleHookAndKeepsTheRestOfTheObject() throws {
+        let settings = """
+            {
+              "model": "opus",
+              "statusLine": {
+                "type": "command",
+                "command": "/opt/old/bin/tkzmux-hook statusline",
+                "refreshInterval": 5
+              }
+            }
+            """
+        let f = try fixture("repair-stale", settings: settings)
+        // Nothing was ever recorded for this account: repair must not invent a record.
+        #expect(try f.installer.repair(configDir: f.configDir, accountKey: "claude"))
+        #expect(f.installer.detect(configDir: f.configDir) == .tkzmux)
+        #expect(
+            !FileManager.default.fileExists(
+                atPath: f.installer.previousURL(accountKey: "claude").path))
+
+        let written = try StatuslineTestSupport.json(
+            at: URL(fileURLWithPath: f.configDir).appendingPathComponent("settings.json"))
+        #expect(written["model"] as? String == "opus")
+        let statusLine = written["statusLine"] as? [String: Any]
+        #expect(statusLine?["refreshInterval"] as? Int == 5)
+        // Idempotent: a second pass has nothing to do.
+        #expect(try f.installer.repair(configDir: f.configDir, accountKey: "claude") == false)
+    }
+
+    /// `install` over a stale hook repairs it instead of saving tkzmux as the restore target.
+    @Test func installOverAStaleHookKeepsTheOriginalRecord() throws {
+        let f = try fixture("install-stale", settings: claudeHud)
+        try f.installer.install(configDir: f.configDir, accountKey: "claude")
+        let record = f.installer.previousURL(accountKey: "claude")
+        let recorded = try Data(contentsOf: record)
+
+        // Now something re-points settings.json at a foreign hook, as the screenshot build did.
+        let path = URL(fileURLWithPath: f.configDir).appendingPathComponent("settings.json")
+        try Data(
+            """
+            {"statusLine": {"type": "command", "command": "/opt/old/bin/tkzmux-hook statusline"}}
+            """.utf8
+        ).write(to: path)
+
+        try f.installer.install(configDir: f.configDir, accountKey: "claude")
+        #expect(f.installer.detect(configDir: f.configDir) == .tkzmux)
+        #expect(try Data(contentsOf: record) == recorded, "the record of claude-hud survives")
+        try f.installer.uninstall(configDir: f.configDir, accountKey: "claude")
+        #expect(f.installer.detect(configDir: f.configDir) == .other(command: "node ~/hud.js"))
+    }
+
+    @Test func uninstallWorksThroughAStaleHook() throws {
+        let f = try fixture("uninstall-stale", settings: claudeHud)
+        try f.installer.install(configDir: f.configDir, accountKey: "claude")
+        let path = URL(fileURLWithPath: f.configDir).appendingPathComponent("settings.json")
+        try Data(
+            """
+            {"statusLine": {"type": "command", "command": "/opt/old/bin/tkzmux-hook statusline"}}
+            """.utf8
+        ).write(to: path)
+
+        try f.installer.uninstall(configDir: f.configDir, accountKey: "claude")
+        #expect(f.installer.detect(configDir: f.configDir) == .other(command: "node ~/hud.js"))
+    }
+
+    // MARK: - The record is never traded down
+
+    /// The other half of the 2026-09-11 loss: `settings.json` comes up without its `statusLine`
+    /// key, so a second install records `{"statusLine": null}` over the file naming the user's real
+    /// command — and `uninstall` then has nothing to put back.
+    @Test func installNeverRecordsAnAbsenceOverARealCommand() throws {
+        let f = try fixture("record-keep", settings: claudeHud)
+        try f.installer.install(configDir: f.configDir, accountKey: "claude")
+        let record = f.installer.previousURL(accountKey: "claude")
+        let recorded = try Data(contentsOf: record)
+
+        // settings.json loses statusLine entirely — a reset, another tool, a hand edit.
+        let path = URL(fileURLWithPath: f.configDir).appendingPathComponent("settings.json")
+        try Data("{\"model\": \"opus\"}".utf8).write(to: path)
+        #expect(f.installer.detect(configDir: f.configDir) == .none)
+
+        try f.installer.install(configDir: f.configDir, accountKey: "claude")
+        #expect(try Data(contentsOf: record) == recorded, "claude-hud is still recoverable")
+        try f.installer.uninstall(configDir: f.configDir, accountKey: "claude")
+        #expect(f.installer.detect(configDir: f.configDir) == .other(command: "node ~/hud.js"))
+    }
+
+    /// The trade only runs one way: a real command always replaces a recorded absence.
+    @Test func aRealCommandReplacesARecordedAbsence() throws {
+        let f = try fixture("record-upgrade", settings: "{}")
+        try f.installer.install(configDir: f.configDir, accountKey: "claude")
+        #expect(
+            !StatuslineInstaller.recordsAStatusline(
+                try String(contentsOf: f.installer.previousURL(accountKey: "claude"), encoding: .utf8)))
+
+        try f.installer.uninstall(configDir: f.configDir, accountKey: "claude")
+        let path = URL(fileURLWithPath: f.configDir).appendingPathComponent("settings.json")
+        try Data(claudeHud.utf8).write(to: path)
+        try f.installer.install(configDir: f.configDir, accountKey: "claude")
+
+        try f.installer.uninstall(configDir: f.configDir, accountKey: "claude")
+        #expect(f.installer.detect(configDir: f.configDir) == .other(command: "node ~/hud.js"))
+    }
 }
