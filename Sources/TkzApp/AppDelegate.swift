@@ -125,7 +125,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 // TKZ-32: the one-time statusline offer. Async so the launch is never blocked on a
                 // modal, and last so `bin/tkzmux-hook` — the command it writes into settings.json —
                 // is already on disk.
-                DispatchQueue.main.async { controller.offerStatuslineIfNeeded() }
+                //
+                // The repair runs first and in the same turn: an account still pointing at some
+                // other build's hook is *installed*, so the offer must not see it as free to
+                // install over, and the sooner it is corrected the fewer sessions write their
+                // sidecars somewhere this app never reads.
+                DispatchQueue.main.async { [weak self] in
+                    self?.claude?.repairStaleStatuslines()
+                    controller.offerStatuslineIfNeeded()
+                }
             }
         } catch {
             MainMenu.installDefault()

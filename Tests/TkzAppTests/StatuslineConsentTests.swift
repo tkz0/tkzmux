@@ -175,4 +175,75 @@ import TkzCore
 
         #expect(f.installer.detect(configDir: f.configDir.path) == .other(command: "node ~/hud.js"))
     }
+
+    // MARK: - A statusline pointing at somebody else's tkzmux-hook
+
+    /// `settings.json` naming a `tkzmux-hook` from another build reads as installed while its
+    /// sidecars go to that hook's own support directory — the quota band just stays empty, with no
+    /// error anywhere (2026-09-11). The repair is silent and needs no consent: the user already
+    /// agreed to tkzmux owning `statusLine` here, and only the binary named changes.
+    @Test func aStaleHookIsRepairedWithoutAsking() throws {
+        let f = try makeFixture(settingsJSON: claudeHud)
+        defer { f.harness.tearDown() }
+        f.harness.controller.confirmInstallStatusline = { _ in true }
+        f.harness.controller.statusLineIntegration()
+        let record = try Data(contentsOf: f.installer.previousURL(accountKey: "claude"))
+
+        // Another build re-points it, keeping the rest of the object.
+        try Data(
+            """
+            {"model":"opus","statusLine":{"type":"command",\
+            "command":"/opt/elsewhere/support/bin/tkzmux-hook statusline","refreshInterval":5}}
+            """.utf8
+        ).write(to: f.settings)
+        #expect(
+            f.installer.detect(configDir: f.configDir.path)
+                == .stale(command: "/opt/elsewhere/support/bin/tkzmux-hook statusline"))
+
+        var asked = false
+        f.harness.controller.confirmInstallStatusline = { _ in asked = true; return true }
+        #expect(f.harness.controller.claude?.repairStaleStatuslines() == ["claude"])
+
+        #expect(!asked)
+        #expect(f.installer.detect(configDir: f.configDir.path) == .tkzmux)
+        let root = try JSONSerialization.jsonObject(with: Data(contentsOf: f.settings)) as? [String: Any]
+        let statusLine = root?["statusLine"] as? [String: Any]
+        #expect((statusLine?["command"] as? String)?.contains(f.support.path) == true)
+        #expect(statusLine?["refreshInterval"] as? Int == 5, "the rest of the object is untouched")
+        #expect(root?["model"] as? String == "opus")
+        #expect(
+            try Data(contentsOf: f.installer.previousURL(accountKey: "claude")) == record,
+            "the record of what tkzmux replaced is not re-derived from a tkzmux command")
+
+        // And the integration still comes off cleanly, back to claude-hud.
+        f.harness.controller.confirmRemoveStatusline = { true }
+        f.harness.controller.statusLineIntegration()
+        #expect(f.installer.detect(configDir: f.configDir.path) == .other(command: "node ~/hud.js"))
+    }
+
+    /// A stale hook is installed, not absent: the offer must not treat it as a free slot and
+    /// record tkzmux as the thing to restore.
+    @Test func aStaleHookIsNeverOfferedAnInstall() throws {
+        let f = try makeFixture(settingsJSON: """
+            {"statusLine":{"type":"command","command":"/opt/elsewhere/bin/tkzmux-hook statusline"}}
+            """)
+        defer { f.harness.tearDown() }
+
+        var asked = false
+        f.harness.controller.confirmInstallStatusline = { _ in asked = true; return true }
+        f.harness.controller.offerStatuslineIfNeeded()
+        #expect(!asked)
+
+        // The menu toggle reads it as on and takes the remove path rather than offering an install.
+        var offeredRemoval = false
+        f.harness.controller.confirmRemoveStatusline = { offeredRemoval = true; return true }
+        f.harness.controller.statusLineIntegration()
+        #expect(offeredRemoval)
+        #expect(!asked)
+        // Nothing was ever recorded for this account, so the removal refuses rather than guessing —
+        // the existing `previousMissing` rule, now reachable through a stale hook too.
+        #expect(
+            f.installer.detect(configDir: f.configDir.path)
+                == .stale(command: "/opt/elsewhere/bin/tkzmux-hook statusline"))
+    }
 }
