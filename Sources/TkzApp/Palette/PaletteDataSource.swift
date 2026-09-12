@@ -51,7 +51,15 @@ public struct PaletteDataSource: Sendable {
     public let items: [PaletteItem]
     public let mode: Mode
 
-    public init(state: AppState, mode: Mode = .all) {
+    /// - Parameter commands: the actions that may appear as command rows — the dispatcher's
+    ///   ``MenuDispatcher/performableActions``. A command the palette lists must run when it is
+    ///   chosen; before TKZ-53 four handlerless actions were rows that closed the panel and did
+    ///   nothing. A `Set` rather than the dispatcher itself because this type is `Sendable` and
+    ///   `MenuDispatcher` is `@MainActor`.
+    public init(
+        state: AppState, mode: Mode = .all,
+        commands: Set<ShortcutAction> = Set(ShortcutsTable.allActions)
+    ) {
         self.mode = mode
         let kinds = mode.kinds
         var items: [PaletteItem] = []
@@ -68,7 +76,9 @@ public struct PaletteDataSource: Sendable {
         }
         if kinds.contains(.command) {
             let table = ShortcutsTable.resolved(state: state)
-            for action in ShortcutsTable.allActions {
+            // `allActions` drives the order, `commands` the membership: the empty-query row order
+            // stays the main menu's.
+            for action in ShortcutsTable.allActions where commands.contains(action) {
                 items.append(Self.item(for: action, shortcut: table[action]))
             }
         }

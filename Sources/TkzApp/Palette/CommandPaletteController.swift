@@ -137,6 +137,18 @@ public final class CommandPaletteController: NSObject {
     private weak var anchorWindow: NSWindow?
     private var anchorObservers: [NSObjectProtocol] = []
 
+    /// The actions the command section may list — `MainWindowController` sets it from
+    /// `MenuDispatcher.performableActions` once every handler is registered. A row the palette
+    /// shows has to do something when it is chosen (TKZ-53).
+    public var performableCommands: Set<ShortcutAction> = Set(ShortcutsTable.allActions) {
+        didSet {
+            guard performableCommands != oldValue else { return }
+            dataSource = PaletteDataSource(
+                state: state, mode: mode, commands: performableCommands)
+            rebuildRows(preservingSelection: true)
+        }
+    }
+
     public init(state: AppState = AppState(), mode: PaletteDataSource.Mode = .all, theme: Theme = .default) {
         self.theme = theme
         self.mode = mode
@@ -153,7 +165,8 @@ public final class CommandPaletteController: NSObject {
     public func update(state: AppState, mode: PaletteDataSource.Mode? = nil) {
         if let mode { self.mode = mode }
         self.state = state
-        dataSource = PaletteDataSource(state: state, mode: self.mode)
+        dataSource = PaletteDataSource(
+            state: state, mode: self.mode, commands: performableCommands)
         rebuildRows(preservingSelection: true)
     }
 

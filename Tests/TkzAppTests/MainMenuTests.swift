@@ -21,9 +21,13 @@ import TkzCore
 @Suite(.serialized)
 struct MainMenuTests {
 
+    /// `handlers` defaults to everything: since TKZ-53 the menu only carries actions the dispatcher
+    /// can perform, so a menu built with no handlers has no command items at all. The tests that
+    /// assert the *shape* of the menu want the whole vocabulary; the ones about filtering pass a
+    /// narrower list on purpose.
     static func makeMenu(
         shortcuts: [ShortcutAction: Shortcut] = ShortcutsTable.defaults,
-        handlers: [ShortcutAction] = []
+        handlers: [ShortcutAction] = ShortcutsTable.allActions
     ) -> (NSMenu, MenuDispatcher) {
         _ = NSApplication.shared
         let dispatcher = MenuDispatcher()
@@ -161,7 +165,7 @@ struct MainMenuTests {
 
     // MARK: - Dispatch and enablement
 
-    @Test("An item with a handler is enabled and runs it; one without is disabled")
+    @Test("An item with a handler is enabled and runs it; one without has no item at all")
     func dispatchAndValidation() throws {
         _ = NSApplication.shared
         let dispatcher = MenuDispatcher()
@@ -177,14 +181,59 @@ struct MainMenuTests {
         dispatcher.performShortcutAction(wired)
         #expect(ran == 1)
 
-        let unwired = try #require(items[.settings])
-        #expect(dispatcher.validateMenuItem(unwired) == false)
-        dispatcher.performShortcutAction(unwired)   // no handler: a no-op, not a crash
+        // TKZ-53: an action with no handler is absent, not greyed out. `toggleSidebar` is the only
+        // handler this dispatcher has, so it is the only command item in the whole menu.
+        #expect(items[.settings] == nil)
+        #expect(items.count == 1)
+
+        // The validator still runs, and now only ever sees items it says yes to. An item built for
+        // an action whose handler went away is still a no-op rather than a crash.
+        let orphan = MainMenu.command(
+            .settings, shortcuts: ShortcutsTable.defaults, dispatcher: dispatcher)
+        #expect(dispatcher.validateMenuItem(orphan) == false)
+        dispatcher.performShortcutAction(orphan)
         #expect(ran == 1)
 
         // Standard items (Quit, Minimize) are not the dispatcher's business.
         let quit = try #require(MainMenu.allItems(in: menu).first { $0.title.hasPrefix("Quit ") })
         #expect(dispatcher.validateMenuItem(quit))
+    }
+
+    @Test("A handlerless action is absent from the menu, and a handler brings it back")
+    func handlerlessActionsAreAbsent() throws {
+        // Everything but Settings…: the item, its separator neighbours and its chord all go.
+        let (without, _) = Self.makeMenu(
+            handlers: ShortcutsTable.allActions.filter { $0 != .settings })
+        #expect(MainMenu.commandItems(in: without)[.settings] == nil)
+        #expect(!MainMenu.allItems(in: without).contains { $0.title == ShortcutsTable.title(for: .settings) })
+
+        let (with, _) = Self.makeMenu()
+        let item = try #require(MainMenu.commandItems(in: with)[.settings])
+        #expect(item.keyEquivalent == ",")
+        #expect(item.keyEquivalentModifierMask == [.command])
+    }
+
+    @Test("No submenu is left with a leading, trailing or doubled separator")
+    func separatorsStayTidy() {
+        // The three still-unimplemented actions, dropped: View's ⌘I is alone under the menu's last
+        // rule, so removing it would otherwise end the menu on a line with nothing after it.
+        let wired = ShortcutsTable.allActions.filter {
+            ![.settings, .notifications, .reloadConfig].contains($0)
+        }
+        let (menu, _) = Self.makeMenu(handlers: wired)
+        for top in menu.items {
+            guard let submenu = top.submenu else { continue }
+            let items = submenu.items
+            #expect(items.first?.isSeparatorItem != true, "\(submenu.title) starts on a separator")
+            #expect(items.last?.isSeparatorItem != true, "\(submenu.title) ends on a separator")
+            for (a, b) in zip(items, items.dropFirst()) {
+                #expect(!(a.isSeparatorItem && b.isSeparatorItem), "\(submenu.title) has two in a row")
+            }
+            #expect(!items.isEmpty)
+        }
+        // The View menu is the one that loses its tail.
+        let view = menu.items.first { $0.submenu?.title == "View" }?.submenu
+        #expect(view?.items.last?.title == ShortcutsTable.title(for: .commandPalette))
     }
 
     @Test("The window controller wires the actions it can actually perform")
@@ -196,6 +245,7 @@ struct MainMenuTests {
         for action in [ShortcutAction.newSession, .searchSessions, .commandPalette, .toggleSidebar,
                        .jumpToNeedsYou, .nextSession, .previousSession, .closeTerminal,
                        .renameSession, .copyLastMessage, .showFirstPrompt, .removeShellIntegration,
+                       .openFolder,
                        .statusLineIntegration, .resumeSession, .resumeAllInGroup,
                        .toggleAutoResume] {
             #expect(dispatcher.canPerform(action), "\(action.rawValue) should be wired")
@@ -203,9 +253,11 @@ struct MainMenuTests {
         for n in 1...9 {
             #expect(dispatcher.canPerform(.selectSession(n)))
         }
-        // Present in the menu, deliberately not implemented yet (M3.5/M4/Later).
-        for action in [ShortcutAction.notifications, .settings, .openFolder, .reloadConfig] {
+        // Deliberately not implemented yet (TKZ-55 / TKZ-35 / TKZ-56), and therefore not in the
+        // menu, the palette or the cheat sheet either (TKZ-53).
+        for action in [ShortcutAction.notifications, .settings, .reloadConfig] {
             #expect(dispatcher.canPerform(action) == false, "\(action.rawValue) is not implemented yet")
+            #expect(MainMenu.commandItems(in: harness.controller.buildMainMenu())[action] == nil)
         }
         // The auto-resume toggle is the one checkmark item; it follows the store.
         #expect(dispatcher.checkmark(for: .toggleAutoResume) == false)

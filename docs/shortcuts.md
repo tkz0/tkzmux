@@ -22,10 +22,10 @@ this table; nothing hard-codes a key equivalent.
 | `closeSession` | ⇧⌘W | Close the session, however many panes it has |
 | `selectSession1` … `selectSession9` | ⌘1 … ⌘9 | Select the n-th visible session |
 | `jumpToNeedsYou` | ⇧⌘U | Jump to the next session that needs you |
-| `notifications` | ⌘I | Notifications |
-| `settings` | ⌘, | Settings |
-| `openFolder` | ⌘O | Open folder |
-| `reloadConfig` | ⇧⌘, | Reload config |
+| `notifications` | ⌘I | **No handler yet — hidden** (TKZ-55). See *Hidden commands* below |
+| `settings` | ⌘, | **No handler yet — hidden** (TKZ-35). See *Hidden commands* below |
+| `openFolder` | ⌘O | Directory picker; the chosen folder becomes a group and `claude` starts in it — the same flow as ＋ New session… › In another repo… |
+| `reloadConfig` | ⇧⌘, | **No handler yet — hidden** (TKZ-56). See *Hidden commands* below |
 | `copyLastMessage` | ⇧⌘C | Copy the selected session's last Stop message (M3.4) |
 | `showFirstPrompt` | ⌥⌘P | Glass card over the terminal with the selected session's first prompt and Claude's recap (design 2c.5); again or Esc closes. Scrolling up a few rows in a Claude session *peeks* the same card without taking the keyboard; scrolling back down (or typing) hides it, and the chord pins it |
 | `removeShellIntegration` | — | Delete the claude shim and the zsh/bash/fish wrappers under Application Support (M3.3, TKZ-33); app menu |
@@ -40,6 +40,19 @@ this table; nothing hard-codes a key equivalent.
 | `previousTab` / `nextTab` | ⇧⌘[ / ⇧⌘] | Previous / next terminal in this session |
 | `nextSession` | — | Known action, **no default** (cmux binds none) |
 | `previousSession` | — | Same |
+
+## Hidden commands
+
+A surface shows a command only when `MenuDispatcher` has a handler for it. `MainMenu.build` gives an
+action with no handler no menu item at all; the ⌘-hold cheat sheet walks that menu, and ⇧⌘P filters
+its command rows on the same set. So `notifications`, `settings` and `reloadConfig` are in the table
+above and in `ShortcutsTable`, but nowhere on screen — they were greyed out in the menu and *live*
+in the palette and the cheat sheet, where choosing them did nothing at all (TKZ-53).
+
+Their ids stay, because `AppState.shortcuts` is keyed by id and an override for an unknown one must
+keep parsing; their chords stay in `ShortcutsTable.defaults`, so ⌘I, ⌘, and ⇧⌘, are **reserved,
+not free**. Registering a handler is the whole of bringing one back — it reappears in the menu, the
+palette and the cheat sheet at once, with no change here or to the table.
 
 ## Inside the search overlay (⌘P, design 2c.6)
 
@@ -86,9 +99,11 @@ could be introduced without any menu being built.
 
 > **⇧⌘[ / ⇧⌘] need checking on a real keyboard.** They are the one pair of bindings a headless
 > test cannot prove: a shifted punctuation key equivalent depends on the active layout, and the
-> menu item carries the *unshifted* character with `.shift` in its mask. `reloadConfig` (⇧⌘,) is
-> the precedent that this shape works, but it was verified by hand and so must these be. Every
-> other binding in the table above is asserted by `MainMenuTests`.
+> menu item carries the *unshifted* character with `.shift` in its mask. `reloadConfig` (⇧⌘,) was
+> the precedent that this shape works — verified by hand, never by a test — but it is hidden until
+> it has a handler, so ⇧⌘[ / ⇧⌘] are now the only shifted-punctuation chords in the menu and
+> must be verified by hand on their own. Every other binding in the table above is asserted by
+> `MainMenuTests`.
 
 Modifiers: `cmd`/`command`/`meta`, `shift`, `alt`/`opt`/`option`, `ctrl`/`control` (any order,
 case-insensitive). Keys: a single character, `up`/`down`/`left`/`right`, `home`/`end`,

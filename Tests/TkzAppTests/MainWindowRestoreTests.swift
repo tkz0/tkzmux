@@ -576,6 +576,50 @@ struct MainWindowRestoreTests {
         #expect(harness.store.state.selection == launched.id)
     }
 
+    /// TKZ-54: File › Open Folder… (⌘O) was in the menu and in the table with no handler, so it was
+    /// greyed out forever — while the flow it wanted already existed behind "In another repo…".
+    @Test("⌘O is In another repo…: the folder becomes a group and claude starts in it")
+    func openFolderChord() throws {
+        let (harness, _, _) = Self.makeRestoredHarness()
+        defer { harness.tearDown() }
+        let folder = FileManager.default.temporaryDirectory
+            .appending(path: "tkzmux-openfolder-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        var prompts: [String] = []
+        harness.controller.folderPrompt = { prompt in
+            prompts.append(prompt)
+            return folder
+        }
+        #expect(harness.controller.dispatcher.perform(.openFolder), "⌘O has a handler")
+        harness.store.flush()
+
+        #expect(prompts == ["Start here"], "the same picker as In another repo…")
+        let created = try #require(harness.store.state.groups.values.first {
+            $0.repoRoot == folder.standardizedFileURL.path
+        })
+        let launched = try #require(harness.host.opened.last)
+        #expect(launched.cwd == folder.standardizedFileURL.path)
+        #expect(launched.env["TKZMUX_BOOT_COMMAND"] == "claude")
+        #expect(harness.store.state.sessions[launched.id]?.groupID == created.id)
+    }
+
+    @Test("Cancelling ⌘O's picker changes nothing")
+    func openFolderCancelled() throws {
+        let (harness, _, _) = Self.makeRestoredHarness()
+        defer { harness.tearDown() }
+        let groups = harness.store.state.groups.count
+        let opened = harness.host.opened.count
+
+        harness.controller.folderPrompt = { _ in nil }
+        #expect(harness.controller.dispatcher.perform(.openFolder))
+        harness.store.flush()
+
+        #expect(harness.host.opened.count == opened, "cancel starts nothing")
+        #expect(harness.store.state.groups.count == groups)
+    }
+
     @Test("Auto-resume on launch resumes every restored conversation once the preference is on")
     func autoResume() throws {
         let (harness, ids, _) = Self.makeRestoredHarness()
