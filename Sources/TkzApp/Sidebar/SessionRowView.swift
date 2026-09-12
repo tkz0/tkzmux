@@ -419,8 +419,20 @@ public final class SessionRowView: NSTableCellView {
     /// reserve only ever costs truncation, never a line, or a row would grow under the pointer.
     /// Without a directory, or without a branch, there is nothing to wrap.
     public static func detailWraps(for model: SidebarSessionRowModel, width: CGFloat) -> Bool {
+        guard let needed = neededDetailWidth(for: model) else { return false }
+        return needed > width
+    }
+
+    /// The width the detail line needs to stay on one line, or `nil` when it can never wrap.
+    ///
+    /// Split out of `detailWraps` because it depends only on the *model* — `width` entered that
+    /// function in one comparison and nowhere else. The sidebar caches this per row, so changing
+    /// the list's width (a divider drag, which re-asks for every row's height on every frame of the
+    /// drag) costs one comparison per row instead of rebuilding each row's model and running up to
+    /// six uncached Core Text measurements on it.
+    public static func neededDetailWidth(for model: SidebarSessionRowModel) -> CGFloat? {
         guard let directory = model.directory, !directory.isEmpty,
-              let branch = model.branch, !branch.isEmpty else { return false }
+              let branch = model.branch, !branch.isEmpty else { return nil }
         var needed = textLeft
         needed += SidebarLayers.width(of: directoryText(directory), font: branchFont) + 1
         needed += badgeGap + SidebarLayers.width(of: separatorText, font: branchFont) + 1
@@ -434,7 +446,7 @@ public final class SessionRowView: NSTableCellView {
         if let label = model.accountLabel, !label.isEmpty {
             needed += badgeGap + SidebarBadgeLayer.width(for: label, font: badgeFont)
         }
-        return needed + rightInset > width
+        return needed + rightInset
     }
 
     /// The row height the outline view must return for `model` at `width`: 44, or 59 when the
