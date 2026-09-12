@@ -1,0 +1,29 @@
+Sources/ClaudeBridge/StatuslineInstaller.swift
+  s_5f2abb98dae427::t_b78b84a671660d 43-57,128-129,133-153,166,199-209,214-220,222-234,237-271,282-287
+Sources/TkzApp/AppDelegate.swift
+  s_5f2abb98dae427::t_3d81e121847a02 128-136
+Sources/TkzApp/ClaudeIntegration.swift
+  s_5f2abb98dae427::t_e20db5377364b1 337-376
+Sources/TkzApp/MainWindowController.swift
+  s_5f2abb98dae427::t_1c7e0be49a4748 1700-1704,1706,1723-1727
+Tests/ClaudeBridgeTests/StatuslineTests.swift
+  s_5f2abb98dae427::t_fc96b385f2e4ea 584-718
+Tests/TkzAppTests/StatuslineConsentTests.swift
+  s_5f2abb98dae427::t_9ccb5ca461eb0f 178-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "72f7252969ab2835870a6e03ed0a3055ef86d728",
+  "prompts": {},
+  "sessions": {
+    "s_5f2abb98dae427": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b040ee4-3486-4913-8c04-64f847526671",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
