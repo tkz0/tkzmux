@@ -1,0 +1,65 @@
+README.md
+  s_c75181e8027135::t_4c26985f892e26 85-86
+Sources/Persistence/PersistedState.swift
+  s_c75181e8027135::t_dee422d499f886 70-75,80-81,86,90,98,187-188,242-249
+Sources/TkzApp/AppDelegate.swift
+  s_c75181e8027135::t_01998774a6c2c4 49-52,60-63,65-67
+Sources/TkzApp/MainMenu.swift
+  s_c75181e8027135::t_4b49da6937f3ab 225
+Sources/TkzApp/MainWindowController.swift
+  s_c75181e8027135::t_32914028ea3129 456,463-465,549,572,670-679,694,913-915,1818-1820,2427-2470,3140
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_c75181e8027135::t_34134e5db245be 68-70,175,242-244
+Sources/TkzApp/Panes/PaneChromeView.swift
+  s_c75181e8027135::t_c5b8079d23bcd6 24
+Sources/TkzApp/Tabs/TabStripView.swift
+  s_c75181e8027135::t_ef2ce7e5aadc0d 55-57,59-64
+Sources/TkzApp/TerminalHost.swift
+  s_c75181e8027135::t_205b204d182b37 288-307
+Sources/TkzApp/Toolbar/MainToolbarController.swift
+  s_c75181e8027135::t_827db13267564d 32,37,39-41,46,50-53,61,78-79,176-183,196,282,290
+Sources/TkzCore/AppState.swift
+  s_c75181e8027135::t_852d17186b6e60 40-42,60,75
+Sources/TkzCore/AppStore.swift
+  s_c75181e8027135::t_29ddbfc4ccba8c 29,64-70,79-80,89,97,108,170
+Sources/TkzCore/Reducers.swift
+  s_c75181e8027135::t_267cedc87cc561 368-377
+Sources/TkzCore/Theme.swift
+  s_c75181e8027135::t_db4cf32027ba8a 4-6,100-111,442-448,451,453,456-458,460,470-471,473,476,478,481-482,484,486-488,491-496,499-505,510
+Sources/TkzTerminalCore/TerminalSession.swift
+  s_c75181e8027135::t_20380073987b96 66-68,97,111,556-574,576,578,580,587,662-725
+Tests/PersistenceTests/StateFileTests.swift
+  s_c75181e8027135::t_706c68bf856ae4 130-167
+Tests/TkzAppTests/MainToolbarTests.swift
+  s_c75181e8027135::t_976072f708319b 121-123,127,132,158-192
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_c75181e8027135::t_533bf58668b7fb 886-889,892
+Tests/TkzAppTests/ThemeToggleTests.swift
+  s_c75181e8027135::t_304efdb1562e50 1-183
+Tests/TkzCoreTests/AppStoreTests.swift
+  s_c75181e8027135::t_5375bd1bdca01a 249-284
+Tests/TkzCoreTests/ReducersTests.swift
+  s_c75181e8027135::t_a1531904741061 355-376
+Tests/TkzCoreTests/ThemeTests.swift
+  s_c75181e8027135::t_68c3dd91f5d600 81-87,192-194,196-198,200,202-203,207-247
+Tests/TkzTerminalCoreTests/TerminalThemeTests.swift
+  s_c75181e8027135::t_ce1d50341aa56a 1-115
+docs/shortcuts.md
+  s_c75181e8027135::t_1064aa04b94e18 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "54fac7d0708532ca52e107af11022567f81bfa40",
+  "prompts": {},
+  "sessions": {
+    "s_c75181e8027135": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b31b3311-4ee3-4a23-88d4-4e273e9c9bd5",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
