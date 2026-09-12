@@ -21,7 +21,7 @@
 //     cheaper than a dozen `NSTextField`s.
 //
 // Everything visible is derived from ``StatusBarModel`` and a ``Theme``; nothing is hardcoded, so
-// all five presets work.
+// both presets work.
 //
 // M4.2 (TKZ-27) added the interactive half. The ticket asked for `NSStackView` children bound to
 // slices of the live state; that is **not** what shipped, because the no-subviews decision above

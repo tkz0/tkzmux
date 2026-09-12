@@ -466,7 +466,7 @@ public final class SidebarViewController: NSViewController {
         store.addObserver { [weak self] change in self?.apply(change) }
     }
 
-    /// Swaps the theme (M2.4's preset picker). Rebuilds every row, so it is not on a hot path.
+    /// Swaps the theme. Rebuilds every row, so it is not on a hot path.
     public func setTheme(_ theme: Theme) {
         self.theme = theme
         view.layer?.backgroundColor = theme.sidebarBackground.cgColor

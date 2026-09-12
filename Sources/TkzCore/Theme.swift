@@ -1,19 +1,18 @@
 // TkzCore — theme tokens.
 //
-// Source of truth: the Claude Design file `Terminal Main Window.dc.html` (project 452d6955-…), five artboards:
-// 2c.1 Midnight indigo (default), 2a Graphite, 2b Warm charcoal, 1a Dark, 1b Light. 1b has since been
-// redrawn as the *indigo* light aligned with the 2c family, and the 4a–4f series gives it six feature
-// screens (4a main, 4b changes, 4c/4d splits, 4e first prompt, 4f search); `light` follows those. Every preset is the same
-// token set; nothing in the app may branch on the preset name. Extraction rule per token is listed next to
-// the token; `ThemeTests.printsDesignTable` prints the resulting values as one table.
+// Source of truth: the Claude Design file `Terminal Main Window.dc.html` (project 452d6955-…). Two
+// artboards ship as presets: 2c.1 Midnight indigo (default) and 1b Light, the two halves of the
+// dark/light toggle. 1b has since been redrawn as the *indigo* light aligned with the 2c family, and
+// the 4a–4f series gives it six feature screens (4a main, 4b changes, 4c/4d splits, 4e first prompt,
+// 4f search); `light` follows those. The file also holds 2a Graphite, 2b Warm charcoal and 1a Dark;
+// nothing reaches them, so they are not built here. Both presets are the same token set; nothing in
+// the app may branch on the preset name. Extraction rule per token is listed next to the token;
+// `ThemeTests.printsDesignTable` prints the resulting values as one table.
 
 /// One complete set of colour and font tokens. All tokens are non-optional by construction.
 public struct Theme: Hashable, Sendable {
     public enum Preset: String, CaseIterable, Hashable, Sendable {
         case midnightIndigo   // 2c
-        case graphite         // 2a
-        case warmCharcoal     // 2b
-        case dark             // 1a
         case light            // 1b
     }
 
@@ -31,7 +30,7 @@ public struct Theme: Hashable, Sendable {
     public let foreground: RGB            // sidebar session title (12.5 pt, weight 500) — primary UI text
     public let terminalForeground: RGB    // terminal text; libghostty COLOR_FOREGROUND (dimmer than `foreground` in every artboard)
     public let foregroundMuted: RGB       // "— <group>" subtitle in the title bar; terminal secondary lines
-    public let foregroundDim: RGB         // search hint, chevrons, ＋ (identical to muted in 1a: that is what the artboard does)
+    public let foregroundDim: RGB         // search hint, chevrons, ＋
     public let groupHeaderText: RGB       // uppercase group name in the sidebar
     public let summaryText: RGB           // "N WORKING" / "N NEED YOU" words in the summary strip (the dots carry the status colour)
     public let statusBarText: RGB         // status bar base text (files, ↑↓, ports, "Context"/"Usage" labels)
@@ -42,7 +41,7 @@ public struct Theme: Hashable, Sendable {
     public let usageMeter: RGB            // usage fill — the preset's blue
     /// A meter past 70 %. **Not from an artboard** — 2c.1 draws every bar in one colour; Thomas
     /// asked for a warning step so a quota running out is visible without reading the number.
-    /// Every preset reuses its own `waiting` amber rather than introducing a sixth hue.
+    /// Each preset reuses its own `waiting` amber rather than introducing a sixth hue.
     public let meterWarn: RGB
     /// A meter past 90 %, same story: the preset's own `diffRemove` red.
     public let meterDanger: RGB
@@ -73,12 +72,12 @@ public struct Theme: Hashable, Sendable {
     public let diffRemove: RGB            // −38
     public let border: RGB                // sidebar border-right / title-bar border-bottom
     /// Status-bar PR badge (icon + `#418`) while the PR is open. 2c.1 draws it in GitHub's own
-    /// open green (`#3fb950`), not a preset colour, so every dark preset shares it; the light
-    /// preset takes GitHub's light-mode green, since the dark one is 2.2:1 on 1b's strip.
+    /// open green (`#3fb950`), not a preset colour; the light preset takes GitHub's light-mode
+    /// green, since the dark one is 2.2:1 on 1b's strip.
     public let prOpen: RGB
     /// The same badge once the PR is merged. No artboard shows one; GitHub's merged purple
-    /// (`#a371f7`) lifted one step so it clears 4.5:1 on every dark strip, and GitHub's
-    /// light-mode purple on 1b.
+    /// (`#a371f7`) lifted one step so it clears 4.5:1 on 2c.1's strip, and GitHub's light-mode
+    /// purple on 1b.
     public let prMerged: RGB
 
     // MARK: Panes (artboards 2c.3 / 2c.4: the 28 pt pane header, the focus ring, the 7 pt grip divider)
@@ -98,7 +97,7 @@ public struct Theme: Hashable, Sendable {
     public let fontMono: Fonts.Mono
 
     public static let `default`: Theme = .midnightIndigo
-    public static let allPresets: [Theme] = [.midnightIndigo, .graphite, .warmCharcoal, .dark, .light]
+    public static let allPresets: [Theme] = [.midnightIndigo, .light]
 
     public static func preset(_ preset: Preset) -> Theme {
         allPresets.first { $0.preset == preset }!
@@ -107,11 +106,11 @@ public struct Theme: Hashable, Sendable {
     /// The preset a light/dark toggle lands on from `preset`.
     ///
     /// The pairing is *data in this file* so that no call site ever names a preset — the rule in the
-    /// header. Only 2c and 1b are paired today, because only those two are reachable; when a picker
-    /// gives graphite or warm charcoal a light twin, this table is the one line that changes.
+    /// header. 2c and 1b are the only pair; a preset added later declares its twin here and nowhere
+    /// else.
     public static func toggled(_ preset: Preset) -> Preset {
         switch preset {
-        case .midnightIndigo, .graphite, .warmCharcoal, .dark: .light
+        case .midnightIndigo: .light
         case .light: .midnightIndigo
         }
     }
@@ -161,7 +160,8 @@ extension Theme {
 
 extension Theme {
     /// The six chromatic ANSI base colours of a preset, each taken from a named artboard swatch.
-    /// Mapping is by *swatch*, not by token: 2b's accent is coral, so "blue = accent" would be wrong.
+    /// Mapping is by *swatch*, not by token: an artboard whose accent is coral (2b, in the design
+    /// file) would make "blue = accent" wrong.
     ///
     ///   1 red     = diffRemove (the −38 in the status bar)
     ///   2 green   = working
@@ -252,201 +252,6 @@ extension Theme {
                 base: AnsiBase(
                     red: diffRemove, green: working, yellow: waiting,
                     blue: RGB(hex: 0x8b93f8), magenta: RGB(hex: 0xc084fc), cyan: RGB(hex: 0x41c6a8)
-                )
-            ),
-            fontUI: Fonts.ui, fontMono: Fonts.mono
-        )
-    }()
-
-    /// 2a · Graphite — higher contrast, blue accent.
-    public static let graphite: Theme = {
-        let fg = RGB(hex: 0xf5f7fa), termFg = RGB(hex: 0xe3e8f0), dim = RGB(hex: 0x8791a0)
-        let statusBar = RGB(hex: 0x191b20)
-        let working = RGB(hex: 0x3ddc74), waiting = RGB(hex: 0xffb454), diffRemove = RGB(hex: 0xf07a7a)
-        return Theme(
-            preset: .graphite, isDark: true,
-            windowBackground: RGB(hex: 0x141519),
-            titlebar: RGB(rgb: 30, 32, 37, alpha: 0.95),
-            sidebarBackground: RGB(hex: 0x1b1d22),
-            terminalBackground: RGB(hex: 0x0f1013),
-            statusBarBackground: statusBar,
-            foreground: fg,
-            terminalForeground: termFg,
-            foregroundMuted: RGB(hex: 0x98a2b3),
-            foregroundDim: dim,
-            groupHeaderText: RGB(hex: 0xc9ced8),
-            summaryText: RGB(hex: 0xb7bec9),
-            statusBarText: RGB(hex: 0xa3adbd),
-            meterTrack: RGB(rgb: 255, 255, 255, alpha: 0.16),
-            contextMeter: working,
-            usageMeter: RGB(hex: 0x5b8def),
-            meterWarn: waiting,
-            meterDanger: diffRemove,
-            accent: RGB(hex: 0x5b8def),
-            accentText: RGB(hex: 0xffffff),
-            selection: RGB(rgb: 91, 141, 239, alpha: 0.24),
-            working: working,
-            waiting: waiting,
-            idle: RGB(rgb: 255, 255, 255, alpha: 0.30),
-            needsYouText: RGB(hex: 0xffb454),
-            needsYouBackground: RGB(rgb: 255, 180, 84, alpha: 0.16),
-            searchMatchBackground: RGB(rgb: 255, 180, 84, alpha: 0.35),
-            searchMatchText: RGB(hex: 0xffe4bd),
-            wtText: RGB(hex: 0xb9cdf5),
-            wtBackground: RGB(rgb: 91, 141, 239, alpha: 0.22),
-            groupEdgeDefault: RGB(hex: 0x3fbf9f),
-            diffAdd: RGB(hex: 0x3ddc74),
-            diffRemove: diffRemove,
-            border: RGB(rgb: 255, 255, 255, alpha: 0.08),
-            prOpen: RGB(hex: 0x3fb950),
-            prMerged: RGB(hex: 0xb48cff),
-            // No split artboard for this preset: the focused header is the footer surface, the
-            // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
-            // are the accent at the same alphas 2c.3 uses.
-            paneHeaderBackground: statusBar,
-            paneHeaderBackgroundInactive: RGB(hex: 0x0f1013).mixed(
-                with: RGB(hex: 0x1b1d22).over(RGB(hex: 0x141519)), amount: 0.5),
-            paneHeaderPath: RGB(hex: 0x98a2b3),
-            paneHeaderPathInactive: dim,
-            focusRing: RGB(rgb: 91, 141, 239, alpha: 0.65),
-            dividerGrip: RGB(rgb: 91, 141, 239, alpha: 0.55),
-            dividerShade: RGB(rgb: 0, 0, 0, alpha: 0.35),
-            dividerHighlight: RGB(rgb: 255, 255, 255, alpha: 0.06),
-            terminalPalette16: palette16(
-                isDark: true, black: statusBar, white: termFg, brightBlack: dim, brightWhite: fg,
-                base: AnsiBase(
-                    red: diffRemove, green: working, yellow: waiting,
-                    blue: RGB(hex: 0x5b8def), magenta: RGB(hex: 0xa58bf0), cyan: RGB(hex: 0x3fbf9f)
-                )
-            ),
-            fontUI: Fonts.ui, fontMono: Fonts.mono
-        )
-    }()
-
-    /// 2b · Warm charcoal — coral accent.
-    public static let warmCharcoal: Theme = {
-        let fg = RGB(hex: 0xf4eee7), termFg = RGB(hex: 0xe9e2da), dim = RGB(hex: 0x93887c)
-        let statusBar = RGB(hex: 0x241e19)
-        let working = RGB(hex: 0x4cc97e), waiting = RGB(hex: 0xffb454), diffRemove = RGB(hex: 0xe87f7f)
-        return Theme(
-            preset: .warmCharcoal, isDark: true,
-            windowBackground: RGB(hex: 0x191512),
-            titlebar: RGB(rgb: 40, 33, 28, alpha: 0.95),
-            sidebarBackground: RGB(hex: 0x201b17),
-            terminalBackground: RGB(hex: 0x141110),
-            statusBarBackground: statusBar,
-            foreground: fg,
-            terminalForeground: termFg,
-            foregroundMuted: RGB(hex: 0xa1968a),
-            foregroundDim: dim,
-            groupHeaderText: RGB(hex: 0xd3c9be),
-            summaryText: RGB(hex: 0xc4bab0),
-            statusBarText: RGB(hex: 0xb3a99d),
-            meterTrack: RGB(rgb: 255, 255, 255, alpha: 0.16),
-            contextMeter: working,
-            usageMeter: RGB(hex: 0x7aa2e8),
-            meterWarn: waiting,
-            meterDanger: diffRemove,
-            accent: RGB(hex: 0xe28666),
-            accentText: RGB(hex: 0x2a1c14),
-            selection: RGB(rgb: 226, 134, 102, alpha: 0.22),
-            working: working,
-            waiting: waiting,
-            idle: RGB(rgb: 255, 255, 255, alpha: 0.30),
-            needsYouText: RGB(hex: 0xffb454),
-            needsYouBackground: RGB(rgb: 255, 180, 84, alpha: 0.16),
-            searchMatchBackground: RGB(rgb: 255, 180, 84, alpha: 0.35),
-            searchMatchText: RGB(hex: 0xffe4bd),
-            wtText: RGB(hex: 0xf0b39c),
-            wtBackground: RGB(rgb: 226, 134, 102, alpha: 0.20),
-            groupEdgeDefault: RGB(hex: 0x3fbf9f),
-            diffAdd: RGB(hex: 0x4cc97e),
-            diffRemove: diffRemove,
-            border: RGB(rgb: 255, 255, 255, alpha: 0.08),
-            prOpen: RGB(hex: 0x3fb950),
-            prMerged: RGB(hex: 0xb48cff),
-            // No split artboard for this preset: the focused header is the footer surface, the
-            // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
-            // are the accent at the same alphas 2c.3 uses.
-            paneHeaderBackground: statusBar,
-            paneHeaderBackgroundInactive: RGB(hex: 0x141110).mixed(
-                with: RGB(hex: 0x201b17).over(RGB(hex: 0x191512)), amount: 0.5),
-            paneHeaderPath: RGB(hex: 0xa1968a),
-            paneHeaderPathInactive: dim,
-            focusRing: RGB(rgb: 226, 134, 102, alpha: 0.65),
-            dividerGrip: RGB(rgb: 226, 134, 102, alpha: 0.55),
-            dividerShade: RGB(rgb: 0, 0, 0, alpha: 0.35),
-            dividerHighlight: RGB(rgb: 255, 255, 255, alpha: 0.06),
-            terminalPalette16: palette16(
-                isDark: true, black: statusBar, white: termFg, brightBlack: dim, brightWhite: fg,
-                base: AnsiBase(
-                    red: diffRemove, green: working, yellow: waiting,
-                    blue: RGB(hex: 0x7aa2e8), magenta: RGB(hex: 0xb58fd9), cyan: RGB(hex: 0x3fbf9f)
-                )
-            ),
-            fontUI: Fonts.ui, fontMono: Fonts.mono
-        )
-    }()
-
-    /// 1a · Dark — the neutral macOS-grey variant.
-    public static let dark: Theme = {
-        let fg = RGB(hex: 0xf4f6f9), termFg = RGB(hex: 0xdde1e8), dim = RGB(hex: 0x8b93a0)
-        let statusBar = RGB(hex: 0x1f2125)
-        let working = RGB(hex: 0x34b060), waiting = RGB(hex: 0xf0a03a), diffRemove = RGB(hex: 0xd16a6a)
-        return Theme(
-            preset: .dark, isDark: true,
-            windowBackground: RGB(hex: 0x1b1d21),
-            titlebar: RGB(rgb: 38, 40, 45, alpha: 0.92),
-            sidebarBackground: RGB(rgb: 32, 34, 38, alpha: 0.96),
-            terminalBackground: RGB(hex: 0x17181b),
-            statusBarBackground: statusBar,
-            foreground: fg,
-            terminalForeground: termFg,
-            foregroundMuted: RGB(hex: 0x8b93a0),
-            foregroundDim: dim,
-            groupHeaderText: RGB(hex: 0xc3c8d0),
-            summaryText: RGB(hex: 0xb0b6c0),
-            statusBarText: RGB(hex: 0x9aa1ac),
-            meterTrack: RGB(rgb: 255, 255, 255, alpha: 0.16),
-            contextMeter: working,
-            usageMeter: RGB(hex: 0x4d7fd6),
-            meterWarn: waiting,
-            meterDanger: diffRemove,
-            accent: RGB(hex: 0x4d7fd6),
-            accentText: RGB(hex: 0xffffff),
-            selection: RGB(rgb: 77, 127, 214, alpha: 0.20),
-            working: working,
-            waiting: waiting,
-            idle: RGB(rgb: 255, 255, 255, alpha: 0.25),
-            needsYouText: RGB(hex: 0xf0a03a),
-            needsYouBackground: RGB(rgb: 240, 160, 58, alpha: 0.14),
-            searchMatchBackground: RGB(rgb: 240, 160, 58, alpha: 0.35),
-            searchMatchText: RGB(hex: 0xffe0b0),
-            wtText: RGB(hex: 0x8fb0e8),
-            wtBackground: RGB(rgb: 77, 127, 214, alpha: 0.16),
-            groupEdgeDefault: RGB(hex: 0x3fa08c),
-            diffAdd: RGB(hex: 0x34b060),
-            diffRemove: diffRemove,
-            border: RGB(rgb: 255, 255, 255, alpha: 0.06),
-            prOpen: RGB(hex: 0x3fb950),
-            prMerged: RGB(hex: 0xb48cff),
-            // No split artboard for this preset: the focused header is the footer surface, the
-            // inactive one sits halfway between the terminal and the sidebar, and the ring and grip
-            // are the accent at the same alphas 2c.3 uses.
-            paneHeaderBackground: statusBar,
-            paneHeaderBackgroundInactive: RGB(hex: 0x17181b).mixed(
-                with: RGB(rgb: 32, 34, 38, alpha: 0.96).over(RGB(hex: 0x1b1d21)), amount: 0.5),
-            paneHeaderPath: RGB(hex: 0x8b93a0),
-            paneHeaderPathInactive: dim,
-            focusRing: RGB(rgb: 77, 127, 214, alpha: 0.65),
-            dividerGrip: RGB(rgb: 77, 127, 214, alpha: 0.55),
-            dividerShade: RGB(rgb: 0, 0, 0, alpha: 0.35),
-            dividerHighlight: RGB(rgb: 255, 255, 255, alpha: 0.06),
-            terminalPalette16: palette16(
-                isDark: true, black: statusBar, white: termFg, brightBlack: dim, brightWhite: fg,
-                base: AnsiBase(
-                    red: diffRemove, green: working, yellow: waiting,
-                    blue: RGB(hex: 0x4d7fd6), magenta: RGB(hex: 0x9a6fc9), cyan: RGB(hex: 0x3fa08c)
                 )
             ),
             fontUI: Fonts.ui, fontMono: Fonts.mono

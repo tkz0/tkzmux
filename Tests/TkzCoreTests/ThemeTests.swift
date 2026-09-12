@@ -4,8 +4,8 @@ import Testing
 @Suite struct ThemeTests {
     // MARK: Presets
 
-    @Test func fivePresetsAndDefault() {
-        #expect(Theme.Preset.allCases.count == 5)
+    @Test func bothPresetsAndDefault() {
+        #expect(Theme.Preset.allCases.count == 2)
         #expect(Theme.allPresets.map(\.preset) == Theme.Preset.allCases)
         #expect(Theme.default.preset == .midnightIndigo)
         #expect(Theme.preset(.light).preset == .light)
@@ -322,9 +322,6 @@ extension Theme {
     var columnTitle: String {
         switch preset {
         case .midnightIndigo: "2c.1 Midnight indigo (default)"
-        case .graphite: "2a Graphite"
-        case .warmCharcoal: "2b Warm charcoal"
-        case .dark: "1a Dark"
         case .light: "1b Light"
         }
     }

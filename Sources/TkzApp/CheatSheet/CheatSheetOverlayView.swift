@@ -35,7 +35,7 @@ final class CheatSheetOverlayView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         // A wash rather than a heavy scrim: `Theme` has no dim token and adding one would mean
-        // touching all five presets, so this reuses `border` the way `StatusBarView` documents
+        // touching both presets, so this reuses `border` the way `StatusBarView` documents
         // doing ("`border` is the design's low-alpha overlay").
         layer?.backgroundColor = theme.border.cgColor
         isHidden = true

@@ -82,8 +82,6 @@ The full accounting, file by file, is in [docs/privacy.md](docs/privacy.md).
   shells other than zsh, bash and fish only get `bin/` prepended to `PATH`. Details in
   [docs/privacy.md](docs/privacy.md).
 - **One Claude per session.** Splits and tabs share the row's Claude session and status.
-- **Two themes.** Midnight indigo (dark, the default) and its light twin; the ☀/☾ button in the
-  toolbar flips between them and the choice is remembered. The other presets have no picker yet.
 
 ## License and credits
 

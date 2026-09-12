@@ -18,7 +18,7 @@
 // Tokens rather than the artboard's literals: the tile is the WT badge pair (`wtBackground` /
 // `wtText` — the design's `rgba(139,147,248,.18)` / `#c3c8fd` *are* those tokens), the fill and
 // the border are `accent` at low alpha, links are `accent`, and the rest is the sidebar's text
-// tokens, so the card reads on all five presets including 1b Light.
+// tokens, so the card reads on both presets, 1b Light included.
 
 import AppKit
 import TkzCore

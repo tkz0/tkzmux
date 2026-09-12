@@ -136,8 +136,8 @@ extension SidebarSessionRowModel {
     ///
     /// `Hashable.hashValue` is seeded per process and would give the same account a different chip
     /// colour on every launch, so this uses FNV-1a over the UTF-8 bytes and picks one of a small
-    /// fixed set of hues. The palette is intentionally tiny and mid-saturation: it must read on all
-    /// five presets, and with two accounts (the v1 scope) any two distinct keys should look
+    /// fixed set of hues. The palette is intentionally tiny and mid-saturation: it must read on
+    /// both presets, and with two accounts (the v1 scope) any two distinct keys should look
     /// distinct.
     public static func accountChipColor(forKey key: String) -> RGB {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325
