@@ -355,6 +355,16 @@ public final class SidebarViewController: NSViewController {
     /// so it is exactly what the outline view believes. See *Row heights* in the file header.
     private var shadowRowHeights: [SessionID: CGFloat] = [:]
 
+    /// `SessionRowView.neededDetailWidth` per row — the width its detail line needs, which depends
+    /// on the row's model and not on the list's width.
+    ///
+    /// Dragging the divider re-asks every visible row for its height on every frame of the drag,
+    /// and answering used to mean rebuilding the row's whole model and running up to six uncached
+    /// `NSString.size(withAttributes:)` layouts on it. Cached here, a width change is one
+    /// comparison per row. Invalidated exactly where a row is reloaded, since that is the only
+    /// thing that can change the answer.
+    private var neededDetailWidths: [SessionID: CGFloat?] = [:]
+
     /// The colour each group's rows were last rendered with (TKZ-48).
     ///
     /// `ChangeSet.groups` names a group but not *which* field changed, and since the colour edge now
@@ -488,6 +498,7 @@ public final class SidebarViewController: NSViewController {
     /// the store, then restores the selection.
     public func rebuild() {
         shadowRowHeights = [:]  // refilled as `heightOfRowByItem` answers
+        neededDetailWidths = [:]
         outline.reloadData()
         shadowGroups = store.state.orderedGroups.map(\.id)
         shadowSessions = [:]
@@ -588,9 +599,18 @@ public final class SidebarViewController: NSViewController {
 
     /// What `heightOfRowByItem` answers for `session` at the list's current width.
     private func rowHeight(for session: Session) -> CGFloat {
-        SessionRowView.height(
-            for: SidebarRowAdapter.sessionModel(session, in: store.state),
-            width: outline.bounds.width)
+        let needed: CGFloat?
+        if let cached = neededDetailWidths[session.id] {
+            needed = cached
+        } else {
+            needed = SessionRowView.neededDetailWidth(
+                for: SidebarRowAdapter.sessionModel(session, in: store.state))
+            neededDetailWidths[session.id] = needed
+        }
+        guard let needed, needed > outline.bounds.width else {
+            return CGFloat(SidebarMetrics.sessionRowHeight)
+        }
+        return CGFloat(SidebarMetrics.sessionRowWrappedHeight)
     }
 
     /// Re-derives the height of every session row in `rows` (every visible session row when
@@ -600,9 +620,16 @@ public final class SidebarViewController: NSViewController {
     private func noteChangedRowHeights(in rows: IndexSet? = nil) {
         var changed = IndexSet()
         let candidates = rows ?? IndexSet(integersIn: 0..<outline.numberOfRows)
+        // Naming rows means their models may have changed, so their cached detail widths are stale;
+        // `nil` means only the list's *width* moved, and a cached width is exactly what survives
+        // that. Doing it here rather than at each call site keeps the two cases from drifting apart
+        // — `applyAccountLabels` reloads rows without a `ChangeSet.sessions` entry, and a chip
+        // appearing on the detail line is one of the things that can tip a row over.
+        let invalidates = rows != nil
         for row in candidates {
             guard let id = (outline.item(atRow: row) as? SidebarItem)?.sessionID,
                   let session = store.state.sessions[id] else { continue }
+            if invalidates { neededDetailWidths.removeValue(forKey: id) }
             let height = rowHeight(for: session)
             if shadowRowHeights[id] != height {
                 shadowRowHeights[id] = height
@@ -755,6 +782,7 @@ public final class SidebarViewController: NSViewController {
         // Heights: an inserted row records itself when `heightOfRowByItem` answers for it; a
         // removed row's entry just goes.
         shadowRowHeights = shadowRowHeights.filter { state.sessions[$0.key] != nil }
+        neededDetailWidths = neededDetailWidths.filter { state.sessions[$0.key] != nil }
 
         // A group that was just inserted has no expansion state yet.
         syncExpansion(for: newGroups)

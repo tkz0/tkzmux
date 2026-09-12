@@ -966,19 +966,23 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         searchTask?.cancel()
         searchGeneration += 1
         let generation = searchGeneration
-        let targets = transcriptTargets()
         // Changed paths are already in memory — the git service keeps them from its last refresh —
         // so this half needs no disk and no debounce.
         palette.setFileRows(changedFileRows(matching: query))
-        guard !targets.isEmpty else {
-            palette.setTranscriptRows([])
-            return
-        }
         searchTask = Task { [weak self] in
             // One typed word arrives as several keystrokes; only the pause at the end is worth a
             // disk read.
             try? await Task.sleep(for: .milliseconds(120))
             guard !Task.isCancelled, let self else { return }
+            // Resolved inside the debounce, not before it. A row whose transcript no hook frame
+            // has named is located by enumerating its account's `projects/` and stat-ing a
+            // candidate in every one of them, per row — which outside the debounce ran on the main
+            // thread on every keystroke.
+            let targets = self.transcriptTargets()
+            guard !targets.isEmpty else {
+                self.palette.setTranscriptRows([])
+                return
+            }
             let results = await transcriptSearch.search(
                 query, in: targets, limit: CommandPaletteController.resultLimit)
             guard !Task.isCancelled, generation == searchGeneration, palette.query == query else {
@@ -3019,11 +3023,38 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Only *bucket* changes are written. A steady session would otherwise produce a new value
     /// every minute, and every write is a `ChangeSet.sessions` entry that reloads that row — the
     /// one thing the sidebar's design exists to avoid (design.md → *Store*).
-    func sampleSessionMemory() {
-        guard let host = host as? TerminalViewHost else { return }
+    /// Takes the pids on the main thread, the syscalls off it, and the store write back on it.
+    ///
+    /// The walk is `proc_listchildpids` per node — a scan of the system process table, into a
+    /// 4 KiB-element buffer — plus one `proc_pid_rusage` per process, for every pane of every row.
+    /// On the main thread that is a stall once a minute for a number that is only ever read at GB
+    /// resolution.
+    ///
+    /// `completion` exists for the tests, which need to know when the hop has landed.
+    func sampleSessionMemory(completion: @escaping @MainActor @Sendable () -> Void = {}) {
+        guard let host = host as? TerminalViewHost else { return completion() }
+        let pids = host.sessionPids()
+        guard !pids.isEmpty else { return completion() }
+        Self.memorySampleQueue.async {
+            let samples = pids.map { (id: $0.id, sample: SessionMemory.sample(rootPid: $0.pid)) }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self.applySessionMemory(samples)
+                    completion()
+                }
+            }
+        }
+    }
+
+    /// Where `sampleSessionMemory` does its syscalls.
+    private static let memorySampleQueue = DispatchQueue(
+        label: "tkzmux.session-memory", qos: .utility)
+
+    /// The main-thread half: attribute the samples to rows, bucket them, write the ones that moved.
+    private func applySessionMemory(_ samples: [(id: TerminalID, sample: SessionMemorySample)]) {
         // A row can hold several panes now (TKZ-36); its footprint is the sum across all of them.
         var totals: [SessionID: UInt64] = [:]
-        for (terminal, sample) in host.sessionMemory() {
+        for (terminal, sample) in samples {
             guard let id = store.state.session(owning: terminal)?.id else { continue }
             totals[id, default: 0] += sample.footprintBytes
         }
@@ -3062,8 +3093,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         timer.setEventHandler { [weak viewHost, logger] in
             MainActor.assumeIsolated {
                 guard let viewHost else { return }
-                let sweep = viewHost.snapshotAll()
-                logger.info("periodic snapshot: saved=\(sweep.saved.count) skipped=\(sweep.skipped.count) failed=\(sweep.failed.count) bytes=\(sweep.totalBytes)")
+                // Off-main writes: the encode stays on this queue (it reads the terminal under its
+                // lock), the file I/O does not. See `snapshotAllOffMain`.
+                viewHost.snapshotAllOffMain { sweep in
+                    logger.info("periodic snapshot: saved=\(sweep.saved.count) skipped=\(sweep.skipped.count) failed=\(sweep.failed.count) bytes=\(sweep.totalBytes)")
+                }
             }
         }
         snapshotTimer = timer

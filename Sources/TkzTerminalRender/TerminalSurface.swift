@@ -132,6 +132,19 @@ public final class TerminalSurface {
     /// Per-row decoration rects drawn *after* the glyphs (underline, strikethrough).
     private(set) var rowRects: [[TkzRectInstance]] = []
 
+    /// Running totals across `rowGlyphs` / `rowRects`, maintained by `store(row:)`.
+    ///
+    /// These used to be `reduce` over every row, and the renderer asks for them several times per
+    /// frame — including on the *skipped*-frame path, which is the common idle case. Keeping the
+    /// sums here turns each of those into an integer read.
+    private var glyphTotal = 0
+    private var rectTotal = 0
+
+    /// Reused flatten buffers. `glyphInstances()` used to return a freshly allocated array on every
+    /// encoded frame — a whole-screen copy regardless of how few rows were dirty.
+    private var glyphFlatten: [TkzGlyphInstance] = []
+    private var rectFlatten: [TkzRectInstance] = []
+
     public private(set) var colors = SurfaceColors()
     public private(set) var cursor = SurfaceCursorState()
 
@@ -224,6 +237,10 @@ public final class TerminalSurface {
         backgroundCells.removeAll(keepingCapacity: false)
         rowGlyphs.removeAll(keepingCapacity: false)
         rowRects.removeAll(keepingCapacity: false)
+        glyphFlatten.removeAll(keepingCapacity: false)
+        rectFlatten.removeAll(keepingCapacity: false)
+        glyphTotal = 0
+        rectTotal = 0
         colors = SurfaceColors()
         cursor = SurfaceCursorState()
         scrollMetrics = .empty
@@ -274,6 +291,8 @@ public final class TerminalSurface {
         backgroundCells = Array(repeating: TkzBgCell(color: 0), count: columns * rowCount)
         rowGlyphs = Array(repeating: [], count: rowCount)
         rowRects = Array(repeating: [], count: rowCount)
+        glyphTotal = 0
+        rectTotal = 0
     }
 
     func setColors(_ value: SurfaceColors) { colors = value }
@@ -281,10 +300,24 @@ public final class TerminalSurface {
     func setMetrics(_ value: CellMetrics) { metrics = value }
     func setAtlasRebuildStamp(_ value: SIMD2<UInt64>) { atlasRebuildStamp = value }
 
+    /// Takes a rebuilt row's instances.
+    ///
+    /// Copies into the row's own storage rather than adopting the caller's buffer. `FrameBuilder`
+    /// clears its scratch arrays with `removeAll(keepingCapacity: true)` between rows, but the
+    /// previous `rowGlyphs[row] = glyphs` left the row and the scratch sharing one buffer — so that
+    /// `removeAll` was a copy-on-write reallocation and the scratch allocated a fresh array for
+    /// every row of every rebuild, which is exactly what it exists to avoid.
     func store(row: Int, glyphs: [TkzGlyphInstance], rects: [TkzRectInstance]) {
         guard row >= 0, row < rowCount else { return }
-        rowGlyphs[row] = glyphs
-        rowRects[row] = rects
+        glyphTotal -= rowGlyphs[row].count
+        rowGlyphs[row].removeAll(keepingCapacity: true)
+        rowGlyphs[row].append(contentsOf: glyphs)
+        glyphTotal += glyphs.count
+
+        rectTotal -= rowRects[row].count
+        rowRects[row].removeAll(keepingCapacity: true)
+        rowRects[row].append(contentsOf: rects)
+        rectTotal += rects.count
     }
 
     func setBackground(column: Int, row: Int, color: UInt32) {
@@ -304,9 +337,9 @@ public final class TerminalSurface {
     // MARK: - Flattened instance views
 
     /// Total glyph instances across every row.
-    public var glyphCount: Int { rowGlyphs.reduce(0) { $0 + $1.count } }
+    public var glyphCount: Int { glyphTotal }
     /// Total decoration rects across every row (cursor excluded — it is an overlay).
-    public var rectCount: Int { rowRects.reduce(0) { $0 + $1.count } }
+    public var rectCount: Int { rectTotal }
 
     /// Every glyph in viewport order, with `TKZ_GLYPH_FLAG_UNDER_CURSOR` stamped on the glyph the
     /// cursor currently covers.
@@ -314,8 +347,25 @@ public final class TerminalSurface {
     /// The flag is applied *here* and not baked into the row cache, so a blink or focus change
     /// costs one flatten instead of a full row rebuild.
     public func glyphInstances() -> [TkzGlyphInstance] {
-        var out: [TkzGlyphInstance] = []
-        out.reserveCapacity(glyphCount)
+        flattenGlyphs()
+        return glyphFlatten
+    }
+
+    /// Flattens every row into the reused `glyphFlatten` buffer and hands it to `body` without
+    /// copying it out. This is what the renderer uses.
+    ///
+    /// `glyphInstances()` remains for tests and tools. Handing the array out shares its storage, so
+    /// the *next* flatten's `removeAll(keepingCapacity:)` has to reallocate — which is precisely the
+    /// copy-on-write trap `store(row:)` documents, kept off the hot path rather than fixed, because
+    /// returning an array is the whole point of that entry point.
+    func withGlyphInstances<T>(_ body: (UnsafeBufferPointer<TkzGlyphInstance>) throws -> T) rethrows -> T {
+        flattenGlyphs()
+        return try glyphFlatten.withUnsafeBufferPointer(body)
+    }
+
+    private func flattenGlyphs() {
+        glyphFlatten.removeAll(keepingCapacity: true)
+        glyphFlatten.reserveCapacity(glyphTotal)
         let highlight = filledCursorCell
         for (y, glyphs) in rowGlyphs.enumerated() {
             if let highlight, highlight.row == y {
@@ -324,24 +374,35 @@ public final class TerminalSurface {
                         glyph.flags |= UInt32(TKZ_GLYPH_FLAG_UNDER_CURSOR)
                         glyph.flags &= ~UInt32(TKZ_GLYPH_FLAG_MIN_CONTRAST)
                     }
-                    out.append(glyph)
+                    glyphFlatten.append(glyph)
                 }
             } else {
-                out.append(contentsOf: glyphs)
+                glyphFlatten.append(contentsOf: glyphs)
             }
         }
-        return out
     }
 
     /// Decoration rects drawn after the glyphs (underline, strikethrough) plus the hollow cursor.
     public func rectInstancesAbove(geometry: GridGeometry) -> [TkzRectInstance] {
-        var out: [TkzRectInstance] = []
-        out.reserveCapacity(rectCount + 1)
-        for rects in rowRects { out.append(contentsOf: rects) }
+        flattenRectsAbove(geometry: geometry)
+        return rectFlatten
+    }
+
+    /// `rectInstancesAbove` without the copy out — see `withGlyphInstances`.
+    func withRectInstancesAbove<T>(
+        geometry: GridGeometry, _ body: (UnsafeBufferPointer<TkzRectInstance>) throws -> T
+    ) rethrows -> T {
+        flattenRectsAbove(geometry: geometry)
+        return try rectFlatten.withUnsafeBufferPointer(body)
+    }
+
+    private func flattenRectsAbove(geometry: GridGeometry) {
+        rectFlatten.removeAll(keepingCapacity: true)
+        rectFlatten.reserveCapacity(rectTotal + 1)
+        for rects in rowRects { rectFlatten.append(contentsOf: rects) }
         if let rect = cursorRect(geometry: geometry), rect.style != UInt32(TKZ_RECT_STYLE_SOLID) {
-            out.append(rect)
+            rectFlatten.append(rect)
         }
-        return out
     }
 
     /// Rects drawn *before* the glyphs: the filled cursor shapes. The selection is not here — it is

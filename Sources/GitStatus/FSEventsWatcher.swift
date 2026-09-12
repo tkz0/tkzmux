@@ -97,10 +97,27 @@ public final class FSEventsWatcher: Sendable {
     /// would slip through — and it is exactly our own refresh that writes it.
     public static func isIgnored(_ path: String) -> Bool {
         if path.contains("/.git/objects/") { return true }
-        if path.contains("/node_modules/") || path.hasSuffix("/node_modules") { return true }
         if (path as NSString).lastPathComponent == "index.lock" { return true }
+        for directory in ignoredDirectories {
+            if path.contains("/\(directory)/") || path.hasSuffix("/\(directory)") { return true }
+        }
         return false
     }
+
+    /// Directory names whose contents cannot change what `git status` prints.
+    ///
+    /// A session's working directory is watched recursively, so a build running *inside* a tkzmux
+    /// session feeds this watcher thousands of events. Bounded by the 2 s per-session refresh floor
+    /// that still meant two `git` subprocesses every two seconds for the whole build — over output
+    /// that is ignored by the repo anyway, so the status could not have changed. The build was
+    /// competing for CPU with the watcher watching it.
+    ///
+    /// Deliberately conservative: every name here is either dot-prefixed or unambiguous. `target/`
+    /// and `build/` are **not** on the list — a repo can legitimately track a directory called
+    /// either, and dropping real events is a correctness bug where keeping a few is only waste.
+    static let ignoredDirectories = [
+        "node_modules", ".build", ".venv", ".next", "__pycache__", "DerivedData",
+    ]
 
     // MARK: - Stream plumbing (called only while `storage` is locked)
 

@@ -298,9 +298,7 @@ public final class TerminalRenderer {
 
         let metrics = glyphCache.metrics
         let geometry = GridGeometry(metrics: metrics, viewportWidth: width, viewportHeight: height)
-        let glyphs = surface.glyphInstances()
         let rectsBelow = surface.rectInstancesBelow(geometry: geometry)
-        let rectsAbove = surface.rectInstancesAbove(geometry: geometry)
 
         // One `replace(region:)` per atlas per frame, before anything is encoded.
         glyphCache.flushUploads()
@@ -311,9 +309,19 @@ public final class TerminalRenderer {
         let slot = ring.acquire()
 
         let backgroundBuffer = upload(surface.backgroundCells, into: &slot.background)
-        let glyphBuffer = upload(glyphs, into: &slot.glyphs)
+        // Borrowed, not returned: the surface flattens into a buffer it keeps and we upload
+        // straight out of it, so an encoded frame no longer allocates a whole-screen array twice.
+        var glyphInstanceCount = 0
+        let glyphBuffer = surface.withGlyphInstances { instances -> MTLBuffer? in
+            glyphInstanceCount = instances.count
+            return upload(instances, into: &slot.glyphs)
+        }
+        var aboveCount = 0
+        let aboveBuffer = surface.withRectInstancesAbove(geometry: geometry) { instances -> MTLBuffer? in
+            aboveCount = instances.count
+            return upload(instances, into: &slot.rectsAbove)
+        }
         let belowBuffer = upload(rectsBelow, into: &slot.rectsBelow)
-        let aboveBuffer = upload(rectsAbove, into: &slot.rectsAbove)
 
         // The command buffer is created *before* the drawable is acquired. A drawable that is
         // acquired and never presented is only returned to the layer's pool when it deallocates,
@@ -323,8 +331,8 @@ public final class TerminalRenderer {
             ring.release()
             stats.framesSkipped += 1
             return RenderOutcome(didEncode: false, commandBuffer: nil, update: update,
-                                 glyphCount: glyphs.count,
-                                 rectCount: rectsBelow.count + rectsAbove.count)
+                                 glyphCount: glyphInstanceCount,
+                                 rectCount: rectsBelow.count + aboveCount)
         }
         stats.drawableRequests += 1
         let (target, drawable) = acquire()
@@ -332,8 +340,8 @@ public final class TerminalRenderer {
             ring.release()
             stats.framesSkipped += 1
             return RenderOutcome(didEncode: false, commandBuffer: nil, update: update,
-                                 glyphCount: glyphs.count,
-                                 rectCount: rectsBelow.count + rectsAbove.count)
+                                 glyphCount: glyphInstanceCount,
+                                 rectCount: rectsBelow.count + aboveCount)
         }
 
         var uniforms = makeUniforms(surface: surface, geometry: geometry)
@@ -348,8 +356,8 @@ public final class TerminalRenderer {
             ring.release()
             stats.framesSkipped += 1
             return RenderOutcome(didEncode: false, commandBuffer: nil, update: update,
-                                 glyphCount: glyphs.count,
-                                 rectCount: rectsBelow.count + rectsAbove.count)
+                                 glyphCount: glyphInstanceCount,
+                                 rectCount: rectsBelow.count + aboveCount)
         }
         encoder.label = "tkzmux terminal frame"
 
@@ -366,18 +374,18 @@ public final class TerminalRenderer {
 
         // 3. Glyphs. Both atlas textures are always bound — Metal validation faults on an unbound
         //    argument the function declares, even when the branch that samples it is not taken.
-        if let glyphBuffer, !glyphs.isEmpty {
+        if let glyphBuffer, glyphInstanceCount > 0 {
             encoder.setRenderPipelineState(glyphPipeline)
             setUniforms(&uniforms, on: encoder)
             encoder.setVertexBuffer(glyphBuffer, offset: 0, index: Int(TKZ_BUFFER_INDEX_INSTANCES))
             encoder.setFragmentTexture(glyphCache.grayscale.texture, index: Int(TKZ_TEXTURE_INDEX_GRAYSCALE))
             encoder.setFragmentTexture(glyphCache.color.texture, index: Int(TKZ_TEXTURE_INDEX_COLOR))
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4,
-                                   instanceCount: glyphs.count)
+                                   instanceCount: glyphInstanceCount)
         }
 
         // 4. Rects above the text: underline, strikethrough, hollow cursor. Same pipeline.
-        drawRects(aboveBuffer, count: rectsAbove.count, uniforms: &uniforms, encoder: encoder)
+        drawRects(aboveBuffer, count: aboveCount, uniforms: &uniforms, encoder: encoder)
 
         encoder.endEncoding()
 
@@ -388,8 +396,8 @@ public final class TerminalRenderer {
         surface.clearNeedsDisplay()
         stats.framesEncoded += 1
         return RenderOutcome(didEncode: true, commandBuffer: commandBuffer, update: update,
-                             glyphCount: glyphs.count,
-                             rectCount: rectsBelow.count + rectsAbove.count)
+                             glyphCount: glyphInstanceCount,
+                             rectCount: rectsBelow.count + aboveCount)
     }
 
     private func drawRects(
@@ -436,7 +444,15 @@ public final class TerminalRenderer {
     /// Copies `values` into `buffer`, growing it when needed, and counts the bytes.
     /// Returns `nil` (writing nothing) for an empty array — a zero-length buffer must never be bound.
     private func upload<T>(_ values: [T], into buffer: inout MTLBuffer?) -> MTLBuffer? {
-        guard !values.isEmpty else { return nil }
+        values.withUnsafeBufferPointer { upload($0, into: &buffer) }
+    }
+
+    /// The borrowed-buffer form, used on the hot path so `TerminalSurface`'s reused flatten buffers
+    /// never have to be copied into an `Array` just to be handed over.
+    private func upload<T>(
+        _ values: UnsafeBufferPointer<T>, into buffer: inout MTLBuffer?
+    ) -> MTLBuffer? {
+        guard !values.isEmpty, let base = values.baseAddress else { return nil }
         let length = MemoryLayout<T>.stride * values.count
         if buffer == nil || buffer!.length < length {
             // Round up so a growing screen does not reallocate on every frame.
@@ -444,10 +460,7 @@ public final class TerminalRenderer {
             buffer = device.makeBuffer(length: capacity, options: .storageModeShared)
         }
         guard let target = buffer else { return nil }
-        values.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return }
-            target.contents().copyMemory(from: base, byteCount: length)
-        }
+        target.contents().copyMemory(from: base, byteCount: length)
         stats.instanceBytesWritten += length
         return target
     }

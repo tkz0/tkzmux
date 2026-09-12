@@ -166,7 +166,7 @@ struct SessionKillTests {
     /// `sampleSessionMemory()`, into the store, out via the row model. Every piece of this is unit
     /// tested separately; this is the one that would catch the pieces not being connected.
     @Test("sampleSessionMemory puts a real reading into the store")
-    func samplingReachesTheStore() throws {
+    func samplingReachesTheStore() async throws {
         let temp = try Temp()
         guard let harness = try Self.makeHarness(temp) else { return }
         defer { harness.controller.shutdown() }
@@ -174,7 +174,11 @@ struct SessionKillTests {
         // Nothing sampled yet.
         #expect(harness.controller.store.state.sessions[harness.sessionID]?.live?.subtreeFootprintBytes == nil)
 
-        harness.controller.sampleSessionMemory()
+        // The syscalls run off the main thread and the store write hops back, so the assertions
+        // below have to wait for that round trip rather than for the call to return.
+        await withCheckedContinuation { continuation in
+            harness.controller.sampleSessionMemory { continuation.resume() }
+        }
 
         let bytes = try #require(
             harness.controller.store.state.sessions[harness.sessionID]?.live?.subtreeFootprintBytes,
