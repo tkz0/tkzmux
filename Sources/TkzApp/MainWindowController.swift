@@ -2233,6 +2233,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// `ShortcutAction` id (see `PaletteDataSource.item(for:shortcut:)`), which is exactly what the
     /// menu dispatches on — one vocabulary for both. The overlay's own rows (design 2c.6) land on
     /// the session the hit belongs to.
+    ///
+    /// `perform`'s `false` is not handled here because a command row cannot outlive its handler:
+    /// the rows are built from `CommandPaletteController.performableCommands`, which is the
+    /// dispatcher's own set (TKZ-53), and nothing removes a handler once registered.
     func activate(_ activation: PaletteActivation) {
         switch activation {
         case .result(let result):
@@ -3116,10 +3120,18 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     // MARK: Menu handlers
 
     /// Everything the main menu can dispatch. Actions with no implementation yet are deliberately
-    /// **absent**: `MenuDispatcher.validateMenuItem` then disables their menu items, so the menu
-    /// shows the whole vocabulary and lies about none of it.
+    /// absent, and since TKZ-53 that is what keeps them off the screen entirely: `MainMenu.build`
+    /// gives an action with no handler no item, the cheat sheet walks that menu, and the palette
+    /// filters on ``MenuDispatcher/performableActions``. Adding a `setHandler` line here is the
+    /// whole of restoring a command to all three surfaces.
+    ///
+    /// Still unimplemented: `.settings` (TKZ-35), `.notifications` (TKZ-55), `.reloadConfig`
+    /// (TKZ-56). Their ids and chords stay in `ShortcutsTable`.
     private func registerMenuHandlers() {
         dispatcher.setHandler(.newSession) { [weak self] in self?.presentNewSessionMenu() }
+        // ⌘O is "In another repo…" reached from the File menu: the folder becomes a group and
+        // claude starts in it (TKZ-54). One flow, two ways in.
+        dispatcher.setHandler(.openFolder) { [weak self] in self?.presentAnotherRepoPanel() }
         dispatcher.setHandler(.closeTerminal) { [weak self] in self?.closeFocusedTerminal() }
         dispatcher.setHandler(.closeSession) { [weak self] in self?.removeSelectedSession() }
         dispatcher.setHandler(.searchSessions) { [weak self] in self?.beginSearch() }
@@ -3151,6 +3163,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             }
         }
         registerPaneHandlers()
+        // Last, so it sees every handler above: the palette's command rows are the same set the
+        // menu builds items for (TKZ-53).
+        palette.performableCommands = dispatcher.performableActions
     }
 
     /// Panes and tabs (TKZ-36).

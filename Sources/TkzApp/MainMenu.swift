@@ -20,8 +20,14 @@
 // are resolved by menu order, not by which one is enabled.
 //
 // Every binding comes from `ShortcutsTable.resolved(state:)` — the menu is a *view* of that table
-// and invents nothing. An action with no handler in the dispatcher is present and **disabled**
-// rather than absent, so the menu is an honest inventory of the app's vocabulary.
+// and invents nothing. `ShortcutsTable` is the app's whole vocabulary; the menu is the part of it
+// that **acts**. An action with no handler in the dispatcher gets no item at all, because this menu
+// is not read only by the menu bar: `CheatSheetModel` walks it, and the palette filters on the same
+// `MenuDispatcher.canPerform` set, so a permanently-disabled item here became a dead row in ⇧⌘P and
+// a dead chord on the ⌘-hold card (TKZ-53). A command the user can see is a command that runs.
+//
+// The ids stay in `ShortcutsTable` either way — they are the `state.json` override vocabulary — so
+// registering a handler is the whole of restoring an item, here and in both other surfaces.
 
 import AppKit
 import TkzCore
@@ -65,6 +71,10 @@ public final class MenuDispatcher: NSObject, NSMenuItemValidation {
     public func checkmark(for action: ShortcutAction) -> Bool? { checkmarks[action]?() }
 
     public func canPerform(_ action: ShortcutAction) -> Bool { handlers[action] != nil }
+
+    /// Every action with a handler right now — what `MainMenu.build` makes items for, and what the
+    /// palette lists as command rows (`CommandPaletteController.performableCommands`).
+    public var performableActions: Set<ShortcutAction> { Set(handlers.keys) }
 
     /// Runs the action, if it has a handler. Returns whether anything ran.
     @discardableResult
@@ -129,7 +139,11 @@ public enum MainMenu {
         NSApp.windowsMenu = menu.items.first { $0.submenu?.title == "Window" }?.submenu
     }
 
-    /// Convenience for a default menu with no window behind it (the renderer-unavailable path).
+    /// Convenience for a default menu with no window behind it (the dev window and the
+    /// renderer-unavailable path). Its dispatcher has no handlers, so the menu is About / Hide /
+    /// Show All / Quit / Window and nothing else — which is honest: there is no
+    /// `MainWindowController` on either path, so none of the commands could have run. ⌘Q, ⌘M and
+    /// ⌘W still work, because those are AppKit's own items and never go through the dispatcher.
     @discardableResult
     public static func installDefault(appName: String = "tkzmux") -> MenuDispatcher {
         let dispatcher = MenuDispatcher()
@@ -151,11 +165,11 @@ public enum MainMenu {
                                  keyEquivalent: "")
         about.target = dispatcher
         menu.addItem(.separator())
-        menu.addItem(command(.settings, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.reloadConfig, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.toggleAutoResume, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.statusLineIntegration, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.removeShellIntegration, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.settings, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.reloadConfig, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.toggleAutoResume, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.statusLineIntegration, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.removeShellIntegration, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
 
         let hide = menu.addItem(withTitle: "Hide \(appName)",
@@ -177,6 +191,7 @@ public enum MainMenu {
         let quit = menu.addItem(withTitle: "Quit \(appName)",
                                 action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
+        tidySeparators(menu)
         return menu
     }
 
@@ -184,11 +199,12 @@ public enum MainMenu {
         shortcuts: [ShortcutAction: Shortcut], dispatcher: MenuDispatcher
     ) -> NSMenu {
         let menu = NSMenu(title: "File")
-        menu.addItem(command(.newSession, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.openFolder, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.newSession, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.openFolder, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
-        menu.addItem(command(.closeTerminal, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.closeSession, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.closeTerminal, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.closeSession, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        tidySeparators(menu)
         return menu
     }
 
@@ -199,21 +215,22 @@ public enum MainMenu {
         shortcuts: [ShortcutAction: Shortcut], dispatcher: MenuDispatcher
     ) -> NSMenu {
         let menu = NSMenu(title: "Terminal")
-        menu.addItem(command(.newTerminal, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.newTerminal, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
-        menu.addItem(command(.splitVertically, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.splitHorizontally, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.splitVertically, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.splitHorizontally, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
-        menu.addItem(command(.focusPaneLeft, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.focusPaneRight, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.focusPaneUp, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.focusPaneDown, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.focusPaneLeft, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.focusPaneRight, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.focusPaneUp, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.focusPaneDown, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
-        menu.addItem(command(.equalizeSplits, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.zoomPane, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.equalizeSplits, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.zoomPane, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
-        menu.addItem(command(.previousTab, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.nextTab, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.previousTab, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.nextTab, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        tidySeparators(menu)
         return menu
     }
 
@@ -221,13 +238,14 @@ public enum MainMenu {
         shortcuts: [ShortcutAction: Shortcut], dispatcher: MenuDispatcher
     ) -> NSMenu {
         let menu = NSMenu(title: "View")
-        menu.addItem(command(.toggleSidebar, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.toggleTheme, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.toggleSidebar, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.toggleTheme, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
-        menu.addItem(command(.searchSessions, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.commandPalette, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.searchSessions, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.commandPalette, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
-        menu.addItem(command(.notifications, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.notifications, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        tidySeparators(menu)
         return menu
     }
 
@@ -235,20 +253,21 @@ public enum MainMenu {
         shortcuts: [ShortcutAction: Shortcut], dispatcher: MenuDispatcher
     ) -> NSMenu {
         let menu = NSMenu(title: "Session")
-        menu.addItem(command(.resumeSession, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.resumeAllInGroup, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.resumeSession, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.resumeAllInGroup, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
-        menu.addItem(command(.renameSession, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.jumpToNeedsYou, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.copyLastMessage, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.showFirstPrompt, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.renameSession, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.jumpToNeedsYou, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.copyLastMessage, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.showFirstPrompt, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
-        menu.addItem(command(.previousSession, shortcuts: shortcuts, dispatcher: dispatcher))
-        menu.addItem(command(.nextSession, shortcuts: shortcuts, dispatcher: dispatcher))
+        addCommand(.previousSession, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.nextSession, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
         for n in 1...9 {
-            menu.addItem(command(.selectSession(n), shortcuts: shortcuts, dispatcher: dispatcher))
+            addCommand(.selectSession(n), to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         }
+        tidySeparators(menu)
         return menu
     }
 
@@ -268,8 +287,41 @@ public enum MainMenu {
 
     // MARK: Item construction
 
+    /// Adds `action`'s item, or nothing at all when the dispatcher has no handler for it.
+    ///
+    /// Absent rather than disabled: this menu is the app's only description of what it can do, and
+    /// two other surfaces read it back — `CheatSheetModel` walks the built menu, and the palette
+    /// filters command rows on the same `canPerform` set. An item that can never fire therefore
+    /// showed up three times over as something the user could choose and nothing would happen
+    /// (TKZ-53). Register a handler and the item comes back everywhere at once.
+    private static func addCommand(
+        _ action: ShortcutAction, to menu: NSMenu,
+        shortcuts: [ShortcutAction: Shortcut], dispatcher: MenuDispatcher
+    ) {
+        guard dispatcher.canPerform(action) else { return }
+        menu.addItem(command(action, shortcuts: shortcuts, dispatcher: dispatcher))
+    }
+
+    /// Drops leading, trailing and doubled separators, once a submenu has been filtered.
+    ///
+    /// The rules are written next to the items they group, so a filtered-out item leaves its rule
+    /// behind: View's ⌘I is the only thing under its last separator, and losing it would end the
+    /// menu on a line with nothing after it.
+    private static func tidySeparators(_ menu: NSMenu) {
+        var keep: [NSMenuItem] = []
+        for item in menu.items {
+            if item.isSeparatorItem, keep.last.map(\.isSeparatorItem) ?? true { continue }
+            keep.append(item)
+        }
+        while keep.last?.isSeparatorItem == true { keep.removeLast() }
+        guard keep.count != menu.items.count else { return }
+        menu.removeAllItems()
+        for item in keep { menu.addItem(item) }
+    }
+
     /// One command item: title and binding from `ShortcutsTable`, `representedObject` = the action
-    /// id, target = the dispatcher. Enablement is `MenuDispatcher.validateMenuItem`'s job.
+    /// id, target = the dispatcher. Whether it is *present* is ``addCommand(_:to:shortcuts:dispatcher:)``'s
+    /// job; `MenuDispatcher.validateMenuItem` still runs, and now only ever returns true for it.
     static func command(
         _ action: ShortcutAction,
         shortcuts: [ShortcutAction: Shortcut],

@@ -15,6 +15,7 @@ import TkzCore
 ///     nothing else about that row (its display title is `northwind`);
 ///   * title  — session "docs sweep" in the Scheduled group.
 @MainActor
+@Suite(.serialized)
 struct PaletteTests {
 
     static let state = AppState.fixture
@@ -88,6 +89,41 @@ struct PaletteTests {
         // The palette and the main menu dispatch on the same id.
         #expect(top.item.actionID == ShortcutAction.commandPalette.rawValue)
         #expect(top.item.trailing == "\u{21E7}\u{2318}P")
+    }
+
+    /// TKZ-53's acceptance: ⇧⌘P shows only commands that do something.
+    @Test func commandRowsExistOnlyForActionsTheDispatcherCanPerform() throws {
+        let performable = Set(ShortcutsTable.allActions).subtracting([.settings, .notifications])
+        let source = PaletteDataSource(state: Self.state, mode: .all, commands: performable)
+        let ids = Set(source.items.filter { $0.kind == .command }.map(\.actionID))
+
+        #expect(!ids.contains(ShortcutAction.settings.rawValue))
+        #expect(!ids.contains(ShortcutAction.notifications.rawValue))
+        #expect(ids.contains(ShortcutAction.commandPalette.rawValue))
+        #expect(ids.count == performable.count)
+
+        // Not merely unranked: searching for it by name finds nothing.
+        #expect(source.search("Settings").allSatisfy { $0.item.kind != .command })
+
+        // Membership changes, order does not: it is still the main menu's.
+        let all = PaletteDataSource(state: Self.state, mode: .all)
+        let expected = all.items.filter { $0.kind == .command && performable.contains(ShortcutAction($0.actionID)) }
+        #expect(source.items.filter { $0.kind == .command }.map(\.id) == expected.map(\.id))
+    }
+
+    /// The same filter, end to end: the running window's palette carries the dispatcher's set.
+    @Test func theWindowsPaletteListsOnlyPerformableCommands() {
+        let harness = MainWindowControllerTests.makeHarness()
+        defer { harness.tearDown() }
+
+        let palette = harness.controller.palette
+        #expect(palette.performableCommands == harness.controller.dispatcher.performableActions)
+
+        let ids = Set(palette.dataSource.items.filter { $0.kind == .command }.map(\.actionID))
+        for dead in [ShortcutAction.settings, .notifications, .reloadConfig] {
+            #expect(!ids.contains(dead.rawValue), "\(dead.rawValue) has no handler and must not be a row")
+        }
+        #expect(ids.contains(ShortcutAction.openFolder.rawValue), "⌘O works — TKZ-54")
     }
 
     @Test func sectionsComeBackGroupedInDisplayOrder() throws {
