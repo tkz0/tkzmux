@@ -1,0 +1,87 @@
+README.md
+  s_2ee3a3c28a7b98::t_28b14c2338e951 82-85
+Sources/GitStatus/BaseBranch.swift
+  s_2ee3a3c28a7b98::t_5f14c888482212 1-84
+Sources/GitStatus/DiffParsing.swift
+  s_2ee3a3c28a7b98::t_ef56a3c387acc3 23-25,32
+Sources/GitStatus/GitDiffService.swift
+  s_2ee3a3c28a7b98::t_e4a155e0129ed8 120
+Sources/GitStatus/GitRebase.swift
+  s_2ee3a3c28a7b98::t_3f9446b043fc10 1-241
+Sources/GitStatus/GitStatusParsing.swift
+  s_2ee3a3c28a7b98::t_21e2b761e761fb 205-215
+Sources/GitStatus/GitStatusService.swift
+  s_2ee3a3c28a7b98::t_252e32251b4d64 143-148,158-159,165,171,177-178,290-299,514-515,522,524-525,528-544,547,561-579,589-601,603-604,631-660,671-673,676
+Sources/Persistence/PersistedState.swift
+  s_2ee3a3c28a7b98::t_43d2c143451423 80-82,89-90,97,102,112,203-204,259
+Sources/TkzApp/Changes/ChangesViewerController.swift
+  s_2ee3a3c28a7b98::t_c4f3af20263535 89,112,118-121
+Sources/TkzApp/Changes/ChangesViewerModel.swift
+  s_2ee3a3c28a7b98::t_a316b6087932ef 73-77,79
+Sources/TkzApp/GitIntegration.swift
+  s_2ee3a3c28a7b98::t_90fdf081ff59ac 27,38-70,94-97,102-104,141,149,160,374-611
+Sources/TkzApp/MainMenu.swift
+  s_2ee3a3c28a7b98::t_cffbdd39a5c145 71-86,122,186,280
+Sources/TkzApp/MainWindowController.swift
+  s_2ee3a3c28a7b98::t_763ae283f90531 350-351,503,1114-1166,1626,1678-1680,1941,1944,1947-1950,2195-2197,2253-2256,2607-2612,2649,3380-3387,3398-3399
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_2ee3a3c28a7b98::t_d328bcf1fbb116 61-65,81-83,190-192,218,257-258,265
+Sources/TkzApp/Rebase/RebaseSheetController.swift
+  s_2ee3a3c28a7b98::t_535537566ce681 1-274
+Sources/TkzApp/Rebase/RebaseSheetModel.swift
+  s_2ee3a3c28a7b98::t_748b11a7afb3a9 1-69
+Sources/TkzApp/Rebase/RebaseSheetView.swift
+  s_2ee3a3c28a7b98::t_987c51dce59f40 1-150
+Sources/TkzApp/StatusBar/StatusBarModel.swift
+  s_2ee3a3c28a7b98::t_154f9d36b5a832 86-101,173-176,200-203
+Sources/TkzApp/StatusBar/StatusBarView.swift
+  s_2ee3a3c28a7b98::t_5b7245a9d0f913 150,157-158,347-371,722-724,734,742-743,751-772
+Sources/TkzCore/AppState.swift
+  s_2ee3a3c28a7b98::t_b69c5d42359aad 45-50,72,89
+Sources/TkzCore/AppStore.swift
+  s_2ee3a3c28a7b98::t_60f9ed88e8a30b 172
+Sources/TkzCore/Models.swift
+  s_2ee3a3c28a7b98::t_6c600b0a2b78de 999-1008,1022-1024,1037-1039,1045-1048
+Sources/TkzCore/Reducers.swift
+  s_2ee3a3c28a7b98::t_086e341fbca235 364-369
+Sources/TkzCore/Theme.swift
+  s_2ee3a3c28a7b98::t_06a51ba72c0b53 70-75,242-244,313-316
+Tests/GitStatusTests/BaseBranchTests.swift
+  s_2ee3a3c28a7b98::t_82af4c8bc800dd 1-262
+Tests/GitStatusTests/DiffParsingTests.swift
+  s_2ee3a3c28a7b98::t_656f92deff5938 149
+Tests/GitStatusTests/GitRebaseTests.swift
+  s_2ee3a3c28a7b98::t_c3d2fb82f268d1 1-230
+Tests/PersistenceTests/StateFileTests.swift
+  s_2ee3a3c28a7b98::t_792e2f1ab05f3d 87,91-106
+Tests/TkzAppTests/ChangesViewerTests.swift
+  s_2ee3a3c28a7b98::t_96e3598fdd555e 86-99
+Tests/TkzAppTests/MainMenuTests.swift
+  s_2ee3a3c28a7b98::t_359d7c9c456c68 248
+Tests/TkzAppTests/RebaseSheetTests.swift
+  s_2ee3a3c28a7b98::t_3d18e59143a48f 1-413
+Tests/TkzAppTests/StatusBarInteractionTests.swift
+  s_2ee3a3c28a7b98::t_9ce9f98b3f50da 251
+Tests/TkzAppTests/StatusBarViewTests.swift
+  s_2ee3a3c28a7b98::t_0f354c3214416f 26-27,219
+docs/privacy.md
+  s_2ee3a3c28a7b98::t_5ccfd666e8b1c5 20,26-30,39-40,48-49,53-61
+docs/shortcuts.md
+  s_2ee3a3c28a7b98::t_a0ac18c33fbd95 32-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5fb4c64fb2fc781235e9d821135bd00bc56979d1",
+  "prompts": {},
+  "sessions": {
+    "s_2ee3a3c28a7b98": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "eef9095f-020b-4672-8618-9f287e876733",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
