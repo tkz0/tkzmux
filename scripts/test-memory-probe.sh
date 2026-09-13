@@ -41,6 +41,21 @@ if [ "$#" -gt 0 ]; then TARGETS=("$@"); else TARGETS=("${DEFAULT_TARGETS[@]}"); 
 
 mkdir -p "$OUT_DIR"
 
+# CommandLineTools ships Swift Testing but SwiftPM does not search its folder (Xcode's toolchain
+# does), so without these every test file fails with "no such module 'Testing'". The same flags go
+# to the build and to every `swift test`, or SwiftPM rebuilds between them. See TESTS.md.
+CLT=/Library/Developer/CommandLineTools
+SWIFT_FLAGS=()
+if [ "$(xcode-select -p 2>/dev/null)" = "$CLT" ] && [ -d "$CLT/Library/Developer/Frameworks/Testing.framework" ]; then
+  SWIFT_FLAGS=(
+    -Xswiftc "-F$CLT/Library/Developer/Frameworks"
+    -Xlinker -rpath -Xlinker "$CLT/Library/Developer/Frameworks"
+    -Xlinker -rpath -Xlinker "$CLT/Library/Developer/usr/lib"
+  )
+fi
+# bash 3.2 + `set -u` treats an empty array as unbound; this expands to nothing instead.
+flags() { echo ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"}; }
+
 # Every descendant of the pids in $1, breadth-first, including them.
 # Depth-bounded: the real chain is deep (zsh -> claude -> bash -> swift-package -> helper)
 # but it must still terminate if the table is odd.
@@ -99,7 +114,7 @@ diagnose() {
 
 # Build tests once up front so build time is not charged to any target's wall clock.
 echo "== building tests"
-if ! swift build --build-tests > "$OUT_DIR/build.log" 2>&1; then
+if ! swift build --build-tests $(flags) > "$OUT_DIR/build.log" 2>&1; then
   echo "build failed; see $OUT_DIR/build.log"
   tail -20 "$OUT_DIR/build.log"
   exit 1
@@ -111,9 +126,9 @@ overall=0
 
 for target in "${TARGETS[@]}"; do
   if [ "$target" = "ALL" ]; then
-    swift test > "$OUT_DIR/ALL.log" 2>&1 &
+    swift test $(flags) > "$OUT_DIR/ALL.log" 2>&1 &
   else
-    swift test --filter "$target" > "$OUT_DIR/$target.log" 2>&1 &
+    swift test --filter "$target" $(flags) > "$OUT_DIR/$target.log" 2>&1 &
   fi
   runner=$!
   peak=0; biggest="-"; outcome=""; started=$SECONDS

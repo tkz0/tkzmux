@@ -271,7 +271,7 @@ struct ShortcutsTableTests {
     @Test func cmuxDefaults() throws {
         let expected: [(ShortcutAction, String, ShortcutModifiers)] = [
             (.newSession, "n", .command),
-            (.searchSessions, "p", .command),
+            (.searchSessions, "f", .command),
             (.commandPalette, "p", [.shift, .command]),
             (.toggleSidebar, "b", .command),
             (.renameSession, "r", [.shift, .command]),

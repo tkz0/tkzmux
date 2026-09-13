@@ -469,6 +469,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
         self.sidebar = SidebarViewController(store: store, theme: theme)
         self.toolbarController = MainToolbarController(theme: theme)
+        toolbarController.searchShortcut = ShortcutsTable.resolved(state: store.state)[.searchSessions]
         self.statusBar = StatusBarView(theme: theme, model: .empty)
         self.palette = CommandPaletteController(state: store.state, mode: .all, theme: theme)
         self.newSessionMenu = NewSessionMenu(theme: theme)
@@ -2237,7 +2238,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         newSessionMenu.menu.popUp(positioning: nil, at: point, in: contentView)
     }
 
-    /// ⌘P — the toolbar's search field if it is on screen, else the palette in session mode.
+    /// ⌘F — the toolbar's search field if it is on screen, else the palette in session mode.
     public func beginSearch() {
         if let item = window.toolbar?.items.first(where: { $0.itemIdentifier == .tkzSearch })
             as? NSSearchToolbarItem
@@ -3318,10 +3319,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// reads its rows straight off it, which is why an edited `AppState.shortcuts` reaches the
     /// sheet without a relaunch even though the installed menu bar is only built at launch.
     func buildMainMenu(appName: String = "tkzmux") -> NSMenu {
-        MainMenu.build(
-            appName: appName,
-            shortcuts: ShortcutsTable.resolved(state: store.state),
-            dispatcher: dispatcher)
+        let shortcuts = ShortcutsTable.resolved(state: store.state)
+        // Same table as the menu, so the field's printed chord never disagrees with the key.
+        toolbarController.searchShortcut = shortcuts[.searchSessions]
+        return MainMenu.build(appName: appName, shortcuts: shortcuts, dispatcher: dispatcher)
     }
 
     // MARK: Diagnostics

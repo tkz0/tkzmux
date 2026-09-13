@@ -774,6 +774,9 @@ public final class TerminalViewHost: TerminalHost {
             return
         }
         let writes = encoded.pending
+        // A `let` copy: the `var` above cannot cross into the write queue's closure (Swift 6.3
+        // rejects it as a data race even though nothing mutates it past this point).
+        let encodedSweep = sweep
         let store = snapshots
         let logger = logger
         Self.snapshotWriteQueue.async {
@@ -798,7 +801,7 @@ public final class TerminalViewHost: TerminalHost {
                     // dirty flag quit reads, so marking a failed write fresh would make quit skip
                     // a session whose `.ghsnap` was never written.
                     for entry in done { self.compressor?.noteSnapshotted(entry.id, token: entry.token) }
-                    var finished = sweep
+                    var finished = encodedSweep
                     finished.saved = done.map(\.id)
                     finished.totalBytes = done.reduce(0) { $0 + $1.bytes }
                     finished.failed.append(contentsOf: lost)

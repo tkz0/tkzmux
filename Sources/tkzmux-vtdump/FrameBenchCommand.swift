@@ -73,7 +73,7 @@ enum FrameBenchCommand {
             text += String(repeating: " ", count: columns - 1)
             if row < rows - 1 { text += "\r\n" }
         }
-        try session.write(ptyBytes: Data(text.utf8))
+        session.write(ptyBytes: Data(text.utf8))
     }
 
     /// The default screen when no recording is given: representative terminal output — prose, a
@@ -95,7 +95,7 @@ enum FrameBenchCommand {
             text += lines[row % lines.count]
             if row < rows - 1 { text += "\r\n" }
         }
-        try session.write(ptyBytes: Data(text.utf8))
+        session.write(ptyBytes: Data(text.utf8))
     }
 
     // MARK: - run

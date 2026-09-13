@@ -7,7 +7,7 @@
 // measured test for it in `PaletteTests`.
 //
 // Two modes, because the design gives the two shortcuts different jobs:
-//   * ⌘P  "Search sessions…" — sessions only.
+//   * ⌘F  "Search sessions…" — sessions only.
 //   * ⇧⌘P command palette   — sessions, groups and commands.
 
 import Foundation
@@ -34,7 +34,7 @@ public struct PaletteDataSource: Sendable {
     }
 
     public enum Mode: Sendable {
-        /// ⌘P — sessions only.
+        /// ⌘F — sessions only.
         case sessions
         /// ⇧⌘P — everything.
         case all

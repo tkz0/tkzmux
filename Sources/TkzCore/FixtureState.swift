@@ -199,7 +199,7 @@ public enum Fixture {
             "closeTerminal": "cmd+w",
             "nextSession": "ctrl+cmd+down",
             "previousSession": "ctrl+cmd+up",
-            "searchSessions": "cmd+p",
+            "searchSessions": "cmd+f",
             "commandPalette": "shift+cmd+p",
             "toggleSidebar": "ctrl+cmd+s",
         ]

@@ -13,7 +13,7 @@ this table; nothing hard-codes a key equivalent.
 | Action id | Keys | What it does |
 |---|---|---|
 | `newSession` | ⌘N | Opens the group-scoped “＋ New session…” menu |
-| `searchSessions` | ⌘P | Puts the caret in the toolbar's “Search sessions…” field; typing opens the results overlay (see below). With no toolbar (the field hidden), falls back to the centred palette in sessions mode |
+| `searchSessions` | ⌘F | Puts the caret in the toolbar's “Search sessions…” field, whose placeholder prints the bound chord (an override shows its own); typing opens the results overlay (see below). With no toolbar (the field hidden), falls back to the centred palette in sessions mode |
 | `commandPalette` | ⇧⌘P | Palette, everything (sessions, groups, commands) |
 | `toggleSidebar` | ⌘B | Show/hide the sidebar |
 | `toggleTheme` | — | Flip between the dark theme and its light twin. Also the ☀/☾ button at the right of the toolbar; the choice is remembered across launches |
@@ -54,7 +54,7 @@ keep parsing; their chords stay in `ShortcutsTable.defaults`, so ⌘I, ⌘, and 
 not free**. Registering a handler is the whole of bringing one back — it reappears in the menu, the
 palette and the cheat sheet at once, with no change here or to the table.
 
-## Inside the search overlay (⌘P, design 2c.6)
+## Inside the search overlay (⌘F, design 2c.6)
 
 The overlay is a child window that never takes the keyboard: the toolbar field keeps the caret and
 relays these keys to it (`MainToolbarController` → `MainWindowController` → `CommandPaletteController`).
