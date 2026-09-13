@@ -912,6 +912,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         newSessionMenu.onSelectAccount = { [weak self] groupID, key in
             self?.setGroupDefaultAccount(groupID, key: key)
         }
+        // App-wide, unlike the account: which CLI (`claude`, `grok`, …) every new session runs.
+        // Re-configured afterwards for the same reason as the account — the menu holds copies.
+        newSessionMenu.onSelectAgent = { [weak self] agentID in
+            guard let self else { return }
+            let scope = newSessionMenu.group?.id
+            store.update { $0.setDefaultAgent(agentID) }
+            newSessionMenu.configure(state: store.state, groupID: scope)
+        }
         toolbarController.newSessionMenu = newSessionMenu.menu
         // `>_` is "new terminal" in the design: a bare shell in the selected group's directory,
         // not another way to open the `＋` menu.
@@ -2361,19 +2369,22 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     /// 2c.6's Actions row: start a session in the named group with the typed text as its first
-    /// prompt. `Launch.command` is a command line, so the prompt is simply `claude`'s argument.
+    /// prompt. `Launch.command` is a command line, so the prompt is simply the default agent's
+    /// argument (`claude '…'`, `grok '…'`).
     private func perform(_ action: SearchAction) {
         guard let groupID = action.groupID else { return }
         newSessionMenu.configure(state: store.state, groupID: groupID)
         guard var launch = newSessionMenu.repoRootLaunch() ?? newSessionMenu.shellLaunch(
             fallbackDirectory: NSHomeDirectory())
         else { return }
+        let agent = newSessionMenu.agent
         launch = NewSessionMenu.Launch(
             kind: launch.kind,
-            command: "claude \(Self.shellQuoted(action.prompt))",
+            command: agent.launchCommand(quotedPrompt: Self.shellQuoted(action.prompt)),
             cwd: launch.cwd,
             accountKey: launch.accountKey,
-            groupID: launch.groupID)
+            groupID: launch.groupID,
+            agentID: agent.id)
         newSessionMenu.perform(launch)
     }
 

@@ -126,8 +126,9 @@ public final class SessionLauncher {
                 for: id)
             // A command means Claude is on its way: the pane shows "Starting Claude…" until a
             // descriptor or `SessionStart` says it arrived (`.shell` carries none, and shows
-            // nothing).
-            if !spec.command.isEmpty {
+            // nothing). Another agent (`grok`, `codex`, …) never binds a descriptor or sends a
+            // hook, so it would sit under the overlay until the give-up delay: no startup for it.
+            if !spec.command.isEmpty && spec.agentID == CodingAgent.claude.id {
                 $0.beginClaudeStartup(id, terminal: terminal, command: spec.command, now: now)
             }
             $0.select(id)

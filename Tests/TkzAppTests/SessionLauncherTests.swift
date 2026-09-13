@@ -328,6 +328,17 @@ struct SessionLauncherTests {
         _ = h.launcher.reopen(plain)
         h.store.flush()
         #expect(h.session(plain)?.live?.claudeStartup == nil)
+
+        // Another agent gets its boot command but no "Starting Claude…": nothing would clear it.
+        let grok = try h.launcher.start(
+            NewSessionMenu.Launch(
+                kind: .repoRoot, command: "grok", cwd: h.tree.repo, accountKey: nil,
+                groupID: h.group, agentID: CodingAgent.grok.id),
+            now: now
+        ).get()
+        h.store.flush()
+        #expect(h.session(grok)?.live != nil)
+        #expect(h.session(grok)?.live?.claudeStartup == nil)
     }
 
     @Test("resume: a row whose shell is already up gets the command typed directly")

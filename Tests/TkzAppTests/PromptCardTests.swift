@@ -213,8 +213,13 @@ struct PromptCardTests {
             done(Self.summary(recap: "recap \(reads)"))
         }
         controller.transcriptPathProvider = { _ in transcript.path }
-        controller.present(for: .generate(), over: nil)
+        // A peek, not `present`: a pinned card dismisses itself on `windowDidResignKey`, and in the
+        // full TkzAppTests run another suite's window takes key while this one waits — the card
+        // closed, the watch stopped, and the refresh never came. A peek is never key, and it
+        // watches the transcript exactly as a pinned card does.
+        controller.peek(for: .generate(), over: nil)
         #expect(reads == 1)
+        #expect(controller.isWatchingForTesting)
 
         let handle = try FileHandle(forWritingTo: transcript)
         try handle.seekToEnd()

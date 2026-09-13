@@ -90,13 +90,15 @@ private func runHook(
     let start = Date()
     try process.run()
 
-    let writeQueue = DispatchQueue(label: "hook-binary-test-stdin")
-    writeQueue.async {
+    // A dedicated thread rather than a dispatch queue: parallel tests blocking pool threads in
+    // `readDataToEndOfFile` below can leave no thread to run a queued block, and the hook then
+    // waits forever for EOF on stdin (see `StatuslineTestSupport.run`).
+    Thread {
         if !stdinBytes.isEmpty {
             stdinPipe.fileHandleForWriting.write(Data(stdinBytes))
         }
         try? stdinPipe.fileHandleForWriting.close()
-    }
+    }.start()
 
     let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
     let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()

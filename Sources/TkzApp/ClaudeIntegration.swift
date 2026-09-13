@@ -47,6 +47,13 @@ public final class ClaudeIntegration {
     /// and spend per session). Unlike `statusline`, this needs nothing installed or opted into —
     /// `~/.claude` is already read for the first-prompt card — so it is always present.
     public let usageReader: TranscriptUsageReader
+    /// The same, for rows running the Grok CLI: Grok writes its own per-turn usage and cost into
+    /// `~/.grok/sessions/…/updates.jsonl`. Rows are bound to a Grok session on the status tick.
+    public let grokUsageReader: GrokUsageReader
+    /// `~/.grok`. Injected through `home`, so tests point it at a fixture.
+    public let grokHome: String
+    /// Memoized `GrokSessions.updatesPath` hits per row, keyed by the Grok session id they answer.
+    var grokUpdatesPaths: [SessionID: (grokID: String, path: String)] = [:]
 
     /// `launch`-frame bindings. A session that exits keeps its entry until the pid is reused by a
     /// later `launch`, which simply overwrites it.
@@ -157,6 +164,9 @@ public final class ClaudeIntegration {
         statuslineInstaller = StatuslineInstaller(directory: directory)
         usageReader = TranscriptUsageReader(
             cacheDirectory: TranscriptUsageReader.standardDirectory(supportDirectory: directory))
+        grokUsageReader = GrokUsageReader(
+            cacheDirectory: GrokUsageReader.standardDirectory(supportDirectory: directory))
+        grokHome = GrokSessions.home(userHome: home)
         box.value = self
 
         let toRegister = accounts.values.filter { store.state.accounts[$0.key] == nil }
@@ -401,6 +411,7 @@ public final class ClaudeIntegration {
         transcriptPaths.removeValue(forKey: id)
         locatedTranscripts.removeValue(forKey: id)
         transcriptSummaries.removeValue(forKey: id)
+        grokUpdatesPaths.removeValue(forKey: id)
         pidToSession = pidToSession.filter { $0.value != id }
     }
 
@@ -420,6 +431,66 @@ public final class ClaudeIntegration {
 
     private func tickFired() {
         store.update { $0.rederiveStatuses(now: Date()) }
+        bindGrokSessions()
+    }
+
+    // MARK: Grok CLI
+
+    /// The Grok CLI sends no hooks, so it is found by polling: every running Grok session in
+    /// `~/.grok/active_sessions.json` whose pid descends from one of a row's pty shells is bound to
+    /// that row, and its usage re-read (only the bytes Grok appended since the last tick).
+    ///
+    /// `active` is injected by tests; the real tick reads the file, which is a few hundred bytes and
+    /// absent entirely on a machine without Grok.
+    func bindGrokSessions(
+        active: [GrokSessions.Active]? = nil,
+        parent: (pid_t) -> pid_t? = ProcessTree.parent(of:)
+    ) {
+        let running = active ?? GrokSessions.active(grokHome: grokHome)
+        guard !running.isEmpty else { return }
+        var rowByShell: [pid_t: SessionID] = [:]
+        for session in store.state.sessions.values {
+            guard let live = session.live else { continue }
+            if let shell = live.shellPid { rowByShell[shell] = session.id }
+            for pid in live.panePids.values { rowByShell[pid] = session.id }
+        }
+        guard !rowByShell.isEmpty else { return }
+        let shells = Set(rowByShell.keys)
+        for entry in running {
+            guard let shell = GrokSessions.owningRoot(of: entry.pid, in: shells, parent: parent),
+                  let id = rowByShell[shell]
+            else { continue }
+            if store.state.sessions[id]?.grokSessionId != entry.sessionId {
+                logger.info("grok session \(entry.sessionId, privacy: .public) bound to \(id.rawValue, privacy: .public)")
+                store.update { $0.setGrokSessionId(id, entry.sessionId) }
+            }
+            refreshUsage(for: id)
+        }
+    }
+
+    private func refreshGrokUsage(for id: SessionID, grokSessionId: String, cwd: String) {
+        let path = grokUpdatesPath(for: id, grokSessionId: grokSessionId, cwd: cwd)
+        Task { @MainActor [weak self] in
+            guard let self,
+                  let usage = await self.grokUsageReader.refresh(
+                    sessionId: grokSessionId, updatesPath: path)
+            else { return }
+            // The row may have been rebound to a newer Grok session while the read ran.
+            guard self.store.state.sessions[id]?.grokSessionId == grokSessionId else { return }
+            self.store.update { $0.setSessionUsage(usage, for: id) }
+        }
+    }
+
+    /// Memoized hits only: `updates.jsonl` does not exist until Grok writes its first update, so a
+    /// miss must be asked again on the next tick.
+    func grokUpdatesPath(for id: SessionID, grokSessionId: String, cwd: String) -> String? {
+        if let cached = grokUpdatesPaths[id], cached.grokID == grokSessionId { return cached.path }
+        let expanded = (cwd as NSString).expandingTildeInPath
+        guard let path = GrokSessions.updatesPath(
+            sessionId: grokSessionId, cwd: expanded, grokHome: grokHome)
+        else { return nil }
+        grokUpdatesPaths[id] = (grokSessionId, path)
+        return path
     }
 
     // MARK: Hook frames
@@ -465,9 +536,18 @@ public final class ClaudeIntegration {
     /// `setSpendTrackingDisabled` already cleared any stale `live.usage` when the switch flipped
     /// off, so there is nothing this needs to undo, only nothing further to do.
     private func refreshUsage(for id: SessionID) {
-        guard let session = store.state.sessions[id], let claudeSessionId = session.claudeSessionId,
+        guard let session = store.state.sessions[id],
               store.state.showSessionSpend, session.spendTrackingDisabled != true
         else { return }
+        // A row bound to a Grok session reads Grok's usage — unless Claude is the process actually
+        // running there right now (a bound descriptor), which is the conversation the user sees.
+        if let grokSessionId = session.grokSessionId,
+           session.live?.descriptor == nil || session.claudeSessionId == nil
+        {
+            refreshGrokUsage(for: id, grokSessionId: grokSessionId, cwd: session.cwd)
+            return
+        }
+        guard let claudeSessionId = session.claudeSessionId else { return }
         let path = transcriptPath(for: id)
         Task { @MainActor [weak self] in
             guard let self else { return }

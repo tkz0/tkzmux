@@ -13,6 +13,13 @@ import TkzCore
 @MainActor
 struct NewSessionMenuTests {
 
+    /// `performItem` goes through `NSMenu.performActionForItem(at:)`, which only dispatches once an
+    /// `NSApplication` exists. Without this the suite passed only when another suite happened to
+    /// create one first, and failed on a filtered run.
+    init() {
+        _ = NSApplication.shared
+    }
+
     static let state = AppState.fixture
     static let northwind = Fixture.groupID(0)   // Northwind Trading, ~/dev/northwind, claude-work
     static let scheduled = Fixture.groupID(2)     // Scheduled — a bucket with no repo, claude
@@ -261,6 +268,65 @@ struct NewSessionMenuTests {
         #expect(bucket.cwd == "/tmp")
 
         #expect(NewSessionMenu().shellLaunch() == nil, "no group selected, no launch")
+    }
+
+    // MARK: - The default agent
+
+    @Test("Claude is the default agent, and the submenu says so")
+    func claudeIsTheDefault() throws {
+        let menu = Self.menu(for: Self.northwind)
+        #expect(menu.agent == .claude)
+        #expect(menu.repoRootLaunch()?.agentID == CodingAgent.claude.id)
+        #expect(Self.text(try #require(menu.item(NewSessionMenu.ItemID.agent))) == "Default agent: Claude")
+        #expect(menu.item(NewSessionMenu.ItemID.agentRow("claude"))?.state == .on)
+        #expect(menu.item(NewSessionMenu.ItemID.agentRow("grok"))?.state == .off)
+    }
+
+    @Test("Another default agent changes what the launch rows run and show")
+    func anotherAgentDrivesTheLaunchRows() throws {
+        var state = Self.state
+        state.setDefaultAgent(CodingAgent.grok.id)
+        let menu = NewSessionMenu()
+        menu.configure(state: state, groupID: Self.northwind)
+
+        let root = try #require(menu.item(NewSessionMenu.ItemID.repoRoot))
+        #expect(Self.text(root).contains("grok"), "the command hint names the agent")
+        #expect(menu.repoRootLaunch()?.command == "grok")
+        #expect(menu.repoRootLaunch()?.agentID == "grok")
+
+        // Grok makes its own worktree with `-w`, exactly like Claude.
+        let worktree = try #require(menu.item(NewSessionMenu.ItemID.worktree))
+        #expect(worktree.isEnabled)
+        #expect(Self.text(worktree).contains("grok -w"))
+        #expect(menu.worktreeLaunch()?.command == "grok -w")
+        #expect(menu.worktreeLaunch(name: "feat")?.command == "grok -w feat")
+        #expect(menu.worktreeLaunch()?.agentID == "grok")
+
+        // Codex has no worktree flag: the row stays visible, disabled, and says why.
+        var codexState = Self.state
+        codexState.setDefaultAgent(CodingAgent.codex.id)
+        let codexMenu = NewSessionMenu()
+        codexMenu.configure(state: codexState, groupID: Self.northwind)
+        let codexWorktree = try #require(codexMenu.item(NewSessionMenu.ItemID.worktree))
+        #expect(!codexWorktree.isEnabled)
+        #expect(Self.text(codexWorktree).contains("Codex has no worktree flag"))
+        #expect(codexMenu.worktreeLaunch() == nil)
+
+        #expect(menu.item(NewSessionMenu.ItemID.agentRow("grok"))?.state == .on)
+        var picked: [String] = []
+        menu.onSelectAgent = { picked.append($0) }
+        #expect(menu.performItem(NewSessionMenu.ItemID.agentRow("claude")))
+        #expect(picked == ["claude"])
+    }
+
+    @Test func anUnknownAgentIdResolvesToClaude() {
+        #expect(CodingAgent.resolve("nope") == .claude)
+        #expect(CodingAgent.resolve("codex") == .codex)
+        #expect(CodingAgent.claude.worktreeCommand(name: "x") == "claude -w x")
+        #expect(CodingAgent.gemini.worktreeCommand() == nil)
+        var state = AppState()
+        state.setDefaultAgent("nope")
+        #expect(state.defaultAgentID == "claude")
     }
 }
 

@@ -84,7 +84,29 @@ private func makeState() -> AppState {
         #expect(restored.shortcuts == original.shortcuts)
         #expect(restored.autoResumeOnLaunch == original.autoResumeOnLaunch)
         #expect(restored.showSessionSpend == original.showSessionSpend)
+        #expect(restored.defaultAgentID == original.defaultAgentID)
     }
+}
+
+@Test func theDefaultAgentRoundTripsAndAnUnknownOneFallsBackToClaude() throws {
+    var state = makeState()
+    state.setDefaultAgent(CodingAgent.grok.id)
+    var restored = AppState()
+    let persisted = PersistedState(state)
+    #expect(persisted.preferences.defaultAgent == "grok")
+    #expect(persisted.apply(to: &restored).isEmpty)
+    #expect(restored.defaultAgentID == "grok")
+
+    // Claude is written as "no choice", so an untouched file does not grow a key.
+    state.setDefaultAgent(CodingAgent.claude.id)
+    #expect(PersistedState(state).preferences.defaultAgent == nil)
+
+    var future = PersistedState(state)
+    future.preferences.defaultAgent = "some-agent-from-a-newer-build"
+    var degraded = AppState()
+    let warnings = future.apply(to: &degraded)
+    #expect(degraded.defaultAgentID == CodingAgent.claude.id)
+    #expect(warnings.contains { $0.contains("some-agent-from-a-newer-build") })
 }
 
 @Test func aFileWithoutPreferencesLoadsWithTheDefaults() throws {
@@ -105,6 +127,7 @@ private func makeState() -> AppState {
     // A file predating this switch has no key for it either; missing must default to *on*, unlike
     // every other switch in this block, which defaults off.
     #expect(restored.showSessionSpend == true)
+    #expect(restored.defaultAgentID == CodingAgent.claude.id)
     #expect(restored.sessions.count == state.sessions.count)
 }
 

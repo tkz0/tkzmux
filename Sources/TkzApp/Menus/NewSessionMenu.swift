@@ -5,6 +5,11 @@
 // → Session flows: new worktree runs `claude -w [name]` **from the repo root**, repo root runs
 // `claude`.
 //
+// The command is the **default agent's** (`CodingAgent`): `claude` unless the user picked another
+// CLI in the *Default agent* submenu, in which case *In repo root* runs e.g. `grok`. *New worktree*
+// needs the agent to create its own worktree (`claude -w`), so it is disabled — and says so — for
+// an agent without that flag.
+//
 // The rule this ticket exists for: **the user must never wonder what "New session" does.** Every
 // entry names its target — the group in the header, the command in a mono hint, the directory the
 // child would start in, and, for the disabled entries, *why* they are disabled ("no repo"). That is
@@ -48,19 +53,24 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         /// ``effectiveAccountKey``.
         public let accountKey: String?
         public let groupID: GroupID
+        /// `CodingAgent.id` of the CLI `command` starts. Only a Claude launch waits for Claude to
+        /// report in (the "Starting Claude…" overlay); any other agent never sends that signal.
+        public let agentID: String
 
         public init(
             kind: Kind,
             command: String,
             cwd: String,
             accountKey: String?,
-            groupID: GroupID
+            groupID: GroupID,
+            agentID: String = CodingAgent.claude.id
         ) {
             self.kind = kind
             self.command = command
             self.cwd = cwd
             self.accountKey = accountKey
             self.groupID = groupID
+            self.agentID = agentID
         }
 
         /// The one-line description the stub logs — and what the tests assert on.
@@ -92,6 +102,12 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         public static let accountNone = NSUserInterfaceItemIdentifier("tkzmux.newSession.accountNone")
         /// The group's default names an account that is not in `state.accounts` any more.
         public static let accountMissing = NSUserInterfaceItemIdentifier("tkzmux.newSession.accountMissing")
+        public static let agent = NSUserInterfaceItemIdentifier("tkzmux.newSession.agent")
+        public static let agentRow = NSUserInterfaceItemIdentifier("tkzmux.newSession.agentRow")
+        /// One agent row, addressed by `CodingAgent.id`.
+        public static func agentRow(_ id: String) -> NSUserInterfaceItemIdentifier {
+            NSUserInterfaceItemIdentifier(agentRow.rawValue + "." + id)
+        }
     }
 
     /// The row with this identifier, in the menu or in one of its submenus.
@@ -116,6 +132,8 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     public var group: Group?
     /// Accounts by key, for the Account submenu.
     public var accounts: [String: Account] = [:]
+    /// The CLI the launch rows run — `AppState.defaultAgentID`, resolved.
+    public var agent: CodingAgent = .claude
     public var theme: Theme
 
     /// Where a resolved launch goes. Unset = ``logStub`` (this ticket's deliverable).
@@ -126,6 +144,9 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     /// is the assembler's call, and it must re-``configure(state:groupID:)`` afterwards: ``group``
     /// is a value copy, so the next `menuNeedsUpdate` would otherwise rebuild from the old one.
     public var onSelectAccount: ((GroupID, String?) -> Void)?
+    /// The Default agent submenu picked a `CodingAgent.id` — app-wide, not per group. Same
+    /// store-then-re-``configure(state:groupID:)`` contract as ``onSelectAccount``.
+    public var onSelectAgent: ((String) -> Void)?
 
     /// The last launch the menu resolved — the stub's record, and what tests read.
     public private(set) var lastLaunch: Launch?
@@ -147,6 +168,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     public func configure(state: AppState, groupID: GroupID?) {
         group = groupID.flatMap { state.groups[$0] }
         accounts = state.accounts
+        agent = CodingAgent.resolve(state.defaultAgentID)
         rebuild()
     }
 
@@ -193,12 +215,18 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         menu.addItem(header)
 
         let repoRoot = group.repoRoot
+        let noRepo = "no repo \u{2014} add one to this group first"
 
+        // An agent with no worktree flag keeps the row, disabled, with the reason as its detail —
+        // the same "say why" rule as a group with no repo.
+        let worktreeCommand = agent.worktreeCommand()
         let worktree = entry(
             title: "New worktree",
-            hint: "claude -w",
-            detail: repoRoot ?? "no repo \u{2014} add one to this group first",
-            enabled: repoRoot != nil,
+            hint: worktreeCommand,
+            detail: worktreeCommand == nil
+                ? "\(agent.name) has no worktree flag"
+                : repoRoot ?? noRepo,
+            enabled: repoRoot != nil && worktreeCommand != nil,
             action: #selector(newWorktree)
         )
         worktree.identifier = ItemID.worktree
@@ -206,8 +234,8 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
 
         let root = entry(
             title: "In repo root",
-            hint: "claude",
-            detail: repoRoot ?? "no repo \u{2014} add one to this group first",
+            hint: agent.launchCommand,
+            detail: repoRoot ?? noRepo,
             enabled: repoRoot != nil,
             action: #selector(newInRepoRoot)
         )
@@ -225,7 +253,38 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         menu.addItem(another)
 
         menu.addItem(.separator())
+        menu.addItem(agentItem())
         menu.addItem(accountItem(group: group))
+    }
+
+    /// "Default agent ▸": which AI CLI **every new session, in every group** starts. One row per
+    /// built-in `CodingAgent`, its command as the hint; the checkmark is the current default.
+    private func agentItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Default agent: \(agent.name)", action: nil, keyEquivalent: "")
+        item.identifier = ItemID.agent
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        for candidate in CodingAgent.builtIn {
+            let row = NSMenuItem(
+                title: candidate.name, action: #selector(selectAgentItem(_:)), keyEquivalent: "")
+            row.target = self
+            row.representedObject = candidate.id
+            row.identifier = ItemID.agentRow(candidate.id)
+            row.state = candidate == agent ? .on : .off
+            row.attributedTitle = attributed(
+                title: candidate.name, hint: candidate.launchCommand,
+                // Grok's spend is read off its own session files (`GrokUsageReader`); the rest is
+                // still Claude's integration alone.
+                detail: candidate.isClaude
+                    ? nil
+                    : candidate == .grok
+                        ? "status and resume are Claude only"
+                        : "status, resume and spend are Claude only",
+                enabled: true)
+            submenu.addItem(row)
+        }
+        item.submenu = submenu
+        return item
     }
 
     /// "Default account ▸": which account **every new session in this group** gets.
@@ -337,12 +396,14 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     // MARK: Resolution
 
     /// `claude -w` from the repo root — design.md: a worktree is created *from the main checkout*.
+    /// `nil` too when the default agent cannot create a worktree.
     public func worktreeLaunch(name: String? = nil) -> Launch? {
-        guard let group, let repoRoot = group.repoRoot else { return nil }
-        let command = name.map { "claude -w \($0)" } ?? "claude -w"
+        guard let group, let repoRoot = group.repoRoot,
+              let command = agent.worktreeCommand(name: name)
+        else { return nil }
         return Launch(
             kind: .worktree, command: command, cwd: repoRoot,
-            accountKey: effectiveAccountKey, groupID: group.id)
+            accountKey: effectiveAccountKey, groupID: group.id, agentID: agent.id)
     }
 
     /// A bare login shell in the group's directory. The toolbar's `>_` ("new terminal") button.
@@ -362,8 +423,8 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     public func repoRootLaunch() -> Launch? {
         guard let group, let repoRoot = group.repoRoot else { return nil }
         return Launch(
-            kind: .repoRoot, command: "claude", cwd: repoRoot,
-            accountKey: effectiveAccountKey, groupID: group.id)
+            kind: .repoRoot, command: agent.launchCommand, cwd: repoRoot,
+            accountKey: effectiveAccountKey, groupID: group.id, agentID: agent.id)
     }
 
     /// Hands a resolved launch to ``onLaunch``, or logs it. Public so the assembler can replay one.
@@ -407,5 +468,10 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     @objc private func selectNoAccountItem() {
         guard let group else { return }
         onSelectAccount?(group.id, nil)
+    }
+
+    @objc private func selectAgentItem(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        onSelectAgent?(id)
     }
 }

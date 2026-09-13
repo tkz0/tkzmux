@@ -361,6 +361,12 @@ extension AppState {
         autoResumeOnLaunch = enabled
     }
 
+    /// Which AI CLI new sessions start (`CodingAgent`). Running sessions keep whatever they
+    /// started with; an unknown id is stored as Claude, so the menu always has a row checked.
+    public mutating func setDefaultAgent(_ id: String) {
+        defaultAgentID = CodingAgent.resolve(id).id
+    }
+
     /// The global on/off for token usage/spend (design: enable/disable, all sessions). Turning it
     /// off clears every session's already-summed `live.usage` right away, rather than leaving a
     /// stale figure on screen until the next hook fires; turning it back on needs a fresh read,
@@ -481,6 +487,22 @@ extension AppState {
     public mutating func setSessionUsage(_ usage: SessionUsage, claudeSessionId: String) {
         guard let id = sessions.values.first(where: { $0.claudeSessionId == claudeSessionId })?.id
         else { return }
+        updateLive(id) { $0.usage = usage }
+    }
+
+    /// A Grok CLI session was found running under this row's shell. A *different* session than the
+    /// one bound before drops the old figure right away: it belonged to another conversation.
+    public mutating func setGrokSessionId(_ id: SessionID, _ grokSessionId: String?) {
+        guard let session = sessions[id], session.grokSessionId != grokSessionId else { return }
+        sessions[id]?.grokSessionId = grokSessionId
+        if session.live?.usage != nil { updateLive(id) { $0.usage = nil } }
+    }
+
+    /// Usage for a row known by its own id — `GrokUsageReader`'s results, which have no Claude
+    /// session id to join on. Only onto a row that already has live state: a restored row nobody
+    /// has opened must not be woken by a background read.
+    public mutating func setSessionUsage(_ usage: SessionUsage, for id: SessionID) {
+        guard sessions[id]?.live != nil, sessions[id]?.live?.usage != usage else { return }
         updateLive(id) { $0.usage = usage }
     }
 }

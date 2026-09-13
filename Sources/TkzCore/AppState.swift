@@ -42,6 +42,10 @@ public struct AppState: Hashable, Sendable {
     /// `Session.spendTrackingDisabled`; that per-session flag is checked in addition to this one,
     /// never instead of it. Durable, in `PersistedPreferences`.
     public var showSessionSpend: Bool
+    /// `CodingAgent.id` of the CLI "New session" starts — Claude unless the user picked another in
+    /// the new-session menu. Always a built-in id: `PersistedState.apply` resolves anything else to
+    /// Claude. Durable, in `PersistedPreferences`.
+    public var defaultAgentID: String
     /// The active colour scheme. The ☾/☀ toggle in the toolbar writes it; `MainWindowController` is
     /// its sole observer, via `ChangeSet.theme`. Durable, in `PersistedPreferences`.
     public var themePreset: Theme.Preset
@@ -63,6 +67,7 @@ public struct AppState: Hashable, Sendable {
         statuslineOffered: Bool = false,
         dismissedUpdateVersion: String? = nil,
         showSessionSpend: Bool = true,
+        defaultAgentID: String = CodingAgent.claude.id,
         themePreset: Theme.Preset = Theme.default.preset,
         update: UpdateState = UpdateState()
     ) {
@@ -79,6 +84,7 @@ public struct AppState: Hashable, Sendable {
         self.statuslineOffered = statuslineOffered
         self.dismissedUpdateVersion = dismissedUpdateVersion
         self.showSessionSpend = showSessionSpend
+        self.defaultAgentID = defaultAgentID
         self.themePreset = themePreset
         self.update = update
     }

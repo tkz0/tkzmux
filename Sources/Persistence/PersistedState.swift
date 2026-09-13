@@ -77,24 +77,29 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     /// written before this existed, which must default to *on* — `decodeIfPresent(...) ?? true`
     /// below, not `?? false` like the other switches here, all of which default off.
     public var showSessionSpend: Bool
+    /// `CodingAgent.id` new sessions start; `nil` = never changed, so Claude. A raw `String` for
+    /// the same reason as `themePreset`: an agent a newer build added must not fail the load.
+    public var defaultAgent: String?
 
     public init(
         autoResumeOnLaunch: Bool = false,
         statuslineOffered: Bool = false,
         dismissedUpdateVersion: String? = nil,
         themePreset: String? = nil,
-        showSessionSpend: Bool = true
+        showSessionSpend: Bool = true,
+        defaultAgent: String? = nil
     ) {
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
         self.dismissedUpdateVersion = dismissedUpdateVersion
         self.themePreset = themePreset
         self.showSessionSpend = showSessionSpend
+        self.defaultAgent = defaultAgent
     }
 
     private enum CodingKeys: String, CodingKey {
         case autoResumeOnLaunch, statuslineOffered, dismissedUpdateVersion, themePreset
-        case showSessionSpend
+        case showSessionSpend, defaultAgent
     }
 
     public init(from decoder: any Decoder) throws {
@@ -104,6 +109,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         dismissedUpdateVersion = try c.decodeIfPresent(String.self, forKey: .dismissedUpdateVersion)
         themePreset = try c.decodeIfPresent(String.self, forKey: .themePreset)
         showSessionSpend = try c.decodeIfPresent(Bool.self, forKey: .showSessionSpend) ?? true
+        defaultAgent = try c.decodeIfPresent(String.self, forKey: .defaultAgent)
     }
 }
 
@@ -194,7 +200,10 @@ public struct PersistedState: Hashable, Sendable, Codable {
                 statuslineOffered: state.statuslineOffered,
                 dismissedUpdateVersion: state.dismissedUpdateVersion,
                 themePreset: state.themePreset.rawValue,
-                showSessionSpend: state.showSessionSpend))
+                showSessionSpend: state.showSessionSpend,
+                // Claude is "never changed": an untouched file does not grow a key.
+                defaultAgent: state.defaultAgentID == CodingAgent.claude.id
+                    ? nil : state.defaultAgentID))
     }
 
     // MARK: Restore
@@ -249,6 +258,13 @@ public struct PersistedState: Hashable, Sendable, Codable {
         state.statuslineOffered = preferences.statuslineOffered
         state.dismissedUpdateVersion = preferences.dismissedUpdateVersion
         state.showSessionSpend = preferences.showSessionSpend
+        if let raw = preferences.defaultAgent {
+            let agent = CodingAgent.resolve(raw)
+            if agent.id != raw {
+                warnings.append("default agent \"\(raw)\" is not one this build knows; using \(agent.name)")
+            }
+            state.defaultAgentID = agent.id
+        }
         if let raw = preferences.themePreset {
             if let preset = Theme.Preset(rawValue: raw) {
                 state.themePreset = preset

@@ -72,10 +72,15 @@ enum StatuslineTestSupport {
         process.standardOutput = output
         process.standardError = errors
         try process.run()
-        DispatchQueue.global().async {
+        // A dedicated thread, not `DispatchQueue.global()`: Swift Testing runs these suites in
+        // parallel, and each one blocks a pool thread in `readDataToEndOfFile` below. With enough of
+        // them blocked, the pool GCD shares with Swift concurrency has no thread left to run a
+        // global-queue block, so stdin was never closed and every `tkzmux-hook statusline` sat in
+        // `read(0)` — the full ClaudeBridgeTests run hung this way every time.
+        Thread {
             if !stdin.isEmpty { input.fileHandleForWriting.write(Data(stdin.utf8)) }
             try? input.fileHandleForWriting.close()
-        }
+        }.start()
         let out = output.fileHandleForReading.readDataToEndOfFile()
         let err = errors.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()

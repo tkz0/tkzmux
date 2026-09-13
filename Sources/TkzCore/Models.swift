@@ -171,6 +171,10 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// The most recent Claude `sessionId`, used for `claude --resume <id>`. Rotates on
     /// `/clear`, resume and fork, so it is updated whenever a descriptor or SessionStart says so.
     public var claudeSessionId: String?
+    /// The Grok CLI session running (or last run) in this row — `~/.grok/active_sessions.json`'s
+    /// `session_id`, bound when a Grok pid turns out to descend from one of the row's shells. What
+    /// Grok token usage and spend are read from (`GrokUsageReader`).
+    public var grokSessionId: String?
     public var createdAt: Date
     public var lastActiveAt: Date
     /// This session's own opt-out of the token usage/spend feature (design: enable/disable, per
@@ -199,6 +203,7 @@ public struct Session: Hashable, Sendable, Identifiable {
         isWorktree: Bool = false,
         accountKey: String,
         claudeSessionId: String? = nil,
+        grokSessionId: String? = nil,
         createdAt: Date = Date(),
         lastActiveAt: Date = Date(),
         spendTrackingDisabled: Bool? = nil,
@@ -216,6 +221,7 @@ public struct Session: Hashable, Sendable, Identifiable {
         self.isWorktree = isWorktree
         self.accountKey = accountKey
         self.claudeSessionId = claudeSessionId
+        self.grokSessionId = grokSessionId
         self.createdAt = createdAt
         self.lastActiveAt = lastActiveAt
         self.spendTrackingDisabled = spendTrackingDisabled
@@ -399,7 +405,7 @@ extension Session: Codable {
     /// `live` is deliberately absent: process state is rebuilt at launch, never persisted.
     private enum CodingKeys: String, CodingKey {
         case id, groupID, order, title, cwd, repoRoot, worktreePath, isWorktree
-        case accountKey, claudeSessionId, createdAt, lastActiveAt, spendTrackingDisabled
+        case accountKey, claudeSessionId, grokSessionId, createdAt, lastActiveAt, spendTrackingDisabled
         case tabs, activeTab
     }
 }

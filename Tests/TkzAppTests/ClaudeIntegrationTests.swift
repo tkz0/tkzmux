@@ -54,6 +54,41 @@ struct ClaudeIntegrationTests {
 
     // MARK: - Synthetic frames
 
+    @Test("a Grok pid under the row's shell binds its session and lands Grok's own spend")
+    func grokSessionBindsAndReportsSpend() async throws {
+        let h = Self.makeHarness()
+        h.store.update { $0.setLive(LiveSessionState(shellPid: 500, status: .idle), for: h.session) }
+        h.store.flush()
+
+        // `home` is the harness directory, so `~/.grok` is a fixture under it.
+        let sessionDir = URL(filePath: h.integration.grokHome)
+            .appending(path: "sessions/\(GrokSessions.encodedDirectoryName(cwd: "/tmp/nowhere"))/g-1")
+        try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        let turn = #"{"params":{"update":{"sessionUpdate":"turn_completed","usage":{"modelUsage":{"grok-4.6-build":{"inputTokens":100,"outputTokens":10,"cachedReadTokens":40,"costUsdTicks":25000000000}}}}}}"#
+        try Data((turn + "\n").utf8).write(to: sessionDir.appending(path: "updates.jsonl"))
+
+        // zsh(500) → grok(700); grok(900) belongs to no row.
+        let parents: [pid_t: pid_t] = [700: 500, 900: 1]
+        h.integration.bindGrokSessions(
+            active: [
+                GrokSessions.Active(sessionId: "g-1", pid: 700, cwd: "/tmp/nowhere"),
+                GrokSessions.Active(sessionId: "stranger", pid: 900, cwd: "/elsewhere"),
+            ],
+            parent: { parents[$0] })
+        h.store.flush()
+        #expect(h.store.state.sessions[h.session]?.grokSessionId == "g-1")
+
+        // The read hops through the reader actor; wait for it to land.
+        for _ in 0..<100 where h.store.state.sessions[h.session]?.live?.usage == nil {
+            try await Task.sleep(for: .milliseconds(10))
+            h.store.flush()
+        }
+        let usage = try #require(h.store.state.sessions[h.session]?.live?.usage)
+        #expect(usage.totalCostUSD == 2.5)
+        #expect(usage.perModel.first?.cacheReadTokens == 40)
+        #expect(usage.perModel.first?.inputTokens == 60)
+    }
+
     @Test("launch binds the pid; a descriptor for that pid then drives the row")
     func launchThenDescriptor() {
         let h = Self.makeHarness()
