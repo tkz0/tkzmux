@@ -394,7 +394,8 @@ func modifierKeycodes() throws {
 
 @Test("The keycode table has no duplicate GhosttyKey values")
 func keycodeTableIsInjective() throws {
-    var seen: [UInt32: UInt16] = [:]
+    // `RawValue`, not a spelled-out width: the C enum imports as `UInt32` or `Int32` by toolchain.
+    var seen: [GhosttyKey.RawValue: UInt16] = [:]
     for code in UInt16(0)...UInt16(0x7F) {
         let key = MacKeyCodes.key(forVirtualKeyCode: code)
         guard key != GHOSTTY_KEY_UNIDENTIFIED else { continue }
