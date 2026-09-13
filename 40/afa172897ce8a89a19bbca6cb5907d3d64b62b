@@ -1,0 +1,19 @@
+Tests/TkzAppTests/PromptCardTests.swift
+  s_32428b9a03cdd4::t_54ad7fd4672bee 216-219,221,228-231,233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "40afa172897ce8a89a19bbca6cb5907d3d64b62b",
+  "prompts": {},
+  "sessions": {
+    "s_32428b9a03cdd4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a850cf94-70a9-4501-9ba9-431611aa7abb",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
