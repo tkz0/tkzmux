@@ -1,0 +1,55 @@
+Sources/GitStatus/DiffParsing.swift
+  s_87f7091b68b38d::t_e76ff94c2178e4 1-297
+Sources/GitStatus/GitDiffService.swift
+  s_87f7091b68b38d::t_b647bc49a22424 1-156
+Sources/TkzApp/Changes/ChangesViewerController.swift
+  s_87f7091b68b38d::t_785c77b0c425af 1-195
+Sources/TkzApp/Changes/ChangesViewerModel.swift
+  s_87f7091b68b38d::t_4fccc73bdb4c18 1-168
+Sources/TkzApp/Changes/ChangesViewerView.swift
+  s_87f7091b68b38d::t_f33135dcb81a5b 1-810
+Sources/TkzApp/MainMenu.swift
+  s_87f7091b68b38d::t_f173fef89b9996 262
+Sources/TkzApp/MainWindowController.swift
+  s_87f7091b68b38d::t_9edbf402be999a 144-157,348-349,500,541,1105-1128,1569,1880-1881,1883,1926-1930,2175-2176,2570,3300
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_87f7091b68b38d::t_57c76dc1a32495 57-60,182,208,246
+Sources/TkzApp/StatusBar/StatusBarModel.swift
+  s_87f7091b68b38d::t_9f0b7bb69a722b 50-54,152,175
+Sources/TkzApp/StatusBar/StatusBarView.swift
+  s_87f7091b68b38d::t_00b6a69d446bc4 123-124,134,138,142-156,301-303,306,314-315,633-640,671-672,675,689,695-696,699,703-706,711-767
+Sources/TkzTerminalView/MouseController.swift
+  s_87f7091b68b38d::t_5c4615e7f0f4c0 462-469
+Sources/TkzTerminalView/TerminalMetalView.swift
+  s_87f7091b68b38d::t_aed91fcbf2fceb 749-758
+TESTS.md
+  s_87f7091b68b38d::t_2c9e9c54349487 16
+Tests/GitStatusTests/DiffParsingTests.swift
+  s_87f7091b68b38d::t_6a811ab6eb65b6 1-150
+Tests/GitStatusTests/GitDiffServiceTests.swift
+  s_87f7091b68b38d::t_b4c2e2a625d791 1-149
+Tests/TkzAppTests/ChangesViewerTests.swift
+  s_87f7091b68b38d::t_5d0d8bf3affb52 1-560
+Tests/TkzAppTests/MainMenuTests.swift
+  s_87f7091b68b38d::t_4e509085a75698 247-248
+Tests/TkzTerminalViewTests/MouseControllerTests.swift
+  s_87f7091b68b38d::t_ec325157de38e3 712-741
+docs/shortcuts.md
+  s_87f7091b68b38d::t_bd9c4a5ff9038f 31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a4b5b830ce0f4fe489883bb72e181bc5344571a4",
+  "prompts": {},
+  "sessions": {
+    "s_87f7091b68b38d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af08d8b3-8251-4f78-b48d-fb8110044f0d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
