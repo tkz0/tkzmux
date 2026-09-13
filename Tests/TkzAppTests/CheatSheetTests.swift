@@ -155,7 +155,7 @@ struct CheatSheetTests {
     func rowsCarryTheBindings() {
         let sections = CheatSheetModel.sections(from: Self.makeMenu())
         #expect(Self.row(sections, "New Session\u{2026}")?.keys == "\u{2318}N")
-        #expect(Self.row(sections, "Search Sessions\u{2026}")?.keys == "\u{2318}P")
+        #expect(Self.row(sections, "Search Sessions\u{2026}")?.keys == "\u{2318}F")
         #expect(Self.row(sections, "Command Palette\u{2026}")?.keys == "\u{21E7}\u{2318}P")
         #expect(Self.row(sections, "Toggle Sidebar")?.keys == "\u{2318}B")
         #expect(Self.row(sections, "Copy Last Message")?.keys == "\u{21E7}\u{2318}C")

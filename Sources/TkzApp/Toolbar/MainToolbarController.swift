@@ -2,7 +2,7 @@
 //
 // design.md → App architecture → Toolbar:
 //   title “<session> — <group>”; `NSMenuToolbarItem` “＋ New session…” scoped to the selected group;
-//   “Search sessions…” (⌘P); the three right-hand buttons (`>_` new terminal, `◫`/`⬓` splits).
+//   “Search sessions…” (⌘F, printed in the field); the three right-hand buttons (`>_` new terminal, `◫`/`⬓` splits).
 //   The design's fourth button, `◍` browser, was dropped in TKZ-57 rather than shipped disabled.
 //
 // This wave builds the chrome only. The controller owns no application state and holds no
@@ -17,7 +17,7 @@ public extension NSToolbarItem.Identifier {
     static let tkzNewSession = NSToolbarItem.Identifier("tkzmux.newSession")
     /// Centred label — “<session> — <group>”. Registered in `centeredItemIdentifiers`.
     static let tkzTitle = NSToolbarItem.Identifier("tkzmux.title")
-    /// `NSSearchToolbarItem` — “Search sessions…” (⌘P).
+    /// `NSSearchToolbarItem` — “Search sessions…” (⌘F).
     static let tkzSearch = NSToolbarItem.Identifier("tkzmux.search")
     /// The three-button `NSSegmentedControl` cluster: `>_`, `◫`, `⬓`.
     static let tkzViewCluster = NSToolbarItem.Identifier("tkzmux.viewCluster")
@@ -107,6 +107,13 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
         didSet { if theme != oldValue { applyTheme() } }
     }
 
+    /// The chord bound to `searchSessions`, printed in the search field's placeholder and tooltip
+    /// so the key is discoverable. The window controller assigns the resolved binding, so a user
+    /// override shows its own chord; `nil` (unbound) drops the hint rather than printing a lie.
+    public var searchShortcut: Shortcut? = ShortcutsTable.defaults[.searchSessions] {
+        didSet { if searchShortcut != oldValue { applySearchShortcut() } }
+    }
+
     private var titleField: NSTextField?
     private var menuItem: NSMenuToolbarItem?
     private var segmented: NSSegmentedControl?
@@ -169,6 +176,18 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
         menu.addItem(placeholder)
         menu.autoenablesItems = false
         return menu
+    }
+
+    /// `"Search sessions…  ⌘F"` — two spaces so the chord reads as a hint, not part of the phrase.
+    var searchPlaceholder: String {
+        guard let searchShortcut else { return "Search sessions\u{2026}" }
+        return "Search sessions\u{2026}  \(searchShortcut.displayString)"
+    }
+
+    private func applySearchShortcut() {
+        guard let searchItem else { return }
+        searchItem.searchField.placeholderString = searchPlaceholder
+        searchItem.toolTip = searchShortcut.map { "Search sessions (\($0.displayString))" } ?? "Search sessions"
     }
 
     private func applyTheme() {
@@ -265,8 +284,6 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
         let item = NSSearchToolbarItem(itemIdentifier: .tkzSearch)
         item.label = "Search"
         item.paletteLabel = "Search sessions"
-        item.toolTip = "Search sessions (\u{2318}P)"
-        item.searchField.placeholderString = "Search sessions\u{2026}"
         item.searchField.font = Theme.Fonts.ui(theme.fontUI.body)
         item.searchField.sendsWholeSearchString = false
         item.searchField.sendsSearchStringImmediately = true
@@ -274,6 +291,7 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
         item.searchField.action = #selector(searchChanged(_:))
         item.searchField.delegate = self
         searchItem = item
+        applySearchShortcut()
         return item
     }
 

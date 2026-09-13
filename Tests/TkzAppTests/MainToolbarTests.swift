@@ -103,7 +103,8 @@ struct MainToolbarTests {
     @Test func searchItemIsASearchFieldWithThePlaceholder() throws {
         let controller = MainToolbarController()
         let item = try #require(Self.item(controller, .tkzSearch) as? NSSearchToolbarItem)
-        #expect(item.searchField.placeholderString == "Search sessions\u{2026}")
+        #expect(item.searchField.placeholderString == "Search sessions\u{2026}  \u{2318}F")
+        #expect(item.toolTip == "Search sessions (\u{2318}F)")
         #expect(controller.searchField === item.searchField)
 
         var seen: [String] = []
@@ -111,6 +112,17 @@ struct MainToolbarTests {
         item.searchField.stringValue = "tkz"
         _ = item.searchField.target?.perform(item.searchField.action, with: item.searchField)
         #expect(seen == ["tkz"])
+    }
+
+    /// The printed chord follows the binding: an override shows its own keys, unbound shows none.
+    @Test func searchPlaceholderFollowsTheBinding() throws {
+        let controller = MainToolbarController()
+        let item = try #require(Self.item(controller, .tkzSearch) as? NSSearchToolbarItem)
+        controller.searchShortcut = Shortcut("k", [.shift, .command])
+        #expect(item.searchField.placeholderString == "Search sessions\u{2026}  \u{21E7}\u{2318}K")
+        controller.searchShortcut = nil
+        #expect(item.searchField.placeholderString == "Search sessions\u{2026}")
+        #expect(item.toolTip == "Search sessions")
     }
 
     @Test func everyClusterButtonIsEnabled() throws {
