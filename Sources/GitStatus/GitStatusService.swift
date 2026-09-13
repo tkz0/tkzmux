@@ -526,12 +526,7 @@ public final class GitStatusService: Sendable {
 
     /// `git status --porcelain=v2 --branch -z` + `git diff HEAD --shortstat`, in `directory` (the
     /// session's own, not the repo root — a worktree has its own status). `nil` only when `status`
-    /// itself failed.
-    static func computeSummary(directory: String, info: RepoInfo, gitPath: String) -> GitSummary? {
-        compute(directory: directory, info: info, gitPath: gitPath)?.summary
-    }
-
-    /// The same two calls, keeping the paths `git status` already printed (TKZ-52).
+    /// itself failed. Keeps the paths `git status` already printed (TKZ-52).
     static func compute(
         directory: String, info: RepoInfo, gitPath: String
     ) -> (summary: GitSummary, paths: [ChangedPath])? {

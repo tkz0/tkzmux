@@ -142,11 +142,6 @@ public final class FontSet {
         return FontRegistration(directory: dir, registeredFiles: registered, failures: failures)
     }
 
-    /// The file a `CTFont` was loaded from, if CoreText exposes one.
-    public static func fileURL(of font: CTFont) -> URL? {
-        CTFontCopyAttribute(font, kCTFontURLAttribute) as? URL
-    }
-
     // MARK: - Init
 
     /// - Parameters:
