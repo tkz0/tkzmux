@@ -1,0 +1,25 @@
+.github/workflows/release.yml
+  s_1d6b8f60fba09b::t_df2766eba72e82 5-7
+CONTRIBUTING.md
+  s_1d6b8f60fba09b::t_8f60f28795d7a6 114-117
+scripts/make-dist.sh
+  s_1d6b8f60fba09b::t_15747ead558a75 106-109,112
+scripts/release-notes.sh
+  s_1d6b8f60fba09b::t_d274880e120d86 1-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7a106e01266585d72e8e01ad2af6f9167c7b2139",
+  "prompts": {},
+  "sessions": {
+    "s_1d6b8f60fba09b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b16c235a-ffc2-40e5-9ea8-3af4311956a5",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
