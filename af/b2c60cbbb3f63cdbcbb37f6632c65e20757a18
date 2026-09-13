@@ -1,0 +1,37 @@
+Sources/GitStatus/GitRebase.swift
+  s_1c065d2705d90c::t_35e1dcd7e80c09 133-150,152-159,170-179,183,189-193,200,202,205,217-223,226-228,237-240,247-249,261-286,319-320
+Sources/TkzApp/GitIntegration.swift
+  s_1c065d2705d90c::t_3bd8f5e57b7ca8 554-558
+Sources/TkzApp/MainWindowController.swift
+  s_1c065d2705d90c::t_49aa4fdbae9ef3 1163,1956-1958,1960
+Sources/TkzApp/Rebase/RebaseSheetController.swift
+  s_1c065d2705d90c::t_993441e43b8744 5-7,16,89,101-110,113,148-168,171,175,234,248
+Sources/TkzCore/Models.swift
+  s_1c065d2705d90c::t_33df3046623387 583-594
+Tests/GitStatusTests/GitRebaseTests.swift
+  s_1c065d2705d90c::t_5b514a7d52f1dd 265-338,341-347
+Tests/TkzAppTests/RebaseSheetTests.swift
+  s_1c065d2705d90c::t_b15182e879f13b 7,94-100,275-320
+Tests/TkzCoreTests/ModelsTests.swift
+  s_1c065d2705d90c::t_a3ad57505706a9 204-214
+docs/privacy.md
+  s_1c065d2705d90c::t_e2cff2d3aa075c 20,29-33,66
+docs/shortcuts.md
+  s_1c065d2705d90c::t_fe697ece576b12 32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "afb2c60cbbb3f63cdbcbb37f6632c65e20757a18",
+  "prompts": {},
+  "sessions": {
+    "s_1c065d2705d90c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11070958-3599-4e6a-b5d1-74aa79e05fd9",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
