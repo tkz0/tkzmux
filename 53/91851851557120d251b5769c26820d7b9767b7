@@ -1,0 +1,19 @@
+Tests/TkzCoreTests/UsageTests.swift
+  s_87f7091b68b38d::t_e40f14adb955f1 19-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5391851851557120d251b5769c26820d7b9767b7",
+  "prompts": {},
+  "sessions": {
+    "s_87f7091b68b38d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af08d8b3-8251-4f78-b48d-fb8110044f0d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
