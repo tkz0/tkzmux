@@ -1,0 +1,27 @@
+Sources/TkzApp/FileViewer/FileTabs.swift
+  s_a398be5f9e5730::t_33d0a917354097 41-49
+Sources/TkzApp/MainWindowController.swift
+  s_a398be5f9e5730::t_b36d414347618b 3563-3566,3569-3574
+Tests/TkzAppTests/FileViewerTests.swift
+  s_a398be5f9e5730::t_2ce5292399fc04 85-99
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_a398be5f9e5730::t_df33bda33b1c5e 229-240,243,253,259,265,624-664
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_a398be5f9e5730::t_ece3b1985e6a2e 25-28,34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f6945c921c45921fe5622cb7c1a26df5e82d515e",
+  "prompts": {},
+  "sessions": {
+    "s_a398be5f9e5730": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "02fa1104-4883-441c-b8f4-09e485127c92",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
