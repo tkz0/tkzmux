@@ -1,0 +1,33 @@
+Sources/ClaudeBridge/PromptCommand.swift
+  s_255845859c7923::t_a9dbf334673bfe 1-73
+Sources/ClaudeBridge/TranscriptReader.swift
+  s_255845859c7923::t_edb5ce2acc0e1f 36-37,40-42,51,57,150,184-188,196-199
+Sources/ClaudeBridge/TranscriptSearch.swift
+  s_255845859c7923::t_e4a6b54edfe045 191-193,196
+Sources/TkzApp/Prompt/PromptCardView.swift
+  s_255845859c7923::t_5b44f2ddf727be 310-311,333-341,356-367,370-381,385-394
+Tests/ClaudeBridgeTests/PromptCommandTests.swift
+  s_255845859c7923::t_74c8665d408fde 1-81
+Tests/ClaudeBridgeTests/TranscriptReaderTests.swift
+  s_255845859c7923::t_b0a28ba24a824b 55-97
+Tests/ClaudeBridgeTests/TranscriptSearchTests.swift
+  s_255845859c7923::t_f98628a55eec8d 81-98
+Tests/TkzAppTests/PromptCardTests.swift
+  s_255845859c7923::t_9585179f275b4b 81-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c549992ab78525d2a72706ddb368952b1ca32edb",
+  "prompts": {},
+  "sessions": {
+    "s_255845859c7923": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d6486d2-1c99-457c-a8e0-36ea54eb3da0",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
