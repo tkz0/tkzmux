@@ -1115,12 +1115,12 @@ struct SidebarSelectionOnInsertTests {
 @Suite(.serialized)
 struct SidebarDragAndDropTests {
 
-    @Test("The outline is wired to accept its own session drags")
+    @Test("The outline is wired to accept its own session and group drags")
     func theOutlineIsRegisteredForSessionDrags() {
         let harness = SidebarViewControllerTests.makeHarness()
-        // The only type it takes: a session row means nothing outside this app, and nothing from
+        // The only types it takes: a sidebar row means nothing outside this app, and nothing from
         // outside it means anything here. (`setDraggingSourceOperationMask` has no getter to assert.)
-        #expect(harness.outline.registeredDraggedTypes == [.tkzSidebarSession])
+        #expect(Set(harness.outline.registeredDraggedTypes) == [.tkzSidebarSession, .tkzSidebarGroup])
         #expect(harness.outline.draggingDestinationFeedbackStyle == .gap)
 
         // The one failure mode every other test here would sail straight past: the methods are
@@ -1153,21 +1153,177 @@ struct SidebarDragAndDropTests {
         #expect(inside?.displayed == nil)
     }
 
-    @Test("Only session rows are draggable; a group header returns no pasteboard writer")
-    func groupHeadersDoNotDrag() {
+    @Test("Session rows and group headers both drag, each under its own pasteboard type")
+    func rowsDragUnderTheirOwnTypes() {
         let harness = SidebarViewControllerTests.makeHarness()
         let controller = harness.controller
         let group = harness.store.state.orderedGroups[0].id
         let session = harness.store.state.sessions(in: group)[0].id
 
         let forGroup = controller.outlineView(
-            harness.outline, pasteboardWriterForItem: controller.item(.group(group)))
-        #expect(forGroup == nil)
+            harness.outline, pasteboardWriterForItem: controller.item(.group(group))) as? NSPasteboardItem
+        #expect(forGroup?.string(forType: .tkzSidebarGroup) == group.rawValue)
+        // A group drag must never be mistaken for a session drag by the session drop path.
+        #expect(forGroup?.string(forType: .tkzSidebarSession) == nil)
 
         let forSession = controller.outlineView(
-            harness.outline, pasteboardWriterForItem: controller.item(.session(session)))
-        let item = try? #require(forSession as? NSPasteboardItem)
-        #expect(item?.string(forType: .tkzSidebarSession) == session.rawValue)
+            harness.outline, pasteboardWriterForItem: controller.item(.session(session))) as? NSPasteboardItem
+        #expect(forSession?.string(forType: .tkzSidebarSession) == session.rawValue)
+        #expect(forSession?.string(forType: .tkzSidebarGroup) == nil)
+    }
+
+    // MARK: Groups
+
+    /// The outline's (flipped) vertical extent of `id`'s header and, when expanded, its session rows.
+    static func block(_ harness: SidebarViewControllerTests.Harness, _ id: GroupID) -> (header: NSRect, bottom: CGFloat) {
+        let controller = harness.controller
+        let header = harness.outline.rect(ofRow: controller.row(forGroup: id))
+        let last = harness.store.state.groups[id]?.isCollapsed == true
+            ? nil : harness.store.state.sessions(in: id).last
+        let bottom = last.map { harness.outline.rect(ofRow: controller.row(forSession: $0.id)).maxY } ?? header.maxY
+        return (header, bottom)
+    }
+
+    @Test("Dragging the first group down swaps with the second as soon as the pointer enters its header")
+    func firstGroupSwapsDownOnEnteringTheSecond() throws {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let controller = harness.controller
+        let groups = harness.store.state.orderedGroups.map(\.id)
+        let second = Self.block(harness, groups[1])
+
+        // Anywhere over its own block, or above the second group's header midline: no move.
+        #expect(controller.groupDropIndex(atY: 1, dragging: groups[0]) == 0)
+        #expect(controller.groupDropIndex(atY: second.header.midY - 1, dragging: groups[0]) == 0)
+        // Half-way into the second group's header — the reported bug: this used to mean "above it".
+        let slot = controller.groupDropIndex(atY: second.header.midY, dragging: groups[0])
+        #expect(slot == 2)
+        // ...and it stays "below the second group" over all of its rows.
+        #expect(controller.groupDropIndex(atY: second.bottom - 1, dragging: groups[0]) == 2)
+
+        // Resolved before `mutate`: it reads `store.state`, which is exclusively held inside `update`.
+        let at = controller.groupStoreIndex(forDisplayed: slot, dragging: groups[0])
+        harness.mutate { $0.moveGroup(groups[0], to: at) }
+        #expect(Array(harness.store.state.orderedGroups.map(\.id).prefix(2)) == [groups[1], groups[0]])
+    }
+
+    @Test("Dragging the second group up swaps with the first as soon as the pointer enters its last row")
+    func secondGroupSwapsUpOnEnteringTheFirst() throws {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let controller = harness.controller
+        let groups = harness.store.state.orderedGroups.map(\.id)
+        let first = Self.block(harness, groups[0])
+        let header = CGFloat(SidebarMetrics.groupRowHeight)
+
+        // Over its own header, or below the entry line at the first group's bottom: no move.
+        let own = Self.block(harness, groups[1])
+        #expect(controller.groupDropIndex(atY: own.header.midY, dragging: groups[1]) == 1)
+        #expect(controller.groupDropIndex(atY: first.bottom - header / 2, dragging: groups[1]) == 1)
+        // Half a header's height into the first group from below: above it.
+        let slot = controller.groupDropIndex(atY: first.bottom - header / 2 - 1, dragging: groups[1])
+        #expect(slot == 0)
+        #expect(controller.groupDropIndex(atY: first.header.minY, dragging: groups[1]) == 0)
+
+        let at = controller.groupStoreIndex(forDisplayed: slot, dragging: groups[1])
+        harness.mutate { $0.moveGroup(groups[1], to: at) }
+        #expect(Array(harness.store.state.orderedGroups.map(\.id).prefix(2)) == [groups[1], groups[0]])
+    }
+
+    @Test("A collapsed neighbour is passed at its header's midline, in either direction")
+    func collapsedNeighboursSwapAtTheirMidline() throws {
+        var state = AppState.fixture
+        let ids = state.orderedGroups.map(\.id)
+        state.setGroupCollapsed(ids[0], true)
+        state.setGroupCollapsed(ids[1], true)
+        let harness = SidebarViewControllerTests.makeHarness(state)
+        let controller = harness.controller
+        let first = Self.block(harness, ids[0]).header
+        let second = Self.block(harness, ids[1]).header
+
+        #expect(controller.groupDropIndex(atY: second.midY - 1, dragging: ids[0]) == 0)
+        #expect(controller.groupDropIndex(atY: second.midY, dragging: ids[0]) == 2)
+        #expect(controller.groupDropIndex(atY: first.midY, dragging: ids[1]) == 1)
+        #expect(controller.groupDropIndex(atY: first.midY - 1, dragging: ids[1]) == 0)
+    }
+
+    @Test("The group slot never moves backwards as the pointer moves down — no flicker between two slots")
+    func groupDropIndexIsMonotonic() {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let controller = harness.controller
+        let groups = harness.store.state.orderedGroups.map(\.id)
+        let height = harness.outline.bounds.height
+        for dragged in groups {
+            var last = 0
+            for y in stride(from: -20, through: height + 20, by: 1) {
+                let slot = controller.groupDropIndex(atY: y, dragging: dragged)
+                #expect(slot >= last, "dragging \(dragged) at y=\(y): \(slot) after \(last)")
+                last = slot
+            }
+            // Above everything is first place and below everything is last place, whichever group is
+            // dragged (for the last group, "its own slot" and "the end" are the same no-op).
+            let top = controller.groupDropIndex(atY: -20, dragging: dragged)
+            let bottom = controller.groupDropIndex(atY: height + 20, dragging: dragged)
+            #expect(controller.groupStoreIndex(forDisplayed: top, dragging: dragged) == 0)
+            #expect(controller.groupStoreIndex(forDisplayed: bottom, dragging: dragged) == groups.count - 1)
+        }
+    }
+
+    @Test("A group slot below the dragged group shifts up by one; at or above it, it does not")
+    func groupStoreIndexRebases() {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let controller = harness.controller
+        let groups = harness.store.state.orderedGroups.map(\.id)
+
+        #expect(controller.groupStoreIndex(forDisplayed: 0, dragging: groups[2]) == 0)
+        #expect(controller.groupStoreIndex(forDisplayed: 2, dragging: groups[2]) == 2)
+        #expect(controller.groupStoreIndex(forDisplayed: 3, dragging: groups[2]) == 2)
+        #expect(controller.groupStoreIndex(forDisplayed: groups.count, dragging: groups[0]) == groups.count - 1)
+    }
+
+    @Test("Dragging the bottom group to the top reorders the store and the outline, keeping its rows")
+    func bottomGroupDraggedToTheTop() throws {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let controller = harness.controller
+        let before = harness.store.state.orderedGroups.map(\.id)
+        let dragged = try #require(before.last)
+        let selected = harness.store.state.sessions(in: before[0])[0].id
+        harness.mutate { $0.select(selected) }
+        harness.outline.resetCounters()
+
+        let slot = controller.groupDropIndex(atY: 0, dragging: dragged)
+        #expect(slot == 0)
+        let at = controller.groupStoreIndex(forDisplayed: slot, dragging: dragged)
+        harness.mutate { $0.moveGroup(dragged, to: at) }
+
+        #expect(harness.store.state.orderedGroups.map(\.id) == [dragged] + before.dropLast())
+        #expect(harness.outline.reloadDataCallCount == 0)
+        #expect(!harness.outline.movedItemCalls.isEmpty)
+        // The outline agrees with the store, header by header.
+        let headerRows = harness.store.state.orderedGroups.map { controller.row(forGroup: $0.id) }
+        #expect(headerRows == headerRows.sorted())
+        #expect(controller.row(forGroup: dragged) == 0)
+        // Moving groups does not disturb the selection.
+        #expect(harness.store.state.selection == selected)
+        #expect(harness.outline.selectedRow == controller.row(forSession: selected))
+    }
+
+    @Test("Dragging the top group to the bottom lands it last")
+    func topGroupDraggedToTheBottom() throws {
+        let harness = SidebarViewControllerTests.makeHarness()
+        let controller = harness.controller
+        let before = harness.store.state.orderedGroups.map(\.id)
+        let dragged = before[0]
+        let rows = harness.store.state.sessions(in: dragged).map(\.id)
+
+        let slot = controller.groupDropIndex(atY: harness.outline.bounds.height + 10, dragging: dragged)
+        #expect(slot == before.count)
+        let at = controller.groupStoreIndex(forDisplayed: slot, dragging: dragged)
+        harness.mutate { $0.moveGroup(dragged, to: at) }
+
+        #expect(harness.store.state.orderedGroups.map(\.id) == Array(before.dropFirst()) + [dragged])
+        #expect(harness.store.state.sessions(in: dragged).map(\.id) == rows)
+        #expect(
+            harness.store.state.orderedGroups.map { controller.row(forGroup: $0.id) }
+                == harness.store.state.orderedGroups.map { controller.row(forGroup: $0.id) }.sorted())
     }
 
     @Test("A drop on a group header appends; a drop between its rows takes that slot")

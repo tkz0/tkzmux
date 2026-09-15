@@ -79,6 +79,10 @@ extension NSPasteboard.PasteboardType {
     /// Private to the app on purpose: a session row is only meaningful next to the store that owns
     /// it, so there is nothing to promise another application and nothing to accept from one.
     static let tkzSidebarSession = NSPasteboard.PasteboardType("com.tkz.tkzmux.sidebar-session")
+
+    /// A group header being dragged to another position. The payload is `GroupID.rawValue`; private
+    /// for the same reason as `tkzSidebarSession`.
+    static let tkzSidebarGroup = NSPasteboard.PasteboardType("com.tkz.tkzmux.sidebar-group")
 }
 
 // MARK: - Outline view
@@ -436,7 +440,7 @@ public final class SidebarViewController: NSViewController {
         outline.action = #selector(outlineClicked)
         outline.onArrowKey = { [weak self] offset in self?.moveSelection(by: offset) }
         outline.onWidthChange = { [weak self] _ in self?.noteChangedRowHeights() }
-        outline.registerForDraggedTypes([.tkzSidebarSession])
+        outline.registerForDraggedTypes([.tkzSidebarSession, .tkzSidebarGroup])
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         // `.gap` opens the insertion point between rows instead of drawing a two-pixel line the
         // rows' own `selectionLayer` would sit on top of.
@@ -997,8 +1001,12 @@ extension SidebarViewController: NSOutlineViewDataSource {
 // there is no second, drag-shaped update path that could disagree with the store about what the
 // sidebar shows.
 //
-// **Only sessions drag.** `pasteboardWriterForItem` returns `nil` for a group header, so reordering
-// groups stays the `moveGroup` affair it already was.
+// **Group headers drag too**, under their own pasteboard type, and a group drop is
+// `AppState.moveGroup` and nothing else — the header and its rows move through `applyStructure()`'s
+// ordinary `moveItem` pass. A group never nests, so every drop lands in the *root* list:
+// `groupDropIndex(atY:dragging:)` picks the slot between headers from the pointer position (see its
+// doc comment for why AppKit's proposed item is ignored) and `validateDrop` retargets to `(nil, slot)`. Because the proposal is never an expandable item, a group drag does not spring-load
+// collapsed groups open. The same displayed-vs-store off-by-one applies — `groupStoreIndex` rebases.
 //
 // **A collapsed group is a valid destination**, and the only thing it can offer is "on the header",
 // which appends. Hovering one mid-drag also lets AppKit spring-load it open, which runs the ordinary
@@ -1086,16 +1094,78 @@ extension SidebarViewController {
         guard let raw = info.draggingPasteboard.string(forType: .tkzSidebarSession) else { return nil }
         return SessionID(raw)
     }
+
+    /// The group id carried by a sidebar group drag, if this drag is one.
+    func draggedGroup(from info: any NSDraggingInfo) -> GroupID? {
+        guard let raw = info.draggingPasteboard.string(forType: .tkzSidebarGroup) else { return nil }
+        return GroupID(raw)
+    }
+
+    /// Where a dragged *group* lands, from the pointer's `y` in the outline's (flipped) coordinates:
+    /// a slot in the root list, `0...groups.count`, counted over the headers as displayed (dragged
+    /// group included) — slot `k` is the gap above header `k`.
+    ///
+    /// Decided from the pointer, not from `NSOutlineView`'s proposed item, for two reasons that both
+    /// made swapping neighbours feel broken:
+    ///
+    ///  * **A group swaps as soon as the pointer enters it.** Another group is passed once the pointer
+    ///    is half a header into it *from the side the drag came from*: moving down, half-way into its
+    ///    header; moving up, half a header's height up from its last row. Mapping "on the header" to
+    ///    "above it" made dragging the first group onto the second group's header a no-op, and a
+    ///    collapsed neighbour could never be passed at all.
+    ///  * **The geometry is the model's, not the screen's.** Block heights come from the row heights
+    ///    the outline was told, so the `.gap` feedback sliding rows out from under the pointer cannot
+    ///    flip the answer back and forth — the result is a monotonic function of `y`.
+    func groupDropIndex(atY y: CGFloat, dragging dragged: GroupID) -> Int {
+        let state = store.state
+        let groups = state.orderedGroups
+        let header = CGFloat(SidebarMetrics.groupRowHeight)
+        let from = groups.firstIndex { $0.id == dragged }
+
+        var top: CGFloat = 0
+        var slot = from ?? groups.count
+        for (index, group) in groups.enumerated() {
+            var height = header
+            if !group.isCollapsed {
+                for session in state.sessions(in: group.id) {
+                    height += shadowRowHeights[session.id] ?? rowHeight(for: session)
+                }
+            }
+            defer { top += height }
+            guard let from else {
+                // Not one of ours (it vanished mid-drag): plain block midpoints.
+                if y < top + height / 2 { return index }
+                continue
+            }
+            if index < from {
+                // Above the dragged group: the first one the pointer has entered from below wins.
+                if y < top + height - header / 2 { return index }
+            } else if index > from {
+                // Below it: every one the pointer has entered from above pushes the slot past it.
+                if y >= top + header / 2 { slot = index + 1 } else { break }
+            }
+        }
+        return slot
+    }
+
+    /// Rebases a displayed group slot onto the list `moveGroup` inserts into — the groups with
+    /// `dragged` already pulled out, so every slot below it shifts up by one.
+    func groupStoreIndex(forDisplayed displayed: Int, dragging dragged: GroupID) -> Int {
+        guard let from = store.state.orderedGroups.map(\.id).firstIndex(of: dragged) else { return displayed }
+        return displayed > from ? displayed - 1 : displayed
+    }
 }
 
 extension SidebarViewController {
     public func outlineView(
         _ outlineView: NSOutlineView, pasteboardWriterForItem item: Any
     ) -> (any NSPasteboardWriting)? {
-        // `nil` is how a row is told not to drag, which is what a group header wants.
-        guard let id = (item as? SidebarItem)?.sessionID else { return nil }
+        guard let kind = (item as? SidebarItem)?.kind else { return nil }
         let pasteboardItem = NSPasteboardItem()
-        pasteboardItem.setString(id.rawValue, forType: .tkzSidebarSession)
+        switch kind {
+        case .session(let id): pasteboardItem.setString(id.rawValue, forType: .tkzSidebarSession)
+        case .group(let id): pasteboardItem.setString(id.rawValue, forType: .tkzSidebarGroup)
+        }
         return pasteboardItem
     }
 
@@ -1103,6 +1173,12 @@ extension SidebarViewController {
         _ outlineView: NSOutlineView, validateDrop info: any NSDraggingInfo,
         proposedItem item: Any?, proposedChildIndex index: Int
     ) -> NSDragOperation {
+        if let group = draggedGroup(from: info) {
+            guard store.state.groups[group] != nil else { return [] }
+            let point = outlineView.convert(info.draggingLocation, from: nil)
+            outlineView.setDropItem(nil, dropChildIndex: groupDropIndex(atY: point.y, dragging: group))
+            return .move
+        }
         guard draggedSession(from: info) != nil,
             let target = dropTarget(for: item as? SidebarItem, childIndex: index)
         else { return [] }
@@ -1116,6 +1192,22 @@ extension SidebarViewController {
     public func outlineView(
         _ outlineView: NSOutlineView, acceptDrop info: any NSDraggingInfo, item: Any?, childIndex index: Int
     ) -> Bool {
+        if let group = draggedGroup(from: info) {
+            guard store.state.groups[group] != nil else { return false }
+            // `validateDrop` retargeted to `(nil, slot)`, so the drop *is* the gap the user saw;
+            // re-reading the pointer could only disagree with it.
+            let slot: Int
+            if item == nil, index != NSOutlineViewDropOnItemIndex {
+                slot = min(max(index, 0), store.state.groups.count)
+            } else {
+                slot = groupDropIndex(
+                    atY: outlineView.convert(info.draggingLocation, from: nil).y, dragging: group)
+            }
+            let at = groupStoreIndex(forDisplayed: slot, dragging: group)
+            guard store.state.orderedGroups.firstIndex(where: { $0.id == group }) != at else { return true }
+            store.update { $0.moveGroup(group, to: at) }
+            return true
+        }
         guard let dragged = draggedSession(from: info), store.state.sessions[dragged] != nil,
             let target = dropTarget(for: item as? SidebarItem, childIndex: index)
         else { return false }
