@@ -1,0 +1,71 @@
+Sources/ClaudeBridge/HookServer.swift
+  s_55f14fe4924d45::t_21edf674834c3e 275-277,291
+Sources/Persistence/PersistedState.swift
+  s_55f14fe4924d45::t_29025ea7cd306f 83-86,94-95,103,108,119,211-212,268
+Sources/TkzApp/AppDelegate.swift
+  s_55f14fe4924d45::t_60d8fbb91ecdb8 35,116-120
+Sources/TkzApp/AttentionNotifier.swift
+  s_55f14fe4924d45::t_63efbfea29e0db 1-271
+Sources/TkzApp/MainMenu.swift
+  s_55f14fe4924d45::t_3a4df13bdc9536 190
+Sources/TkzApp/MainWindowController.swift
+  s_55f14fe4924d45::t_390e1fe0b36a20 1768-1787,2715-2720,2894-2901,3121,3183-3188,3523-3525
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_55f14fe4924d45::t_fadf74c42e95a0 84-87,196-197,271
+Sources/TkzApp/SessionEventHandler.swift
+  s_55f14fe4924d45::t_109d0b63912ea9 77-90,95-117,154-159,161-163,165,186-188,192,195-213,219,224-226,228-255,257,262-265,267-269,272-279,281,288-301,303-312,316
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_55f14fe4924d45::t_9f827741207892 841-849,851
+Sources/TkzCore/AppState.swift
+  s_55f14fe4924d45::t_e4847e897773e4 51-56,79,97
+Sources/TkzCore/AppStore.swift
+  s_55f14fe4924d45::t_26db552f15ffe8 59-61,174
+Sources/TkzCore/Models.swift
+  s_55f14fe4924d45::t_733284ec53dcca 181-184,209,227,409,433-436,507,533,1327-1328,1342,1353
+Sources/TkzCore/Reducers.swift
+  s_55f14fe4924d45::t_e6de992b86f953 213-215,373-378,408-415,546-553,557
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_55f14fe4924d45::t_56883320750400 161,163-164
+docs/privacy.md
+  s_55f14fe4924d45::t_e3406379390b08 163-175
+docs/shortcuts.md
+  s_55f14fe4924d45::t_a928d9c7c696ec 34
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_55f14fe4924d45::t_9498a447b8d2c7 124-126,169,192,256,395-406,447,568-578
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_55f14fe4924d45::t_2a9c1225360f27 67
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_55f14fe4924d45::t_780dc6e9f52466 88-92,127,142
+Tests/ClaudeBridgeTests/HookBinaryTests.swift
+  s_55f14fe4924d45::t_64160d4d034a89 232-270
+Tests/PersistenceTests/StateFileTests.swift
+  s_55f14fe4924d45::t_18055a6e351e20 48-51,93,97-112,149
+Tests/TkzAppTests/AttentionNotifierTests.swift
+  s_55f14fe4924d45::t_664cb986f889e3 1-415
+Tests/TkzAppTests/MainMenuTests.swift
+  s_55f14fe4924d45::t_b55bd74910d4e7 249,277-284
+Tests/TkzAppTests/SessionEventHandlerTests.swift
+  s_55f14fe4924d45::t_4139ba13686bba 24-25,27-29,31-33
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_55f14fe4924d45::t_46b87a42856485 405-433
+Tests/TkzCoreTests/AppStoreTests.swift
+  s_55f14fe4924d45::t_f4b293845fe8ed 249-262
+Tests/TkzCoreTests/ReducersTests.swift
+  s_55f14fe4924d45::t_016c4a179b2461 424-441,681-706
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "21f4549f1ab41867157063e746e551f3e01aad7d",
+  "prompts": {},
+  "sessions": {
+    "s_55f14fe4924d45": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "decae949-a486-45c9-bc54-03cbfb351d30",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
