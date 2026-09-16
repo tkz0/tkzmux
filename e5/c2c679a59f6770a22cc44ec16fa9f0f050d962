@@ -1,0 +1,61 @@
+Sources/Persistence/PersistedState.swift
+  s_daefc3d775098a::t_bf467cf165317b 137-141,147,158-159,169,174,189,220-221,272-275
+Sources/TkzApp/Activity/ActivityFeedController.swift
+  s_daefc3d775098a::t_2197434d49a391 1-454
+Sources/TkzApp/Activity/ActivityFeedModel.swift
+  s_daefc3d775098a::t_d57e78c41862c9 1-217
+Sources/TkzApp/Activity/ActivityRowViews.swift
+  s_daefc3d775098a::t_c86f0eb252a256 1-315
+Sources/TkzApp/AttentionNotifier.swift
+  s_daefc3d775098a::t_67735930b11ce0 217-219
+Sources/TkzApp/ClaudeIntegration.swift
+  s_daefc3d775098a::t_daa5d70be64162 439-443,447-449
+Sources/TkzApp/MainWindowController.swift
+  s_daefc3d775098a::t_6defc893d7ea7c 369-371,527,568,1226-1246,1737,2835,3565,3568-3570
+Sources/TkzCore/Activity.swift
+  s_daefc3d775098a::t_486a0d58aedcaa 1-109
+Sources/TkzCore/AppState.swift
+  s_daefc3d775098a::t_9bcf7e26b991bd 63-69,88-89,108
+Sources/TkzCore/AppStore.swift
+  s_daefc3d775098a::t_75851b0cde222c 30,75-77,87-88,98,106,118,189
+Sources/TkzCore/Reducers.swift
+  s_daefc3d775098a::t_5e42166a194547 202-203,209-213,223-256,557-558,609-626,727-732,742-753
+Tests/PersistenceTests/ActivityPersistenceTests.swift
+  s_daefc3d775098a::t_596269df78ee9f 1-73
+Tests/TkzAppTests/ActivityFeedModelTests.swift
+  s_daefc3d775098a::t_6f6fb76960e4c9 1-171
+Tests/TkzAppTests/ActivityFeedTests.swift
+  s_daefc3d775098a::t_2b8271082c5916 1-159
+Tests/TkzAppTests/ActivityIntegrationTests.swift
+  s_daefc3d775098a::t_4d2e6972a58d0f 1-48
+Tests/TkzAppTests/CheatSheetTests.swift
+  s_daefc3d775098a::t_df6c2bfba85ea6 198,205,208
+Tests/TkzAppTests/MainMenuTests.swift
+  s_daefc3d775098a::t_08ab2694d3df15 204-205,219-221,250,257-261,264
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_daefc3d775098a::t_4cbe48fa2f7619 266
+Tests/TkzAppTests/PaletteTests.swift
+  s_daefc3d775098a::t_00990b8ba5cb5c 123,128
+Tests/TkzCoreTests/ActivityTests.swift
+  s_daefc3d775098a::t_da42f5ad5105b8 1-214
+docs/privacy.md
+  s_daefc3d775098a::t_c1a38a8f4b249b 159-163
+docs/shortcuts.md
+  s_daefc3d775098a::t_59d28964c2c072 25,52-55,57-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e5c2c679a59f6770a22cc44ec16fa9f0f050d962",
+  "prompts": {},
+  "sessions": {
+    "s_daefc3d775098a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4146777a-42ff-471a-b31a-bbd31de11948",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
