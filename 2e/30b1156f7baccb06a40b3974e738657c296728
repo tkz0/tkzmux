@@ -1,0 +1,451 @@
+.github/workflows/ci.yml
+  s_fab0ce06453977::t_54de4472dd48d2 36
+Package.swift
+  s_fab0ce06453977::t_4da998dc2cd041 24,124
+README.md
+  s_fab0ce06453977::t_e08234c088b911 81
+Sources/ClaudeBridge/ClaudeBridge.swift
+  s_fab0ce06453977::t_75142639415276 1
+Sources/ClaudeBridge/ClaudeSessionWatcher.swift
+  s_fab0ce06453977::t_54d97056a40aa2 1
+Sources/ClaudeBridge/HookFrame.swift
+  s_fab0ce06453977::t_af62365f112ccc 2
+Sources/ClaudeBridge/HookServer.swift
+  s_fab0ce06453977::t_5af5afa2684a07 2
+Sources/ClaudeBridge/ModuleResources.swift
+  s_fab0ce06453977::t_bd20c8899d1226 9
+Sources/ClaudeBridge/ProcessLiveness.swift
+  s_fab0ce06453977::t_b30e1b2d3e734a 1
+Sources/ClaudeBridge/QuotaReconciler.swift
+  s_fab0ce06453977::t_7eccb99046d0fd 1
+Sources/ClaudeBridge/Resources/bash/tkzmux.bashrc
+  s_fab0ce06453977::t_b2a02284902db3 2
+Sources/ClaudeBridge/Resources/fish/tkzmux.fish
+  s_fab0ce06453977::t_0f0722bae897b9 2
+Sources/ClaudeBridge/ShimInstaller.swift
+  s_fab0ce06453977::t_8d52c8be757ff7 13-14
+Sources/ClaudeBridge/StatuslineInstaller.swift
+  s_fab0ce06453977::t_91bd8f54878ad8 1
+Sources/ClaudeBridge/StatuslineReader.swift
+  s_fab0ce06453977::t_fa57a8102cdfa4 1
+Sources/ClaudeBridge/TranscriptSearch.swift
+  s_fab0ce06453977::t_b6d26f375bce3c 1
+Sources/GitStatus/DiffParsing.swift
+  s_fab0ce06453977::t_74ebf3fb44cc9c 1
+Sources/GitStatus/FSEventsWatcher.swift
+  s_fab0ce06453977::t_d1b983c309a7a1 1
+Sources/GitStatus/GitDiffService.swift
+  s_fab0ce06453977::t_3ec974e0eee6c9 1
+Sources/GitStatus/GitProcess.swift
+  s_fab0ce06453977::t_24766d39e87da9 1
+Sources/GitStatus/GitStatus.swift
+  s_fab0ce06453977::t_e5c87685ce974b 4-5
+Sources/GitStatus/GitStatusParsing.swift
+  s_fab0ce06453977::t_54ffbba91571fc 1
+Sources/GitStatus/GitStatusService.swift
+  s_fab0ce06453977::t_c5b0cd4e15454a 1,96,601
+Sources/GitStatus/PRLookup.swift
+  s_fab0ce06453977::t_11c0d5132bc307 1
+Sources/GitStatus/PortScanner.swift
+  s_fab0ce06453977::t_cea14dd028b6bc 1
+Sources/GitStatus/RepoInfo.swift
+  s_fab0ce06453977::t_f292b7d2dfc084 1
+Sources/GitStatus/WorktreeList.swift
+  s_fab0ce06453977::t_72e0400a2b6c9f 1
+Sources/Persistence/Migrations.swift
+  s_fab0ce06453977::t_0a066538ddce0e 8
+Sources/Persistence/PersistedState.swift
+  s_fab0ce06453977::t_e6c967ad4c8162 10,66,68
+Sources/TkzApp/AppDelegate.swift
+  s_fab0ce06453977::t_980f5fd860ff12 1,5,94,96,116,121,131,224
+Sources/TkzApp/AttentionNotifier.swift
+  s_fab0ce06453977::t_eb496cfe29fffd 1
+Sources/TkzApp/Changes/ChangesViewerController.swift
+  s_fab0ce06453977::t_40492ad0a6eaf7 1
+Sources/TkzApp/Changes/ChangesViewerModel.swift
+  s_fab0ce06453977::t_83a3cc92fc1819 1
+Sources/TkzApp/Changes/ChangesViewerView.swift
+  s_fab0ce06453977::t_2d3a2d8174a490 1
+Sources/TkzApp/ClaudeIntegration.swift
+  s_fab0ce06453977::t_632e48264ad707 1,5-6,39
+Sources/TkzApp/DevWindowController.swift
+  s_fab0ce06453977::t_ed120e948de470 1-2,9,58,61,131,142
+Sources/TkzApp/GitIntegration.swift
+  s_fab0ce06453977::t_37d6885718a1ca 1,76,350
+Sources/TkzApp/MainMenu.swift
+  s_fab0ce06453977::t_2ee4c9b1d7e8d8 1,27,45-48,187-188,229,316,362
+Sources/TkzApp/MainWindowController.swift
+  s_fab0ce06453977::t_92d49f109d0dca 1,25,124,129,362,366-368,384,438,440,523,566,949,959,1129,1402,1589,1713,1774,1794,1901,1911-1914,1959,1962,1973,2517,2713-2719,2728,2734-2772,2810,2830,2835,2947,2975,3251,3410,3532,3537-3538,3541-3543,3545,3549-3558,3594,3598
+Sources/TkzApp/Menus/NewSessionMenu.swift
+  s_fab0ce06453977::t_072d079a127e22 1
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_fab0ce06453977::t_0ec1ef6ed94c8f 1,37,40,48,57-58,74,176-177,183
+Sources/TkzApp/Palette/CommandPaletteController.swift
+  s_fab0ce06453977::t_a4391f019554a2 1,21,142
+Sources/TkzApp/Palette/PaletteDataSource.swift
+  s_fab0ce06453977::t_962c1fec0968ad 2,56
+Sources/TkzApp/Palette/PaletteItem.swift
+  s_fab0ce06453977::t_ae58c6f2c4cc2a 1
+Sources/TkzApp/Palette/SearchRowViews.swift
+  s_fab0ce06453977::t_3ecc548f546915 1
+Sources/TkzApp/Palette/SearchRows.swift
+  s_fab0ce06453977::t_5b1d354ed5abce 1
+Sources/TkzApp/Palette/SearchScope.swift
+  s_fab0ce06453977::t_7c14bcce287874 1
+Sources/TkzApp/Panes/PaneContainerView.swift
+  s_fab0ce06453977::t_d890c759c65633 1
+Sources/TkzApp/Panes/PaneModels.swift
+  s_fab0ce06453977::t_a9a8f4ae69b249 1
+Sources/TkzApp/Rebase/RebaseSheetController.swift
+  s_fab0ce06453977::t_8700881a8731fa 37-46,103-104,111,115,143
+Sources/TkzApp/Search/TranscriptSearchService.swift
+  s_fab0ce06453977::t_b8c272ea575ddb 1
+Sources/TkzApp/SessionEventHandler.swift
+  s_fab0ce06453977::t_1f298a680a928d 1
+Sources/TkzApp/SessionLauncher.swift
+  s_fab0ce06453977::t_cc9d91242732bb 1,212
+Sources/TkzApp/Settings/SettingsModel.swift
+  s_fab0ce06453977::t_66d011271edaf2 1-227
+Sources/TkzApp/Settings/SettingsView.swift
+  s_fab0ce06453977::t_0a58753d711c9b 1-607
+Sources/TkzApp/Settings/SettingsWindow.swift
+  s_fab0ce06453977::t_b78efacb9d11ab 1-54
+Sources/TkzApp/Settings/SettingsWindowController.swift
+  s_fab0ce06453977::t_e99f539f063fed 1-206
+Sources/TkzApp/Settings/ThemedSwitch.swift
+  s_fab0ce06453977::t_9d852a616b0aad 1-178
+Sources/TkzApp/Sidebar/GroupRowView.swift
+  s_fab0ce06453977::t_8ca1e0cc26b1d3 1
+Sources/TkzApp/Sidebar/LastMessagePopover.swift
+  s_fab0ce06453977::t_840131c677a0ef 1
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_fab0ce06453977::t_fe4af3c2891bf3 1,99,124
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_fab0ce06453977::t_d51666fdcb9ae1 1,26,138
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_fab0ce06453977::t_6c0b24e19990cf 1,5,88,106,216,277
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_fab0ce06453977::t_9d6144cd0482b3 2,16,220,289,331,368,553,847
+Sources/TkzApp/Sidebar/StatusDotView.swift
+  s_fab0ce06453977::t_81c45ba78ccc95 1
+Sources/TkzApp/Sidebar/SummaryStripView.swift
+  s_fab0ce06453977::t_9e0475199cc7a3 1-2
+Sources/TkzApp/Sidebar/UpdateNoticeView.swift
+  s_fab0ce06453977::t_a4c75fd8cd7232 1
+Sources/TkzApp/StatusBar/StatusBarModel.swift
+  s_fab0ce06453977::t_8417609180727b 16
+Sources/TkzApp/StatusBar/StatusBarView.swift
+  s_fab0ce06453977::t_2cc5c9a82f0bd7 26,155
+Sources/TkzApp/Tabs/TabStripModels.swift
+  s_fab0ce06453977::t_221e0a56eede04 1
+Sources/TkzApp/Tabs/TabStripView.swift
+  s_fab0ce06453977::t_8f98fedc41f758 1
+Sources/TkzApp/TerminalHost.swift
+  s_fab0ce06453977::t_6d934ed3b4709d 1,18,195,407
+Sources/TkzApp/Toolbar/MainToolbarController.swift
+  s_fab0ce06453977::t_a350d617bc9971 6,10,56,67,148,169
+Sources/TkzApp/Update/BrewCommand.swift
+  s_fab0ce06453977::t_a2ee6b18d10f07 1
+Sources/TkzApp/Update/InstalledVersion.swift
+  s_fab0ce06453977::t_17134dc1cadaa3 1
+Sources/TkzApp/Update/UpdateChecker.swift
+  s_fab0ce06453977::t_ccc6d5ede86869 1
+Sources/TkzApp/Update/UpdateIntegration.swift
+  s_fab0ce06453977::t_24845f3fba7565 1
+Sources/TkzApp/Update/UpdateRelaunch.swift
+  s_fab0ce06453977::t_d7bdaf791fac65 1
+Sources/TkzApp/Update/UpgradeCapability.swift
+  s_fab0ce06453977::t_e51d8ca75ac0cc 1
+Sources/TkzApp/Update/UpgradeRunner.swift
+  s_fab0ce06453977::t_bcc768917a086c 1
+Sources/TkzCore/AppState.swift
+  s_fab0ce06453977::t_c0f4bf968dfc9b 33,37
+Sources/TkzCore/AppStore.swift
+  s_fab0ce06453977::t_9fb3eb82dda114 60
+Sources/TkzCore/AppVersion.swift
+  s_fab0ce06453977::t_772fe472711185 1
+Sources/TkzCore/FixtureState.swift
+  s_fab0ce06453977::t_154788e613b90c 1,196
+Sources/TkzCore/GroupPalette.swift
+  s_fab0ce06453977::t_e4c493cc8befd2 1
+Sources/TkzCore/LoginShell.swift
+  s_fab0ce06453977::t_387fa0c9525781 2
+Sources/TkzCore/Models.swift
+  s_fab0ce06453977::t_e6958ece267b92 181,435,479,915,1107,1327
+Sources/TkzCore/PaneReducers.swift
+  s_fab0ce06453977::t_cc68175248269a 1
+Sources/TkzCore/Panes.swift
+  s_fab0ce06453977::t_5d39f9a9a92717 1
+Sources/TkzCore/Reducers.swift
+  s_fab0ce06453977::t_873fe5ecaae7a4 408,430
+Sources/TkzCore/SemanticVersion.swift
+  s_fab0ce06453977::t_50faab9f8dbdab 1
+Sources/TkzCore/StartupState.swift
+  s_fab0ce06453977::t_d2c86f5bc1df89 7,21
+Sources/TkzCore/Theme.swift
+  s_fab0ce06453977::t_800c3913539c74 17-25
+Sources/TkzCore/TkzCore.swift
+  s_fab0ce06453977::t_13603451d8e302 1
+Sources/TkzCore/UpdateState.swift
+  s_fab0ce06453977::t_0f30861a50f27f 1
+Sources/TkzPtyShim/include/TkzPtyShim.h
+  s_fab0ce06453977::t_65ed2589152ca6 27
+Sources/TkzShaderTypes/include/TkzShaderTypes.h
+  s_fab0ce06453977::t_f86fa2bf347d4c 48
+Sources/TkzTerminalCore/ModuleResources.swift
+  s_fab0ce06453977::t_8b9ab4b3b48a64 9
+Sources/TkzTerminalCore/Pty.swift
+  s_fab0ce06453977::t_ed5c26b0c6dfb3 2
+Sources/TkzTerminalCore/ScrollMetrics.swift
+  s_fab0ce06453977::t_06040e6a061e62 1
+Sources/TkzTerminalCore/TerminalEnvironment.swift
+  s_fab0ce06453977::t_f1d9adde9bad7e 1-2
+Sources/TkzTerminalCore/TerminalSession.swift
+  s_fab0ce06453977::t_3f07ec0a6acc56 35,463
+Sources/TkzTerminalCore/TkzTerminalCore.swift
+  s_fab0ce06453977::t_4497968172c611 2
+Sources/TkzTerminalRender/BoxSprites.swift
+  s_fab0ce06453977::t_9cb4e6d01e3c75 1
+Sources/TkzTerminalRender/CellMetrics.swift
+  s_fab0ce06453977::t_34b116a4192c20 1
+Sources/TkzTerminalRender/FontSet.swift
+  s_fab0ce06453977::t_9a8700b2f48071 1
+Sources/TkzTerminalRender/FrameBuilder.swift
+  s_fab0ce06453977::t_fd9d7257e8c12e 1
+Sources/TkzTerminalRender/FrameRing.swift
+  s_fab0ce06453977::t_8493088776e692 1
+Sources/TkzTerminalRender/GlyphAtlas.swift
+  s_fab0ce06453977::t_468f152a2ffe82 1
+Sources/TkzTerminalRender/GlyphRasterizer.swift
+  s_fab0ce06453977::t_9161bdfdaec7ed 1
+Sources/TkzTerminalRender/GraphemeShaper.swift
+  s_fab0ce06453977::t_f57a76d09b23af 1
+Sources/TkzTerminalRender/ModuleResources.swift
+  s_fab0ce06453977::t_9761f794313c53 9
+Sources/TkzTerminalRender/Resources/Shaders/Terminal.metal
+  s_fab0ce06453977::t_5587fc20a19e87 1
+Sources/TkzTerminalRender/Resources/Shaders/TkzShaderTypes.h
+  s_fab0ce06453977::t_b54dba8a8b84b8 48
+Sources/TkzTerminalRender/TerminalRenderer.swift
+  s_fab0ce06453977::t_4e1b1656b31d7b 1
+Sources/TkzTerminalRender/TerminalSurface.swift
+  s_fab0ce06453977::t_e23ef84cb981ee 1
+Sources/TkzTerminalRender/TkzTerminalRender.swift
+  s_fab0ce06453977::t_3aa3ca908dda54 1
+Sources/TkzTerminalView/DisplayLinkDriver.swift
+  s_fab0ce06453977::t_1bc32e90446155 1
+Sources/TkzTerminalView/MouseController.swift
+  s_fab0ce06453977::t_67ba0c9a552b2e 2,488
+Sources/TkzTerminalView/ScrollIndicator.swift
+  s_fab0ce06453977::t_e09b42977a65f9 1
+Sources/TkzTerminalView/TerminalInputController.swift
+  s_fab0ce06453977::t_f8c93b65a526a4 1,5,48,78,103
+Sources/TkzTerminalView/TerminalMetalView+TextInput.swift
+  s_fab0ce06453977::t_833c4e4a3bf2df 1,22,42
+Sources/TkzTerminalView/TerminalMetalView.swift
+  s_fab0ce06453977::t_3650d89028a0d2 1,13,19,33,43,104,276,709,743,811
+Sources/tkzmux-hook/StatuslineCommand.swift
+  s_fab0ce06453977::t_515a1e3b87bc06 2
+Sources/tkzmux-hook/main.swift
+  s_fab0ce06453977::t_6700c5192198a5 4
+Sources/tkzmux-vtdump/BenchCommands.swift
+  s_fab0ce06453977::t_97c5c6009c5319 1
+Sources/tkzmux-vtdump/RenderCommands.swift
+  s_fab0ce06453977::t_39a42bf81838e2 1
+Sources/tkzmux-vtdump/StateChurnCommand.swift
+  s_fab0ce06453977::t_11777f4c108bc0 1
+Sources/tkzmux-vtdump/main.swift
+  s_fab0ce06453977::t_59c92a474582f6 599,628
+Sources/tkzmux/main.swift
+  s_fab0ce06453977::t_71a12de1221a8a 1
+Tests/ClaudeBridgeTests/HookBinaryTests.swift
+  s_fab0ce06453977::t_e5aa3b5168e467 1,232
+Tests/ClaudeBridgeTests/HookServerTests.swift
+  s_fab0ce06453977::t_03e8fc78fc46de 3
+Tests/ClaudeBridgeTests/QuotaReconcilerTests.swift
+  s_fab0ce06453977::t_b269a8ee50acea 1
+Tests/ClaudeBridgeTests/ShellIntegrationHarnessTests.swift
+  s_fab0ce06453977::t_fd9d21afc82a7d 1
+Tests/ClaudeBridgeTests/ShimTests.swift
+  s_fab0ce06453977::t_5ffca92fd95703 3
+Tests/ClaudeBridgeTests/StatuslineReaderTests.swift
+  s_fab0ce06453977::t_fc369cacd33f10 2
+Tests/ClaudeBridgeTests/StatuslineTests.swift
+  s_fab0ce06453977::t_82d01d099a4cf0 2
+Tests/ClaudeBridgeTests/TranscriptSearchTests.swift
+  s_fab0ce06453977::t_3b37aea10c613d 6
+Tests/ClaudeBridgeTests/ZshWrapperTests.swift
+  s_fab0ce06453977::t_064401259d3677 3
+Tests/GitStatusTests/ChangedPathsTests.swift
+  s_fab0ce06453977::t_a733d3e386c7ff 1
+Tests/GitStatusTests/DiffParsingTests.swift
+  s_fab0ce06453977::t_34b5cb839a162c 1
+Tests/GitStatusTests/GitDiffServiceTests.swift
+  s_fab0ce06453977::t_2173a71a727240 1
+Tests/GitStatusTests/GitStatusServiceTests.swift
+  s_fab0ce06453977::t_2a6901770cef9f 204
+Tests/GitStatusTests/PRLookupTests.swift
+  s_fab0ce06453977::t_452076f386af8e 2
+Tests/GitStatusTests/PortScannerTests.swift
+  s_fab0ce06453977::t_c5eff55c6500ce 1
+Tests/GitStatusTests/WorktreeListTests.swift
+  s_fab0ce06453977::t_5359a1599a6c07 1
+Tests/PersistenceTests/MigrationsTests.swift
+  s_fab0ce06453977::t_9198b18947ef13 1
+Tests/PersistenceTests/SnapshotsTests.swift
+  s_fab0ce06453977::t_09c03616303c66 1
+Tests/PersistenceTests/StateAutosaverTests.swift
+  s_fab0ce06453977::t_6a1cf8b67a1f24 1
+Tests/PersistenceTests/StateFileTests.swift
+  s_fab0ce06453977::t_6142a514e1f735 1,48,103,154,169,372
+Tests/TkzAppTests/AttentionNotifierTests.swift
+  s_fab0ce06453977::t_4f36e9910baa8b 1
+Tests/TkzAppTests/ChangedFileSearchTests.swift
+  s_fab0ce06453977::t_c31e01b4cb9a1a 9
+Tests/TkzAppTests/ChangesViewerTests.swift
+  s_fab0ce06453977::t_ca518d8dc530e8 1
+Tests/TkzAppTests/CheatSheetTests.swift
+  s_fab0ce06453977::t_e085058e71d88c 129,183,189-190,192,195,198,205,208-209
+Tests/TkzAppTests/ClaudeIntegrationTests.swift
+  s_fab0ce06453977::t_a54f7dc2088be0 1
+Tests/TkzAppTests/FuzzyMatchTests.swift
+  s_fab0ce06453977::t_07a1e50d4809cc 6
+Tests/TkzAppTests/LastMessagePopoverTests.swift
+  s_fab0ce06453977::t_201d7837df8de4 1
+Tests/TkzAppTests/MainMenuTests.swift
+  s_fab0ce06453977::t_b6a9ce5db81e8b 1,24,71,184,204,206-208,211-212,218,221,240,248-249,255-257,261-266,281
+Tests/TkzAppTests/MainToolbarTests.swift
+  s_fab0ce06453977::t_2c55e1dd94fd95 6,45,47,49,133
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_fab0ce06453977::t_ff5b9e4a436614 1,31,255,260-267,277,282
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_fab0ce06453977::t_ae18cb356019fe 1
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_fab0ce06453977::t_c83adc8c495379 1,390,582,640
+Tests/TkzAppTests/NewSessionMenuTests.swift
+  s_fab0ce06453977::t_21daa60f0cc661 8,245,296,340
+Tests/TkzAppTests/PaletteTests.swift
+  s_fab0ce06453977::t_f027bb9365bc1d 8,94,96,100,106,123,126-127
+Tests/TkzAppTests/PromptCardTests.swift
+  s_fab0ce06453977::t_6103a484223433 287
+Tests/TkzAppTests/RebaseSheetTests.swift
+  s_fab0ce06453977::t_a5316a6fb66b00 143-154,162-166,179,207,223,237,247,265,270,402,427-428
+Tests/TkzAppTests/RenameAndDoneTests.swift
+  s_fab0ce06453977::t_bebb04e49155bf 1
+Tests/TkzAppTests/SearchOverlayTests.swift
+  s_fab0ce06453977::t_3773c5102d0ac2 8
+Tests/TkzAppTests/SessionEventHandlerTests.swift
+  s_fab0ce06453977::t_6900c425b386af 1
+Tests/TkzAppTests/SessionKillTests.swift
+  s_fab0ce06453977::t_4058e634d5b9da 79
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_fab0ce06453977::t_a3372cc8a2faa1 1
+Tests/TkzAppTests/SettingsWindowTests.swift
+  s_fab0ce06453977::t_bbf9dfc56330cd 1-336
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_fab0ce06453977::t_0628a39f90c7f3 1,801
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_fab0ce06453977::t_0b4e5e2407d02d 1,958,1074
+Tests/TkzAppTests/StatusBarInteractionTests.swift
+  s_fab0ce06453977::t_271bb97e004e1a 6
+Tests/TkzAppTests/StatusBarViewTests.swift
+  s_fab0ce06453977::t_e6d54a652adb1a 6,378
+Tests/TkzAppTests/StatuslineConsentTests.swift
+  s_fab0ce06453977::t_e6d623d8973bfb 2
+Tests/TkzAppTests/TabStripViewTests.swift
+  s_fab0ce06453977::t_f63910e4ba2f00 1
+Tests/TkzAppTests/TerminalHostTests.swift
+  s_fab0ce06453977::t_9a31c2954acbbc 1,7,195,392,482-495
+Tests/TkzAppTests/ToolbarSearchTests.swift
+  s_fab0ce06453977::t_df05edc629aa7c 8
+Tests/TkzAppTests/TranscriptSearchServiceTests.swift
+  s_fab0ce06453977::t_805542ffd88fd4 9
+Tests/TkzAppTests/UpdateCheckerTests.swift
+  s_fab0ce06453977::t_9dc1fd02061061 1
+Tests/TkzAppTests/UpdateIntegrationTests.swift
+  s_fab0ce06453977::t_f29c29449f4002 1
+Tests/TkzAppTests/UpdateNoticeTests.swift
+  s_fab0ce06453977::t_9b6f15e3602d3c 1
+Tests/TkzAppTests/UpgradeRunnerTests.swift
+  s_fab0ce06453977::t_ef51fb88e3e68b 1
+Tests/TkzCoreTests/AppStoreTests.swift
+  s_fab0ce06453977::t_49fe1553392cf8 18,73,142,249,312
+Tests/TkzCoreTests/AppVersionTests.swift
+  s_fab0ce06453977::t_04084a3ce3b005 1
+Tests/TkzCoreTests/GroupPaletteTests.swift
+  s_fab0ce06453977::t_b22bebe17f2543 1
+Tests/TkzCoreTests/LoginShellTests.swift
+  s_fab0ce06453977::t_35ab9bd6eccaaf 1
+Tests/TkzCoreTests/PaneTests.swift
+  s_fab0ce06453977::t_273e81875e0a01 1
+Tests/TkzCoreTests/ReducersTests.swift
+  s_fab0ce06453977::t_429ca29dc1bb29 681,964
+Tests/TkzCoreTests/SemanticVersionTests.swift
+  s_fab0ce06453977::t_329b718c9f7301 1
+Tests/TkzCoreTests/SourceHygieneTests.swift
+  s_fab0ce06453977::t_0e90fd3693c7c1 35
+Tests/TkzCoreTests/StartupStateTests.swift
+  s_fab0ce06453977::t_196dac78a33ec3 1
+Tests/TkzCoreTests/StatusDerivationTests.swift
+  s_fab0ce06453977::t_f3cb86f9735627 1
+Tests/TkzCoreTests/UpdateStateTests.swift
+  s_fab0ce06453977::t_cfa32e66394fff 1
+Tests/TkzTerminalCoreTests/Fixtures/README.md
+  s_fab0ce06453977::t_839f4e38adce79 3
+Tests/TkzTerminalCoreTests/GhosttyVtTests.swift
+  s_fab0ce06453977::t_d0ae9f6d6766b0 28
+Tests/TkzTerminalCoreTests/KeyEncoderTests.swift
+  s_fab0ce06453977::t_1ff7550c3bb46e 1
+Tests/TkzTerminalCoreTests/RecordingTests.swift
+  s_fab0ce06453977::t_ef2a47ab3e6f4d 1,209
+Tests/TkzTerminalCoreTests/SessionInputSeamTests.swift
+  s_fab0ce06453977::t_0c8c45e919b880 3
+Tests/TkzTerminalCoreTests/TerminalEnvironmentTests.swift
+  s_fab0ce06453977::t_5cd54eb0322882 19,161
+Tests/TkzTerminalCoreTests/TerminalSessionTests.swift
+  s_fab0ce06453977::t_c364a38d6f424c 1,280
+Tests/TkzTerminalRenderTests/FrameBuilderTests.swift
+  s_fab0ce06453977::t_43aa46f20d3b11 1,518
+Tests/TkzTerminalRenderTests/ShaderCompileTests.swift
+  s_fab0ce06453977::t_452264ea569212 1
+Tests/TkzTerminalRenderTests/TerminalRendererTests.swift
+  s_fab0ce06453977::t_553d4c039a9162 1,266
+Tests/TkzTerminalViewTests/MouseControllerTests.swift
+  s_fab0ce06453977::t_4b5662686cb4b0 1,714
+Tests/TkzTerminalViewTests/TerminalInputControllerTests.swift
+  s_fab0ce06453977::t_9a7c600b4deb4d 1,58
+Tests/TkzTerminalViewTests/TerminalMetalViewTests.swift
+  s_fab0ce06453977::t_daebb0631cc976 114,123,299
+docs/privacy.md
+  s_fab0ce06453977::t_4d4ea0df84b2f8 48-49,133-135,148-149,169
+docs/shortcuts.md
+  s_fab0ce06453977::t_a13ef0900d743f 4,25-26,28,33-36,52-55,58-59,62-66,101,106
+scripts/build-ghostty-vt.sh
+  s_fab0ce06453977::t_8a48e11cd8c7ed 2,58
+scripts/bump-cask.sh
+  s_fab0ce06453977::t_45cc88684d179b 2
+scripts/make-app.sh
+  s_fab0ce06453977::t_d1b5204d99f939 28,101,108,120,165,185
+scripts/make-dist.sh
+  s_fab0ce06453977::t_3e7a01ca2e1301 2,151
+scripts/state-crash-test.sh
+  s_fab0ce06453977::t_4d0decf9060502 2
+scripts/test-memory-probe.sh
+  s_fab0ce06453977::t_2d4fc69e1b5bf1 159-168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2e30b1156f7baccb06a40b3974e738657c296728",
+  "prompts": {},
+  "sessions": {
+    "s_fab0ce06453977": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a63b49e1-02a7-4d19-aaed-a8ea78b881b6",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
