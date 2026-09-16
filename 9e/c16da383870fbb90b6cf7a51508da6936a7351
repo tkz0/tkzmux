@@ -1,0 +1,21 @@
+Sources/TkzApp/Sidebar/SidebarViewController.swift
+  s_b4d50fb2356d6e::t_55cc4b7a6adce4 34-38,401-406,566-568,704-707,712,784,814-844,1053-1054,1056-1057,1060-1073,1182-1185,1196,1224-1268,1279-1287,1292-1299
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_b4d50fb2356d6e::t_731bb1a92f63b3 1135-1137,1180-1182,1186-1187,1191-1195,1220-1223,1225,1240-1246,1254-1255,1261,1272-1275,1339-1343,1351-1357,1365-1370,1380-1387,1399-1581
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9ec16da383870fbb90b6cf7a51508da6936a7351",
+  "prompts": {},
+  "sessions": {
+    "s_b4d50fb2356d6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0da87cd8-31b9-41e9-85bd-56f1b4627837",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
