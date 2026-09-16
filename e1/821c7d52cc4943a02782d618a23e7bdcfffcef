@@ -1,0 +1,53 @@
+Sources/ClaudeBridge/ShimInstaller.swift
+  s_60e79390011508::t_b50d83e9edbd3f 188
+Sources/TkzApp/ClaudeIntegration.swift
+  s_60e79390011508::t_2851b816c81f1a 110-120,125-127,133-135,160-162,164,298-300,304-306,555,561-567,584-586,592-594,606,642-647,652,658
+Tests/ClaudeBridgeTests/HookServerTests.swift
+  s_60e79390011508::t_da6b9720c3698b 268-334
+Tests/TkzTerminalCoreTests/TerminalEnvironmentTests.swift
+  s_60e79390011508::t_2430f1c98a57c2 158-182
+Sources/ClaudeBridge/HookServer.swift
+  s_34c9997899df1a::t_4fc508d98b82a9 150-159,161,170-193,195
+Sources/ClaudeBridge/ProcessLiveness.swift
+  s_34c9997899df1a::t_de82670df3c6b6 101-112
+Sources/ClaudeBridge/ProcessOwnership.swift
+  s_34c9997899df1a::t_c6e628d24ef92c 1-58
+Sources/TkzApp/AppDelegate.swift
+  s_34c9997899df1a::t_3df83e421ad139 110-114
+Sources/TkzCore/HookSocket.swift
+  s_34c9997899df1a::t_fe54ed0048fec5 1-44
+Sources/TkzTerminalCore/TerminalEnvironment.swift
+  s_34c9997899df1a::t_e9caa933bc3f12 70-74,94-95,132,160-161,177-178
+Tests/ClaudeBridgeTests/ProcessOwnershipTests.swift
+  s_34c9997899df1a::t_fd28a53995abba 1-116
+Tests/TkzAppTests/ClaudeIntegrationTests.swift
+  s_34c9997899df1a::t_d3240fefaf0502 13,29-44,51,55-56,288-403,527
+Tests/TkzCoreTests/HookSocketTests.swift
+  s_34c9997899df1a::t_060bd3bfdb5601 1-39
+docs/privacy.md
+  s_34c9997899df1a::t_93abaa2ff20b1e 117-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e1821c7d52cc4943a02782d618a23e7bdcfffcef",
+  "prompts": {},
+  "sessions": {
+    "s_34c9997899df1a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73f91db9-d3bc-44c8-a103-7cfe448480f5",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_60e79390011508": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "296ca338-d3c0-4bb4-b0dd-e4fd855076cf",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
