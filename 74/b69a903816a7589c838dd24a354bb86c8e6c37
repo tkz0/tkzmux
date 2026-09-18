@@ -1,0 +1,65 @@
+CLAUDE.md
+  s_ec383e60cd5cf1::t_4b56cab566a6ce 3,36-37,43
+README.md
+  s_ec383e60cd5cf1::t_19732a66981701 3-8,11,24-26,72-75,104-105
+Sources/Persistence/PersistedState.swift
+  s_8ceed66e3050e8::t_8b0ff2e9bc48fc 68-71,95,104,113,121,223,286
+Sources/TkzApp/AgentIntegration.swift
+  s_8ceed66e3050e8::t_c6c4c6f0a165f4 409-452
+Sources/TkzApp/MainWindowController.swift
+  s_8ceed66e3050e8::t_4167d2c5f8b76d 1872-1878,2078-2217,2758-2765,2954-2991
+Sources/TkzApp/Settings/SettingsModel.swift
+  s_ec383e60cd5cf1::t_c7ee7ec7f3f521 45-47,82-86,88-89,91-115,121-129,134,136-138,165,190-198,201-206,208-216,252-333,344-356,361
+Sources/TkzApp/Settings/SettingsWindowController.swift
+  s_8ceed66e3050e8::t_66cb33cc417a92 33-55,127-133,136-141,161-167
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_8ceed66e3050e8::t_8f44a294a13bfd 129-133,177,201,266,439-451,470,601-613,615,617
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_8ceed66e3050e8::t_266beb12307831 71-72,76-103
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_8ceed66e3050e8::t_47bdd624d8d84b 117-125,140-141,157
+Sources/TkzCore/AppState.swift
+  s_8ceed66e3050e8::t_96beb075f0e56c 37-42,89,109
+Sources/TkzCore/AppStore.swift
+  s_8ceed66e3050e8::t_020e75d3d12bbb 183
+Sources/TkzCore/FixtureState.swift
+  s_ec383e60cd5cf1::t_e393155e3530b6 14-18,312-366
+Sources/TkzCore/Reducers.swift
+  s_8ceed66e3050e8::t_1b7bc37added8c 469-472
+Tests/PersistenceTests/StateFileTests.swift
+  s_8ceed66e3050e8::t_8b15db28c1871c 51-53,103,166-187,207
+Tests/TkzAppTests/CodexHooksConsentTests.swift
+  s_8ceed66e3050e8::t_66ff58e6400730 1-261
+Tests/TkzAppTests/SettingsWindowTests.swift
+  s_ec383e60cd5cf1::t_37d7cb6b00c987 128-268
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_8ceed66e3050e8::t_7bbdfa0b5969c5 541-590
+Tests/TkzCoreTests/FixtureStateTests.swift
+  s_ec383e60cd5cf1::t_643eff7c60d0e2 1-48
+docs/privacy.md
+  s_ec383e60cd5cf1::t_71590c4e1c50e2 80-83,92-101,112-118,153-161,179-209,221-231,236-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "74b69a903816a7589c838dd24a354bb86c8e6c37",
+  "prompts": {},
+  "sessions": {
+    "s_8ceed66e3050e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a70468dceefd9025b",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_ec383e60cd5cf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa75235ae0cbdcbd7",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
