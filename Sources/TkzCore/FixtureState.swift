@@ -11,6 +11,11 @@ import Foundation
 extension AppState {
     /// The reference state used by previews, the sidebar tests and the perf harness.
     public static var fixture: AppState { Fixture.make() }
+
+    /// `.fixture` plus one Codex group and a few Codex rows (TKZ-87), for the dev window and any
+    /// test that needs a sidebar with more than one agent in it. `.fixture` itself stays
+    /// Claude-only — see `Fixture.makeMultiAgent()`'s own header for why.
+    public static var fixtureMultiAgent: AppState { Fixture.makeMultiAgent() }
 }
 
 /// Builder for `AppState.fixture`. Public so that TkzApp's dev window and the perf harness can
@@ -303,5 +308,60 @@ public enum Fixture {
         }
         session.live = live
         return session
+    }
+
+    /// `.make()`, plus one more group and account for a second agent, Codex (TKZ-87). Grafted on
+    /// rather than woven into `specs`/`groupSpecs`, which are Claude-specific by construction (the
+    /// `agent: .claude` and `AgentKind.claude.worktreeMarker` above are spelled out on purpose, not
+    /// left to a default) — this keeps that machinery honest about being Claude-only while still
+    /// giving the sidebar, Settings and any other multi-agent test a real second agent to render.
+    ///
+    /// **`AppState.fixture` itself must stay exactly what it already was.** A lot of tests measure
+    /// it by row count, group count and account keys; this is a separate entry point precisely so
+    /// none of that has to move.
+    ///
+    /// The three Codex rows carry no `live.observation` — unlike every Claude row above, which
+    /// always sets one. Codex writes no descriptor file of its own (`CodexAdapter.capabilities` has
+    /// no `.observation`), so a fixture row that faked one would document a fact that is not true.
+    public static func makeMultiAgent() -> AppState {
+        var state = make()
+
+        let sandboxGroupID = groupID(900)
+        state.groups[sandboxGroupID] = Group(
+            id: sandboxGroupID, name: "Sandbox", repoRoot: "~/dev/sandbox",
+            color: RGB(hex: 0x54c7fb), isCollapsed: false, order: state.groups.count,
+            defaultAccountKey: "codex")
+
+        state.accounts["codex"] = Account(
+            key: "codex", configDir: "~/.codex", label: "Codex", agent: .codex)
+
+        let codexSpecs: [(title: String?, status: SessionStatus, attention: Bool, restored: Bool)] = [
+            (nil, .working, false, false),
+            ("flaky sandbox test", .waiting(.doneUnattended), true, false),
+            ("notes", .idle, false, true),
+        ]
+        for (n, spec) in codexSpecs.enumerated() {
+            let id = sessionID(900 + n)
+            var session = Session(
+                id: id, groupID: sandboxGroupID, order: n, title: spec.title,
+                cwd: "~/dev/sandbox", repoRoot: "~/dev/sandbox", worktreePath: nil,
+                isWorktree: false, agent: .codex, accountKey: "codex",
+                conversationId: String(format: "22222222-3333-4555-8666-%012d", n),
+                createdAt: now.addingTimeInterval(-Double(n) * 900 - 1800),
+                lastActiveAt: now.addingTimeInterval(-Double(n) * 60))
+            if !spec.restored {
+                var live = LiveSessionState(
+                    pid: pid_t(50_000 + n), shellPid: pid_t(49_000 + n),
+                    status: spec.status, attention: spec.attention)
+                if spec.status == .waiting(.doneUnattended) {
+                    live.lastStopMessage = "Sandbox run finished — three tests still flake."
+                    live.lastStopAt = now.addingTimeInterval(-300)
+                }
+                session.live = live
+            }
+            state.sessions[id] = session
+        }
+        state.normalizeSessionOrder(in: sandboxGroupID)
+        return state
     }
 }

@@ -180,6 +180,7 @@ public struct ChangeSet: Hashable, Sendable {
             || old.checkOriginPeriodically != new.checkOriginPeriodically
             || old.notifyOnDone != new.notifyOnDone
             || old.statuslineOffered != new.statuslineOffered
+            || old.codexHooksOffered != new.codexHooksOffered
             || old.dismissedUpdateVersion != new.dismissedUpdateVersion
             || old.update != new.update
         {

@@ -125,6 +125,147 @@ struct SettingsWindowTests {
         #expect(rows.first?.detail.contains("Let Stub Agent write its usage") == true)
     }
 
+    @Test("Status line: gated on the .statusline capability, not on the agent's name")
+    func statuslineGatesOnCapability() {
+        var state = AppState.fixture
+        state.accounts = [
+            Account.defaultKey(for: .claude): Account(key: Account.defaultKey(for: .claude), configDir: "/h/.claude", label: "Private"),
+            "codex": Account(key: "codex", configDir: "/h/.codex", label: "Codex", agent: .codex),
+        ]
+        // The default capability table (no real adapters wired) grants `.statusline` to Claude
+        // alone — today's shipped behaviour — so the Codex account here gets no row.
+        let defaultEnv = SettingsModel.statuslineRows(state: state, environment: .init())
+        #expect(defaultEnv.map(\.id) == [.statusline(accountKey: Account.defaultKey(for: .claude))])
+
+        // The row-builder itself does not know "Claude" — handing it a capability table where
+        // *nobody* has `.statusline` hides even the Claude row, and one where Codex also has it
+        // shows both. Either way proves the gate reads `environment.capabilities`, not the agent.
+        let nobody = SettingsModel.statuslineRows(
+            state: state, environment: .init(capabilities: { _ in [] }))
+        #expect(nobody.isEmpty)
+
+        let everybody = SettingsModel.statuslineRows(
+            state: state, environment: .init(capabilities: { _ in [.statusline] }))
+        #expect(Set(everybody.map(\.id)) == [
+            .statusline(accountKey: Account.defaultKey(for: .claude)), .statusline(accountKey: "codex"),
+        ])
+    }
+
+    @Test("Hooks: only for an agent whose hooks need installing with consent, never for Claude")
+    func hooksRowsGateOnHookInstallRequired() {
+        var state = AppState.fixture
+        state.accounts = [
+            Account.defaultKey(for: .claude): Account(key: Account.defaultKey(for: .claude), configDir: "/h/.claude", label: "Private"),
+            "codex": Account(key: "codex", configDir: "/h/.codex", label: "Codex", agent: .codex),
+        ]
+        // No wiring at all: no row for anybody, Codex included — the asymmetry only shows up once
+        // something actually claims the capability.
+        #expect(SettingsModel.hooksRows(state: state, environment: .init()).isEmpty)
+
+        let environment = SettingsModel.Environment(hooksInstallRequired: { $0 == .codex })
+        let rows = SettingsModel.hooksRows(state: state, environment: environment)
+        #expect(rows.map(\.id) == [.hooks(accountKey: "codex")])
+        #expect(rows[0].title == "Hooks integration")
+        #expect(rows[0].control == .button(title: "Configure\u{2026}", destructive: false))
+        #expect(rows[0].detail.contains("/h/.codex/hooks.json"))
+        #expect(rows[0].detail.contains("Edits it only after you confirm"))
+
+        // Even if Claude were (hypothetically) handed to `hooksInstallRequired`, a second account
+        // still only names an account when there is more than one — same rule as `statuslineRows`.
+        state.setAccount(Account(key: "codex-work", configDir: "/h/.codex-work", label: "Work", agent: .codex))
+        let both = SettingsModel.hooksRows(state: state, environment: environment)
+        #expect(both.map(\.title) == ["Hooks integration \u{00B7} Codex", "Hooks integration \u{00B7} Work"])
+    }
+
+    @Test("Hooks: producer states read the same way status line's do, plus config.toml's overlap")
+    func hooksRowsProducerStates() {
+        var state = AppState.fixture
+        state.accounts = ["codex": Account(key: "codex", configDir: "/h/.codex", label: "Codex", agent: .codex)]
+        let base = SettingsModel.Environment(hooksInstallRequired: { $0 == .codex })
+
+        let none = SettingsModel.hooksRows(state: state, environment: base)
+        #expect(none[0].control == .button(title: "Configure\u{2026}", destructive: false))
+        #expect(none[0].detail.contains("relay session events to tkzmux"))
+        #expect(!none[0].detail.contains("config.toml"))
+
+        var withConfigToml = base
+        withConfigToml.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+            producer: .none, configTomlHasHooks: true, trust: .unknown)]
+        let noneWithToml = SettingsModel.hooksRows(state: state, environment: withConfigToml)
+        #expect(noneWithToml[0].detail.contains("config.toml"))
+        #expect(noneWithToml[0].detail.contains("alongside them"))
+
+        var other = base
+        other.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+            producer: .other, configTomlHasHooks: false, trust: .unknown)]
+        let otherRows = SettingsModel.hooksRows(state: state, environment: other)
+        #expect(otherRows[0].control == .button(title: "Configure\u{2026}", destructive: false))
+        #expect(otherRows[0].detail.contains("alongside the hooks already there"))
+
+        var stale = base
+        stale.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+            producer: .stale(paths: ["/old/tkzmux-hook"]), configTomlHasHooks: false, trust: .unknown)]
+        let staleRows = SettingsModel.hooksRows(state: state, environment: stale)
+        #expect(staleRows[0].control == .button(title: "Remove\u{2026}", destructive: false))
+        #expect(staleRows[0].detail.contains("repointed at launch"))
+    }
+
+    @Test("Hooks: the trust sentence never suggests bypassing trust")
+    func hooksRowsTrustSentence() {
+        var state = AppState.fixture
+        state.accounts = ["codex": Account(key: "codex", configDir: "/h/.codex", label: "Codex", agent: .codex)]
+        var environment = SettingsModel.Environment(hooksInstallRequired: { $0 == .codex })
+
+        environment.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+            producer: .tkzmux, configTomlHasHooks: false, trust: .mentionsOurConfig)]
+        let mentions = SettingsModel.hooksRows(state: state, environment: environment)
+        #expect(mentions[0].detail.contains("trust ledger already mentions this file"))
+        #expect(mentions[0].control == .button(title: "Remove\u{2026}", destructive: false))
+
+        environment.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+            producer: .tkzmux, configTomlHasHooks: false, trust: .doesNotMentionOurConfig)]
+        let notTrusted = SettingsModel.hooksRows(state: state, environment: environment)
+        #expect(notTrusted[0].detail.contains("has not trusted this yet"))
+        #expect(notTrusted[0].detail.contains("/hooks"))
+
+        environment.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+            producer: .tkzmux, configTomlHasHooks: false, trust: .unknown)]
+        let unknown = SettingsModel.hooksRows(state: state, environment: environment)
+        #expect(unknown[0].detail.contains("cannot tell whether"))
+
+        for rows in [mentions, notTrusted, unknown] {
+            #expect(!rows[0].detail.contains("bypass"))
+        }
+    }
+
+    @Test("General only grows a Hooks integration section when there is a row for it")
+    func hooksSectionOmittedWhenEmpty() {
+        #expect(SettingsModel.make(state: .fixture).sections(for: .general).map(\.caption)
+            == ["On launch", "Git", "Notifications", "Status bar"])
+
+        var state = AppState.fixture
+        state.accounts["codex"] = Account(key: "codex", configDir: "/h/.codex", label: "Codex", agent: .codex)
+        let environment = SettingsModel.Environment(hooksInstallRequired: { $0 == .codex })
+        let sections = SettingsModel.make(state: state, environment: environment).sections(for: .general)
+        #expect(sections.map(\.caption) == ["On launch", "Git", "Notifications", "Status bar", "Hooks integration"])
+    }
+
+    @Test("Shell page names the installed shims when it knows them")
+    func shellRowNamesShims() {
+        let generic = SettingsModel.make(state: .fixture).sections(for: .shell)[0].rows[0]
+        #expect(generic.detail.contains("Each installed agent's shim"))
+
+        let one = SettingsModel.make(
+            state: .fixture, environment: .init(installedShims: ["claude"])
+        ).sections(for: .shell)[0].rows[0]
+        #expect(one.detail.contains("The `claude` shim"))
+
+        let two = SettingsModel.make(
+            state: .fixture, environment: .init(installedShims: ["claude", "codex"])
+        ).sections(for: .shell)[0].rows[0]
+        #expect(two.detail.contains("The `claude` and `codex` shims"))
+    }
+
     @Test("Shell page: the chip says what is on disk, and the sentence names the directory")
     func shellStatus() {
         let none = SettingsModel.make(state: .fixture).sections(for: .shell)[0].rows

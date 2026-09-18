@@ -68,8 +68,37 @@ public enum SidebarRowAdapter {
             isSelected: state.selection == session.id,
             groupColor: state.groups[session.groupID]?.color,
             memoryBadge: memoryBadge(for: session),
-            spendBadge: spendBadge(for: session, in: state)
+            spendBadge: spendBadge(for: session, in: state),
+            agentGlyph: agentGlyph(for: session, in: state)
         )
+    }
+
+    /// A one-letter badge naming `session`'s agent, or `nil` when the sidebar has nothing to
+    /// disambiguate — i.e. every session known to `state`, `session` itself included, shares one
+    /// agent. `session` is added to the set explicitly rather than assumed to already be in
+    /// `state.sessions`: several call sites (badge/spend tests, a session mid-launch) hand this a
+    /// `Session` that is not yet, or never was, stored in the state passed alongside it.
+    ///
+    /// Derived from `AgentKind.rawValue` rather than a per-agent display table: naming a table
+    /// entry for every future agent is exactly the kind of thing nobody remembers to do, and this
+    /// only has to say "this row is not that one", not spell out a product name.
+    static func agentGlyph(for session: Session, in state: AppState) -> String? {
+        var agents = Set(state.sessions.values.map(\.agent))
+        agents.insert(session.agent)
+        guard agents.count > 1 else { return nil }
+        return glyphCharacter(for: session.agent)
+    }
+
+    /// The one letter `agentGlyph(for:in:)` draws. `claude` and `codex` share a first letter, so
+    /// the two known kinds get one picked to actually tell them apart; an agent this build does
+    /// not recognise (a `state.json` written by a newer build) falls back to its own first letter,
+    /// which is honest even though it is not checked against every other agent's name.
+    static func glyphCharacter(for agent: AgentKind) -> String {
+        switch agent {
+        case .claude: return "C"
+        case .codex: return "X"
+        default: return agent.rawValue.prefix(1).uppercased()
+        }
     }
 
     /// The `…/dir` subtitle: the folder-derived title, unless that *is* the title. An exact string

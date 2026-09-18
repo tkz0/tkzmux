@@ -1,13 +1,14 @@
 # tkzmux
 
-A native macOS session manager for [Claude Code](https://claude.com/claude-code). Every Claude Code
-conversation gets its own real terminal in one window. A sidebar lists the sessions grouped by
-repository, and each row shows a status derived from Claude Code's own session descriptors and
-hooks: *working*, *done*, or **NEEDS YOU** when a permission prompt or an unattended answer is
-waiting. The terminal is a from-scratch Metal renderer driving
+A native macOS session manager for coding agents — [Claude Code](https://claude.com/claude-code)
+and [Codex CLI](https://developers.openai.com/codex/cli) today. Every conversation gets its own
+real terminal in one window. A sidebar lists the sessions grouped by repository, and each row shows
+a status derived from the agent's own hooks — plus, for Claude Code, its session descriptors too:
+*working*, *done*, or **NEEDS YOU** when a permission prompt or an unattended answer is waiting. The
+terminal is a from-scratch Metal renderer driving
 [libghostty-vt](https://github.com/ghostty-org/ghostty), the project's only third-party dependency.
 Sessions survive a quit: screen and scrollback are snapshotted, and a restored row reopens under a
-fresh shell with `claude --resume` a keystroke away.
+fresh shell with its own resume command — `claude --resume` or `codex resume` — a keystroke away.
 
 <!-- SCREENSHOT: a shot of the main window (sidebar + terminal) goes here. Not added yet. -->
 
@@ -20,7 +21,9 @@ if it helps you, fork it if it nearly does.
 ## Requirements
 
 - macOS 26 (Tahoe) or later, Apple Silicon only.
-- [Claude Code](https://claude.com/claude-code) installed and working in your shell.
+- [Claude Code](https://claude.com/claude-code) or [Codex CLI](https://developers.openai.com/codex/cli)
+  installed and working in your shell — one is enough, and tkzmux only ever looks for the ones it
+  finds on `PATH`.
 - `zsh`, `bash` or `fish` as your login shell, for the shell integration.
 - Optional: the [GitHub CLI](https://cli.github.com) (`gh`), authenticated, for the PR badge.
 
@@ -66,9 +69,10 @@ and `make dist` cuts a tagged, notarized release.
 No telemetry, analytics or crash reporting. tkzmux makes one network request of its own: a release
 build periodically asks GitHub for the latest release, sending nothing about you or your sessions.
 The PR badge shells out to `gh pr view`, under your own credentials and only for GitHub origins.
-`~/.claude` is read, never written; everything tkzmux writes lives under
-`~/Library/Application Support/tkzmux`. The one exception is the status line integration, which
-you opt into and which sets the `statusLine` key in Claude Code's `settings.json`.
+`~/.claude` and `~/.codex` are read, never written; everything tkzmux writes lives under
+`~/Library/Application Support/tkzmux`. Two exceptions, both opt-in and asked for by name before
+anything is touched: the status line integration sets the `statusLine` key in Claude Code's
+`settings.json`, and the hooks integration writes tkzmux's hooks into Codex's own `hooks.json`.
 
 **Terminal snapshots contain your screen and scrollback verbatim, unencrypted**, in that support
 directory. They are deleted with the session.
@@ -97,3 +101,5 @@ MIT — see [LICENSE](LICENSE).
   License 1.1 (`Resources/Fonts/OFL.txt`).
 - Claude and Claude Code are products of Anthropic. This project is not affiliated with, endorsed
   by, or supported by Anthropic.
+- Codex and Codex CLI are products of OpenAI. This project is not affiliated with, endorsed by, or
+  supported by OpenAI.

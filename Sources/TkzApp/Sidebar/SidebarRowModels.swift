@@ -114,6 +114,15 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
     /// claim nothing was spent.
     public var spendBadge: String?
 
+    /// A one-letter badge naming this row's agent (`"C"`, `"X"`), or `nil` to draw none.
+    ///
+    /// `nil` is what a single-agent sidebar must always get: a badge only earns its place once two
+    /// different agents are actually mixed into the same list and a row needs to say which one it
+    /// is, so `SidebarRowAdapter.agentGlyph(for:in:)` (the only place that decides) hides it
+    /// whenever every session in the state shares one agent — which is every sidebar that existed
+    /// before a second agent did, so this must render exactly as it did before (TKZ-87).
+    public var agentGlyph: String?
+
     public init(
         title: String,
         branch: String? = nil,
@@ -128,7 +137,8 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         isSelected: Bool = false,
         groupColor: RGB? = nil,
         memoryBadge: String? = nil,
-        spendBadge: String? = nil
+        spendBadge: String? = nil,
+        agentGlyph: String? = nil
     ) {
         self.title = title
         self.branch = branch
@@ -144,6 +154,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         self.groupColor = groupColor
         self.memoryBadge = memoryBadge
         self.spendBadge = spendBadge
+        self.agentGlyph = agentGlyph
     }
 }
 

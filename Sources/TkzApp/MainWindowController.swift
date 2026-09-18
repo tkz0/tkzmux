@@ -1869,6 +1869,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Overrides the confirmation for removing the statusline again.
     public var confirmRemoveStatusline: (() -> Bool)?
 
+    /// Overrides the Codex hooks consent sheet (TKZ-87): gets the plan, returns true to install.
+    /// Tests set it, exactly like ``confirmInstallStatusline`` — a sheet needs a key window and a
+    /// run loop, neither of which a test process may create.
+    public var confirmInstallCodexHooks: ((CodexHooksInstallPlan) -> Bool)?
+    /// Overrides the confirmation for removing Codex's hooks again.
+    public var confirmRemoveCodexHooks: (() -> Bool)?
+
     /// Overrides the rename sheet: gets the current title, returns the new one or `nil` for
     /// cancel. Tests set it — a sheet needs a key window and a run loop.
     public var renamePrompt: ((String) -> String?)?
@@ -2066,6 +2073,146 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             return
         }
         offerStatusline(accountKey: key, automatic: true)
+    }
+
+    // MARK: Codex hooks consent (TKZ-87)
+
+    /// Called once a Codex launch has actually succeeded (`launch(_:)`) — a session starting is
+    /// the moment the offer means something, unlike the statusline's once-at-startup check, which
+    /// has no equivalent "an agent just started" event to wait for.
+    ///
+    /// Asked only when `detect` reports `.none` for that account: `.tkzmux`/`.stale` mean there is
+    /// nothing to offer, and `.other` (some other tool's Codex hooks) is left for the Settings
+    /// page rather than sprung on someone mid-launch. `codexHooksOffered` is a single flag for the
+    /// whole app, not one per account (see its doc comment in `AppState`), so once any account has
+    /// been asked — accepted or declined — no later account ever triggers this again.
+    func offerCodexHooksIfNeeded(accountKey: String) {
+        guard let agents, !store.state.codexHooksOffered,
+              let detection = agents.codexHooksDetection(accountKey: accountKey),
+              detection.producer == .none
+        else { return }
+        offerCodexHooks(accountKey: accountKey)
+    }
+
+    /// Puts the Codex hooks install to the user. Mirrors ``offerStatusline(accountKey:automatic:)``
+    /// in shape; the copy is different because Codex's own trust model changes what has to be
+    /// said (see this controller's owning ticket) — installing is not enough on its own, and the
+    /// wording says so rather than implying the toggle alone gets the row reporting status.
+    private func offerCodexHooks(accountKey: String) {
+        guard let agents else { return }
+        let plan: CodexHooksInstallPlan?
+        do {
+            plan = try agents.codexHooksPlan(accountKey: accountKey)
+        } catch {
+            // Silent: this fires from a launch the user did not ask this question of, unlike the
+            // menu command, which has something to report back to.
+            logger.error("codex hooks plan failed: \(String(describing: error), privacy: .public)")
+            return
+        }
+        guard let plan else { return }
+
+        if let confirmInstallCodexHooks {
+            finishCodexHooksOffer(confirmed: confirmInstallCodexHooks(plan), accountKey: accountKey)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Let tkzmux see Codex's status?"
+        alert.informativeText = Self.codexHooksAlertBody(plan: plan)
+        alert.addButton(withTitle: "Install")
+        alert.addButton(withTitle: "Not Now")
+        // A sheet, never `runModal()` — see `offerStatusline`'s own comment on why: this can fire
+        // from the same early-launch window a modal loop would hang against.
+        alert.beginSheetModal(for: sheetParent) { [weak self] response in
+            self?.finishCodexHooksOffer(
+                confirmed: response == .alertFirstButtonReturn, accountKey: accountKey)
+        }
+    }
+
+    /// The consent sheet's body, exactly what the real alert shows — split out of
+    /// ``offerCodexHooks(accountKey:)`` so its wording can be asserted directly in a test process,
+    /// where `NSAlert.beginSheetModal(for:)` never runs. Pure, over `plan` alone: no window, no
+    /// store, so it renders identically whichever way it is reached.
+    ///
+    /// The two paragraphs after the diff exist for the two facts the ticket's own brief measured
+    /// against a real logged-in codex-cli 0.155.0 and got wrong before that spike:
+    ///
+    ///   * installing `hooks.json` is not enough — Codex only runs a hook once its own `/hooks`
+    ///     review has trusted it, and there is no bypass worth naming here, because the only one
+    ///     that exists (`--dangerously-bypass-hook-trust`) disables trust for every hook of the
+    ///     invocation, including hooks the user wrote themselves;
+    ///   * a `config.toml` hook is not replaced by this install — Codex merges both files, so an
+    ///     existing hook there keeps firing alongside tkzmux's own.
+    static func codexHooksAlertBody(plan: CodexHooksInstallPlan) -> String {
+        var body = "tkzmux needs its own hooks to know when Codex is working, needs you, or has "
+            + "finished a turn.\n\nThis writes \(plan.hooksPath):\n\n"
+        if let before = plan.before {
+            body += "Now:\n\(before)\n\nAfter:\n\(plan.after)\n\n"
+        } else {
+            body += "After:\n\(plan.after)\n\n"
+        }
+        body += "Codex only runs a hook once you\u{2019}ve reviewed and trusted it yourself \u{2014} "
+            + "run /hooks inside Codex and trust tkzmux\u{2019}s entries there. Until you do, this "
+            + "row still updates from the transcript and from Codex\u{2019}s own notifications; it "
+            + "just never shows \u{201C}working\u{201D}.\n\n"
+        if plan.detection.configTomlHasHooks {
+            body += "Your config.toml already has its own Codex hooks \u{2014} Codex runs both, "
+                + "so those keep working alongside tkzmux\u{2019}s.\n\n"
+        }
+        body += "Settings \u{203A} General removes this again."
+        return body
+    }
+
+    /// Records the answer and installs when it was yes — the Codex counterpart to
+    /// `finishStatuslineOffer`. A decline is still an answer, so the flag is set either way.
+    private func finishCodexHooksOffer(confirmed: Bool, accountKey: String) {
+        guard let agents else { return }
+        store.update { $0.setCodexHooksOffered(true) }
+        guard confirmed else { return }
+        do {
+            try agents.installCodexHooks(accountKey: accountKey)
+            showNotice("Codex hooks installed \u{2014} run /hooks in Codex to trust them")
+        } catch {
+            logger.error("codex hooks install failed: \(String(describing: error), privacy: .public)")
+            showNotice("Could not install Codex's hooks: \(error.localizedDescription)")
+        }
+    }
+
+    /// The Settings page's "Configure…" button (`SettingsRow.ID.hooks`) — a deliberate ask, so
+    /// unlike ``offerCodexHooksIfNeeded(accountKey:)`` this ignores `codexHooksOffered` entirely
+    /// and, like `offerStatusline(accountKey:automatic:false)`, only refuses when there is
+    /// genuinely nothing to offer (already ours, or a stale install repaired at launch).
+    func configureCodexHooks(accountKey: String) {
+        guard let agents, let detection = agents.codexHooksDetection(accountKey: accountKey) else { return }
+        switch detection.producer {
+        case .tkzmux, .stale: return
+        case .none, .other: offerCodexHooks(accountKey: accountKey)
+        }
+    }
+
+    /// The Settings page's "Remove…" button once hooks are installed — the Codex counterpart to
+    /// `removeStatusline`.
+    func removeCodexHooks(accountKey: String) {
+        guard let agents else { return }
+        let confirmed: Bool
+        if let confirmRemoveCodexHooks {
+            confirmed = confirmRemoveCodexHooks()
+        } else {
+            let alert = NSAlert()
+            alert.messageText = "Remove the tkzmux Codex hooks?"
+            alert.informativeText = "Puts back the hooks.json you had before, exactly."
+            alert.addButton(withTitle: "Remove")
+            alert.addButton(withTitle: "Cancel")
+            alert.alertStyle = .warning
+            confirmed = alert.runModal() == .alertFirstButtonReturn
+        }
+        guard confirmed else { return }
+        do {
+            try agents.uninstallCodexHooks(accountKey: accountKey)
+            showNotice("Codex hooks removed")
+        } catch {
+            logger.error("codex hooks remove failed: \(String(describing: error), privacy: .public)")
+            showNotice("Could not remove Codex's hooks: \(error.localizedDescription)")
+        }
     }
 
     private func recordWindowFrame() {
@@ -2608,7 +2755,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public func launch(_ launch: NewSessionMenu.Launch) {
         switch launcher.start(launch) {
         case .success:
-            break
+            // The Codex hooks offer wants a session that actually started, not just a resolved
+            // launch — a directory that turned out missing must not put the sheet up for nothing.
+            // `launch.accountKey` may be `nil` (the group has no default, so the user's own shell
+            // decides); the primary account is the honest fallback there, exactly the way
+            // `statuslineAccountKey` falls back for Claude.
+            if launch.agent == .codex {
+                offerCodexHooksIfNeeded(accountKey: launch.accountKey ?? Account.defaultKey(for: .codex))
+            }
         case .failure(.missingDirectory(let path)):
             presentLaunchFailure("\(path) is not a directory.")
         case .failure(.spawnFailed(let reason)):
@@ -2797,6 +2951,44 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             shellIntegrationDirectory: { [weak self] in
                 guard let directory = self?.agents?.installer?.directory else { return nil }
                 return (directory.path as NSString).abbreviatingWithTildeInPath
+            },
+            offerCodexHooks: { [weak self] key in self?.configureCodexHooks(accountKey: key) },
+            removeCodexHooks: { [weak self] key in self?.removeCodexHooks(accountKey: key) },
+            hooksDetections: { [weak self] in
+                guard let self, let agents = self.agents else { return [:] }
+                var detections: [String: CodexHooksDetection] = [:]
+                for key in self.store.state.accounts.keys {
+                    if let detection = agents.codexHooksDetection(accountKey: key) {
+                        detections[key] = detection
+                    }
+                }
+                return detections
+            },
+            capabilitiesByAgent: { [weak self] in
+                guard let agents = self?.agents else { return [:] }
+                return agents.adapters.mapValues(\.capabilities)
+            },
+            hooksInstallRequiredAgents: { [weak self] in
+                guard let agents = self?.agents else { return [] }
+                // `.installed` is Codex's own strategy (write hooks once, with consent); Claude's
+                // `.perInvocation` shim has nothing to install, so it must never earn a row here.
+                var required: Set<AgentKind> = []
+                for (kind, adapter) in agents.adapters {
+                    if case .installed = adapter.hookInstall { required.insert(kind) }
+                }
+                return required
+            },
+            agentDisplayNames: { [weak self] in
+                guard let agents = self?.agents else { return [:] }
+                return agents.adapters.mapValues(\.displayName)
+            },
+            installedShims: { [weak self] in
+                // `ShimInstaller.ensureInstalled()` writes every bundled shim unconditionally at
+                // startup (see its own header), so the bundled resource names are exactly what is
+                // on disk once the app has actually started — which is always true by the time a
+                // human can have the Settings window open.
+                guard let installer = self?.agents?.installer else { return [] }
+                return installer.resources.shimScripts.keys.sorted()
             })
     }
 

@@ -48,6 +48,9 @@ private func makeState() -> AppState {
     state.setCheckOriginPeriodically(true)
     // Defaults on, so off is the value a dropped round trip would fail on.
     state.setNotifyOnDone(false)
+    // Defaults off, like `statuslineOffered` — the non-default value, so a dropped round trip
+    // fails loudly (TKZ-87).
+    state.setCodexHooksOffered(true)
     // A muted row rides on `Session` itself; the `sessions ==` assertion below covers it.
     state.setNotificationsMuted(two.id, true)
     // A split and a second tab, so every assertion built on this fixture covers the layout too.
@@ -97,6 +100,7 @@ private func makeState() -> AppState {
         #expect(restored.showSessionSpend == original.showSessionSpend)
         #expect(restored.checkOriginPeriodically == original.checkOriginPeriodically)
         #expect(restored.notifyOnDone == original.notifyOnDone)
+        #expect(restored.codexHooksOffered == original.codexHooksOffered)
     }
 }
 
@@ -159,6 +163,28 @@ private func makeState() -> AppState {
     #expect(fresh.checkOriginPeriodically == false)
 }
 
+/// `codexHooksOffered` copies `statuslineOffered`'s plumbing exactly (TKZ-87): no schema bump, a
+/// file written before it existed decodes the key as absent, and absent must mean `false` so the
+/// sheet is still offered the first time a Codex account needs it.
+@Test func theCodexHooksOfferedFlagRoundTripsAndDefaultsFalse() throws {
+    var state = makeState()
+    state.setCodexHooksOffered(true)
+    let data = try StateFile.encode(StateDocument(state: PersistedState(state)))
+    var restored = AppState()
+    try StateFile.decode(data).state.apply(to: &restored)
+    #expect(restored.codexHooksOffered == true)
+
+    // A preferences block written before the flag existed has the key missing, not the whole
+    // object missing — the same per-field `decodeIfPresent` fallback every other switch in
+    // `PersistedPreferences.init(from:)` uses.
+    var object = try JSONDecoder().decode([String: JSONValue].self, from: data)
+    object["preferences"] = .object(["autoResumeOnLaunch": .bool(true)])
+    var fresh = AppState()
+    fresh.setCodexHooksOffered(true)
+    try StateFile.decode(JSONEncoder().encode(object)).state.apply(to: &fresh)
+    #expect(fresh.codexHooksOffered == false)
+}
+
 @Test func aFileWithoutPreferencesLoadsWithTheDefaults() throws {
     // Every state.json written before M5.2 has no `preferences` key; it must still load, and a
     // missing switch means off.
@@ -178,6 +204,7 @@ private func makeState() -> AppState {
     // every other switch in this block, which defaults off.
     #expect(restored.showSessionSpend == true)
     #expect(restored.notifyOnDone == true)
+    #expect(restored.codexHooksOffered == false)
     #expect(restored.sessions.count == state.sessions.count)
 }
 

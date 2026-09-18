@@ -34,6 +34,12 @@ public struct AppState: Hashable, Sendable {
     /// and never again: declining is an answer, and re-asking every launch would be nagging. The
     /// menu command stays available either way.
     public var statuslineOffered: Bool
+    /// Whether the Codex hooks consent sheet has already been put to the user (TKZ-87). Same
+    /// once-ever plumbing as `statuslineOffered`, deliberately: a single flag for the whole app
+    /// rather than one per account, so declining it — or accepting it — for the first Codex
+    /// account that ever hits `.none` settles the question for good, and the sheet never nags a
+    /// second account into being asked again.
+    public var codexHooksOffered: Bool
     /// The release the user closed the sidebar's update card for. That version never
     /// shows the card again; a newer one does. Durable, in `PersistedPreferences`.
     public var dismissedUpdateVersion: String?
@@ -80,6 +86,7 @@ public struct AppState: Hashable, Sendable {
         shortcuts: [String: String] = [:],
         autoResumeOnLaunch: Bool = false,
         statuslineOffered: Bool = false,
+        codexHooksOffered: Bool = false,
         dismissedUpdateVersion: String? = nil,
         showSessionSpend: Bool = true,
         checkOriginPeriodically: Bool = false,
@@ -99,6 +106,7 @@ public struct AppState: Hashable, Sendable {
         self.shortcuts = shortcuts
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
+        self.codexHooksOffered = codexHooksOffered
         self.dismissedUpdateVersion = dismissedUpdateVersion
         self.showSessionSpend = showSessionSpend
         self.checkOriginPeriodically = checkOriginPeriodically

@@ -538,6 +538,56 @@ struct SidebarRowViewTests {
                                  Self.components(expected.cgColor)))
     }
 
+    // MARK: - Agent glyph (TKZ-87)
+
+    /// The model-level rule: `nil` unless the sidebar actually mixes agents — asserted directly
+    /// against `SidebarRowAdapter`, which is the one place that decides.
+    @Test("The agent glyph is nil until the sidebar actually mixes two agents")
+    func agentGlyphOnlyAppearsOnceTwoAgentsAreMixedIn() {
+        var state = AppState()
+        let group = state.addGroup(name: "G", repoRoot: "/tmp")
+        let claudeOnly = state.createSession(groupID: group.id, cwd: "/tmp")
+        // A single-agent sidebar — every fixture that predates TKZ-87 — must still get `nil`.
+        #expect(SidebarRowAdapter.sessionModel(claudeOnly, in: state).agentGlyph == nil)
+
+        let codexSession = state.createSession(groupID: group.id, cwd: "/tmp", agent: .codex)
+        // Now that a second agent is in the same state, both rows carry a glyph naming their own.
+        #expect(SidebarRowAdapter.sessionModel(claudeOnly, in: state).agentGlyph == "C")
+        #expect(SidebarRowAdapter.sessionModel(codexSession, in: state).agentGlyph == "X")
+    }
+
+    /// The view side: hidden and pixel-inert with one agent, drawn (and shifting the title over)
+    /// once the model actually carries a glyph.
+    @Test("The agent glyph badge is hidden without a glyph, and shifts the title over with one")
+    func agentGlyphBadgeIsOptionalAndMovesTheTitle() {
+        let none = Self.sessionRow(SidebarSessionRowModel(title: "s"))
+        #expect(none.agentGlyphLayer.isHidden)
+        let bareTitleLeft = none.titleTextLayer.frame.minX
+
+        let withGlyph = Self.sessionRow(SidebarSessionRowModel(title: "s", agentGlyph: "X"))
+        #expect(!withGlyph.agentGlyphLayer.isHidden)
+        // The badge sits exactly where the title always started, and the title moves right to
+        // make room for it — a single-agent row (`none`, above) is therefore untouched.
+        #expect(withGlyph.agentGlyphLayer.frame.minX == bareTitleLeft)
+        #expect(withGlyph.titleTextLayer.frame.minX > bareTitleLeft)
+    }
+
+    /// A single-agent row must render pixel-for-pixel as it did before this field existed: the
+    /// same headless-render determinism check the rest of the suite holds every badge to.
+    @Test("A single-agent row renders identically whether or not the model even mentions the glyph")
+    func singleAgentRenderIsUnaffectedByTheGlyphField() throws {
+        let implicit = Self.sessionRow(Self.sample)
+        let explicitNil = Self.sessionRow(
+            SidebarSessionRowModel(
+                title: Self.sample.title, branch: Self.sample.branch, isWorktree: Self.sample.isWorktree,
+                status: Self.sample.status, accountLabel: Self.sample.accountLabel,
+                accountColor: Self.sample.accountColor, needsAttention: Self.sample.needsAttention,
+                isSelected: Self.sample.isSelected, agentGlyph: nil))
+        let a = try Self.pixels(Self.render(implicit, scale: 2))
+        let b = try Self.pixels(Self.render(explicitNil, scale: 2))
+        #expect(a == b)
+    }
+
     /// The chip is a `CALayer` in a row with no subviews, so its tooltip is a registered rect the
     /// row answers for itself. What matters is that it answers *only over the chip*: one rect covers
     /// the whole row, so a naive owner would put an account tooltip on the title too.

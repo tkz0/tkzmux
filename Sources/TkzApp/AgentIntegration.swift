@@ -406,6 +406,50 @@ public final class AgentIntegration {
         try installer.uninstall(configDir: account.configDir, accountKey: accountKey)
     }
 
+    // MARK: Codex hooks
+
+    /// `accountKey`'s account, but only when it is a Codex account whose adapter is actually
+    /// registered here and uses the "installed once, with consent" strategy — gated the same way
+    /// ``statuslineCapableAccount(_:)`` gates on `.statusline`, so an account of an agent with no
+    /// hooks to install (or no adapter at all, e.g. a restored row on a machine without `codex`
+    /// on `PATH`) is never handed to `CodexHooksInstaller`.
+    ///
+    /// Returns the installer alongside the account rather than just the account, because the
+    /// richer `CodexHooksDetection`/`CodexHooksInstallPlan` types the consent sheet needs (the
+    /// merged-`config.toml` flag, the trust state) live on `CodexHooksInstaller` itself, not on
+    /// the agent-blind `HookConfigInstaller` protocol every adapter's `hookInstall` returns.
+    private func codexHooksInstaller(for accountKey: String) -> (Account, CodexHooksInstaller)? {
+        guard let account = store.state.accounts[accountKey], account.agent == .codex,
+              case .installed(let installer) = adapters[.codex]?.hookInstall,
+              let codexInstaller = installer as? CodexHooksInstaller
+        else { return nil }
+        return (account, codexInstaller)
+    }
+
+    /// The full picture for one Codex account's `hooks.json` — `nil` when the account is not a
+    /// Codex account this build can install hooks for.
+    public func codexHooksDetection(accountKey: String) -> CodexHooksDetection? {
+        guard let (account, installer) = codexHooksInstaller(for: accountKey) else { return nil }
+        return installer.detect(configDir: account.configDir)
+    }
+
+    /// The exact before/after a consent sheet shows, or `nil` when there is nothing to plan (not a
+    /// Codex account this build can install for).
+    public func codexHooksPlan(accountKey: String) throws -> CodexHooksInstallPlan? {
+        guard let (account, installer) = codexHooksInstaller(for: accountKey) else { return nil }
+        return try installer.plan(configDir: account.configDir, accountKey: accountKey)
+    }
+
+    public func installCodexHooks(accountKey: String) throws {
+        guard let (account, installer) = codexHooksInstaller(for: accountKey) else { return }
+        try installer.install(configDir: account.configDir, accountKey: accountKey)
+    }
+
+    public func uninstallCodexHooks(accountKey: String) throws {
+        guard let (account, installer) = codexHooksInstaller(for: accountKey) else { return }
+        try installer.uninstall(configDir: account.configDir, accountKey: accountKey)
+    }
+
     /// Re-points any account whose `statusLine` runs a `tkzmux-hook` that is not this build's.
     /// Returns the account keys it repaired.
     ///

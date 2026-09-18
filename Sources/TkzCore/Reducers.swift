@@ -466,6 +466,10 @@ extension AppState {
         statuslineOffered = offered
     }
 
+    public mutating func setCodexHooksOffered(_ offered: Bool) {
+        codexHooksOffered = offered
+    }
+
     public mutating func setThemePreset(_ preset: Theme.Preset) {
         themePreset = preset
     }

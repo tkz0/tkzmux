@@ -1,6 +1,6 @@
 # tkzmux
 
-Native macOS Claude Code session manager (personal cmux replacement). Swift 6.2, AppKit-first, own Metal renderer, **libghostty-vt** as the only third-party dependency, vendored as a prebuilt xcframework. Pure SwiftPM, no `.xcodeproj`; the `.app` is assembled by `make app`. macOS 26+, arm64 only.
+Native macOS session manager for coding agents — Claude Code and Codex CLI (personal cmux replacement). Swift 6.2, AppKit-first, own Metal renderer, **libghostty-vt** as the only third-party dependency, vendored as a prebuilt xcframework. Pure SwiftPM, no `.xcodeproj`; the `.app` is assembled by `make app`. macOS 26+, arm64 only.
 
 ## Commands
 
@@ -33,13 +33,14 @@ make clean                  # rm -rf .build build
 | `TkzTerminalRender` | Swift | fonts, glyph atlas, `FrameBuilder`, Metal renderer |
 | `TkzTerminalView` | Swift | `TerminalMetalView`, keyboard/IME, mouse/selection |
 | `TkzCore` | Swift | models, `AppStore`/`ChangeSet`, status derivation, theme tokens — no AppKit |
-| `ClaudeBridge` | Swift | session watcher, hook server, shim installer, usage reader |
+| `ClaudeBridge` | Swift | `AgentAdapter` seam, session watcher, hook server, shim installer, usage reader |
+| `Sources/ClaudeBridge/Codex/` | (in `ClaudeBridge`) | `CodexAdapter`, `CodexHooksInstaller`, `CodexTranscriptReader`, `CodexHookMapper` — everything Codex-specific, behind the same seam |
 | `GitStatus` | Swift | git status service, FSEvents, PR lookup, port scanner |
 | `Persistence` | Swift | `state.json`, snapshots |
 | `TkzApp` | Swift | `AppDelegate`, window, sidebar, status bar, palette, `TerminalHost` |
 | `tkzmux` | exe | the app |
 | `tkzmux-vtdump` | exe | headless record/replay/render/abi tooling |
-| `tkzmux-hook` | exe | Claude Code hook relay; `import Darwin` only, < 20 ms |
+| `tkzmux-hook` | exe | hook relay, shared by every agent's shim; `import Darwin` only, < 20 ms |
 
 Tests: one target per Swift library module under `Tests/<Module>Tests`, using Swift Testing (`import Testing`, `@Test`, `#expect`).
 

@@ -30,6 +30,29 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         var statuslineProducers: () -> [String: StatuslineProducer] = { [:] }
         var shellIntegrationInstalled: () -> Bool? = { nil }
         var shellIntegrationDirectory: () -> String? = { nil }
+        /// TKZ-87: Codex's own consent-to-install hooks, and the agent-blind facts
+        /// (`capabilitiesByAgent`, `hooksInstallRequiredAgents`, `agentDisplayNames`)
+        /// `SettingsModel` needs to gate the status-line and hooks rows on the right adapters
+        /// rather than on a hardcoded agent name.
+        ///
+        /// These snapshot as dictionaries rather than forward `AgentIntegration`'s own per-agent
+        /// closures directly: `SettingsModel.Environment`'s matching properties are `@Sendable`
+        /// (the whole `Environment` is `Sendable`), and a closure that captures this controller's
+        /// `self` is not — `environment()` reads these once per render and closes over the plain,
+        /// genuinely `Sendable` dictionaries instead.
+        var offerCodexHooks: (String) -> Void = { _ in }
+        var removeCodexHooks: (String) -> Void = { _ in }
+        var hooksDetections: () -> [String: CodexHooksDetection] = { [:] }
+        /// Matches `SettingsModel.Environment.capabilities`'s own default exactly (Claude's
+        /// shipped capabilities, nothing for any other agent) — an unwired controller (most of
+        /// this file's own tests, the dev window) must still draw today's Claude-only page rather
+        /// than losing the status-line row because nothing populated this closure.
+        var capabilitiesByAgent: () -> [AgentKind: AgentCapabilities] = {
+            [.claude: [.hooks, .observation, .statusline, .transcriptUsage, .resume, .worktree]]
+        }
+        var hooksInstallRequiredAgents: () -> Set<AgentKind> = { [] }
+        var agentDisplayNames: () -> [AgentKind: String] = { [:] }
+        var installedShims: () -> [String] = { [] }
     }
 
     var actions = Actions()
@@ -101,10 +124,21 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     private func environment() -> SettingsModel.Environment {
-        SettingsModel.Environment(
+        // Snapshotted once per render into plain dictionaries — see the doc comment on
+        // `Actions`'s own `capabilitiesByAgent` for why these cannot simply forward the
+        // `AgentIntegration`-backed closures as the `@Sendable` closures `Environment` wants.
+        let capabilities = actions.capabilitiesByAgent()
+        let hooksRequired = actions.hooksInstallRequiredAgents()
+        let names = actions.agentDisplayNames()
+        return SettingsModel.Environment(
             statusline: actions.statuslineProducers(),
             shellInstalled: actions.shellIntegrationInstalled(),
-            shellDirectory: actions.shellIntegrationDirectory())
+            shellDirectory: actions.shellIntegrationDirectory(),
+            installedShims: actions.installedShims(),
+            agentDisplayName: { names[$0] ?? "the agent" },
+            capabilities: { capabilities[$0] ?? [] },
+            hooksInstallRequired: { hooksRequired.contains($0) },
+            hooksDetection: actions.hooksDetections())
     }
 
     private func toggled(_ id: SettingsRow.ID, _ isOn: Bool) {
@@ -123,6 +157,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             switch actions.statuslineProducers()[accountKey] ?? .none {
             case .tkzmux, .stale: actions.removeStatusline(accountKey)
             case .none, .other: actions.offerStatusline(accountKey)
+            }
+        case .hooks(let accountKey):
+            let detection = actions.hooksDetections()[accountKey]
+                ?? CodexHooksDetection(producer: .none, configTomlHasHooks: false, trust: .unknown)
+            switch detection.producer {
+            case .tkzmux, .stale: actions.removeCodexHooks(accountKey)
+            case .none, .other: actions.offerCodexHooks(accountKey)
             }
         case .removeShell:
             actions.removeShellIntegration()
