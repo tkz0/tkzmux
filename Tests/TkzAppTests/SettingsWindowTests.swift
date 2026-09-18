@@ -94,7 +94,7 @@ struct SettingsWindowTests {
     func statuslineRows() {
         var state = AppState.fixture
         state.accounts = [
-            Account.defaultKey: Account(key: Account.defaultKey, configDir: "/h/.claude", label: "Private"),
+            Account.defaultKey(for: .claude): Account(key: Account.defaultKey(for: .claude), configDir: "/h/.claude", label: "Private"),
         ]
         let single = SettingsModel.statuslineRows(state: state, environment: .init())
         #expect(single.map(\.title) == ["Status line integration"])
@@ -103,11 +103,11 @@ struct SettingsWindowTests {
 
         state.setAccount(Account(key: "claude-work", configDir: "/h/.claude-work", label: "Work"))
         let environment = SettingsModel.Environment(statusline: [
-            Account.defaultKey: .tkzmux,
+            Account.defaultKey(for: .claude): .tkzmux,
             "claude-work": .other(command: "node hud.js"),
         ])
         let both = SettingsModel.statuslineRows(state: state, environment: environment)
-        #expect(both.map(\.id) == [.statusline(accountKey: Account.defaultKey), .statusline(accountKey: "claude-work")])
+        #expect(both.map(\.id) == [.statusline(accountKey: Account.defaultKey(for: .claude)), .statusline(accountKey: "claude-work")])
         #expect(both.map(\.title) == ["Status line integration \u{00B7} Private", "Status line integration \u{00B7} Work"])
         #expect(both[0].control == .button(title: "Remove\u{2026}", destructive: false))
         #expect(both[1].control == .button(title: "Configure\u{2026}", destructive: false))
@@ -226,19 +226,19 @@ struct SettingsWindowTests {
     func buttonsReachTheFlows() throws {
         var state = AppState.fixture
         state.accounts = [
-            Account.defaultKey: Account(key: Account.defaultKey, configDir: "/h/.claude", label: "Private"),
+            Account.defaultKey(for: .claude): Account(key: Account.defaultKey(for: .claude), configDir: "/h/.claude", label: "Private"),
             "claude-work": Account(key: "claude-work", configDir: "/h/.claude-work", label: "Work"),
         ]
         let (_, controller, recorder) = Self.makeController(
-            state, statusline: [Account.defaultKey: .tkzmux], shellInstalled: true)
+            state, statusline: [Account.defaultKey(for: .claude): .tkzmux], shellInstalled: true)
         controller.present(over: nil)
         defer { controller.close() }
         let view = try #require(controller.viewForTesting)
 
-        let remove = try #require(view.controlForTesting(.statusline(accountKey: Account.defaultKey)) as? NSButton)
+        let remove = try #require(view.controlForTesting(.statusline(accountKey: Account.defaultKey(for: .claude))) as? NSButton)
         #expect(remove.title == "Remove\u{2026}")
         _ = NSApp.sendAction(remove.action!, to: remove.target, from: remove)
-        #expect(recorder.removed == [Account.defaultKey])
+        #expect(recorder.removed == [Account.defaultKey(for: .claude)])
 
         let configure = try #require(view.controlForTesting(.statusline(accountKey: "claude-work")) as? NSButton)
         #expect(configure.title == "Configure\u{2026}")

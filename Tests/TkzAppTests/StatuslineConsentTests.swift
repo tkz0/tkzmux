@@ -66,7 +66,7 @@ import TkzCore
         harness.store.update { state in
             state.selection = nil
             state.setAccount(
-                Account(key: Account.defaultKey, configDir: configDir.path, label: "claude"))
+                Account(key: Account.defaultKey(for: .claude), configDir: configDir.path, label: "claude"))
         }
         return Fixture(
             harness: harness, support: support, configDir: configDir, settings: settings,

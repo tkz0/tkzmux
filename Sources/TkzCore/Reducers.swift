@@ -31,10 +31,17 @@ extension AppState {
         repoRoot: String? = nil,
         worktreePath: String? = nil,
         isWorktree: Bool = false,
+        agent: AgentKind = .claude,
         accountKey: String? = nil,
         now: Date = Date()
     ) -> Session {
         let group = groups[groupID]
+        // The group's default account only applies to a row of *its own* agent: the key names one
+        // agent's config dir, and handing a Codex row `claude-work` would point `CODEX_HOME` at
+        // Claude's. Any other agent falls back to its own primary. (A per-agent default map would
+        // be a v5 lift; this keeps `Group.defaultAccountKey` a scalar.)
+        let groupDefault = group?.defaultAccountKey
+        let groupDefaultFits = groupDefault.map { accounts[$0]?.agent ?? .claude } == agent
         let session = Session(
             id: id,
             groupID: groupID,
@@ -44,7 +51,10 @@ extension AppState {
             repoRoot: repoRoot ?? group?.repoRoot,
             worktreePath: worktreePath,
             isWorktree: isWorktree,
-            accountKey: accountKey ?? group?.defaultAccountKey ?? Account.defaultKey,
+            agent: agent,
+            accountKey: accountKey
+                ?? (groupDefaultFits ? groupDefault : nil)
+                ?? Account.defaultKey(for: agent),
             createdAt: now,
             lastActiveAt: now
         )
@@ -524,24 +534,33 @@ extension AppState {
     /// The per-session statusline sidecar (context %, model, PR), joined on Claude's own session id
     /// rather than on ours: the sidecar is written by a statusline that knows nothing about tkzmux
     /// rows. A session that has since been resumed under a new conversation id simply stops matching.
-    public mutating func setSessionSidecar(_ sidecar: SessionSidecar) {
-        guard let id = sessions.values.first(where: { $0.conversationId == sidecar.sessionId })?.id
+    ///
+    /// `agent` narrows the join alongside the id: `conversationId` is an opaque token minted by
+    /// whichever agent produced it, so nothing stops a Codex id and a Claude id from colliding by
+    /// chance. Both agents' rows share this one `Session` table and nothing else, so the id alone is
+    /// not enough to say which row a sidecar belongs to.
+    public mutating func setSessionSidecar(_ sidecar: SessionSidecar, agent: AgentKind = .claude) {
+        guard let id = sessions.values
+            .first(where: { $0.agent == agent && $0.conversationId == sidecar.sessionId })?.id
         else { return }
         updateLive(id) { $0.context = sidecar }
     }
 
-    public mutating func clearSessionSidecar(conversationId: String) {
+    /// See ``setSessionSidecar(_:agent:)`` — same cross-agent id collision risk, so the same filter.
+    public mutating func clearSessionSidecar(conversationId: String, agent: AgentKind = .claude) {
         guard let id = sessions.values
-            .first(where: { $0.live?.context?.sessionId == conversationId })?.id
+            .first(where: { $0.agent == agent && $0.live?.context?.sessionId == conversationId })?.id
         else { return }
         updateLive(id) { $0.context = nil }
     }
 
     /// What `TranscriptUsageReader` (ClaudeBridge) summed off a session's transcript, joined on
-    /// Claude's own session id — same reasoning as ``setSessionSidecar(_:)``: the reader knows
-    /// nothing about tkzmux rows, only about a Claude session id and its transcript.
-    public mutating func setSessionUsage(_ usage: SessionUsage, conversationId: String) {
-        guard let id = sessions.values.first(where: { $0.conversationId == conversationId })?.id
+    /// Claude's own session id — same reasoning as ``setSessionSidecar(_:agent:)``: the reader knows
+    /// nothing about tkzmux rows, only about a Claude session id and its transcript, and the id is
+    /// opaque per agent so the join needs `agent` too.
+    public mutating func setSessionUsage(_ usage: SessionUsage, conversationId: String, agent: AgentKind = .claude) {
+        guard let id = sessions.values
+            .first(where: { $0.agent == agent && $0.conversationId == conversationId })?.id
         else { return }
         updateLive(id) { $0.usage = usage }
     }
@@ -666,7 +685,7 @@ extension AppState {
             // Where Claude runs is where `--resume` must run, and what the row is named after even
             // before the next descriptor binds — so it becomes the session's directory of record.
             session.cwd = cwd
-            if let worktree = Session.worktreeRoot(ofPath: cwd) {
+            if let worktree = session.worktreeRoot(ofPath: cwd) {
                 session.worktreePath = worktree
                 session.isWorktree = true
             }

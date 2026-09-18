@@ -164,7 +164,10 @@ public enum Fixture {
                 key: key,
                 configDir: key == "claude" ? "~/.claude" : "~/.\(key)",
                 label: key == "claude" ? "Claude" : "Claude (alt)",
-                plan: key == "claude" ? "Max 20x" : "Team 5x"
+                plan: key == "claude" ? "Max 20x" : "Team 5x",
+                // Both fixture accounts are Claude — spelled out because this fixture is also the
+                // documentation of an `Account`'s shape, not just data for it.
+                agent: .claude
             )
         }
         state.usage["claude"] = UsageSnapshot(
@@ -210,8 +213,12 @@ public enum Fixture {
     private static func makeSession(_ spec: Spec, index n: Int) -> Session {
         let groupSpec = groupSpecs[spec.group]
         let repoRoot = groupSpec.repo
+        // Sourced from `AgentKind.claude.worktreeMarker` rather than typed out a second time: this
+        // fixture only ever makes Claude rows (see the `agent: .claude` below), so the marker it
+        // builds paths with must be that same agent's, not a copy that could drift from it.
+        let worktreeMarker = AgentKind.claude.worktreeMarker ?? "/.claude/worktrees/"
         let worktreePath = spec.worktree.flatMap { name in
-            repoRoot.map { "\($0)/.claude/worktrees/\(name)" }
+            repoRoot.map { "\($0)\(worktreeMarker)\(name)" }
         }
         let cwd = worktreePath ?? repoRoot ?? "~"
         let created = now.addingTimeInterval(-Double(n) * 900 - 3600)
@@ -225,6 +232,9 @@ public enum Fixture {
             repoRoot: repoRoot,
             worktreePath: worktreePath,
             isWorktree: worktreePath != nil,
+            // Explicit rather than relying on the default: this fixture doubles as documentation of
+            // a `Session`'s shape, and every row here is a Claude row.
+            agent: .claude,
             accountKey: spec.account,
             conversationId: String(format: "11111111-2222-4333-8444-%012d", n),
             createdAt: created,

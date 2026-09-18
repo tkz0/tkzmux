@@ -123,7 +123,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
 /// `state.json`, at `currentSchemaVersion`.
 public struct PersistedState: Hashable, Sendable, Codable {
     /// The version this build writes. Bumping it needs a `Migrations` case.
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public var schemaVersion: Int
     /// Display order, so the file reads top to bottom like the sidebar does.

@@ -50,7 +50,7 @@ enum FilePathResolver {
     static func bases(for terminal: TerminalID, in session: Session) -> [String] {
         let pane = session.paneDirectory(terminal)
         var candidates = [pane]
-        if let worktree = Session.worktreeRoot(ofPath: pane) { candidates.append(worktree) }
+        if let worktree = session.worktreeRoot(ofPath: pane) { candidates.append(worktree) }
         if session.isWorktree, let worktree = session.worktreePath { candidates.append(worktree) }
         candidates.append(session.effectiveCwd)
         if let repoRoot = session.repoRoot { candidates.append(repoRoot) }

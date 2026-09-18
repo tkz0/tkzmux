@@ -1928,11 +1928,15 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     // MARK: Status line integration
 
     /// The account the statusline commands act on: the selected row's, else the primary one.
+    ///
+    /// Status line integration is a Claude Code feature (it edits Claude's own `settings.json`),
+    /// so the fallback is Claude's default account rather than whatever agent the selected row
+    /// (if any) happens to run.
     private var statuslineAccountKey: String {
         if let session = store.state.selectedSession, store.state.accounts[session.accountKey] != nil {
             return session.accountKey
         }
-        return Account.defaultKey
+        return Account.defaultKey(for: .claude)
     }
 
     /// Install or remove for the selected row's account, as one toggle — the form the tests and the

@@ -38,7 +38,7 @@ import Testing
         var state = AppState()
         let g = state.addGroup(name: "Bucket")
         let session = state.createSession(groupID: g.id, cwd: "/tmp")
-        #expect(session.accountKey == Account.defaultKey)
+        #expect(session.accountKey == Account.defaultKey(for: .claude))
     }
 
     @Test func adoptBindsTheDescriptorAndRecordsTheResumeID() {
@@ -269,12 +269,32 @@ import Testing
     }
 
     @Test func worktreeRootOfPath() {
-        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees/review") == "/repo/.claude/worktrees/review")
-        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees/review/src/deep") == "/repo/.claude/worktrees/review")
-        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees/") == nil)
-        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees") == nil)
-        #expect(Session.worktreeRoot(ofPath: "/repo/src") == nil)
-        #expect(Session.worktreeRoot(ofPath: "~/dev/x/.claude/worktrees/a") == "~/dev/x/.claude/worktrees/a")
+        var state = AppState()
+        let group = state.addGroup(name: "repo", repoRoot: "/repo")
+        let claudeSession = state.createSession(groupID: group.id, cwd: "/repo", accountKey: "claude")
+        #expect(claudeSession.worktreeRoot(ofPath: "/repo/.claude/worktrees/review") == "/repo/.claude/worktrees/review")
+        #expect(claudeSession.worktreeRoot(ofPath: "/repo/.claude/worktrees/review/src/deep") == "/repo/.claude/worktrees/review")
+        #expect(claudeSession.worktreeRoot(ofPath: "/repo/.claude/worktrees/") == nil)
+        #expect(claudeSession.worktreeRoot(ofPath: "/repo/.claude/worktrees") == nil)
+        #expect(claudeSession.worktreeRoot(ofPath: "/repo/src") == nil)
+        #expect(claudeSession.worktreeRoot(ofPath: "~/dev/x/.claude/worktrees/a") == "~/dev/x/.claude/worktrees/a")
+
+        // The whole point of TKZ-79: Codex has no worktree marker, so the same paths that resolve
+        // for a Claude session must resolve to nothing at all for a Codex one.
+        let codexSession = state.createSession(groupID: group.id, cwd: "/repo", agent: .codex, accountKey: "codex")
+        #expect(codexSession.worktreeRoot(ofPath: "/repo/.claude/worktrees/review") == nil)
+        #expect(codexSession.worktreeRoot(ofPath: "~/dev/x/.claude/worktrees/a") == nil)
+    }
+
+    /// A Codex row sitting inside a `.claude/worktrees/…` directory (e.g. a Codex session started
+    /// inside a Claude worktree) must not claim the `WT` badge — that badge is Claude's marker, and
+    /// Codex knows nothing about the directory it happens to be standing in.
+    @Test func aCodexSessionInsideAClaudeWorktreeDoesNotShowTheBadge() {
+        var state = AppState()
+        let group = state.addGroup(name: "repo", repoRoot: "/repo")
+        let session = state.createSession(
+            groupID: group.id, cwd: "/repo/.claude/worktrees/x", agent: .codex, accountKey: "codex")
+        #expect(state.sessions[session.id]?.showsWorktreeBadge == false)
     }
 
     @Test func descriptorInsideAWorktreeSetsTheBadge() {
@@ -536,7 +556,25 @@ import Testing
 
         // No default at all falls through to `~/.claude`.
         state.setGroupDefaultAccount(group, accountKey: nil)
-        #expect(state.createSession(groupID: group, cwd: "~/dev/northwind").accountKey == Account.defaultKey)
+        #expect(state.createSession(groupID: group, cwd: "~/dev/northwind").accountKey == Account.defaultKey(for: .claude))
+    }
+
+    /// The rule `createSession` adds for TKZ-79: a group default only applies to a row of *its own*
+    /// agent. A Codex row in a group whose default names a Claude account must not inherit that
+    /// account — it would point `CODEX_HOME` at Claude's config dir — so it falls back to Codex's
+    /// own primary instead. The existing Claude-inherits-the-group-default behaviour must still hold
+    /// alongside it.
+    @Test func aCodexRowDoesNotInheritAClaudeGroupDefault() {
+        var state = AppState.fixture
+        let group = Fixture.groupID(0)
+        #expect(state.accounts["claude-work"]?.agent == .claude)
+        state.setGroupDefaultAccount(group, accountKey: "claude-work")
+
+        let codexRow = state.createSession(groupID: group, cwd: "~/dev/northwind", agent: .codex)
+        #expect(codexRow.accountKey == Account.defaultKey(for: .codex))
+
+        let claudeRow = state.createSession(groupID: group, cwd: "~/dev/northwind")
+        #expect(claudeRow.accountKey == "claude-work")
     }
 
     /// `setUsage` takes the plan, and the usage file's name only for an account nobody has named:

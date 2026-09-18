@@ -174,6 +174,10 @@ struct ClaudeIntegrationTests {
         #expect(discovered.map(\.key) == ["claude", "claude-home", "claude-work"])
         #expect(discovered.first?.configDir == home.path + "/.claude")
         #expect(discovered.map(\.label) == discovered.map(\.key), "no overlay file: every key is its own label")
+        // Every account `discoverAccounts` finds is Claude's — it only ever looks under
+        // `~/.claude*` — so each one must carry `.claude`, not whatever `Account.agent`'s default
+        // happens to be.
+        #expect(discovered.allSatisfy { $0.agent == .claude })
 
         let h = Self.makeHarness(home: home.path)
         // A persisted row on an account the file system does not show is still watched.

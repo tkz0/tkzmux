@@ -142,9 +142,14 @@ struct SettingsModel: Hashable, Sendable {
     /// carries no account name; with several, each row names its own — the same rule the sidebar
     /// chip follows (nothing to say about the only account there is).
     static func statuslineRows(state: AppState, environment: Environment) -> [SettingsRow] {
+        // This view is Claude-only today (it configures Claude Code's own status line), so every
+        // account here carries `.claude`; comparing each against its own agent's default key
+        // keeps the sort correct once a second agent's accounts can appear.
         let accounts = state.accounts.values.sorted { a, b in
-            if a.key == Account.defaultKey { return b.key != Account.defaultKey }
-            if b.key == Account.defaultKey { return false }
+            let aIsDefault = a.key == Account.defaultKey(for: a.agent)
+            let bIsDefault = b.key == Account.defaultKey(for: b.agent)
+            if aIsDefault { return !bIsDefault }
+            if bIsDefault { return false }
             return a.key < b.key
         }
         let named = accounts.count > 1

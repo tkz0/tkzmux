@@ -84,6 +84,11 @@ private func makeState() -> AppState {
 
         #expect(restored.groups == original.groups)
         #expect(restored.sessions == original.sessions)
+        // `sessions ==` above already covers these, but the schema v4 fields are new enough
+        // (TKZ-79) to earn an assertion of their own rather than ride along silently.
+        #expect(restored.sessions.values.allSatisfy { $0.agent == .claude })
+        let resumable = try #require(original.orderedSessions.first { $0.conversationId == "conv-1" })
+        #expect(restored.sessions[resumable.id]?.conversationId == "conv-1")
             #expect(restored.selection == original.selection)
         #expect(restored.sidebarVisible == original.sidebarVisible)
         #expect(restored.sidebarWidth == original.sidebarWidth)
@@ -96,10 +101,10 @@ private func makeState() -> AppState {
     }
 }
 
-/// `Session.conversationId` is still written as `claudeSessionId`: schema v3 predates the Swift
-/// rename, and the key only moves with the v4 lift (TKZ-79). Until then a `state.json` from the
-/// current release must load unchanged, and one this build writes must load in that release.
-@Test func conversationIdIsStoredUnderTheV3Key() throws {
+/// `Session.conversationId` is written under its own name now: schema v4 (TKZ-79) renamed the
+/// on-disk key from `claudeSessionId`, and `Migrations.liftV3ToV4` is what moves an existing v3
+/// file's value across, not an alias on `Session.CodingKeys`.
+@Test func conversationIdIsStoredUnderTheV4Key() throws {
     let original = makeState()
     let one = try #require(original.orderedSessions.first { $0.conversationId == "conv-1" })
     let data = try StateFile.encode(StateDocument(state: PersistedState(original)))
@@ -108,11 +113,11 @@ private func makeState() -> AppState {
     guard case .array(var sessions)? = object["sessions"] else { Issue.record("no sessions"); return }
     let index = try #require(sessions.firstIndex { $0.objectValue?["id"]?.stringValue == one.id.rawValue })
     var row = try #require(sessions[index].objectValue)
-    #expect(row["claudeSessionId"]?.stringValue == "conv-1")
-    #expect(row["conversationId"] == nil)
+    #expect(row["conversationId"]?.stringValue == "conv-1")
+    #expect(row["claudeSessionId"] == nil)
 
-    // And the other direction: the v3 key, as the current release writes it, lands in the field.
-    row["claudeSessionId"] = .string("conv-from-disk")
+    // And the other direction: the v4 key, as the current release writes it, lands in the field.
+    row["conversationId"] = .string("conv-from-disk")
     sessions[index] = .object(row)
     object["sessions"] = .array(sessions)
     var restored = AppState()
@@ -251,7 +256,7 @@ private func makeState() -> AppState {
     #expect(groups.first?.objectValue?["name"]?.stringValue == "Alpha")
     guard case .array(let sessions)? = object["sessions"] else { Issue.record("no sessions"); return }
     #expect(sessions.count == 2)
-    #expect(object["schemaVersion"]?.intValue == 3)
+    #expect(object["schemaVersion"]?.intValue == 4)
     // Explicit keys, not CGRect's `[[x,y],[w,h]]`.
     #expect(object["windowFrame"]?.objectValue?["width"] != nil)
 }

@@ -6,7 +6,8 @@
 // disk, rather than against whatever the models look like today.
 //
 // v2 gives every session a pane tree; v3 drops the presets feature and the keys it
-// wrote. The interesting half of this file is still the *refusal*: see
+// wrote; v4 gives every session an `agent` and renames `claudeSessionId` to
+// `conversationId` (TKZ-79). The interesting half of this file is still the *refusal*: see
 // `MigrationError.futureVersion`.
 
 import Foundation
@@ -34,7 +35,8 @@ public enum Migrations {
         switch version {
         case 1: return try migrate(liftV1ToV2(object))
         case 2: return try migrate(liftV2ToV3(object))
-        case 3: return object
+        case 3: return try migrate(liftV3ToV4(object))
+        case 4: return object
         default: throw MigrationError.notAStateFile
         }
     }
@@ -87,6 +89,47 @@ public enum Migrations {
     private static func dropPresetID(_ value: JSONValue) -> JSONValue {
         guard case .object(var fields) = value, fields["presetID"] != nil else { return value }
         fields["presetID"] = nil
+        return .object(fields)
+    }
+
+    /// v3 → v4: every session gains `agent`, and `claudeSessionId` becomes `conversationId`
+    /// (TKZ-79 — the Swift-side rename landed first, in `Session.CodingKeys`).
+    ///
+    /// This has to be a version bump rather than a tolerant decode on the v3 side, even though
+    /// `agent` defaults to `.claude` and `conversationId`/`claudeSessionId` are both optional.
+    /// `JSONValue` preserves unknown top-level keys only — see the header of
+    /// `Sources/Persistence/JSONValue.swift` and `StateFile.encode`/`decode` — so a *nested* key
+    /// like a session's `agent` is invisible to that mechanism. A v3 build hand fed a v4 file
+    /// would silently drop `agent` from every session and read `conversationId` as absent,
+    /// forgetting every resumable row rather than failing loudly. `MigrationError.futureVersion`
+    /// is what makes an older build refuse the file cleanly instead of corrupting it, exactly as
+    /// it already does for v2 and v1.
+    ///
+    /// Idempotent — a session that already has `agent` is left alone, and `claudeSessionId` is
+    /// deleted whether or not it was copied, so re-running the lift on its own output changes
+    /// nothing.
+    static func liftV3ToV4(_ object: [String: JSONValue]) -> [String: JSONValue] {
+        var object = object
+        if case .array(let sessions)? = object["sessions"] {
+            object["sessions"] = .array(sessions.map(addAgentAndRenameConversationID))
+        }
+        object["schemaVersion"] = .number(4)
+        return object
+    }
+
+    private static func addAgentAndRenameConversationID(_ value: JSONValue) -> JSONValue {
+        guard case .object(var fields) = value else { return value }
+        if fields["agent"] == nil {
+            fields["agent"] = .string("claude")
+        }
+        // An existing `conversationId` wins if somehow both keys are present; either way the old
+        // key must not survive, or it would ride along in the file forever.
+        if let old = fields["claudeSessionId"] {
+            if fields["conversationId"] == nil {
+                fields["conversationId"] = old
+            }
+            fields["claudeSessionId"] = nil
+        }
         return .object(fields)
     }
 

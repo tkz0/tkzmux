@@ -154,14 +154,14 @@ struct MainWindowLaunchTests {
         var state = AppState()
         let group = state.addGroup(name: "Scratch", repoRoot: NSTemporaryDirectory())
         state.setAccount(Account(key: "claude-work", configDir: "/tmp/alt", label: "Alt"))
-        state.setAccount(Account(key: Account.defaultKey, configDir: "/tmp/primary", label: "Main"))
+        state.setAccount(Account(key: Account.defaultKey(for: .claude), configDir: "/tmp/primary", label: "Main"))
         let harness = MainWindowControllerTests.makeHarness(state)
         defer { harness.tearDown() }
 
         harness.controller.launch(
             Self.launch(cwd: NSTemporaryDirectory(), accountKey: "claude-work", group: group.id))
         harness.controller.launch(
-            Self.launch(cwd: NSTemporaryDirectory(), accountKey: Account.defaultKey, group: group.id))
+            Self.launch(cwd: NSTemporaryDirectory(), accountKey: Account.defaultKey(for: .claude), group: group.id))
         harness.controller.launch(
             Self.launch(cwd: NSTemporaryDirectory(), accountKey: nil, group: group.id))
         harness.store.flush()

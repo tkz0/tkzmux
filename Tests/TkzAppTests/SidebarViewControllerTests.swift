@@ -999,13 +999,13 @@ struct SidebarViewControllerTests {
 
         // What is left is truncated, not reduced to initials: a configured "Ada Industries" has to
         // read as ADA, not as AI.
-        #expect(SidebarRowAdapter.shortLabel("Ada Industries") == "ADA")
-        #expect(SidebarRowAdapter.shortLabel("claude-work-personal") == "WORK")
+        #expect(SidebarRowAdapter.shortLabel("Ada Industries", dropping: "claude") == "ADA")
+        #expect(SidebarRowAdapter.shortLabel("claude-work-personal", dropping: "claude") == "WORK")
         // …and a name with no `claude` in it at all is left alone.
-        #expect(SidebarRowAdapter.shortLabel("work") == "WORK")
+        #expect(SidebarRowAdapter.shortLabel("work", dropping: "claude") == "WORK")
         // The bare product name is all there is to go on when that is the whole name.
-        #expect(SidebarRowAdapter.shortLabel("claude") == "CLAUD")
-        #expect(SidebarRowAdapter.shortLabel("   ") == nil)
+        #expect(SidebarRowAdapter.shortLabel("claude", dropping: "claude") == "CLAUD")
+        #expect(SidebarRowAdapter.shortLabel("   ", dropping: "claude") == nil)
 
         // The tooltip is where the full name and the config dir live, since the chip holds five
         // characters.
@@ -1019,6 +1019,25 @@ struct SidebarViewControllerTests {
         #expect(
             SidebarRowAdapter.sessionModel(main, in: state).accountColor
                 == SidebarSessionRowModel.accountChipColor(forKey: "claude"))
+    }
+
+    @Test("The chip is hidden for the agent's own default account, whichever agent that is")
+    func accountChipHidingFollowsTheRowsOwnAgent() {
+        // A Codex row on `codex` — that agent's own default key — must hide its chip exactly like
+        // a Claude row on `claude` does, even though `codex` is not Claude's default key.
+        var state = AppState()
+        let group = state.addGroup(name: "g", repoRoot: "/repo")
+        var codexDefault = Session(groupID: group.id, cwd: "/repo", agent: .codex, accountKey: "codex")
+        state.sessions[codexDefault.id] = codexDefault
+        #expect(SidebarRowAdapter.accountLabel(for: codexDefault, in: state) == nil)
+        #expect(SidebarRowAdapter.accountTooltip(for: codexDefault, in: state) == nil)
+
+        // A second Codex account is not that agent's default, so it gets a chip — the same rule
+        // that makes `claude-work` show one for Claude.
+        codexDefault.accountKey = "codex-work"
+        state.setAccount(Account(key: "codex-work", configDir: "/h/.codex-work", label: "codex-work", agent: .codex))
+        state.sessions[codexDefault.id] = codexDefault
+        #expect(SidebarRowAdapter.accountLabel(for: codexDefault, in: state) == "WORK")
     }
 
     @Test("The summary model counts badges, not waiting dots")

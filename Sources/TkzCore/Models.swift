@@ -166,7 +166,10 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// because a restored session whose worktree has been deleted clears the badge but may keep
     /// the path for the error message.
     public var isWorktree: Bool
-    /// `Account.key` — the basename of the Claude config dir (`claude`, `claude-work`).
+    /// Which coding agent this row runs. Persisted; the v4 lift stamps `claude` on every row that
+    /// predates the key, so it is never absent on disk.
+    public var agent: AgentKind
+    /// `Account.key` — the basename of the agent's config dir (`claude`, `claude-work`, `codex`).
     public var accountKey: String
     /// The agent's own conversation id — for Claude, its `session_id` — used for
     /// `claude --resume <id>`. Opaque to tkzmux. Rotates on `/clear`, resume and fork, so it is
@@ -202,6 +205,7 @@ public struct Session: Hashable, Sendable, Identifiable {
         repoRoot: String? = nil,
         worktreePath: String? = nil,
         isWorktree: Bool = false,
+        agent: AgentKind = .claude,
         accountKey: String,
         conversationId: String? = nil,
         createdAt: Date = Date(),
@@ -220,6 +224,7 @@ public struct Session: Hashable, Sendable, Identifiable {
         self.repoRoot = repoRoot
         self.worktreePath = worktreePath
         self.isWorktree = isWorktree
+        self.agent = agent
         self.accountKey = accountKey
         self.conversationId = conversationId
         self.createdAt = createdAt
@@ -307,7 +312,7 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// The `WT` badge: the session is a `claude -w` session, or it currently sits inside a
     /// `.claude/worktrees/<name>` directory.
     public var showsWorktreeBadge: Bool {
-        isWorktree || Self.worktreeRoot(ofPath: effectiveCwd) != nil
+        isWorktree || worktreeRoot(ofPath: effectiveCwd) != nil
     }
 
     /// The last segment of a path, as a title: `/Users/x/dev/toolbox/` → `toolbox`, `/Users/x` → `x`,
@@ -386,19 +391,16 @@ public struct Session: Hashable, Sendable, Identifiable {
         return true
     }
 
-    /// The `claude -w` worktree a path lies in, or `nil`.
+    /// The worktree a path lies in for *this row's agent*, or `nil`.
     ///
     /// Claude Code creates its worktrees under `<repo>/.claude/worktrees/<name>` and starts the
-    /// session with that directory as its cwd, which is what the descriptor then reports. Anything
-    /// at or below `<repo>/.claude/worktrees/<name>` maps to that directory; a path that merely
-    /// *contains* the `.claude/worktrees` marker with nothing after it is not a worktree.
-    public static func worktreeRoot(ofPath path: String) -> String? {
-        let marker = "/.claude/worktrees/"
-        guard let range = path.range(of: marker) else { return nil }
-        let rest = path[range.upperBound...]
-        let name = rest.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: true).first
-        guard let name, !name.isEmpty else { return nil }
-        return String(path[..<range.upperBound]) + name
+    /// session with that directory as its cwd, which is what the descriptor then reports. An agent
+    /// with no worktree flag (`AgentKind.worktreeMarker == nil`) never matches — see `AgentKind`.
+    ///
+    /// An instance method, not a static one, because both in-module callers (`showsWorktreeBadge`
+    /// and `applyDescriptor`) already hold the session, and TkzCore has no adapter registry to ask.
+    public func worktreeRoot(ofPath path: String) -> String? {
+        agent.worktreeRoot(ofPath: path)
     }
 }
 
@@ -406,10 +408,11 @@ extension Session: Codable {
     /// `live` is deliberately absent: process state is rebuilt at launch, never persisted.
     private enum CodingKeys: String, CodingKey {
         case id, groupID, order, title, cwd, repoRoot, worktreePath, isWorktree
+        case agent
         case accountKey, createdAt, lastActiveAt, spendTrackingDisabled
-        /// Still `claudeSessionId` on disk: schema v3 predates the rename. The v4 lift (TKZ-79)
-        /// renames the key; until then this pin is what keeps every existing `state.json` loading.
-        case conversationId = "claudeSessionId"
+        /// Schema v4 renamed the on-disk key from `claudeSessionId`; `Migrations.liftV3ToV4` is
+        /// what moves an existing file's value across, so no alias is needed here any more.
+        case conversationId
         case notificationsMuted
         case tabs, activeTab
     }
@@ -824,30 +827,43 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
 
 // MARK: - Accounts & usage
 
-/// One Claude account = one `CLAUDE_CONFIG_DIR`.
+/// One agent account = one config dir (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, …).
 public struct Account: Hashable, Sendable, Codable, Identifiable {
-    /// Basename of `configDir` (`claude`, `claude-work`); also the `statusline/usage-<key>.json` suffix.
+    /// Basename of `configDir` (`claude`, `claude-work`, `codex`); also the
+    /// `statusline/usage-<key>.json` suffix.
     public var key: String
     public var configDir: String
     /// Display label. Derived from the account's own identity at runtime, never hard-coded.
     public var label: String
     /// Plan name reported by the usage file, e.g. from `account.plan`.
     public var plan: String?
+    /// Which agent this account belongs to. The key namespace is shared (`claude`, `claude-work`,
+    /// `codex`, `codex-work`), so every `accounts[key]` lookup that could straddle agents filters
+    /// on this as well — two agents must never inherit each other's config dir.
+    public var agent: AgentKind
 
     public var id: String { key }
 
-    public init(key: String, configDir: String, label: String, plan: String? = nil) {
+    public init(
+        key: String, configDir: String, label: String, plan: String? = nil,
+        agent: AgentKind = .claude
+    ) {
         self.key = key
         self.configDir = configDir
         self.label = label
         self.plan = plan
+        self.agent = agent
     }
 }
 
 extension Account {
-    /// The account a session falls back to when the group names none:
-    /// the key of the default `~/.claude` config dir.
-    public static let defaultKey = "claude"
+    /// The account a session falls back to when the group names none: the key of that agent's
+    /// primary config dir (`~/.claude` for Claude, `~/.codex` for Codex).
+    ///
+    /// The key namespace is shared across agents, and an agent's primary key is its own name, so
+    /// the mapping is the raw value. An agent nobody has an adapter for still answers, which is
+    /// what keeps a row from an unknown-agent `state.json` decodable.
+    public static func defaultKey(for agent: AgentKind) -> String { agent.rawValue }
 
     /// The `CLAUDE_CONFIG_DIR` an account key stands for: `claude-work` → `<home>/.claude-work`,
     /// and the primary `claude` → `<home>/.claude`. `nil` only for a key that is not a config-dir

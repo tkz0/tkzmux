@@ -143,9 +143,12 @@ public final class ClaudeIntegration {
         for account in discovered where accounts[account.key] == nil { accounts[account.key] = account }
         for session in store.state.sessions.values where accounts[session.accountKey] == nil {
             if let dir = Account.configDirectory(forKey: session.accountKey, home: home) {
+                // Every session here is Claude's — there is only one agent today — so the account
+                // this fabricates is stamped `.claude` too. TKZ-82's adapter table is what will
+                // let this read `session.agent` once a second agent exists.
                 accounts[session.accountKey] = Account(
                     key: session.accountKey, configDir: dir,
-                    label: labels[session.accountKey] ?? session.accountKey)
+                    label: labels[session.accountKey] ?? session.accountKey, agent: .claude)
             }
         }
         var configDirs: [String] = []
@@ -196,10 +199,13 @@ public final class ClaudeIntegration {
         let labels = accountLabels(home: home, fileManager: fileManager)
         var out: [Account] = []
         let primary = (home as NSString).appendingPathComponent(".claude")
+        let defaultKey = Account.defaultKey(for: .claude)
+        // `discoverAccounts` only ever looks at `~/.claude*`, so every account it makes is
+        // Claude's — stamped explicitly rather than left to the initializer's default.
         out.append(
             Account(
-                key: Account.defaultKey, configDir: primary,
-                label: labels[Account.defaultKey] ?? Account.defaultKey))
+                key: defaultKey, configDir: primary,
+                label: labels[defaultKey] ?? defaultKey, agent: .claude))
         let entries = (try? fileManager.contentsOfDirectory(atPath: home)) ?? []
         for name in entries.sorted() where name.hasPrefix(".claude-") {
             let path = (home as NSString).appendingPathComponent(name)
@@ -208,7 +214,7 @@ public final class ClaudeIntegration {
             let markers = ["settings.json", "sessions", ".claude.json"]
             guard markers.contains(where: { fileManager.fileExists(atPath: (path as NSString).appendingPathComponent($0)) }) else { continue }
             let key = Account.key(forConfigDirectory: path)
-            out.append(Account(key: key, configDir: path, label: labels[key] ?? key))
+            out.append(Account(key: key, configDir: path, label: labels[key] ?? key, agent: .claude))
         }
         return out
     }
@@ -262,7 +268,9 @@ public final class ClaudeIntegration {
         let label = known == nil ? (Self.accountLabels(home: home)[key] ?? key) : key
         store.update { state in
             if known == nil {
-                state.setAccount(Account(key: key, configDir: standardized, label: label))
+                // Every process that reports its config dir this way is a `claude` process — the
+                // shim and the descriptor watcher both only ever see Claude today.
+                state.setAccount(Account(key: key, configDir: standardized, label: label, agent: .claude))
             }
             state.setSessionAccount(id, key: key)
         }
@@ -579,8 +587,13 @@ public final class ClaudeIntegration {
     func sessionID(forHook event: HookEvent, ppid: pid_t) -> SessionID? {
         let state = store.state
         if let id = event.sessionID, state.sessions[id]?.live != nil { return id }
+        // `tkzmux-hook` only ever speaks for Claude, so the fallback join must not let a
+        // `conversationId` coincidence match a row of some other agent. TKZ-82's adapter table
+        // will replace this with a lookup keyed on `adapters[session.agent]`.
         if let claudeID = event.conversationId,
-           let match = state.sessions.values.first(where: { $0.live != nil && $0.conversationId == claudeID }) {
+           let match = state.sessions.values.first(where: {
+               $0.live != nil && $0.agent == .claude && $0.conversationId == claudeID
+           }) {
             return match.id
         }
         return sessionID(forProcess: ppid)
@@ -656,8 +669,12 @@ public final class ClaudeIntegration {
         if let id = pidToSession[info.pid], state.sessions[id]?.live != nil { return id }
         if let match = state.sessions.values.first(where: { $0.live?.pid == info.pid }) { return match.id }
         guard ownsProcess(info.pid) else { return nil }
+        // `ClaudeSessionWatcher` only ever describes Claude's own descriptor files, so this join
+        // must not let a `conversationId` collision hand the descriptor to some other agent's
+        // row. TKZ-82's adapter table will replace this with `adapters[session.agent]`.
         if let match = state.sessions.values.first(where: {
-            $0.conversationId == info.sessionId && $0.live != nil && $0.live?.descriptor == nil
+            $0.agent == .claude && $0.conversationId == info.sessionId && $0.live != nil
+                && $0.live?.descriptor == nil
         }) {
             return match.id
         }
@@ -684,7 +701,12 @@ public final class ClaudeIntegration {
            cached.claudeID == claudeID, cached.accountKey == session.accountKey {
             return cached.path
         }
-        let configDir = store.state.accounts[session.accountKey]?.configDir
+        // The key namespace is shared across agents (`Account.agent`'s doc comment), so a
+        // registered account under this key must also match the row's own agent before its
+        // `configDir` is trusted — otherwise a Claude row could resolve into a Codex account that
+        // happens to share a key. TKZ-82's adapter table will carry this join instead.
+        let configDir = store.state.accounts[session.accountKey]
+            .flatMap { $0.agent == session.agent ? $0.configDir : nil }
             ?? Account.configDirectory(forKey: session.accountKey, home: home)
         guard let configDir else { return nil }
         let located = TranscriptReader.locate(sessionId: claudeID, configDir: configDir)
