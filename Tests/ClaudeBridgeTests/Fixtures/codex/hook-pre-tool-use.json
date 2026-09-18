@@ -1,0 +1,14 @@
+{
+  "session_id": "01a0b549-efb1-7b92-9891-8fc0ca00aca2",
+  "turn_id": "01a0b549-f012-70f2-9965-e89d2155cfa8",
+  "transcript_path": "/Users/tester/.codex/sessions/2026/09/18/rollout-2026-09-18T18-11-56-01a0b549-efb1-7b92-9891-8fc0ca00aca2.jsonl",
+  "cwd": "/Users/tester/project",
+  "hook_event_name": "PreToolUse",
+  "model": "gpt-5.6-terra",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "echo hello > /tmp/spike-write-test.txt"
+  },
+  "tool_use_id": "exec-6ca5cdfa-5b69-4bcb-b8c4-03f65cf32255"
+}
