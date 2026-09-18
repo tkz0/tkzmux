@@ -5,10 +5,17 @@
 
 import Foundation
 import Testing
+import TkzCore
 
 @testable import ClaudeBridge
 
 @Suite struct TranscriptUsageReaderTests {
+    private static var codexFixturesDirectory: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/codex")
+    }
+
     /// A minimal `"type":"assistant"` transcript line carrying exactly the fields the reader looks
     /// at.
     private func assistantLine(
@@ -125,5 +132,79 @@ import Testing
 
         let complete = try #require(await reader.refresh(sessionId: "s4", transcriptPath: path.path))
         #expect(complete.perModel.first?.inputTokens == 100)
+    }
+
+    // MARK: - Codex (TKZ-86 part 2): a running thread total, never a per-line sum
+
+    /// The trap this slice exists to avoid, made explicit: `rollout-token-count.jsonl`'s second turn
+    /// spends 1100 tokens of its own, but the thread's running total by then is 2600, and a third
+    /// line repeats 2600 unchanged (standing in for Codex's rate-limit-refresh re-emission). A
+    /// reader that sums every line's total would report 1500 + 2600 + 2600 = 6700; this one must
+    /// report 2600.
+    @Test("Codex's cumulative usage lines are taken as the latest snapshot, never summed: 2600, not 6700")
+    func codexTakesTheLatestTotalRatherThanSumming() async throws {
+        let path = Self.codexFixturesDirectory.appendingPathComponent("rollout-token-count.jsonl").path
+        let cacheDir = try StatuslineTestSupport.tempDirectory("usage-cache-codex")
+        let reader = TranscriptUsageReader(cacheDirectory: cacheDir.path)
+        let usage = try #require(
+            await reader.refresh(sessionId: "codex-total-check", transcriptPath: path, agent: .codex))
+        #expect(usage.perModel.count == 1)
+        let model = try #require(usage.perModel.first)
+        // `input_tokens` (2100) already includes `cached_input_tokens` (1500) in Codex's own
+        // accounting — see `CodexUsageExtractor`'s doc comment — so the reader splits it into an
+        // uncached remainder and a separate cache-read pool, the same shape the other agent's fields
+        // already have.
+        #expect(model.inputTokens == 600)
+        #expect(model.cacheReadTokens == 1500)
+        #expect(model.outputTokens == 500)
+        #expect(model.thinkingTokens == 250)
+        // Explicitly the number the whole slice hinges on.
+        #expect(model.inputTokens + model.cacheReadTokens + model.outputTokens == 2600)
+    }
+
+    @Test("The duplicate rate-limit-refresh line changes nothing: refreshing again still reports 2600")
+    func codexRefreshingAgainIsIdempotent() async throws {
+        let path = Self.codexFixturesDirectory.appendingPathComponent("rollout-token-count.jsonl").path
+        let cacheDir = try StatuslineTestSupport.tempDirectory("usage-cache-codex-idempotent")
+        let reader = TranscriptUsageReader(cacheDirectory: cacheDir.path)
+        _ = await reader.refresh(sessionId: "codex-idempotent", transcriptPath: path, agent: .codex)
+        let again = try #require(
+            await reader.refresh(sessionId: "codex-idempotent", transcriptPath: path, agent: .codex))
+        let model = try #require(again.perModel.first)
+        #expect(model.inputTokens + model.cacheReadTokens + model.outputTokens == 2600)
+    }
+
+    @Test("The cache file is keyed by agent, so a Claude and a Codex session sharing an id do not collide")
+    func cacheKeyIncludesTheAgent() async throws {
+        let cacheDir = try StatuslineTestSupport.tempDirectory("usage-cache-key")
+        let reader = TranscriptUsageReader(cacheDirectory: cacheDir.path)
+
+        let claudePath = try tempTranscript()
+        try Data((assistantLine(model: "claude-sonnet-5", input: 10, output: 20) + "\n").utf8)
+            .write(to: claudePath)
+        _ = await reader.refresh(sessionId: "shared-id", transcriptPath: claudePath.path)
+
+        let codexPath = Self.codexFixturesDirectory.appendingPathComponent("rollout-token-count.jsonl").path
+        let codexUsage = try #require(
+            await reader.refresh(sessionId: "shared-id", transcriptPath: codexPath, agent: .codex))
+        #expect(codexUsage.perModel.first?.outputTokens == 500)
+
+        let names = try FileManager.default.contentsOfDirectory(atPath: cacheDir.path).sorted()
+        #expect(names == ["claude-shared-id.json", "codex-shared-id.json"])
+    }
+
+    @Test("A Codex model id unknown to ModelPricing leaves the total nil rather than showing $0")
+    func codexUnpricedModelLeavesTotalNil() async throws {
+        let path = Self.codexFixturesDirectory.appendingPathComponent("rollout-exec.jsonl").path
+        let cacheDir = try StatuslineTestSupport.tempDirectory("usage-cache-codex-unpriced")
+        let reader = TranscriptUsageReader(cacheDirectory: cacheDir.path)
+        let usage = try #require(
+            await reader.refresh(sessionId: "codex-unpriced", transcriptPath: path, agent: .codex))
+        // `rollout-exec.jsonl`'s `turn_context` names `gpt-5.6-terra`, which `ModelPricing` carries
+        // no rate for — deliberately, see `ModelPricing.swift`'s header — so the total must stay
+        // `nil`, never a guessed or zeroed cost.
+        #expect(usage.perModel.first?.modelId == "gpt-5.6-terra")
+        #expect(usage.perModel.first?.costUSD == nil)
+        #expect(usage.totalCostUSD == nil)
     }
 }

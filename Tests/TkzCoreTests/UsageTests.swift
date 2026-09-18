@@ -36,6 +36,17 @@ import Testing
             inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0)
         #expect(cost == 0)
     }
+
+    /// TKZ-86 part 2's own deliberate absence: `gpt-5.6-terra` is the model id a real Codex capture
+    /// named, and no rate was added for it (see this file's header) rather than guess one.
+    @Test("Codex's observed model id has no pricing entry, on purpose")
+    func codexModelIdCostsNil() {
+        let cost = ModelPricing.cost(
+            modelId: "gpt-5.6-terra",
+            inputTokens: 1_000_000, outputTokens: 1_000_000,
+            cacheCreationTokens: 0, cacheReadTokens: 0)
+        #expect(cost == nil)
+    }
 }
 
 @Suite struct SessionUsageCodableTests {

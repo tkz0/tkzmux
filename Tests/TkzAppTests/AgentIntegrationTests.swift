@@ -247,7 +247,12 @@ struct AgentIntegrationTests {
         let h = Self.makeHarness(home: home.path)
         // A persisted row on an account the file system does not show is still watched.
         h.store.update { $0.sessions[h.session]?.accountKey = "claude-elsewhere" }
-        let integration = AgentIntegration(store: h.store, directory: h.directory, home: home.path, installer: nil)
+        // Pinned to Claude alone rather than the default table (TKZ-86): this test is about
+        // Claude's own `~/.claude-*` discovery, and must not depend on whether the machine running
+        // it happens to have a real `codex` on `PATH`.
+        let integration = AgentIntegration(
+            store: h.store, directory: h.directory, home: home.path,
+            adapters: [.claude: ClaudeAdapter()], installer: nil)
         #expect(Set(h.store.state.accounts.keys) == ["claude", "claude-home", "claude-work", "claude-elsewhere"])
         #expect(Set(integration.watchedConfigDirs) == [
             home.path + "/.claude", home.path + "/.claude-home", home.path + "/.claude-work",
@@ -785,6 +790,40 @@ struct AgentIntegrationTests {
         #expect(live?.lastEvent?.kind == .turnEnded)
         #expect(live?.lastEvent?.conversationId == "abc")
         #expect(live?.isDone == true)
+    }
+
+    // MARK: - Default adapter table (TKZ-86)
+
+    /// A machine with no `codex` anywhere on `PATH` must end up with exactly today's table — a
+    /// Claude-only user's behaviour must not change just because this build now knows how to talk
+    /// to a second agent it has never seen installed.
+    @Test("the default adapter table is Claude-only when codex is not on PATH")
+    func defaultAdaptersWithoutCodexOnPathMatchesToday() throws {
+        let emptyBin = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentIntegrationTests-empty-bin-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: emptyBin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: emptyBin) }
+
+        let table = AgentIntegration.defaultAdapters(
+            supportDirectory: FileManager.default.temporaryDirectory, path: emptyBin)
+        #expect(Set(table.keys) == [.claude])
+    }
+
+    /// The other half of the same gate: once `codex` is reachable, the table grows to include it —
+    /// proving the table really is conditional and not just always-Claude-only in disguise.
+    @Test("the default adapter table adds Codex once codex is on PATH")
+    func defaultAdaptersWithCodexOnPathIncludesCodex() throws {
+        let bin = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentIntegrationTests-codex-bin-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: bin) }
+        let binary = (bin as NSString).appendingPathComponent("codex")
+        FileManager.default.createFile(atPath: binary, contents: Data("#!/bin/sh\n".utf8))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary)
+
+        let table = AgentIntegration.defaultAdapters(
+            supportDirectory: FileManager.default.temporaryDirectory, path: bin)
+        #expect(Set(table.keys) == [.claude, .codex])
     }
 
     enum TestFailure: Error { case mkdtemp, binaryNotFound }

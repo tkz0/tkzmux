@@ -147,7 +147,7 @@ public final class AgentIntegration {
         store: AppStore,
         directory: URL,
         home: String = NSHomeDirectory(),
-        adapters: [AgentKind: any AgentAdapter] = [.claude: ClaudeAdapter()],
+        adapters: [AgentKind: any AgentAdapter]? = nil,
         installer: ShimInstaller? = nil,
         instancePID: pid_t = getpid(),
         ancestry: any ProcessAncestry = SystemProcessAncestry(),
@@ -156,7 +156,14 @@ public final class AgentIntegration {
         self.store = store
         self.directory = directory
         self.home = home
-        self.adapters = adapters
+        // `nil` (the default) builds Claude-plus-Codex-if-installed; a test registers its own
+        // table instead, which is the whole seam this type is built around (see the file header).
+        // The default can't simply be `[.claude: ClaudeAdapter(), .codex: CodexAdapter(...)]` the
+        // way Claude's own entry once was: whether Codex belongs in the table depends on
+        // `directory` (its hook installer's own support directory) and on `codex` actually being
+        // on `PATH`, neither of which a default *argument* expression can see — only the
+        // initializer's body can.
+        self.adapters = adapters ?? Self.defaultAdapters(supportDirectory: directory)
         self.installer = installer
         self.instancePID = instancePID
         self.ancestry = ancestry
@@ -167,7 +174,7 @@ public final class AgentIntegration {
         // `~/.claude` plus every `~/.claude-*` that looks like a config dir), plus whatever the
         // store already knows, plus the account of every persisted row (a resume must find its
         // descriptor in *that* account's own directory).
-        let discovered = adapters.values.flatMap { $0.discoverAccounts(home: home, fileManager: .default) }
+        let discovered = self.adapters.values.flatMap { $0.discoverAccounts(home: home, fileManager: .default) }
         var accounts = store.state.accounts
         for account in discovered where accounts[account.key] == nil { accounts[account.key] = account }
         for session in store.state.sessions.values where accounts[session.accountKey] == nil {
@@ -175,7 +182,7 @@ public final class AgentIntegration {
                 // The row itself says which agent it belongs to, so the account this fabricates
                 // follows `session.agent` rather than assuming Claude — the adapter table is what
                 // makes that honest now that a second agent can exist.
-                let label = adapters[session.agent]?.accountLabels(home: home, fileManager: .default)[session.accountKey]
+                let label = self.adapters[session.agent]?.accountLabels(home: home, fileManager: .default)[session.accountKey]
                     ?? session.accountKey
                 accounts[session.accountKey] = Account(
                     key: session.accountKey, configDir: dir, label: label, agent: session.agent)
@@ -199,7 +206,7 @@ public final class AgentIntegration {
             DispatchQueue.main.async { MainActor.assumeIsolated { box.value?.handle(frame) } }
         }
         var watchers: [AgentKind: any AgentObservationWatcher] = [:]
-        for (kind, adapter) in adapters {
+        for (kind, adapter) in self.adapters {
             let dirs = Self.configDirs(for: kind, in: accounts)
             let onEvent: @Sendable (ObservationEvent) -> Void = { event in
                 DispatchQueue.main.async { MainActor.assumeIsolated { box.value?.handle(event, from: kind) } }
@@ -222,6 +229,23 @@ public final class AgentIntegration {
         if !toRegister.isEmpty {
             store.update { state in for account in toRegister { state.setAccount(account) } }
         }
+    }
+
+    /// Claude, always, plus Codex only when `codex` is actually on `PATH` (TKZ-86). This is what
+    /// keeps an uninstalled Codex from changing anything for a Claude-only user: no adapter in the
+    /// table means no Codex accounts discovered, no Codex hook frames routed, nothing — exactly
+    /// today's table, bit for bit, on a machine that has never heard of Codex.
+    ///
+    /// Internal rather than `private`, and `path` is an extra parameter beyond what `init` passes
+    /// (defaulted to the real `PATH`) — both exist solely so `AgentIntegrationTests` can assert the
+    /// gate itself deterministically, the same way `CodexAdapter.discoverAccounts(path:)` does.
+    static func defaultAdapters(
+        supportDirectory: URL, path: String? = ProcessInfo.processInfo.environment["PATH"]
+    ) -> [AgentKind: any AgentAdapter] {
+        var table: [AgentKind: any AgentAdapter] = [.claude: ClaudeAdapter()]
+        let codex = CodexAdapter(supportDirectory: supportDirectory)
+        if codex.isInstalled(path: path) { table[.codex] = codex }
+        return table
     }
 
     /// The config dirs the watchers are currently pointed at, in registration order, across every
