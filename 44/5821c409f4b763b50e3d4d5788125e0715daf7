@@ -1,0 +1,179 @@
+.github/workflows/ci.yml
+  s_7583955c8e28c2::t_63da1ad1ea7937 47
+CLAUDE.md
+  s_7583955c8e28c2::t_49c2f6c06945c3 36-37
+Package.swift
+  s_7583955c8e28c2::t_16ddc276882418 18,77,79,97,125
+Sources/AgentBridge/AgentAdapter.swift
+  s_7583955c8e28c2::t_dba8c8984eff36 1
+Sources/AgentBridge/AgentBridge.swift
+  s_7583955c8e28c2::t_9ac0cb5b1b977d 1,4-5
+Sources/AgentBridge/Claude/ClaudeSessionInfo.swift
+  s_7583955c8e28c2::t_a0ecdda8963c97 1,5
+Sources/AgentBridge/ModuleResources.swift
+  s_7583955c8e28c2::t_c512397221ae00 20
+Sources/AgentBridge/ShimInstaller.swift
+  s_7583955c8e28c2::t_10b786a87b7e1d 2
+Sources/AgentBridge/TranscriptUsageReader.swift
+  s_7583955c8e28c2::t_fb00ce37fe3494 36
+Sources/GitStatus/PortScanner.swift
+  s_7583955c8e28c2::t_e60110885a657a 7,132-133
+Sources/TkzApp/AgentIntegration.swift
+  s_7583955c8e28c2::t_325e7c5e525905 4,29
+Sources/TkzApp/AppDelegate.swift
+  s_7583955c8e28c2::t_6d15c357fc25b1 16
+Sources/TkzApp/MainWindowController.swift
+  s_7583955c8e28c2::t_ff52ae03c66db8 29
+Sources/TkzApp/Menus/NewSessionMenu.swift
+  s_7583955c8e28c2::t_8c9cb9889df01d 18
+Sources/TkzApp/Prompt/PromptCardController.swift
+  s_7583955c8e28c2::t_6d1134d60a1549 18
+Sources/TkzApp/Prompt/PromptCardView.swift
+  s_7583955c8e28c2::t_ad5b7d5ff74b78 13
+Sources/TkzApp/Search/TranscriptSearchService.swift
+  s_7583955c8e28c2::t_f58c36029832c1 17
+Sources/TkzApp/SessionLauncher.swift
+  s_7583955c8e28c2::t_6bf5428da835ec 36
+Sources/TkzApp/SessionMemory.swift
+  s_7583955c8e28c2::t_3b04fa6049e49e 24
+Sources/TkzApp/Settings/SettingsModel.swift
+  s_7583955c8e28c2::t_cf011aa962c02e 10
+Sources/TkzApp/Settings/SettingsWindowController.swift
+  s_7583955c8e28c2::t_3075883293fd43 18
+Sources/TkzApp/TerminalHost.swift
+  s_7583955c8e28c2::t_8248d232dad472 39,407
+Sources/TkzCore/AgentEvent.swift
+  s_7583955c8e28c2::t_ffa57bb6692953 5
+Sources/TkzCore/AgentKind.swift
+  s_7583955c8e28c2::t_2d96106791a38d 4
+Sources/TkzCore/AgentObservation.swift
+  s_7583955c8e28c2::t_bdd2cb5802a735 5,9
+Sources/TkzCore/AppStore.swift
+  s_7583955c8e28c2::t_37eb575c4e6376 212
+Sources/TkzCore/HookSocket.swift
+  s_7583955c8e28c2::t_c7273e58f8dabd 5
+Sources/TkzCore/LoginShell.swift
+  s_7583955c8e28c2::t_cb4e53a07b257c 5,32
+Sources/TkzCore/ModelPricing.swift
+  s_7583955c8e28c2::t_247089120d8508 8
+Sources/TkzCore/Models.swift
+  s_7583955c8e28c2::t_c4f955bb6ffc26 435,1046
+Sources/TkzCore/Panes.swift
+  s_7583955c8e28c2::t_8d8d60052ce11c 20
+Sources/TkzCore/Reducers.swift
+  s_7583955c8e28c2::t_81d68bd1f5b4ff 561
+Sources/TkzCore/StatusDerivation.swift
+  s_7583955c8e28c2::t_4af30bee4e2d84 4
+Sources/tkzmux-hook/SettingsMerge.swift
+  s_7583955c8e28c2::t_7417fc665c31ce 123
+TESTS.md
+  s_7583955c8e28c2::t_04eea47fac9d8e 15
+Tests/AgentBridgeTests/AgentBridgeTests.swift
+  s_7583955c8e28c2::t_cf133e8c430074 2,5
+Tests/AgentBridgeTests/ClaudeAdapterTests.swift
+  s_7583955c8e28c2::t_bb30155496dcce 11
+Tests/AgentBridgeTests/ClaudeHookMapperTests.swift
+  s_7583955c8e28c2::t_6bf7ca3f439b9f 6
+Tests/AgentBridgeTests/ClaudeSessionInfoTests.swift
+  s_7583955c8e28c2::t_0e12c61daedb28 2,8
+Tests/AgentBridgeTests/ClaudeSessionWatcherTests.swift
+  s_7583955c8e28c2::t_d05d72091a9ed0 6
+Tests/AgentBridgeTests/CodexAdapterTests.swift
+  s_7583955c8e28c2::t_ff3e1a6d7964a7 10
+Tests/AgentBridgeTests/CodexHookMapperTests.swift
+  s_7583955c8e28c2::t_7002f662087d1b 10,14-15
+Tests/AgentBridgeTests/CodexHooksInstallerTests.swift
+  s_7583955c8e28c2::t_701b548a216053 19,23-24
+Tests/AgentBridgeTests/CodexTranscriptReaderTests.swift
+  s_7583955c8e28c2::t_4a071ce50394a9 11
+Tests/AgentBridgeTests/HookBinaryTests.swift
+  s_7583955c8e28c2::t_edfc5d31def15d 12
+Tests/AgentBridgeTests/HookHygieneTests.swift
+  s_7583955c8e28c2::t_b11c47030d7c03 7,11-12
+Tests/AgentBridgeTests/HookServerTests.swift
+  s_7583955c8e28c2::t_3d1f8eb5f560c7 10
+Tests/AgentBridgeTests/ProcessLivenessTests.swift
+  s_7583955c8e28c2::t_74787fa347ceed 4
+Tests/AgentBridgeTests/ProcessOwnershipTests.swift
+  s_7583955c8e28c2::t_90d9695e11d64c 6
+Tests/AgentBridgeTests/PromptCommandTests.swift
+  s_7583955c8e28c2::t_0aaea79958676f 9
+Tests/AgentBridgeTests/QuotaReconcilerTests.swift
+  s_7583955c8e28c2::t_aac272db59e06b 11
+Tests/AgentBridgeTests/ShellIntegrationHarnessTests.swift
+  s_7583955c8e28c2::t_846a4568d4cfdf 29
+Tests/AgentBridgeTests/ShimInstallerTests.swift
+  s_7583955c8e28c2::t_d15a9aafb30c1a 6
+Tests/AgentBridgeTests/ShimTests.swift
+  s_7583955c8e28c2::t_7564de5761dd3b 7,11
+Tests/AgentBridgeTests/StatuslineReaderTests.swift
+  s_7583955c8e28c2::t_37ca2b0d0aa31e 13
+Tests/AgentBridgeTests/StatuslineTests.swift
+  s_7583955c8e28c2::t_943b812fabc672 10
+Tests/AgentBridgeTests/TranscriptReaderTests.swift
+  s_7583955c8e28c2::t_672e70b9db68de 12
+Tests/AgentBridgeTests/TranscriptSearchTests.swift
+  s_7583955c8e28c2::t_d652b6161cd032 4
+Tests/AgentBridgeTests/TranscriptUsageReaderTests.swift
+  s_7583955c8e28c2::t_8754252396aa69 10
+Tests/AgentBridgeTests/ZshWrapperTests.swift
+  s_7583955c8e28c2::t_5950da2e901bb5 9
+Tests/PersistenceTests/StateAutosaverTests.swift
+  s_7583955c8e28c2::t_410e0e8c977a6b 44
+Tests/TkzAppTests/ActivityIntegrationTests.swift
+  s_7583955c8e28c2::t_6e143798dbf1e3 6
+Tests/TkzAppTests/AgentIntegrationTests.swift
+  s_7583955c8e28c2::t_c78a58387d509f 15,366
+Tests/TkzAppTests/CodexHooksConsentTests.swift
+  s_7583955c8e28c2::t_bc40e7006a4492 14
+Tests/TkzAppTests/NewSessionMenuTests.swift
+  s_7583955c8e28c2::t_e0f2998b02ae6f 2
+Tests/TkzAppTests/PerSessionCacheEvictionTests.swift
+  s_7583955c8e28c2::t_bd2c8b8f28dea8 13
+Tests/TkzAppTests/PromptCardTests.swift
+  s_7583955c8e28c2::t_3303d1ec5d2588 9
+Tests/TkzAppTests/ScrollRevealTests.swift
+  s_7583955c8e28c2::t_29d39d4711a190 9
+Tests/TkzAppTests/SessionKillTests.swift
+  s_7583955c8e28c2::t_b2ba05f60c19f9 13
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_7583955c8e28c2::t_ffffb8ad69fdb0 8
+Tests/TkzAppTests/SessionMemoryTests.swift
+  s_7583955c8e28c2::t_345a64eb112773 10
+Tests/TkzAppTests/SettingsWindowTests.swift
+  s_7583955c8e28c2::t_64d34381d95478 9,192,199,206,219,225,231
+Tests/TkzAppTests/StatuslineConsentTests.swift
+  s_7583955c8e28c2::t_f81a7860a384ee 8
+Tests/TkzAppTests/TerminalHostTests.swift
+  s_7583955c8e28c2::t_375276611aec6f 26
+Tests/TkzAppTests/TerminalNotificationTests.swift
+  s_7583955c8e28c2::t_efc415431bc840 13
+Tests/TkzAppTests/TranscriptSearchServiceTests.swift
+  s_7583955c8e28c2::t_e493419a5e7708 5
+Tests/TkzCoreTests/LoginShellTests.swift
+  s_7583955c8e28c2::t_8754710b4ea71d 2
+Tests/TkzCoreTests/ModelsTests.swift
+  s_7583955c8e28c2::t_49f72acb692fa2 3
+docs/privacy.md
+  s_7583955c8e28c2::t_131add90a8985c 18,76,80,88,94,100,114,117,127,138-139,153,166,191,204
+scripts/test-memory-probe.sh
+  s_7583955c8e28c2::t_252631bd902902 35
+Tests/AgentBridgeTests/CodexHygieneTests.swift
+  s_7583955c8e28c2::t_49fc4b05fb40be 1,5,11,15-16,19,35,37-42,62,83-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "445821c409f4b763b50e3d4d5788125e0715daf7",
+  "prompts": {},
+  "sessions": {
+    "s_7583955c8e28c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78c694c2-5423-4e54-be95-757945b8e04d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
