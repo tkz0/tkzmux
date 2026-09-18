@@ -1,0 +1,15 @@
+{
+  "hook_event_name": "PermissionRequest",
+  "session_id": "019e9000-0000-7000-8000-000000000001",
+  "turn_id": "turn-1",
+  "agent_type": "codex",
+  "transcript_path": "/Users/tester/.codex/sessions/2026/09/18/rollout-2026-09-18T10-00-00-019e9000-0000-7000-8000-000000000001.jsonl",
+  "cwd": "/Users/tester/project",
+  "model": "gpt-5.5",
+  "permission_mode": "default",
+  "tool_name": "shell",
+  "tool_use_id": "call_0001",
+  "tool_input": {
+    "command": ["rm", "-rf", "build"]
+  }
+}

@@ -54,7 +54,7 @@ public enum DescriptorEvent: Sendable {
 /// safe to call from inside an `onEvent` callback (calling `start`/`stop`/`setConfigDirs`
 /// re-entrantly from inside `onEvent`, on the other hand, would deadlock on `queue.sync` — same as
 /// re-entering any serial queue from its own callback).
-public final class ClaudeSessionWatcher: Sendable {
+public final class ClaudeSessionWatcher: AgentObservationWatcher {
     private let queue = DispatchQueue(label: "se.tkz.tkzmux.ClaudeSessionWatcher")
     private let liveness: any ProcessLiveness
     private let debounce: Duration

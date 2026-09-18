@@ -1,4 +1,4 @@
-// ActivityIntegrationTests — what `ClaudeIntegration` does to a feed entry's read flag when the
+// ActivityIntegrationTests — what `AgentIntegration` does to a feed entry's read flag when the
 // hook lands on the row the user is looking at.
 
 import Foundation
@@ -11,7 +11,7 @@ import TkzCore
 @MainActor
 @Suite(.serialized)
 struct ActivityIntegrationTests {
-    typealias H = ClaudeIntegrationTests
+    typealias H = AgentIntegrationTests
 
     @Test("a Stop on the row the user is looking at lands read; elsewhere it stays unread")
     func stopReadWhenAttended() {

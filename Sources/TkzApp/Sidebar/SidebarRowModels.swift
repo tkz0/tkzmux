@@ -25,14 +25,14 @@ import TkzCore
 /// badge is a separate flag (`SidebarSessionRowModel.needsAttention`), because only
 /// `waiting(.doneUnattended)` earns it.
 public enum SidebarStatus: String, Hashable, Sendable, CaseIterable {
-    /// Claude is busy. This is the only status that pulses.
+    /// The agent is busy. This is the only status that pulses.
     case working
-    /// Claude is blocked on the human (permission prompt, elicitation, or done-unattended).
+    /// The agent is blocked on the human (permission prompt, elicitation, or done-unattended).
     case waiting
-    /// Alive but nothing is happening — and the catch-all for no Claude at all, a restored row with
+    /// Alive but nothing is happening — and the catch-all for no agent at all, a restored row with
     /// no terminal, a parked job, an attended Stop. **Draws no dot** (2026-09-09).
     case idle
-    /// Claude finished less than a minute ago and nobody has looked yet: idle with the accent
+    /// The agent finished less than a minute ago and nobody has looked yet: idle with the accent
     /// tint, so a finished answer is visible before it ages into `NEEDS YOU` (GUI pass
     /// 2026-09-08, 5c: the dot went straight from green to grey).
     case done
@@ -52,7 +52,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
     /// The folder the session lives in, shown as `…/<directory>` in front of the branch — but only
     /// when the title is *not* already that folder (design 2c.1: "Blazor grid fix" gets
     /// `…/FIIPEV · ⎇ develop`, "FIM" shows only `⎇ develop`). `nil` hides it. The adapter passes
-    /// `Session.directoryTitle` when it differs from `displayTitle`, so a Claude-named or renamed
+    /// `Session.directoryTitle` when it differs from `displayTitle`, so an agent-named or renamed
     /// row keeps its folder in view. When `…/dir · ⎇ branch [WT]` does not fit the row, the branch
     /// moves to a second detail line and the row grows to `SidebarMetrics.sessionRowWrappedHeight`.
     public var directory: String?
@@ -64,7 +64,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
     /// Colour and pulse of the status dot. See `SidebarStatus`.
     public var status: SidebarStatus
 
-    /// Short label for the Claude account this session runs under (e.g. the account key's initials
+    /// Short label for the account this session's agent runs under (e.g. the account key's initials
     /// or its configured short name). `nil` hides the account chip entirely — which is what a
     /// single-account setup should pass, so the row does not carry a meaningless chip.
     public var accountLabel: String?

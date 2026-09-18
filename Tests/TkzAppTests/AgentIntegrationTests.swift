@@ -1,9 +1,12 @@
-// ClaudeIntegrationTests — M3: the coordinator that joins hook frames and
-// descriptors to sessions and posts derived status into the store.
+// AgentIntegrationTests — M3 / TKZ-82: the coordinator that joins hook frames and
+// observations to sessions and posts derived status into the store, routed through an
+// `[AgentKind: any AgentAdapter]` table rather than naming Claude directly.
 //
 // The first suite feeds synthetic frames straight into the `handle…` methods (no socket, no
-// watcher started). The last test starts the real `HookServer` on a short `/tmp` socket path and
-// runs the built `tkzmux-hook` binary against it — the whole relay end to end, minus Claude.
+// watcher started). Another proves the seam itself: a stub adapter registered alongside Claude's
+// routes frames by `payload.agent` with no change to `AgentIntegration`. The last test starts the
+// real `HookServer` on a short `/tmp` socket path and runs the built `tkzmux-hook` binary against
+// it — the whole relay end to end, minus Claude.
 
 import AppKit
 import Foundation
@@ -17,11 +20,11 @@ import TkzTerminalCore
 
 @MainActor
 @Suite(.serialized)
-struct ClaudeIntegrationTests {
+struct AgentIntegrationTests {
 
     struct Harness {
         let store: AppStore
-        let integration: ClaudeIntegration
+        let integration: AgentIntegration
         let group: GroupID
         let session: SessionID
         let directory: URL
@@ -60,7 +63,8 @@ struct ClaudeIntegrationTests {
 
     static func makeHarness(
         home: String? = nil, shellPid: pid_t = 1, ancestry: FakeAncestry = FakeAncestry(),
-        instancePID: pid_t = ClaudeIntegrationTests.instancePID, liveness: FakeLiveness = FakeLiveness()
+        instancePID: pid_t = AgentIntegrationTests.instancePID, liveness: FakeLiveness = FakeLiveness(),
+        adapters: [AgentKind: any AgentAdapter] = [.claude: ClaudeAdapter()]
     ) -> Harness {
         let directory = URL(filePath: NSTemporaryDirectory())
             .appending(path: "tkzci-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -71,9 +75,9 @@ struct ClaudeIntegrationTests {
         state.setLive(LiveSessionState(shellPid: shellPid, status: .idle), for: session.id)
         state.select(session.id)
         let store = AppStore(state: state)
-        let integration = ClaudeIntegration(
-            store: store, directory: directory, home: home ?? directory.path, installer: nil,
-            instancePID: instancePID, ancestry: ancestry, liveness: liveness)
+        let integration = AgentIntegration(
+            store: store, directory: directory, home: home ?? directory.path, adapters: adapters,
+            installer: nil, instancePID: instancePID, ancestry: ancestry, liveness: liveness)
         return Harness(
             store: store, integration: integration, group: group, session: session.id,
             directory: directory, liveness: liveness)
@@ -83,6 +87,18 @@ struct ClaudeIntegrationTests {
                            statusUpdatedAt: Date = Date()) -> ClaudeSessionInfo {
         ClaudeSessionInfo(configDir: "/tmp/nowhere/.claude", pid: pid, sessionId: sessionId,
                           status: status, statusUpdatedAt: statusUpdatedAt)
+    }
+
+    /// `ClaudeSessionWatcher` hands `AgentIntegration` an `ObservationEvent` already projected off
+    /// Claude's own descriptor (see `ClaudeAdapter.makeObservationWatcher`); these two wrap that
+    /// projection so a test can still hand over a `ClaudeSessionInfo` the way `descriptor(...)`
+    /// builds one, rather than constructing an `AgentObservation` by hand everywhere.
+    static func apply(_ integration: AgentIntegration, _ info: ClaudeSessionInfo, alive: Bool) {
+        integration.handle(.updated(info.observation, alive: alive), from: .claude)
+    }
+
+    static func applyRemoved(_ integration: AgentIntegration, _ key: DescriptorKey) {
+        integration.handle(.removed(pid: key.pid, configDir: key.configDir), from: .claude)
     }
 
     static func launch(_ id: SessionID, pid: pid_t) -> HookFrame {
@@ -126,7 +142,7 @@ struct ClaudeIntegrationTests {
         #expect(h.store.state.sessions[h.session]?.live?.pid == 4242)
         #expect(h.integration.pidToSession[4242] == h.session)
 
-        h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .busy), alive: true))
+        Self.apply(h.integration, Self.descriptor(pid: 4242, status: .busy), alive: true)
         let live = h.store.state.sessions[h.session]?.live
         #expect(live?.status == .working)
         #expect(live?.observation?.pid == 4242)
@@ -139,7 +155,7 @@ struct ClaudeIntegrationTests {
         let h = Self.makeHarness()
         h.integration.handle(Self.launch(h.session, pid: 4242))
         let t0 = Date()
-        h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .busy, statusUpdatedAt: t0), alive: true))
+        Self.apply(h.integration, Self.descriptor(pid: 4242, status: .busy, statusUpdatedAt: t0), alive: true)
 
         h.integration.handle(Self.hook(
             "Notification", sessionID: h.session, conversationId: "claude-sid",
@@ -149,9 +165,9 @@ struct ClaudeIntegrationTests {
         #expect(h.store.state.summaryCounts.needsYou == 1)
 
         // Claude's own flag while the prompt is up, then busy again once answered.
-        h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .waiting, statusUpdatedAt: t0.addingTimeInterval(1)), alive: true))
+        Self.apply(h.integration, Self.descriptor(pid: 4242, status: .waiting, statusUpdatedAt: t0.addingTimeInterval(1)), alive: true)
         #expect(h.store.state.sessions[h.session]?.status == .waiting(.permission))
-        h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .busy, statusUpdatedAt: Date().addingTimeInterval(5)), alive: true))
+        Self.apply(h.integration, Self.descriptor(pid: 4242, status: .busy, statusUpdatedAt: Date().addingTimeInterval(5)), alive: true)
         #expect(h.store.state.sessions[h.session]?.status == .working)
         #expect(h.store.state.sessions[h.session]?.needsAttention == false)
     }
@@ -160,7 +176,7 @@ struct ClaudeIntegrationTests {
     func stopMessage() {
         let h = Self.makeHarness()
         h.integration.handle(Self.launch(h.session, pid: 4242))
-        h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .idle), alive: true))
+        Self.apply(h.integration, Self.descriptor(pid: 4242, status: .idle), alive: true)
         let full = String(repeating: "x", count: 10_000)
         h.integration.handle(Self.hook(
             "Stop", sessionID: h.session, lastAssistantMessage: String(full.prefix(4096)),
@@ -192,18 +208,18 @@ struct ClaudeIntegrationTests {
         // No launch frame, no descriptor: only the shell pid (1, i.e. launchd — the walk stops there
         // without matching anything else) is known.
         let bySid = AgentEvent(kind: .turnEnded, sessionID: nil, conversationId: "resumed-sid")
-        #expect(h.integration.sessionID(forHook: bySid, ppid: 0) == nil)
+        #expect(h.integration.sessionID(forHook: bySid, ppid: 0, agent: .claude) == nil)
 
         h.store.update { $0.sessions[h.session]?.conversationId = "resumed-sid" }
-        #expect(h.integration.sessionID(forHook: bySid, ppid: 0) == h.session)
+        #expect(h.integration.sessionID(forHook: bySid, ppid: 0, agent: .claude) == h.session)
 
         // ppid tree: a frame whose ppid *is* a bound claude pid.
         h.integration.handle(Self.launch(h.session, pid: 4242))
         let byTree = AgentEvent(kind: .turnEnded, sessionID: nil, conversationId: "unrelated")
-        #expect(h.integration.sessionID(forHook: byTree, ppid: 4242) == h.session)
+        #expect(h.integration.sessionID(forHook: byTree, ppid: 4242, agent: .claude) == h.session)
         // A sid that is not in the store must not be trusted over the fallbacks.
         let strangerSid = AgentEvent(kind: .turnEnded, sessionID: .generate(), conversationId: "resumed-sid")
-        #expect(h.integration.sessionID(forHook: strangerSid, ppid: 0) == h.session)
+        #expect(h.integration.sessionID(forHook: strangerSid, ppid: 0, agent: .claude) == h.session)
     }
 
     @Test("accounts are discovered from ~/.claude-* at init, watched, and registered in the store")
@@ -219,7 +235,7 @@ struct ClaudeIntegrationTests {
         try Data("{}".utf8).write(to: home.appending(path: ".claude-home/settings.json"))
         try Data().write(to: home.appending(path: ".claude-notadir"))
 
-        let discovered = ClaudeIntegration.discoverAccounts(home: home.path)
+        let discovered: [Account] = ClaudeAdapter().discoverAccounts(home: home.path)
         #expect(discovered.map(\.key) == ["claude", "claude-home", "claude-work"])
         #expect(discovered.first?.configDir == home.path + "/.claude")
         #expect(discovered.map(\.label) == discovered.map(\.key), "no overlay file: every key is its own label")
@@ -231,7 +247,7 @@ struct ClaudeIntegrationTests {
         let h = Self.makeHarness(home: home.path)
         // A persisted row on an account the file system does not show is still watched.
         h.store.update { $0.sessions[h.session]?.accountKey = "claude-elsewhere" }
-        let integration = ClaudeIntegration(store: h.store, directory: h.directory, home: home.path, installer: nil)
+        let integration = AgentIntegration(store: h.store, directory: h.directory, home: home.path, installer: nil)
         #expect(Set(h.store.state.accounts.keys) == ["claude", "claude-home", "claude-work", "claude-elsewhere"])
         #expect(Set(integration.watchedConfigDirs) == [
             home.path + "/.claude", home.path + "/.claude-home", home.path + "/.claude-work",
@@ -254,14 +270,14 @@ struct ClaudeIntegrationTests {
         let overlay = home.appending(path: ".claude/dash-accounts.json")
 
         // No file at all: every key is its own label.
-        #expect(ClaudeIntegration.accountLabels(home: home.path).isEmpty)
+        #expect(ClaudeAdapter().accountLabels(home: home.path).isEmpty)
 
         try Data(#"{"labels": {"claude": "Private", "claude-work": "Day job", "blank": "  "}}"#.utf8)
             .write(to: overlay)
-        let labels = ClaudeIntegration.accountLabels(home: home.path)
+        let labels = ClaudeAdapter().accountLabels(home: home.path)
         #expect(labels == ["claude": "Private", "claude-work": "Day job"], "a blank name is no name")
 
-        let discovered = ClaudeIntegration.discoverAccounts(home: home.path)
+        let discovered: [Account] = ClaudeAdapter().discoverAccounts(home: home.path)
         #expect(discovered.map(\.key) == ["claude", "claude-work"])
         #expect(discovered.map(\.label) == ["Private", "Day job"])
         // Which is the whole point: the chip stops being an initial.
@@ -282,10 +298,10 @@ struct ClaudeIntegrationTests {
         // A torn write, a wrong shape and a wrong type are each "no overlay", never a crash.
         for bad in [#"{"labels": {"claude": "#, #"{"labels": [1, 2]}"#, #"{}"#, #"not json"#] {
             try Data(bad.utf8).write(to: overlay)
-            #expect(ClaudeIntegration.accountLabels(home: home.path).isEmpty)
+            #expect(ClaudeAdapter().accountLabels(home: home.path).isEmpty)
         }
         try Data(#"{"labels": {"claude": 7, "claude-work": "Day job"}}"#.utf8).write(to: overlay)
-        #expect(ClaudeIntegration.accountLabels(home: home.path) == ["claude-work": "Day job"])
+        #expect(ClaudeAdapter().accountLabels(home: home.path) == ["claude-work": "Day job"])
     }
 
     @Test("a launch frame or descriptor from an unknown config dir registers the account and corrects the row")
@@ -306,7 +322,7 @@ struct ClaudeIntegrationTests {
         // The descriptor is the final word: it is written where Claude actually keeps the session.
         var info = Self.descriptor(pid: 4242, status: .idle)
         info.configDir = "/tmp/nowhere/.claude-second"
-        h.integration.handle(DescriptorEvent.updated(info, alive: true))
+        Self.apply(h.integration, info, alive: true)
         #expect(h.store.state.sessions[h.session]?.accountKey == "claude-second")
         #expect(h.integration.watchedConfigDirs.contains("/tmp/nowhere/.claude-second"))
         // A row on a non-default account gets a chip; a row on `~/.claude` never does.
@@ -321,16 +337,14 @@ struct ClaudeIntegrationTests {
         h.integration.handle(Self.launch(h.session, pid: 4242))
         #expect(h.integration.pidToSession[4242] == nil)
         let event = AgentEvent(kind: .turnEnded, sessionID: h.session, conversationId: "claude-sid")
-        #expect(h.integration.sessionID(forHook: event, ppid: 0) == nil)
+        #expect(h.integration.sessionID(forHook: event, ppid: 0, agent: .claude) == nil)
         h.integration.handle(Self.hook("Stop", sessionID: h.session, conversationId: "claude-sid", ppid: 0))
         #expect(h.store.state.sessions[h.session]?.live == nil)
     }
 
-    /// Today only Claude exists, so this constructs the one shape a mapper table would need to
-    /// reject: a payload from an agent nobody has registered. It must be dropped and logged rather
-    /// than attributed to a row by `ClaudeHookMapper`, which knows only Claude's own vocabulary —
-    /// the behaviour TKZ-82's adapter table depends on when a second agent's payloads start
-    /// arriving on the same socket.
+    /// A payload from an agent nobody has an adapter for — `adapters` here is the default,
+    /// Claude-only table — must be dropped and logged rather than attributed to a row by whatever
+    /// mapper happens to be in scope, which would misread a vocabulary it does not speak.
     @Test("a hook payload from an unregistered agent is dropped, not attributed")
     func unmappedAgentIsDropped() {
         let h = Self.makeHarness()
@@ -342,15 +356,82 @@ struct ClaudeIntegrationTests {
         #expect(h.store.state.sessions[h.session]?.live?.lastStopMessage == nil)
     }
 
+    // MARK: - The adapter seam itself
+
+    /// Defined only here, never in `ClaudeBridge` or `TkzApp` — the whole point is that
+    /// `AgentIntegration` needs no change to route a second agent's frames, only a second entry in
+    /// its `adapters` table.
+    private struct StubTranscriptProvider: TranscriptProvider {
+        func locate(conversationId: String, configDir: String, fileManager: FileManager) -> String? { nil }
+        func summary(path: String) throws -> TranscriptSummary { TranscriptSummary() }
+        func usage(conversationId: String, path: String, reader: TranscriptUsageReader) async -> SessionUsage? { nil }
+        func searchIndex(path: String, existing: TranscriptIndex?) throws -> TranscriptIndex {
+            try TranscriptIndex.build(path: path, existing: existing)
+        }
+    }
+
+    /// A second, wholly fictitious agent. Its `mapHook` speaks a trivial vocabulary of its own
+    /// (every payload is a finished turn) precisely so a test can tell "the stub's mapper ran" apart
+    /// from "Claude's mapper ran" — the two would otherwise both produce a plausible `AgentEvent`.
+    private struct StubAdapter: AgentAdapter {
+        static let kind = AgentKind(rawValue: "stub")
+        var kind: AgentKind { Self.kind }
+        var displayName: String { "Stub" }
+        var binaryName: String { "stub-agent" }
+        var capabilities: AgentCapabilities { [.hooks] }
+
+        func launchCommand(_ intent: LaunchIntent) -> String? { "stub-agent" }
+        func environment(configDir: String?) -> [String: String] { [:] }
+        func discoverAccounts(home: String, fileManager: FileManager) -> [Account] { [] }
+        func accountLabels(home: String, fileManager: FileManager) -> [String: String] { [:] }
+        func mapHook(_ payload: HookPayload) -> AgentEvent? {
+            AgentEvent(kind: .turnEnded, sessionID: nil, conversationId: payload.sessionId)
+        }
+        func mapTerminalNotification(title: String, body: String) -> AgentEvent? { nil }
+        func makeObservationWatcher(
+            configDirs: [String], onEvent: @escaping @Sendable (ObservationEvent) -> Void
+        ) -> (any AgentObservationWatcher)? { nil }
+        var transcript: any TranscriptProvider { StubTranscriptProvider() }
+        var hookInstall: HookInstallStrategy { .perInvocation }
+        var shimScript: ShimResource { ShimResource(binaryName: "stub-agent", resourceName: "stub.sh") }
+    }
+
+    /// The acceptance criterion for the seam being real: two adapters registered, and a frame routes
+    /// to the one named by `payload.agent` — Claude's own mapper for a Claude frame, the stub's for
+    /// a stub frame — with no change to `AgentIntegration` beyond the `adapters` argument to
+    /// `makeHarness`.
+    @Test("frames route to the adapter named by payload.agent, including a stub registered only by the test")
+    func framesRouteByPayloadAgent() {
+        let h = Self.makeHarness(adapters: [.claude: ClaudeAdapter(), StubAdapter.kind: StubAdapter()])
+        h.store.update { state in
+            state.sessions[h.session]?.agent = StubAdapter.kind
+            state.sessions[h.session]?.conversationId = "stub-conv"
+        }
+
+        // The stub's own mapper runs (every payload is a finished turn, whatever the event name),
+        // and the fallback join respects the frame's `agent` — a `stub-conv` hook only ever matches
+        // a `.stub` row.
+        h.integration.handle(Self.hook(
+            "AnythingAtAll", agent: StubAdapter.kind, conversationId: "stub-conv", ppid: 0))
+        #expect(h.store.state.sessions[h.session]?.live?.lastEvent?.kind == .turnEnded)
+
+        // The same conversation id under Claude's own vocabulary must not cross-attribute: a
+        // `Stop` naming `stub-conv` is Claude's event shape, but the row it would join to is a
+        // `.stub` row, so the agent-scoped fallback in `sessionID(forHook:ppid:agent:)` refuses it.
+        h.store.update { $0.sessions[h.session]?.live?.lastEvent = nil }
+        h.integration.handle(Self.hook("Stop", agent: .claude, conversationId: "stub-conv", ppid: 0))
+        #expect(h.store.state.sessions[h.session]?.live?.lastEvent == nil)
+    }
+
     @Test("a descriptor nobody owns is kept as external, and removal forgets it")
     func externalDescriptor() {
         let h = Self.makeHarness()
         let info = Self.descriptor(pid: 99_999, sessionId: "elsewhere", status: .busy)
-        h.integration.handle(DescriptorEvent.updated(info, alive: true))
+        Self.apply(h.integration, info, alive: true)
         let key = DescriptorKey(configDir: info.configDir, pid: 99_999)
-        #expect(h.integration.externalDescriptors[key]?.info.sessionId == "elsewhere")
+        #expect(h.integration.externalDescriptors[key]?.observation.conversationId == "elsewhere")
         #expect(h.store.state.sessions[h.session]?.status == .idle)
-        h.integration.handle(DescriptorEvent.removed(key))
+        Self.applyRemoved(h.integration, key)
         #expect(h.integration.externalDescriptors[key] == nil)
     }
 
@@ -377,7 +458,7 @@ struct ClaudeIntegrationTests {
         let tree = FakeAncestry(parents: [5000: 4000, 4000: 777, 777: 1], names: [777: "tkzmux"])
         let h = Self.makeHarness(ancestry: tree)
         h.store.update { $0.sessions[h.session]?.conversationId = "claude-sid" }
-        h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 5000, status: .busy), alive: true))
+        Self.apply(h.integration, Self.descriptor(pid: 5000, status: .busy), alive: true)
         let live = h.store.state.sessions[h.session]?.live
         #expect(live?.status == .working)
         #expect(live?.pid == 5000)
@@ -395,7 +476,7 @@ struct ClaudeIntegrationTests {
         let h = Self.makeHarness(shellPid: 300, ancestry: tree)
         h.store.update { $0.sessions[h.session]?.conversationId = "claude-sid" }
         let info = Self.descriptor(pid: 5000, status: .busy)
-        h.integration.handle(DescriptorEvent.updated(info, alive: true))
+        Self.apply(h.integration, info, alive: true)
         let key = DescriptorKey(configDir: info.configDir, pid: 5000)
         #expect(h.integration.externalDescriptors[key] != nil)
         let live = h.store.state.sessions[h.session]?.live
@@ -404,7 +485,7 @@ struct ClaudeIntegrationTests {
         #expect(live?.observation == nil)
         // The bare walk refuses too: a hook from that tree with no sid is unattributed.
         let event = AgentEvent(kind: .turnEnded, sessionID: nil, conversationId: "unrelated")
-        #expect(h.integration.sessionID(forHook: event, ppid: 5000) == nil)
+        #expect(h.integration.sessionID(forHook: event, ppid: 5000, agent: .claude) == nil)
     }
 
     @Test("a descriptor whose ancestry reaches launchd without us is external")
@@ -414,7 +495,7 @@ struct ClaudeIntegrationTests {
         let h = Self.makeHarness(ancestry: tree)
         h.store.update { $0.sessions[h.session]?.conversationId = "claude-sid" }
         let info = Self.descriptor(pid: 5000, status: .busy)
-        h.integration.handle(DescriptorEvent.updated(info, alive: true))
+        Self.apply(h.integration, info, alive: true)
         #expect(h.integration.externalDescriptors[DescriptorKey(configDir: info.configDir, pid: 5000)] != nil)
         #expect(h.store.state.sessions[h.session]?.status == .idle)
     }
@@ -425,7 +506,7 @@ struct ClaudeIntegrationTests {
         let tree = FakeAncestry(parents: [5000: 900, 900: 777], names: [900: "tkzmux", 777: "tkzmux"])
         let h = Self.makeHarness(ancestry: tree)
         h.integration.handle(Self.launch(h.session, pid: 5000))
-        h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 5000, status: .busy), alive: true))
+        Self.apply(h.integration, Self.descriptor(pid: 5000, status: .busy), alive: true)
         #expect(h.store.state.sessions[h.session]?.live?.status == .working)
         #expect(h.integration.externalDescriptors.isEmpty)
     }
@@ -452,15 +533,15 @@ struct ClaudeIntegrationTests {
         let storeB = AppStore(state: stateB)
         let directory = URL(filePath: NSTemporaryDirectory())
             .appending(path: "tkzci-\(UUID().uuidString)", directoryHint: .isDirectory)
-        let a = ClaudeIntegration(store: storeA, directory: directory, home: directory.path, installer: nil,
+        let a = AgentIntegration(store: storeA, directory: directory, home: directory.path, installer: nil,
                                   instancePID: 777, ancestry: tree)
-        let b = ClaudeIntegration(store: storeB, directory: directory, home: directory.path, installer: nil,
+        let b = AgentIntegration(store: storeB, directory: directory, home: directory.path, installer: nil,
                                   instancePID: 888, ancestry: tree)
         #expect(a.hookServer.socketPath.path != b.hookServer.socketPath.path)
 
         let info = Self.descriptor(pid: 5000, status: .busy)
-        a.handle(DescriptorEvent.updated(info, alive: true))
-        b.handle(DescriptorEvent.updated(info, alive: true))
+        Self.apply(a, info, alive: true)
+        Self.apply(b, info, alive: true)
 
         let key = DescriptorKey(configDir: info.configDir, pid: 5000)
         #expect(a.externalDescriptors[key] != nil)
@@ -474,9 +555,9 @@ struct ClaudeIntegrationTests {
     func descriptorLost() {
         let h = Self.makeHarness()
         h.integration.handle(Self.launch(h.session, pid: 4242))
-        h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .busy), alive: true))
+        Self.apply(h.integration, Self.descriptor(pid: 4242, status: .busy), alive: true)
         #expect(h.store.state.sessions[h.session]?.status == .working)
-        h.integration.handle(DescriptorEvent.removed(DescriptorKey(configDir: "/tmp/nowhere/.claude", pid: 4242)))
+        Self.applyRemoved(h.integration, DescriptorKey(configDir: "/tmp/nowhere/.claude", pid: 4242))
         let live = h.store.state.sessions[h.session]?.live
         #expect(live?.observation == nil)
         #expect(live?.pid == nil)
@@ -513,7 +594,7 @@ struct ClaudeIntegrationTests {
     func tickLivenessSweepSkipsRowsWithAnObservation() {
         let h = Self.makeHarness()
         h.integration.handle(Self.launch(h.session, pid: 4242))
-        h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .busy), alive: true))
+        Self.apply(h.integration, Self.descriptor(pid: 4242, status: .busy), alive: true)
         #expect(h.store.state.sessions[h.session]?.live?.observation != nil)
 
         var exited: [SessionID] = []
@@ -547,7 +628,7 @@ struct ClaudeIntegrationTests {
         var deliveries: [ChangeSet] = []
         let token = h.store.addObserver { deliveries.append($0) }
         defer { h.store.removeObserver(token) }
-        h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .busy), alive: true))
+        Self.apply(h.integration, Self.descriptor(pid: 4242, status: .busy), alive: true)
         // Yield the main actor: the store delivers once per run-loop turn, and a nested
         // `RunLoop.run` inside a main-actor job does not drain the main queue.
         for _ in 0..<20 where deliveries.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
@@ -641,7 +722,7 @@ struct ClaudeIntegrationTests {
         let session = state.createSession(groupID: state.orderedGroups[0].id, cwd: directory.path, accountKey: "claude")
         state.setLive(LiveSessionState(shellPid: 1, status: .idle), for: session.id)
         let store = AppStore(state: state)
-        let integration = ClaudeIntegration(store: store, directory: directory, home: directory.path, installer: nil)
+        let integration = AgentIntegration(store: store, directory: directory, home: directory.path, installer: nil)
         integration.start()
         defer { integration.stop() }
         #expect(integration.hookServer.isRunning)

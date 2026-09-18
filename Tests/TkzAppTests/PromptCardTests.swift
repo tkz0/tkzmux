@@ -43,13 +43,24 @@ struct PromptCardTests {
     @Test("The recap's meta line names its source honestly")
     func recapMeta() {
         var summary = Self.summary()
-        #expect(PromptCardView.recapMetaLine(summary, now: Self.now) == "Claude\u{2019}s own summary \u{00B7} 3 min ago")
+        #expect(PromptCardView.recapMetaLine(summary, now: Self.now, agentName: "Claude")
+            == "Claude\u{2019}s own summary \u{00B7} 3 min ago")
         summary.recapSource = .stopMessage
-        #expect(PromptCardView.recapMetaLine(summary, now: Self.now).hasPrefix("Claude\u{2019}s last message"))
+        #expect(PromptCardView.recapMetaLine(summary, now: Self.now, agentName: "Claude")
+            .hasPrefix("Claude\u{2019}s last message"))
         summary.recapSource = .assistantText
-        #expect(PromptCardView.recapMetaLine(summary, now: Self.now).hasPrefix("Claude\u{2019}s last reply"))
+        #expect(PromptCardView.recapMetaLine(summary, now: Self.now, agentName: "Claude")
+            .hasPrefix("Claude\u{2019}s last reply"))
         summary.recapSource = nil
-        #expect(PromptCardView.recapMetaLine(summary, now: Self.now).contains("updates as the session runs"))
+        #expect(PromptCardView.recapMetaLine(summary, now: Self.now, agentName: "Claude")
+            .contains("updates as the session runs"))
+    }
+
+    @Test("The recap names whichever agent the card was told about, not a hard-coded one")
+    func recapMetaNamesTheGivenAgent() {
+        let summary = Self.summary()
+        #expect(PromptCardView.recapMetaLine(summary, now: Self.now, agentName: "Stub Agent")
+            .hasPrefix("Stub Agent\u{2019}s own summary"))
     }
 
     // MARK: View

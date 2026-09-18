@@ -72,19 +72,25 @@ struct SettingsModel: Hashable, Sendable {
     struct Environment: Sendable {
         /// Producer per account key. An account absent here reads as `.none`.
         var statusline: [String: StatuslineProducer] = [:]
-        /// `nil` when there is no `ClaudeIntegration` behind the window (tests, the dev window).
+        /// `nil` when there is no agent integration behind the window (tests, the dev window).
         var shellInstalled: Bool? = nil
         /// Where the shim lives, for the Shell page's sentence. `nil` falls back to the standard path.
         var shellDirectory: String? = nil
+        /// Names an account's own agent, e.g. "Claude" — from the adapter registry, so the
+        /// statusline sentence never spells a product name of its own. Defaults to admitting it
+        /// does not know rather than asserting one.
+        var agentDisplayName: @Sendable (AgentKind) -> String = { _ in "the agent" }
 
         init(
             statusline: [String: StatuslineProducer] = [:],
             shellInstalled: Bool? = nil,
-            shellDirectory: String? = nil
+            shellDirectory: String? = nil,
+            agentDisplayName: @escaping @Sendable (AgentKind) -> String = { _ in "the agent" }
         ) {
             self.statusline = statusline
             self.shellInstalled = shellInstalled
             self.shellDirectory = shellDirectory
+            self.agentDisplayName = agentDisplayName
         }
     }
 
@@ -115,7 +121,7 @@ struct SettingsModel: Hashable, Sendable {
             SettingsSection(caption: "On launch", rows: [
                 SettingsRow(
                     id: .autoResume, title: "Resume previous sessions",
-                    detail: "Reopen every Claude conversation that was running when tkzmux last "
+                    detail: "Reopen every conversation that was running when tkzmux last "
                         + "quit, in the same groups and splits.",
                     control: .toggle(isOn: state.autoResumeOnLaunch)),
             ]),
@@ -128,8 +134,8 @@ struct SettingsModel: Hashable, Sendable {
             ]),
             SettingsSection(caption: "Notifications", rows: [
                 SettingsRow(
-                    id: .notifyOnDone, title: "Notify when Claude finishes",
-                    detail: "Show a macOS notification when Claude finishes a turn in a session you "
+                    id: .notifyOnDone, title: "Notify when a session finishes",
+                    detail: "Show a macOS notification when a session finishes a turn you "
                         + "are not looking at. NEEDS YOU banners follow the system notification "
                         + "setting and have no switch of their own.",
                     control: .toggle(isOn: state.notifyOnDone)),
@@ -159,15 +165,16 @@ struct SettingsModel: Hashable, Sendable {
             let title = named
                 ? "Status line integration \u{00B7} \(account.label)"
                 : "Status line integration"
+            let agentName = environment.agentDisplayName(account.agent)
             let detail: String
             let button: String
             switch producer {
             case .none:
-                detail = "Let Claude Code write its usage and context into the tkzmux status bar. "
+                detail = "Let \(agentName) write its usage and context into the tkzmux status bar. "
                     + "Edits \(file) only after you confirm."
                 button = "Configure\u{2026}"
             case .other:
-                detail = "Let Claude Code write its usage and context into the tkzmux status bar. "
+                detail = "Let \(agentName) write its usage and context into the tkzmux status bar. "
                     + "Your current status line keeps running underneath. "
                     + "Edits \(file) only after you confirm."
                 button = "Configure\u{2026}"
@@ -200,7 +207,7 @@ struct SettingsModel: Hashable, Sendable {
             SettingsSection(caption: "Shell integration", rows: [
                 SettingsRow(
                     id: .shellStatus, title: "Integration status",
-                    detail: "The claude shim and the zsh, bash and fish wrappers under "
+                    detail: "Each installed agent's shim, and the zsh, bash and fish wrappers under "
                         + "\(directory). Installed again at every launch; your rc files are never edited.",
                     control: status),
                 SettingsRow(

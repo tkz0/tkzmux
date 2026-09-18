@@ -52,6 +52,9 @@ private struct Rig {
         self.ids = ids
         store = AppStore(state: state)
         notifier = AttentionNotifier(store: store, presenter: presenter)
+        // Every fixture row here runs the `.claude` agent; stand in for what the adapter registry
+        // would answer so the existing assertions keep reading Claude's own wording.
+        notifier.agentDisplayName = { $0 == .claude ? "Claude" : "the agent" }
     }
 
     func at(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(seconds) }
@@ -138,6 +141,22 @@ struct AttentionNotifierTests {
             rig.prompt(rig.ids[0], kind)
             #expect(rig.presenter.requests.map(\.body) == [body])
         }
+    }
+
+    @Test("a banner names the row's own agent, not a hard-coded product name")
+    func bannerNamesTheRowsOwnAgent() {
+        // `Rig` wires `.claude` to "Claude" by default; a stub adapter for another kind proves
+        // this file never spells a product name of its own — it only ever relays what it is told.
+        let rig = Rig(count: 1)
+        rig.notifier.agentDisplayName = { _ in "Stub Agent" }
+        rig.prompt(rig.ids[0])
+        #expect(rig.presenter.requests.map(\.body) == ["Stub Agent is waiting for permission"])
+
+        let done = Rig(count: 1)
+        done.notifier.agentDisplayName = { _ in "Stub Agent" }
+        done.store.update { $0.applyEvent(AgentEvent(kind: .turnEnded), to: done.ids[0], now: done.now) }
+        done.store.flush()
+        #expect(done.presenter.requests.map(\.body) == ["Stub Agent finished"])
     }
 
     @Test("Claude finishing in a row you are not looking at is one banner that outlives the 60 s ageing")

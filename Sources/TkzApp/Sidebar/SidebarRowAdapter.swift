@@ -216,7 +216,7 @@ public enum SidebarRowAdapter {
     /// uppercased and cut to ``chipMaxLength``.
     ///
     /// Every account tkzmux discovers is `~/.claude` or `~/.claude-*` for the Claude agent
-    /// (`ClaudeIntegration.discoverAccounts`), and a configured name usually leads with the
+    /// (`AgentAdapter.discoverAccounts`), and a configured name usually leads with the
     /// agent's own name too, so that first word carries no information: dropping it is what turns
     /// `CA` into `ALT`, `CW` into `WORK`, and "Claude (work)" into `WORK`. `defaultWord` is the
     /// word to drop — the caller's agent's own key (`Account.defaultKey(for:)`) — so a future

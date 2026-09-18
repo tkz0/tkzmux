@@ -552,10 +552,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         // Removing a row must drop its per-session caches too. `fullMessages` in particular holds
         // a whole Stop message — arbitrarily long — and without this the app kept one per session
-        // id it had *ever* seen, for as long as it ran. Wired here rather than in the `claude`/`git`
+        // id it had *ever* seen, for as long as it ran. Wired here rather than in the `agents`/`git`
         // observers so it survives either of them being set, unset, or replaced.
         launcher.onRemoved = { [weak self] id in
-            self?.claude?.forget(id)
+            self?.agents?.forget(id)
             self?.git?.forget(id)
         }
         buildSplitView()
@@ -827,7 +827,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// into that group.
     public func presentAnotherRepoPanel() {
         presentFolderPanel(prompt: "Start here",
-                           message: "Choose a repo. It becomes a group, and claude starts in it.") { [weak self] url in
+                           message: "Choose a repo. It becomes a group, and the agent starts in it.") { [weak self] url in
             guard let self, let groupID = self.createGroup(from: url) else { return }
             self.startClaude(in: groupID)
         }
@@ -845,7 +845,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         guard let group = store.state.groups[id] else { return }
         presentFolderPanel(
             prompt: "Start here",
-            message: "Choose the repo for \u{201C}\(group.name)\u{201D}. It becomes the group\u{2019}s repo, and claude starts in it."
+            message: "Choose the repo for \u{201C}\(group.name)\u{201D}. It becomes the group\u{2019}s repo, and the agent starts in it."
         ) { [weak self] url in
             guard let self else { return }
             let path = url.standardizedFileURL.path
@@ -1093,9 +1093,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Every open session that has a transcript on disk. The group filter is *not* applied here:
     /// narrowing the chip must not throw away an index the next keystroke would rebuild.
     private func transcriptTargets() -> [TranscriptSearchService.Target] {
-        guard let claude else { return [] }
+        guard let agents else { return [] }
         return store.state.orderedSessions.compactMap { session in
-            guard let path = claude.transcriptPath(for: session.id) else { return nil }
+            guard let path = agents.transcriptPath(for: session.id) else { return nil }
             return TranscriptSearchService.Target(
                 sessionID: session.id, title: session.displayTitle, path: path)
         }
@@ -1216,7 +1216,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         changes.present(for: id, toplevel: toplevel, git: session.live?.git)
     }
 
-    /// The card's data comes from `claude` (set later by `AppDelegate`); only the notice is wired
+    /// The card's data comes from `agents` (set later by `AppDelegate`); only the notice is wired
     /// here. Until the coordinator exists the card shows its empty states.
     private func wirePromptCard() {
         promptCard.onCopied = { [weak self] notice in self?.showNotice(notice, for: .seconds(2)) }
@@ -1765,22 +1765,26 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     /// The M3 coordinator, once `AppDelegate` has built it. Setting it routes the last-message
     /// popover at the *full* Stop text rather than the 4 KiB the store keeps.
-    public var claude: ClaudeIntegration? {
+    public var agents: AgentIntegration? {
         didSet {
-            guard let claude else { return }
-            sidebar.lastMessageProvider = { id in claude.lastMessage(for: id) }
-            claude.isSessionAttended = { [weak self] id in self?.isSessionAttended(id) ?? false }
+            guard let agents else { return }
+            // Sorted by `kind.rawValue` rather than left in dictionary order: the New-session
+            // menu's row order must be stable across launches, not whatever `Dictionary` iteration
+            // happens to produce this time.
+            newSessionMenu.adapters = agents.adapters.values.sorted { $0.kind.rawValue < $1.kind.rawValue }
+            sidebar.lastMessageProvider = { id in agents.lastMessage(for: id) }
+            agents.isSessionAttended = { [weak self] id in self?.isSessionAttended(id) ?? false }
             // `claude -w` removes its worktree when the conversation ends, which is before the
-            // shell exits — so the worktree list is re-read on Claude's exit, not only the shell's.
-            claude.onAgentExited = { [weak self] id in self?.launcher.noteExit(id) }
-            claude.onStop = { [weak self] id in self?.git?.sessionDidStop(id) }
+            // shell exits — so the worktree list is re-read on the agent's exit, not only the shell's.
+            agents.onAgentExited = { [weak self] id in self?.launcher.noteExit(id) }
+            agents.onStop = { [weak self] id in self?.git?.sessionDidStop(id) }
             promptCard.summaryProvider = { id, done in
                 // The last read first, so a reopened card never flashes "Loading…"; the fresh
                 // read follows and only re-renders if something changed.
-                if let cached = claude.cachedTranscriptSummary(for: id) { done(cached) }
-                claude.loadTranscriptSummary(for: id, completion: done)
+                if let cached = agents.cachedTranscriptSummary(for: id) { done(cached) }
+                agents.loadTranscriptSummary(for: id, completion: done)
             }
-            promptCard.transcriptPathProvider = { id in claude.transcriptPath(for: id) }
+            promptCard.transcriptPathProvider = { id in agents.transcriptPath(for: id) }
         }
     }
 
@@ -1794,7 +1798,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             git.onRebaseFinished = { [weak self] id, _ in self?.rebaseSheet.rebaseFinished(for: id) }
             rebaseSheet.useFetchQueue(git.rebaseQueue)
             git.start()
-            claude?.onStop = { [weak git] id in git?.sessionDidStop(id) }
+            agents?.onStop = { [weak git] id in git?.sessionDidStop(id) }
         }
     }
 
@@ -1840,13 +1844,15 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// The whole last Stop message of the selected session, or nil.
     func lastMessageOfSelection() -> String? {
         guard let id = store.state.selection else { return nil }
-        return claude?.lastMessage(for: id) ?? store.state.sessions[id]?.live?.lastStopMessage
+        return agents?.lastMessage(for: id) ?? store.state.sessions[id]?.live?.lastStopMessage
     }
 
     /// ⇧⌘C.
     func copyLastMessage() {
         guard let text = lastMessageOfSelection(), !text.isEmpty else {
-            showNotice("No message from Claude yet", for: .seconds(2))
+            let name = store.state.selectedSession
+                .flatMap { agents?.adapters[$0.agent]?.displayName } ?? "the agent"
+            showNotice("No message from \(name) yet", for: .seconds(2))
             return
         }
         NSPasteboard.general.clearContents()
@@ -1901,14 +1907,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     func removeShellIntegration() {
-        guard let claude else { return }
+        guard let agents else { return }
         let confirmed: Bool
         if let confirmRemoveShellIntegration {
             confirmed = confirmRemoveShellIntegration()
         } else {
             let alert = NSAlert()
             alert.messageText = "Remove shell integration?"
-            alert.informativeText = "Deletes the claude shim and the zsh wrappers under Application Support. "
+            alert.informativeText = "Deletes the agent shims and the zsh wrappers under Application Support. "
                 + "New shells will not report to tkzmux until the app is relaunched. Sessions and the sidebar are kept."
             alert.addButton(withTitle: "Remove")
             alert.addButton(withTitle: "Cancel")
@@ -1917,7 +1923,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         guard confirmed else { return }
         do {
-            try claude.removeShellIntegration()
+            try agents.removeShellIntegration()
             showNotice("Shell integration removed")
         } catch {
             logger.error("remove shell integration failed: \(String(describing: error), privacy: .public)")
@@ -1944,12 +1950,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// per account directly. Installing edits the user's `settings.json`, which nothing else in
     /// tkzmux does, so it never happens without the sheet below.
     func statusLineIntegration() {
-        guard let claude else { return }
+        guard let agents else { return }
         let key = statuslineAccountKey
         // `.stale` is installed too — a tkzmux statusline naming the wrong hook. The toggle has to
         // read it as on, or the one command that removes the integration would instead offer to
         // install it again.
-        switch claude.statuslineProducer(accountKey: key) {
+        switch agents.statuslineProducer(accountKey: key) {
         case .tkzmux, .stale:
             removeStatusline(accountKey: key)
         case .none, .other:
@@ -1960,10 +1966,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Puts the install to the user. `automatic` is the once-per-install offer made at startup; it
     /// stays silent when there is nothing to offer, whereas the menu command reports why.
     func offerStatusline(accountKey: String, automatic: Bool) {
-        guard let claude else { return }
+        guard let agents else { return }
         let plan: StatuslineInstallPlan?
         do {
-            plan = try claude.statuslinePlan(accountKey: accountKey)
+            plan = try agents.statuslinePlan(accountKey: accountKey)
         } catch {
             logger.error("statusline plan failed: \(String(describing: error), privacy: .public)")
             if !automatic { showNotice("Could not read settings.json for \(accountKey)") }
@@ -2011,12 +2017,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// synchronous test hook share one tail; nothing here runs until the user has actually replied,
     /// so quitting while the sheet is up leaves the offer un-made and it is put again next launch.
     private func finishStatuslineOffer(confirmed: Bool, accountKey: String) {
-        guard let claude else { return }
+        guard let agents else { return }
         // Asked is asked: a decline is an answer, and the menu command stays available.
         store.update { $0.setStatuslineOffered(true) }
         guard confirmed else { return }
         do {
-            try claude.installStatusline(accountKey: accountKey)
+            try agents.installStatusline(accountKey: accountKey)
             showNotice("Status line installed \u{2014} usage appears within a few seconds")
         } catch {
             logger.error("statusline install failed: \(String(describing: error), privacy: .public)")
@@ -2025,7 +2031,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     func removeStatusline(accountKey: String) {
-        guard let claude else { return }
+        guard let agents else { return }
         let confirmed: Bool
         if let confirmRemoveStatusline {
             confirmed = confirmRemoveStatusline()
@@ -2041,7 +2047,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         guard confirmed else { return }
         do {
-            try claude.uninstallStatusline(accountKey: accountKey)
+            try agents.uninstallStatusline(accountKey: accountKey)
             showNotice("Status line removed")
         } catch {
             logger.error("statusline remove failed: \(String(describing: error), privacy: .public)")
@@ -2049,13 +2055,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// The one-time offer, made after `ClaudeIntegration.start()` rather than from `init` — a modal
+    /// The one-time offer, made after `AgentIntegration.start()` rather than from `init` — a modal
     /// inside `init` blocks every window test, and the shim has to be installed before the command
     /// we write into settings.json exists on disk.
     func offerStatuslineIfNeeded() {
-        guard let claude, !store.state.statuslineOffered else { return }
+        guard let agents, !store.state.statuslineOffered else { return }
         let key = statuslineAccountKey
-        guard claude.statuslineProducer(accountKey: key) != .tkzmux else {
+        guard agents.statuslineProducer(accountKey: key) != .tkzmux else {
             store.update { $0.setStatuslineOffered(true) }
             return
         }
@@ -2574,26 +2580,25 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     /// 2c.6's Actions row: start a session in the named group with the typed text as its first
-    /// prompt. `Launch.command` is a command line, so the prompt is simply `claude`'s argument.
+    /// prompt. `Launch.command` is a command line, so the prompt is simply the agent's argument —
+    /// the account's own agent's, by way of its adapter. No adapter registered for that agent means
+    /// there is nobody to turn a prompt into a command line, so the action does nothing rather than
+    /// guess at one.
     private func perform(_ action: SearchAction) {
         guard let groupID = action.groupID else { return }
         newSessionMenu.configure(state: store.state, groupID: groupID)
         guard var launch = newSessionMenu.repoRootLaunch() ?? newSessionMenu.shellLaunch(
             fallbackDirectory: NSHomeDirectory())
         else { return }
+        let agent = launch.accountKey.flatMap { store.state.accounts[$0]?.agent } ?? .claude
+        guard let command = agents?.adapters[agent]?.launchCommand(.prompt(action.prompt)) else { return }
         launch = NewSessionMenu.Launch(
             kind: launch.kind,
-            command: "claude \(Self.shellQuoted(action.prompt))",
+            command: command,
             cwd: launch.cwd,
             accountKey: launch.accountKey,
             groupID: launch.groupID)
         newSessionMenu.perform(launch)
-    }
-
-    /// Single-quoted for `/bin/sh`, the way the pty will read it: the only character that needs
-    /// care inside single quotes is the single quote itself.
-    static func shellQuoted(_ text: String) -> String {
-        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     // MARK: - Launching
@@ -2683,6 +2688,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     func resumeSession(_ id: SessionID) {
+        let session = store.state.sessions[id]
+        let name = session.flatMap { agents?.adapters[$0.agent]?.displayName } ?? "The agent"
         let outcome = launcher.resume(id)
         // A reopen of the *selected* row replaces its host session, which detaches the surface,
         // and the selection has not changed — so nothing else would re-attach it. Idempotent
@@ -2692,9 +2699,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         case .success(.resumed):
             focusTerminalIfSessionShown()
         case .success(.agentRunning):
-            showNotice("Claude is already running in this session", for: .seconds(3))
+            showNotice("\(name) is already running in this session", for: .seconds(3))
         case .success(.nothingToResume):
-            showNotice("No Claude conversation to resume \u{00B7} the shell is back", for: .seconds(4))
+            showNotice("No \(name) conversation to resume \u{00B7} the shell is back", for: .seconds(4))
         case .failure(let failure):
             showNotice(Self.reopenFailureNotice(failure))
         }
@@ -2747,7 +2754,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// The Settings switch's form of the same: an absolute value rather than a flip.
     func setShowSessionSpend(_ isOn: Bool) {
         store.update { $0.setShowSessionSpend(isOn) }
-        if isOn { claude?.refreshAllUsage() }
+        if isOn { agents?.refreshAllUsage() }
     }
 
     /// The periodic base-branch fetch (2026-09-13). `GitIntegration` reads the flag back through
@@ -2756,7 +2763,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         store.update { $0.setCheckOriginPeriodically(!$0.checkOriginPeriodically) }
     }
 
-    /// The "Claude finished" banner switch. `AttentionNotifier` reads it back through
+    /// The "agent finished" banner switch. `AttentionNotifier` reads it back through
     /// `ChangeSet.chrome`; off takes the finished banners back.
     func toggleDoneNotification() {
         store.update { $0.setNotifyOnDone(!$0.notifyOnDone) }
@@ -2770,7 +2777,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     /// The window shows two facts the store does not hold and runs three flows that end in an
-    /// alert; all of them belong to this controller (the `claude` coordinator, the consent sheets
+    /// alert; all of them belong to this controller (the `agents` coordinator, the consent sheets
     /// and their test hooks), so the Settings window gets them as closures.
     private func wireSettings() {
         settings.actions = SettingsWindowController.Actions(
@@ -2779,16 +2786,16 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             removeStatusline: { [weak self] key in self?.removeStatusline(accountKey: key) },
             removeShellIntegration: { [weak self] in self?.removeShellIntegration() },
             statuslineProducers: { [weak self] in
-                guard let self, let claude = self.claude else { return [:] }
+                guard let self, let agents = self.agents else { return [:] }
                 var producers: [String: StatuslineProducer] = [:]
                 for key in self.store.state.accounts.keys {
-                    producers[key] = claude.statuslineProducer(accountKey: key)
+                    producers[key] = agents.statuslineProducer(accountKey: key)
                 }
                 return producers
             },
-            shellIntegrationInstalled: { [weak self] in self?.claude?.installer?.isInstalled },
+            shellIntegrationInstalled: { [weak self] in self?.agents?.installer?.isInstalled },
             shellIntegrationDirectory: { [weak self] in
-                guard let directory = self?.claude?.installer?.directory else { return nil }
+                guard let directory = self?.agents?.installer?.directory else { return nil }
                 return (directory.path as NSString).abbreviatingWithTildeInPath
             })
     }
@@ -2886,11 +2893,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         case .idle: busy = false
         }
         if busy {
+            let name = agents?.adapters[session.agent]?.displayName ?? "the agent"
             let confirmed = confirmRemove?(session) ?? runConfirmation(
                 title: "Close \u{201C}\(session.displayTitle)\u{201D}?",
                 message: session.status == .working
-                    ? "Claude is still working in this session. Closing ends the shell and removes the row; the conversation is kept by Claude Code."
-                    : "This session is waiting for you. Closing ends the shell and removes the row; the conversation is kept by Claude Code.",
+                    ? "\(name) is still working in this session. Closing ends the shell and removes the row; the conversation is kept by \(name)."
+                    : "This session is waiting for you. Closing ends the shell and removes the row; the conversation is kept by \(name).",
                 button: "Close")
             guard confirmed else { return }
         }
@@ -2928,7 +2936,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         if busy > 0 {
             text += " \u{2014} \(busy) \(busy == 1 ? "is" : "are") still working or waiting on you"
         }
-        text += ". The conversations are kept by Claude Code, and the worktrees on disk are not"
+        text += ". The conversations are kept by their agents, and the worktrees on disk are not"
         text += " touched."
         return text
     }
@@ -2952,8 +2960,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
+        // `?? true` rather than `== true`: with no coordinator wired yet (a test harness, a window
+        // still assembling) there is no adapter to ask, and the honest default is to offer Resume
+        // rather than hide it on the strength of an absence. Only a *known* adapter that lacks
+        // `.resume` turns it off.
         let resume = contextItem("Resume", action: #selector(contextResume(_:)), id: id.rawValue)
         resume.isEnabled = session.conversationId != nil && session.live?.observation == nil
+            && (agents?.adapters[session.agent]?.capabilities.contains(.resume) ?? true)
         resume.identifier = ContextItemID.resume
         menu.addItem(resume)
 
@@ -3262,7 +3275,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let hidden = store.state.sessions[id]?.spendTrackingDisabled == true
         store.update { $0.setSpendTrackingDisabled(id, !hidden) }
         // Turning it back on for this one session: no need to re-scan every session, only this one.
-        if hidden { claude?.refreshUsageNow(for: id) }
+        if hidden { agents?.refreshUsageNow(for: id) }
     }
 
     @objc private func contextToggleMute(_ sender: Any?) {

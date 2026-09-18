@@ -1,0 +1,7 @@
+{
+  "hook_event_name": "Interrupt",
+  "session_id": "019e9000-0000-7000-8000-000000000001",
+  "turn_id": "turn-1",
+  "agent_type": "codex",
+  "cwd": "/Users/tester/project"
+}

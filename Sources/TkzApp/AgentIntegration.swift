@@ -1,9 +1,11 @@
-// ClaudeIntegration — the app-side coordinator for M3.
+// AgentIntegration — the app-side coordinator for M3, generalized by TKZ-82 from the
+// Claude-only `ClaudeIntegration` into one driven by an `[AgentKind: any AgentAdapter]` table.
 //
-// `ClaudeBridge` ships two services that each know one thing: `HookServer` (frames from
-// `tkzmux-hook`) and `ClaudeSessionWatcher` (descriptor files). Neither knows what a `Session` is.
-// (`UsageReader` and the per-session sidecar reader are M3.5, still in the backlog; the
-// account-label half of M3.5 is here, in `accountLabels(home:fileManager:)`.)
+// `ClaudeBridge` ships two kinds of service that each know one thing: `HookServer` (frames from
+// `tkzmux-hook`) and an `AgentObservationWatcher` per adapter that has one (descriptor files, for
+// Claude). Neither knows what a `Session` is. (`UsageReader` and the per-session sidecar reader
+// are M3.5, still in the backlog; the account-label half of M3.5 is here, reached through the
+// adapter that owns each account.)
 // This type is the one place where their facts are attributed to rows and posted into the store,
 // and it holds the two pieces of state that belong to neither the services nor `AppState`:
 //
@@ -18,6 +20,10 @@
 // Every service callback arrives on that service's queue and is hopped onto the main queue with
 // `DispatchQueue.main.async` + `MainActor.assumeIsolated` (FIFO, unlike an unstructured `Task`), so
 // two frames from one session are applied in the order they arrived.
+//
+// The test of whether the seam is real: adding an agent means adding an adapter and nothing else.
+// This type never names a concrete adapter — `adapters` is injectable, and `AgentIntegrationTests`
+// registers a stub to prove it.
 
 import AppKit
 import ClaudeBridge
@@ -26,22 +32,29 @@ import TkzCore
 import os
 
 @MainActor
-public final class ClaudeIntegration {
+public final class AgentIntegration {
     public let store: AppStore
     /// `~/Library/Application Support/tkzmux` — the socket, `bin/`, `zsh/`.
     public let directory: URL
     /// The user's home; `~/.claude` and the sidecars are found under it.
     public let home: String
+    /// One adapter per agent tkzmux knows about. Defaults to Claude alone; tests register a stub
+    /// here instead, which is the whole seam this type is built around.
+    public let adapters: [AgentKind: any AgentAdapter]
 
     public let hookServer: HookServer
-    public let watcher: ClaudeSessionWatcher
+    /// One observation watcher per adapter that has one — Claude's descriptor watcher today,
+    /// nothing for an adapter that returns `nil` from `makeObservationWatcher`.
+    private var watchers: [AgentKind: any AgentObservationWatcher] = [:]
     public let installer: ShimInstaller?
     /// Reads the two statusline sidecars `tkzmux-hook statusline` writes. Present even
     /// when nothing has been installed yet — the directory simply stays empty and the sweep keeps
     /// looking, so the badges light up the moment the user consents.
     public let statusline: StatuslineReader
     /// Writes `statusLine` into the user's `settings.json`. `nil` when the hook binary isn't
-    /// installed, exactly like `installer`.
+    /// installed, exactly like `installer`. The statusline itself stays Claude-only (design: only
+    /// Claude Code has one to wrap) and every method below gates on `.statusline` rather than
+    /// assuming every account can use it.
     public let statuslineInstaller: StatuslineInstaller?
     /// Sums token usage and estimated spend off each session's own transcript (design: token usage
     /// and spend per session). Unlike `statusline`, this needs nothing installed or opted into —
@@ -56,33 +69,42 @@ public final class ClaudeIntegration {
     var pidToSession: [pid_t: SessionID] = [:]
     /// The whole last Stop message per session (see the file header). Internal for the same reason.
     var fullMessages: [SessionID: String] = [:]
-    /// `payload.transcript_path` from the last attributed hook frame per session — where Claude
+    /// `payload.transcript_path` from the last attributed hook frame per session — where the agent
     /// keeps the conversation the first-prompt card (design 2c.5) reads. Process state like
-    /// `fullMessages`: a restored row has none and falls back to `TranscriptReader.locate`.
+    /// `fullMessages`: a restored row has none and falls back to the adapter's own `locate`.
     var transcriptPaths: [SessionID: String] = [:]
-    /// Memoized `TranscriptReader.locate` answers, for rows no hook frame has named.
+    /// Memoized transcript-locate answers, for rows no hook frame has named.
     ///
-    /// **Including the misses.** `locate` enumerates `<configDir>/projects` and `stat`s a candidate
-    /// in every project directory — dozens to hundreds of syscalls — and it is reached from
-    /// `transcriptTargets()`, which the search field used to call on *every keystroke* for *every*
-    /// open session, on the main thread. Caching only the hits would have left the common case (a
-    /// row whose conversation is not on disk) paying the full scan every time.
+    /// **Including the misses.** Locating a transcript enumerates a whole `projects` tree and
+    /// `stat`s a candidate in every project directory — dozens to hundreds of syscalls — and it is
+    /// reached from `transcriptTargets()`, which the search field used to call on *every keystroke*
+    /// for *every* open session, on the main thread. Caching only the hits would have left the
+    /// common case (a row whose conversation is not on disk) paying the full scan every time.
     ///
     /// Keyed by the two inputs that decide the answer, so a row that is resumed under a new
     /// conversation or moved to another account re-resolves instead of returning a stale path.
-    var locatedTranscripts: [SessionID: (claudeID: String, accountKey: String, path: String?)] = [:]
-    /// The last good `TranscriptReader` result per session, so reopening the card is instant and a
-    /// torn read never blanks it. Same lifecycle as `fullMessages`.
+    var locatedTranscripts: [SessionID: (conversationID: String, accountKey: String, path: String?)] = [:]
+    /// The last good transcript summary per session, so reopening the card is instant and a torn
+    /// read never blanks it. Same lifecycle as `fullMessages`.
     var transcriptSummaries: [SessionID: TranscriptSummary] = [:]
     /// Transcript reads happen here, never on the main queue: a `/loop` transcript is tens of
     /// megabytes and even the capped head+tail read is two file seeks and a JSON pass.
     private let transcriptQueue = DispatchQueue(label: "se.tkz.tkzmux.transcript", qos: .userInitiated)
     /// Descriptors no row owns — a cmux window, Terminal.app, VS Code. M5.3's Elsewhere group reads
     /// these; until then they are only kept so the join can be inspected.
-    public private(set) var externalDescriptors: [DescriptorKey: DescriptorState] = [:]
+    public private(set) var externalDescriptors: [DescriptorKey: ExternalObservation] = [:]
+
+    /// One agent's observation seen but not attributed to any row — the generic replacement for
+    /// carrying `ClaudeSessionInfo` here, which would have put one agent's file schema back into a
+    /// type every agent shares.
+    public struct ExternalObservation: Sendable {
+        public var observation: AgentObservation
+        public var alive: Bool
+        public var lastSeenAt: Date
+    }
 
     private var tick: DispatchSourceTimer?
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "claude")
+    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "agents")
     private var started = false
 
     /// "Is the user looking at this session right now?" — the selected row in a key, visible
@@ -98,7 +120,7 @@ public final class ClaudeIntegration {
     /// shell's exit.
     public var onAgentExited: ((SessionID) -> Void)?
 
-    /// A `Stop` hook landed for this row — Claude has finished a turn, and whatever it did to the
+    /// A `Stop` hook landed for this row — the agent has finished a turn, and whatever it did to the
     /// working tree is on disk now. `GitIntegration` (M4) refreshes git and re-scans ports on it;
     /// it is the one moment a refresh is worth making unconditionally, for any row.
     public var onStop: ((SessionID) -> Void)?
@@ -125,6 +147,7 @@ public final class ClaudeIntegration {
         store: AppStore,
         directory: URL,
         home: String = NSHomeDirectory(),
+        adapters: [AgentKind: any AgentAdapter] = [.claude: ClaudeAdapter()],
         installer: ShimInstaller? = nil,
         instancePID: pid_t = getpid(),
         ancestry: any ProcessAncestry = SystemProcessAncestry(),
@@ -133,34 +156,36 @@ public final class ClaudeIntegration {
         self.store = store
         self.directory = directory
         self.home = home
+        self.adapters = adapters
         self.installer = installer
         self.instancePID = instancePID
         self.ancestry = ancestry
         self.liveness = liveness
         self.executableName = ancestry.name(of: instancePID) ?? ""
 
-        // Accounts are discovered, never hard-coded: `~/.claude` plus every `~/.claude-*` that
-        // looks like a config dir, plus whatever the store already knows, plus the account of every
-        // persisted row (a resume must find its descriptor in *that* account's `sessions/`).
-        let discovered = Self.discoverAccounts(home: home)
-        let labels = Self.accountLabels(home: home)
+        // Accounts are discovered, never hard-coded: every adapter's own `discoverAccounts` (e.g.
+        // `~/.claude` plus every `~/.claude-*` that looks like a config dir), plus whatever the
+        // store already knows, plus the account of every persisted row (a resume must find its
+        // descriptor in *that* account's own directory).
+        let discovered = adapters.values.flatMap { $0.discoverAccounts(home: home, fileManager: .default) }
         var accounts = store.state.accounts
         for account in discovered where accounts[account.key] == nil { accounts[account.key] = account }
         for session in store.state.sessions.values where accounts[session.accountKey] == nil {
             if let dir = Account.configDirectory(forKey: session.accountKey, home: home) {
-                // Every session here is Claude's — there is only one agent today — so the account
-                // this fabricates is stamped `.claude` too. TKZ-82's adapter table is what will
-                // let this read `session.agent` once a second agent exists.
+                // The row itself says which agent it belongs to, so the account this fabricates
+                // follows `session.agent` rather than assuming Claude — the adapter table is what
+                // makes that honest now that a second agent can exist.
+                let label = adapters[session.agent]?.accountLabels(home: home, fileManager: .default)[session.accountKey]
+                    ?? session.accountKey
                 accounts[session.accountKey] = Account(
-                    key: session.accountKey, configDir: dir,
-                    label: labels[session.accountKey] ?? session.accountKey, agent: .claude)
+                    key: session.accountKey, configDir: dir, label: label, agent: session.agent)
             }
         }
-        var configDirs: [String] = []
-        for key in accounts.keys.sorted() where !configDirs.contains(accounts[key]!.configDir) {
-            configDirs.append(accounts[key]!.configDir)
+        var flatConfigDirs: [String] = []
+        for key in accounts.keys.sorted() where !flatConfigDirs.contains(accounts[key]!.configDir) {
+            flatConfigDirs.append(accounts[key]!.configDir)
         }
-        watchedConfigDirs = configDirs
+        watchedConfigDirs = flatConfigDirs
 
         // Each closure only hops to the main queue; the real work is in the `handle…` methods so
         // that tests can call them directly with synthetic frames.
@@ -173,9 +198,16 @@ public final class ClaudeIntegration {
         ) { frame in
             DispatchQueue.main.async { MainActor.assumeIsolated { box.value?.handle(frame) } }
         }
-        watcher = ClaudeSessionWatcher(configDirs: configDirs) { event in
-            DispatchQueue.main.async { MainActor.assumeIsolated { box.value?.handle(event) } }
+        var watchers: [AgentKind: any AgentObservationWatcher] = [:]
+        for (kind, adapter) in adapters {
+            let dirs = Self.configDirs(for: kind, in: accounts)
+            let onEvent: @Sendable (ObservationEvent) -> Void = { event in
+                DispatchQueue.main.async { MainActor.assumeIsolated { box.value?.handle(event, from: kind) } }
+            }
+            guard let watcher = adapter.makeObservationWatcher(configDirs: dirs, onEvent: onEvent) else { continue }
+            watchers[kind] = watcher
         }
+        self.watchers = watchers
         statusline = StatuslineReader(
             directory: StatuslineReader.standardDirectory(supportDirectory: directory)
         ) { event in
@@ -192,75 +224,29 @@ public final class ClaudeIntegration {
         }
     }
 
-    /// The config dirs the watcher is currently pointed at, in registration order.
+    /// The config dirs the watchers are currently pointed at, in registration order, across every
+    /// agent. `watchers[agent]` is handed only its own slice, computed on demand from the store.
     public private(set) var watchedConfigDirs: [String]
 
-    /// `~/.claude` (always) and every `~/.claude-*` directory that carries `settings.json`,
-    /// `sessions/` or `.claude.json` — the discovery rule sketched for M3.5, brought forward
-    /// because a second account that is never watched is a second account whose sessions never
-    /// get a status, a title or a badge. Nothing here names a particular account: the names come
-    /// from ``accountLabels(home:fileManager:)``, and a key with no entry there is its own label.
-    public static func discoverAccounts(home: String, fileManager: FileManager = .default) -> [Account] {
-        let labels = accountLabels(home: home, fileManager: fileManager)
-        var out: [Account] = []
-        let primary = (home as NSString).appendingPathComponent(".claude")
-        let defaultKey = Account.defaultKey(for: .claude)
-        // `discoverAccounts` only ever looks at `~/.claude*`, so every account it makes is
-        // Claude's — stamped explicitly rather than left to the initializer's default.
-        out.append(
-            Account(
-                key: defaultKey, configDir: primary,
-                label: labels[defaultKey] ?? defaultKey, agent: .claude))
-        let entries = (try? fileManager.contentsOfDirectory(atPath: home)) ?? []
-        for name in entries.sorted() where name.hasPrefix(".claude-") {
-            let path = (home as NSString).appendingPathComponent(name)
-            var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else { continue }
-            let markers = ["settings.json", "sessions", ".claude.json"]
-            guard markers.contains(where: { fileManager.fileExists(atPath: (path as NSString).appendingPathComponent($0)) }) else { continue }
-            let key = Account.key(forConfigDirectory: path)
-            out.append(Account(key: key, configDir: path, label: labels[key] ?? key, agent: .claude))
-        }
-        return out
-    }
-
-    /// The account-label overlay: `~/.claude/dash-accounts.json`, shape
-    /// `{"labels": {"<account key>": "<display name>"}}`.
-    ///
-    /// This is the only place a **human-written** account name comes from, and CLAUDE.md is
-    /// explicit that names belong in config rather than in code — so the file is read and no name
-    /// is ever spelled out here. It is read from the *primary* config dir, not per-account: the
-    /// point is one table naming all of them, and an account cannot name itself before it is
-    /// discovered.
-    ///
-    /// Written by another program, so decoding is forgiving in the same way the descriptor is: a
-    /// missing file, a torn write or a non-string value yields no overlay at all, and every key
-    /// then falls back to being its own label. Empty and whitespace-only names are dropped —
-    /// a blank chip would be worse than `ALT`.
-    public static func accountLabels(
-        home: String, fileManager: FileManager = .default
-    ) -> [String: String] {
-        let path = (home as NSString)
-            .appendingPathComponent(".claude/dash-accounts.json")
-        guard let data = fileManager.contents(atPath: path),
-            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let labels = root["labels"] as? [String: Any]
-        else { return [:] }
-        var out: [String: String] = [:]
-        for (key, value) in labels {
-            guard let name = value as? String else { continue }
-            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { out[key] = trimmed }
+    /// `accounts`' config dirs belonging to one agent, deduped and key-ordered. What each adapter's
+    /// own observation watcher is pointed at — a Codex watcher must never be handed a Claude config
+    /// dir and vice versa; they are unrelated file layouts that only coincidentally share the word
+    /// "account".
+    private static func configDirs(for agent: AgentKind, in accounts: [String: Account]) -> [String] {
+        var out: [String] = []
+        for key in accounts.keys.sorted() where accounts[key]?.agent == agent {
+            let dir = accounts[key]!.configDir
+            if !out.contains(dir) { out.append(dir) }
         }
         return out
     }
 
     /// A process announced which config dir it really runs under. Registers the account if it is
-    /// new, watches its `sessions/` if it is not watched, and corrects the row's `accountKey` —
+    /// new, watches its own directory if it is not watched, and corrects the row's `accountKey` —
     /// the user's environment (a shell rc, a wrapper) may have picked a different account than the
     /// launcher asked for, and the chip, the descriptor join and every later resume must follow
     /// the process, not the request.
-    func learnAccount(configDir: String, for id: SessionID) {
+    func learnAccount(configDir: String, for id: SessionID, agent: AgentKind) {
         let trimmed = configDir.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let standardized = (trimmed as NSString).standardizingPath
@@ -268,14 +254,12 @@ public final class ClaudeIntegration {
         guard !key.isEmpty else { return }
         let known = store.state.accounts[key]
         // Only a *new* account needs a name looked up. This method runs on every launch frame and
-        // every descriptor update — several times a minute per session — and `accountLabels` reads
+        // every observation update — several times a minute per session — and label lookup reads
         // and parses a file, so it must not be on that path for an account we already know.
-        let label = known == nil ? (Self.accountLabels(home: home)[key] ?? key) : key
+        let label = known == nil ? (adapters[agent]?.accountLabels(home: home, fileManager: .default)[key] ?? key) : key
         store.update { state in
             if known == nil {
-                // Every process that reports its config dir this way is a `claude` process — the
-                // shim and the descriptor watcher both only ever see Claude today.
-                state.setAccount(Account(key: key, configDir: standardized, label: label, agent: .claude))
+                state.setAccount(Account(key: key, configDir: standardized, label: label, agent: agent))
             }
             state.setSessionAccount(id, key: key)
         }
@@ -283,7 +267,7 @@ public final class ClaudeIntegration {
         if !watchedConfigDirs.contains(dir) {
             logger.info("watching account \(key, privacy: .public) at \(dir, privacy: .public)")
             watchedConfigDirs.append(dir)
-            watcher.setConfigDirs(watchedConfigDirs)
+            watchers[agent]?.setConfigDirs(Self.configDirs(for: agent, in: store.state.accounts))
         }
     }
 
@@ -291,7 +275,7 @@ public final class ClaudeIntegration {
     /// Main-actor isolated, hence `Sendable` without any `@unchecked`; the closures only touch it
     /// inside `MainActor.assumeIsolated`.
     @MainActor private final class WeakBox {
-        weak var value: ClaudeIntegration?
+        weak var value: AgentIntegration?
     }
 
     // MARK: Lifecycle
@@ -318,7 +302,7 @@ public final class ClaudeIntegration {
                 "hook server failed to start at \(self.hookServer.socketPath.path, privacy: .public): \(String(describing: error), privacy: .public)"
             )
         }
-        watcher.start()
+        for watcher in watchers.values { watcher.start() }
         statusline.start()
 
         let timer = DispatchSource.makeTimerSource(queue: .main)
@@ -335,7 +319,7 @@ public final class ClaudeIntegration {
         started = false
         tick?.cancel()
         tick = nil
-        watcher.stop()
+        for watcher in watchers.values { watcher.stop() }
         statusline.stop()
         hookServer.stop()
     }
@@ -343,7 +327,7 @@ public final class ClaudeIntegration {
     // MARK: Statusline sidecars
 
     /// Quota and per-session context, posted straight into the store. Unlike hook frames these need
-    /// no attribution work: usage is keyed by account and context joins on Claude's own session id.
+    /// no attribution work: usage is keyed by account and context joins on the agent's own session id.
     func handle(_ event: StatuslineEvent) {
         store.update { state in
             switch event {
@@ -359,33 +343,43 @@ public final class ClaudeIntegration {
         }
     }
 
+    /// Whether `accountKey`'s own agent can even have a status line — the statusline stays a
+    /// Claude Code feature (it edits Claude's own `settings.json`), so every method below refuses
+    /// an account whose adapter does not claim `.statusline` rather than quietly acting on it.
+    private func statuslineCapableAccount(_ accountKey: String) -> Account? {
+        guard let account = store.state.accounts[accountKey],
+              adapters[account.agent]?.capabilities.contains(.statusline) == true
+        else { return nil }
+        return account
+    }
+
     /// Which producer, if any, is feeding the statusline for an account's config dir.
     public func statuslineProducer(accountKey: String) -> StatuslineProducer {
         guard let installer = statuslineInstaller,
-              let configDir = store.state.accounts[accountKey]?.configDir
+              let account = statuslineCapableAccount(accountKey)
         else { return .none }
-        return installer.detect(configDir: configDir)
+        return installer.detect(configDir: account.configDir)
     }
 
     public func statuslinePlan(accountKey: String) throws -> StatuslineInstallPlan? {
         guard let installer = statuslineInstaller,
-              let configDir = store.state.accounts[accountKey]?.configDir
+              let account = statuslineCapableAccount(accountKey)
         else { return nil }
-        return try installer.plan(configDir: configDir, accountKey: accountKey)
+        return try installer.plan(configDir: account.configDir, accountKey: accountKey)
     }
 
     public func installStatusline(accountKey: String) throws {
         guard let installer = statuslineInstaller,
-              let configDir = store.state.accounts[accountKey]?.configDir
+              let account = statuslineCapableAccount(accountKey)
         else { return }
-        try installer.install(configDir: configDir, accountKey: accountKey)
+        try installer.install(configDir: account.configDir, accountKey: accountKey)
     }
 
     public func uninstallStatusline(accountKey: String) throws {
         guard let installer = statuslineInstaller,
-              let configDir = store.state.accounts[accountKey]?.configDir
+              let account = statuslineCapableAccount(accountKey)
         else { return }
-        try installer.uninstall(configDir: configDir, accountKey: accountKey)
+        try installer.uninstall(configDir: account.configDir, accountKey: accountKey)
     }
 
     /// Re-points any account whose `statusLine` runs a `tkzmux-hook` that is not this build's.
@@ -409,6 +403,7 @@ public final class ClaudeIntegration {
         guard let installer = statuslineInstaller else { return [] }
         var repaired: [String] = []
         for account in store.state.accounts.values.sorted(by: { $0.key < $1.key }) {
+            guard adapters[account.agent]?.capabilities.contains(.statusline) == true else { continue }
             guard case .stale(let command) = installer.detect(configDir: account.configDir) else {
                 continue
             }
@@ -464,8 +459,8 @@ public final class ClaudeIntegration {
 
     /// The fallback for an agent that writes no descriptor file at all. Claude always has an
     /// observation while its process is alive, so a Claude row learns of a crash from
-    /// `handle(_ event: DescriptorEvent)`'s `.removed` case — the file vanishing is the signal.
-    /// Codex has no such file, so a row bound to a Codex pid would otherwise sit at whatever
+    /// `handle(_ event: ObservationEvent, from:)`'s `.removed` case — the file vanishing is the
+    /// signal. Codex has no such file, so a row bound to a Codex pid would otherwise sit at whatever
     /// status its last hook left it in forever, even after the process is long gone. This sweep
     /// is what catches that: a row with a bound launch pid and no observation is asked, once a
     /// tick, whether that pid still exists, and `agentLost` runs if it does not.
@@ -493,17 +488,19 @@ public final class ClaudeIntegration {
         case .launch(let launch):
             bind(launch)
         case .hook(let payload, let frameSessionID, let ppid, let fullMessage):
-            // Hard-wired to Claude's own mapper for now: only Claude exists today, so a payload
-            // from any other agent has nobody to translate it and is dropped rather than
-            // misread by a mapper that speaks a different vocabulary. TKZ-82's adapter table,
-            // which will route on `payload.agent` instead of this single `==`, is a later
-            // ticket's job, not this one's.
-            guard payload.agent == .claude, var event = ClaudeHookMapper.map(payload) else {
+            // Routed on `payload.agent`: a payload from an agent nobody has an adapter for has
+            // nobody to translate it and is dropped rather than misread by a mapper that speaks a
+            // different vocabulary.
+            guard let adapter = adapters[payload.agent] else {
+                logger.info("no adapter for agent=\(payload.agent.rawValue, privacy: .public) event=\(payload.eventName, privacy: .public)")
+                return
+            }
+            guard var event = adapter.mapHook(payload) else {
                 logger.info("unmapped hook agent=\(payload.agent.rawValue, privacy: .public) event=\(payload.eventName, privacy: .public)")
                 return
             }
             event.sessionID = frameSessionID
-            guard let id = sessionID(forHook: event, ppid: ppid) else {
+            guard let id = sessionID(forHook: event, ppid: ppid, agent: payload.agent) else {
                 logger.info("unattributed hook \(String(describing: event.kind), privacy: .public) sid=\(event.sessionID?.rawValue ?? "-", privacy: .public) ppid=\(ppid)")
                 return
             }
@@ -543,18 +540,18 @@ public final class ClaudeIntegration {
     /// cheap — a `Stop` right after `SessionStart`'s full backfill only parses what's new.
     ///
     /// Skips the read entirely while the feature is off, globally or for this one session (design:
-    /// enable/disable, all sessions and per session) — `setShowSessionSpend`/
-    /// `setSpendTrackingDisabled` already cleared any stale `live.usage` when the switch flipped
-    /// off, so there is nothing this needs to undo, only nothing further to do.
+    /// enable/disable, all sessions and per session), while the row's agent has no adapter or does
+    /// not claim `.transcriptUsage`, or while there is no transcript path to read yet.
     private func refreshUsage(for id: SessionID) {
         guard let session = store.state.sessions[id], let conversationId = session.conversationId,
-              store.state.showSessionSpend, session.spendTrackingDisabled != true
+              store.state.showSessionSpend, session.spendTrackingDisabled != true,
+              let adapter = adapters[session.agent], adapter.capabilities.contains(.transcriptUsage),
+              let path = transcriptPath(for: id)
         else { return }
-        let path = transcriptPath(for: id)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            guard let usage = await self.usageReader.refresh(
-                sessionId: conversationId, transcriptPath: path)
+            guard let usage = await adapter.transcript.usage(
+                conversationId: conversationId, path: path, reader: self.usageReader)
             else { return }
             self.store.update { $0.setSessionUsage(usage, conversationId: conversationId) }
         }
@@ -588,17 +585,25 @@ public final class ClaudeIntegration {
             state.updateLive(id) { $0.pid = launch.pid }
             state.setAgentTerminal(id, terminal)
         }
-        learnAccount(configDir: launch.configDir, for: id)
-        for (key, state) in watcher.snapshot() where state.info.pid == launch.pid {
-            // Seen before the frame: it was filed as external; it has an owner now.
-            externalDescriptors[key] = nil
-            store.update { $0.applyObservation(state.info.observation, alive: state.alive, to: id, now: Date()) }
-            learnAccount(configDir: state.info.configDir, for: id)
+        // `tkzmux-hook launch` is only ever sent by the `.perInvocation` shim path, which today
+        // means Claude — `LaunchAnnouncement` carries no agent field of its own to route on.
+        let agent = AgentKind.claude
+        learnAccount(configDir: launch.configDir, for: id, agent: agent)
+        // The launch/descriptor race-fix below only makes sense for a watcher backed by a file on
+        // disk (Claude's descriptor), so it stays scoped to that concrete type rather than growing
+        // a new protocol requirement for one caller.
+        if let claudeWatcher = watchers[.claude] as? ClaudeSessionWatcher {
+            for (key, state) in claudeWatcher.snapshot() where state.info.pid == launch.pid {
+                // Seen before the frame: it was filed as external; it has an owner now.
+                externalDescriptors[key] = nil
+                store.update { $0.applyObservation(state.info.observation, alive: state.alive, to: id, now: Date()) }
+                learnAccount(configDir: state.info.configDir, for: id, agent: .claude)
+            }
         }
     }
 
-    /// The pane whose shell is running the `claude` the shim just announced. A boot command or a
-    /// resume recorded its pane in `agentStartup`; a `claude` typed by hand in a split did not,
+    /// The pane whose shell is running the agent the shim just announced. A boot command or a
+    /// resume recorded its pane in `agentStartup`; an agent typed by hand in a split did not,
     /// so the frame's pid (the shim's `$$`, a child of the pane's login shell) is walked up
     /// `panePids` the same way `sessionID(forProcess:)` walks it. `nil` when neither places it;
     /// `GitIntegration` then falls back to "the row's only pane".
@@ -628,22 +633,21 @@ public final class ClaudeIntegration {
     /// Only rows with live state are targets: a restored row has no shell, so nothing running can
     /// belong to it, and attributing to it (by a `conversationId` that a resume elsewhere reused)
     /// would resurrect a dead row without a terminal behind it.
-    func sessionID(forHook event: AgentEvent, ppid: pid_t) -> SessionID? {
+    func sessionID(forHook event: AgentEvent, ppid: pid_t, agent: AgentKind) -> SessionID? {
         let state = store.state
         if let id = event.sessionID, state.sessions[id]?.live != nil { return id }
-        // `tkzmux-hook` only ever speaks for Claude, so the fallback join must not let a
-        // `conversationId` coincidence match a row of some other agent. TKZ-82's adapter table
-        // will replace this with a lookup keyed on `adapters[session.agent]`.
-        if let claudeID = event.conversationId,
+        // A hook's own conversation id must only match a row of the *same* agent — otherwise a
+        // coincidental id collision could hand one agent's payload to another agent's row.
+        if let conversationId = event.conversationId,
            let match = state.sessions.values.first(where: {
-               $0.live != nil && $0.agent == .claude && $0.conversationId == claudeID
+               $0.live != nil && $0.agent == agent && $0.conversationId == conversationId
            }) {
             return match.id
         }
         return sessionID(forProcess: ppid)
     }
 
-    /// Walks up from `pid` (inclusive) looking for a pid the store knows: a bound `claude` pid or
+    /// Walks up from `pid` (inclusive) looking for a pid the store knows: a bound agent pid or
     /// a session's shell pid. Depth-limited; stops at launchd, and at another tkzmux — a dev
     /// build running in one of our panes has our pane's shell above it, and everything under it
     /// belongs to that build, not to the row hosting it.
@@ -656,9 +660,9 @@ public final class ClaudeIntegration {
                 return nil
             }
             if let id = pidToSession[current], store.state.sessions[id]?.live != nil { return id }
-            // `panePids` is what makes this work for a `claude` started in a split pane: without
+            // `panePids` is what makes this work for an agent started in a split pane: without
             // it the walk climbs to that pane's shell, which no row's `shellPid` names, and falls
-            // through to nil. Only reachable when the shim did not run — a `claude` invoked around
+            // through to nil. Only reachable when the shim did not run — an agent invoked around
             // the wrapper — since the shim's `launch` frame binds the row directly.
             if let match = sessions.first(where: {
                 $0.live?.pid == current || $0.live?.shellPid == current
@@ -672,29 +676,30 @@ public final class ClaudeIntegration {
         return nil
     }
 
-    // MARK: Descriptors
+    // MARK: Observation
 
-    func handle(_ event: DescriptorEvent) {
+    func handle(_ event: ObservationEvent, from agent: AgentKind) {
         switch event {
-        case .updated(let info, let alive):
-            let key = DescriptorKey(configDir: info.configDir, pid: info.pid)
-            guard let id = sessionID(forDescriptor: info) else {
+        case .updated(let observation, let alive):
+            let key = DescriptorKey(configDir: observation.configDir, pid: observation.pid)
+            guard let id = sessionID(forObservation: observation, agent: agent) else {
                 if externalDescriptors[key] == nil {
-                    logger.info("external descriptor pid=\(info.pid) \(info.accountKey, privacy: .public)")
+                    logger.info("external observation pid=\(observation.pid) \(Account.key(forConfigDirectory: observation.configDir), privacy: .public)")
                 }
-                externalDescriptors[key] = DescriptorState(info: info, alive: alive, lastSeenAt: Date())
+                externalDescriptors[key] = ExternalObservation(observation: observation, alive: alive, lastSeenAt: Date())
                 return
             }
             externalDescriptors[key] = nil
-            // The watcher hands us Claude's own descriptor; what crosses into the store is its
+            // The watcher hands us the agent's own descriptor; what crosses into the store is its
             // agent-blind projection (the file header's boundary rule).
-            store.update { $0.applyObservation(info.observation, alive: alive, to: id, now: Date()) }
-            // The descriptor's directory is where Claude *actually* keeps this session — truer
-            // than the launch frame, which reports the shell's environment before Claude ran.
-            learnAccount(configDir: info.configDir, for: id)
-        case .removed(let key):
+            store.update { $0.applyObservation(observation, alive: alive, to: id, now: Date()) }
+            // The descriptor's directory is where the agent *actually* keeps this session — truer
+            // than the launch frame, which reports the shell's environment before it ran.
+            learnAccount(configDir: observation.configDir, for: id, agent: agent)
+        case .removed(let pid, let configDir):
+            let key = DescriptorKey(configDir: configDir, pid: pid)
             externalDescriptors[key] = nil
-            let bound = store.state.sessions.values.first { $0.live?.pid == key.pid }
+            let bound = store.state.sessions.values.first { $0.live?.pid == pid }
             if let bound {
                 store.update { $0.agentLost(for: bound.id, now: Date()) }
                 onAgentExited?(bound.id)
@@ -708,23 +713,22 @@ public final class ClaudeIntegration {
     /// The first two joins are instance-local by construction (the pid came over *our* socket,
     /// or we bound it before). The last two are not: descriptors are global, two instances
     /// restore the same conversation ids from one `state.json`, and a dev build in a pane is
-    /// itself under one of our shells — so both are gated on `ownsProcess`, and a Claude that is
-    /// not ours is filed as external like any Terminal.app one.
-    func sessionID(forDescriptor info: ClaudeSessionInfo) -> SessionID? {
+    /// itself under one of our shells — so both are gated on `ownsProcess`, and an agent process
+    /// that is not ours is filed as external like any Terminal.app one.
+    func sessionID(forObservation observation: AgentObservation, agent: AgentKind) -> SessionID? {
         let state = store.state
-        if let id = pidToSession[info.pid], state.sessions[id]?.live != nil { return id }
-        if let match = state.sessions.values.first(where: { $0.live?.pid == info.pid }) { return match.id }
-        guard ownsProcess(info.pid) else { return nil }
-        // `ClaudeSessionWatcher` only ever describes Claude's own descriptor files, so this join
-        // must not let a `conversationId` collision hand the descriptor to some other agent's
-        // row. TKZ-82's adapter table will replace this with `adapters[session.agent]`.
+        if let id = pidToSession[observation.pid], state.sessions[id]?.live != nil { return id }
+        if let match = state.sessions.values.first(where: { $0.live?.pid == observation.pid }) { return match.id }
+        guard ownsProcess(observation.pid) else { return nil }
+        // A watcher only ever describes its own agent's descriptor files, so this join must not
+        // let a `conversationId` collision hand the descriptor to some other agent's row.
         if let match = state.sessions.values.first(where: {
-            $0.agent == .claude && $0.conversationId == info.sessionId && $0.live != nil
+            $0.agent == agent && $0.conversationId == observation.conversationId && $0.live != nil
                 && $0.live?.observation == nil
         }) {
             return match.id
         }
-        if let parent = ancestry.parent(of: info.pid) { return sessionID(forProcess: parent) }
+        if let parent = ancestry.parent(of: observation.pid) { return sessionID(forProcess: parent) }
         return nil
     }
 
@@ -737,26 +741,29 @@ public final class ClaudeIntegration {
 
     // MARK: Transcript (design 2c.5)
 
-    /// Where this row's Claude conversation is on disk: the path the hooks named, or — for a row
-    /// that has no live Claude and so never will — the file under its account's `projects/` that
-    /// carries its persisted `conversationId`.
+    /// Where this row's conversation is on disk: the path the hooks named, or — for a row that has
+    /// no live agent and so never will — the file its adapter's `locate` finds from its account's
+    /// config dir and its persisted `conversationId`.
     public func transcriptPath(for id: SessionID) -> String? {
         if let path = transcriptPaths[id] { return path }
-        guard let session = store.state.sessions[id], let claudeID = session.conversationId else { return nil }
+        guard let session = store.state.sessions[id], let conversationId = session.conversationId,
+              let adapter = adapters[session.agent]
+        else { return nil }
         if let cached = locatedTranscripts[id],
-           cached.claudeID == claudeID, cached.accountKey == session.accountKey {
+           cached.conversationID == conversationId, cached.accountKey == session.accountKey {
             return cached.path
         }
         // The key namespace is shared across agents (`Account.agent`'s doc comment), so a
         // registered account under this key must also match the row's own agent before its
         // `configDir` is trusted — otherwise a Claude row could resolve into a Codex account that
-        // happens to share a key. TKZ-82's adapter table will carry this join instead.
+        // happens to share a key.
         let configDir = store.state.accounts[session.accountKey]
             .flatMap { $0.agent == session.agent ? $0.configDir : nil }
             ?? Account.configDirectory(forKey: session.accountKey, home: home)
         guard let configDir else { return nil }
-        let located = TranscriptReader.locate(sessionId: claudeID, configDir: configDir)
-        locatedTranscripts[id] = (claudeID, session.accountKey, located)
+        let located = adapter.transcript.locate(
+            conversationId: conversationId, configDir: configDir, fileManager: .default)
+        locatedTranscripts[id] = (conversationId, session.accountKey, located)
         return located
     }
 
@@ -772,10 +779,14 @@ public final class ClaudeIntegration {
         for id: SessionID, completion: @escaping @MainActor @Sendable (TranscriptSummary) -> Void
     ) {
         let path = transcriptPath(for: id)
+        let adapter = store.state.sessions[id].flatMap { adapters[$0.agent] }
         let box = WeakBox()
         box.value = self
         transcriptQueue.async {
-            let fresh = path.flatMap { try? TranscriptReader.read(path: $0) }
+            let fresh: TranscriptSummary? = path.flatMap { path in
+                guard let adapter else { return nil }
+                return try? adapter.transcript.summary(path: path)
+            }
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard let self = box.value else { return }
@@ -791,7 +802,7 @@ public final class ClaudeIntegration {
 
     /// The hook's `last_assistant_message` is newer than an `away_summary` written before it, and
     /// it is all a transcript-less row has — so it wins over an older or missing recap, but never
-    /// over a newer `away_summary`, which is Claude's considered summary rather than its last line.
+    /// over a newer `away_summary`, which is the agent's considered summary rather than its last line.
     private func mergeStopMessage(into summary: inout TranscriptSummary, for id: SessionID) {
         guard let message = lastMessage(for: id), !message.isEmpty else { return }
         let stopAt = store.state.sessions[id]?.live?.lastStopAt

@@ -25,7 +25,7 @@
 // wraps — by *segment*, never mid-word — and the row is 59 pt:
 //
 //     ┌────────────────────────────────────────────────────────────┐
-//     │  ●   Claude's summary title                  NEEDS YOU     │  title line,  top 22…6
+//     │  ●   The agent's summary title                NEEDS YOU     │  title line,  top 22…6
 //     │      …/folder                                              │  detail 1,    top 38…25
 //     │      ⎇ feature/a-long-branch-name   WT            [ALT]    │  detail 2,    top 53…40
 //     └────────────────────────────────────────────────────────────┘

@@ -15,6 +15,7 @@
 // it would run. M2.5 replaces the closure with the real `TerminalHost` call.
 
 import AppKit
+import ClaudeBridge
 import TkzCore
 import os
 
@@ -48,19 +49,24 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         /// ``effectiveAccountKey``.
         public let accountKey: String?
         public let groupID: GroupID
+        /// Which agent's row this is. Defaults to `.claude` so every call site that predates the
+        /// adapter registry keeps compiling and keeps meaning what it always meant.
+        public let agent: AgentKind
 
         public init(
             kind: Kind,
             command: String,
             cwd: String,
             accountKey: String?,
-            groupID: GroupID
+            groupID: GroupID,
+            agent: AgentKind = .claude
         ) {
             self.kind = kind
             self.command = command
             self.cwd = cwd
             self.accountKey = accountKey
             self.groupID = groupID
+            self.agent = agent
         }
 
         /// The one-line description the stub logs — and what the tests assert on.
@@ -82,6 +88,25 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         public static let header = NSUserInterfaceItemIdentifier("tkzmux.newSession.header")
         public static let worktree = NSUserInterfaceItemIdentifier("tkzmux.newSession.worktree")
         public static let repoRoot = NSUserInterfaceItemIdentifier("tkzmux.newSession.repoRoot")
+        /// One agent's "New worktree" row, once a second adapter means the plain ``worktree`` id
+        /// would be ambiguous between them. With exactly one installed adapter the plain id is
+        /// used instead — see `NewSessionMenu.rebuild()` — so a Claude-only menu is unaffected.
+        public static func worktree(for agent: AgentKind) -> NSUserInterfaceItemIdentifier {
+            NSUserInterfaceItemIdentifier(worktree.rawValue + "." + agent.rawValue)
+        }
+        /// One agent's "In repo root" row. See ``worktree(for:)``.
+        public static func repoRoot(for agent: AgentKind) -> NSUserInterfaceItemIdentifier {
+            NSUserInterfaceItemIdentifier(repoRoot.rawValue + "." + agent.rawValue)
+        }
+        /// The disabled section header naming an agent, shown only once a second adapter is
+        /// installed.
+        public static func agentHeader(_ agent: AgentKind) -> NSUserInterfaceItemIdentifier {
+            NSUserInterfaceItemIdentifier("tkzmux.newSession.agentHeader." + agent.rawValue)
+        }
+        /// The same, inside the Default-account submenu.
+        public static func accountSectionHeader(_ agent: AgentKind) -> NSUserInterfaceItemIdentifier {
+            NSUserInterfaceItemIdentifier("tkzmux.newSession.accountSectionHeader." + agent.rawValue)
+        }
         public static let anotherRepo = NSUserInterfaceItemIdentifier("tkzmux.newSession.anotherRepo")
         public static let account = NSUserInterfaceItemIdentifier("tkzmux.newSession.account")
         public static let accountRow = NSUserInterfaceItemIdentifier("tkzmux.newSession.accountRow")
@@ -116,6 +141,18 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     public var group: Group?
     /// Accounts by key, for the Account submenu.
     public var accounts: [String: Account] = [:]
+    /// The agents this menu can start, normally the assembler's whole registry — installed and not.
+    ///
+    /// Defaults to Claude alone, matching `AgentIntegration` and `SessionLauncher`, so a menu built
+    /// before the assembler has wired anything still offers the agent tkzmux has always launched.
+    /// Empty genuinely means no agents and draws no agent rows; there is deliberately no fallback
+    /// to a hard-coded command, because a second code path that only runs when the registry is
+    /// missing is a path nothing exercises in production.
+    public var adapters: [any AgentAdapter] = [ClaudeAdapter()]
+    /// Whether an adapter's binary is on `PATH` — `AgentAdapter.isInstalled()` by default. A
+    /// closure, like ``isSessionAttended`` elsewhere, so a test can mark a stub adapter
+    /// "installed" without a real binary of that name existing anywhere.
+    public var isAdapterInstalled: (any AgentAdapter) -> Bool = { $0.isInstalled() }
     public var theme: Theme
 
     /// Where a resolved launch goes. Unset = ``logStub`` (this ticket's deliverable).
@@ -193,26 +230,19 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         menu.addItem(header)
 
         let repoRoot = group.repoRoot
+        let installed = adapters.filter(isAdapterInstalled)
+        // More than one installed adapter is what earns the per-agent section headers. With exactly
+        // one the rows keep their plain identifiers and their original titles and hints, so a
+        // single-agent menu is indistinguishable from the one tkzmux has always drawn — pinned by
+        // `singleAdapterMenuIsTheMenuItHasAlwaysBeen`.
+        let sectioned = installed.count > 1
 
-        let worktree = entry(
-            title: "New worktree",
-            hint: "claude -w",
-            detail: repoRoot ?? "no repo \u{2014} add one to this group first",
-            enabled: repoRoot != nil,
-            action: #selector(newWorktree)
-        )
-        worktree.identifier = ItemID.worktree
-        menu.addItem(worktree)
-
-        let root = entry(
-            title: "In repo root",
-            hint: "claude",
-            detail: repoRoot ?? "no repo \u{2014} add one to this group first",
-            enabled: repoRoot != nil,
-            action: #selector(newInRepoRoot)
-        )
-        root.identifier = ItemID.repoRoot
-        menu.addItem(root)
+        for adapter in installed {
+            if sectioned {
+                menu.addItem(sectionHeader(for: adapter, identifier: ItemID.agentHeader(adapter.kind)))
+            }
+            addRows(for: adapter, repoRoot: repoRoot, namespaced: sectioned)
+        }
 
         let another = entry(
             title: "In another repo\u{2026}",
@@ -225,7 +255,54 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         menu.addItem(another)
 
         menu.addItem(.separator())
-        menu.addItem(accountItem(group: group))
+        menu.addItem(accountItem(group: group, sectioned: sectioned))
+    }
+
+    /// One adapter's rows: "New worktree" only when it has the capability, "In repo root"
+    /// always. `namespaced` is `true` once a second adapter is on the menu, which is what moves
+    /// the identifiers off the plain ``ItemID/worktree``/``ItemID/repoRoot`` — see
+    /// ``ItemID/worktree(for:)``.
+    private func addRows(for adapter: any AgentAdapter, repoRoot: String?, namespaced: Bool) {
+        let noRepo = "no repo \u{2014} add one to this group first"
+        if adapter.capabilities.contains(.worktree) {
+            let hint = adapter.launchCommand(.worktree(name: nil)) ?? ""
+            let item = entry(
+                title: "New worktree", hint: hint, detail: repoRoot ?? noRepo,
+                enabled: repoRoot != nil, action: #selector(newWorktree(_:)))
+            item.identifier = namespaced ? ItemID.worktree(for: adapter.kind) : ItemID.worktree
+            item.representedObject = adapter.kind
+            menu.addItem(item)
+        }
+
+        let rootHint = adapter.launchCommand(.new) ?? ""
+        let root = entry(
+            title: "In repo root", hint: rootHint, detail: repoRoot ?? noRepo,
+            enabled: repoRoot != nil, action: #selector(newInRepoRoot(_:)))
+        root.identifier = namespaced ? ItemID.repoRoot(for: adapter.kind) : ItemID.repoRoot
+        root.representedObject = adapter.kind
+        menu.addItem(root)
+    }
+
+    /// A disabled row naming an agent — the section header above its rows, or above its accounts
+    /// in the Default-account submenu.
+    private func sectionHeader(
+        for adapter: any AgentAdapter, identifier: NSUserInterfaceItemIdentifier
+    ) -> NSMenuItem {
+        let item = disabled(title: adapter.displayName)
+        item.identifier = identifier
+        item.attributedTitle = NSAttributedString(
+            string: adapter.displayName,
+            attributes: [
+                .font: Theme.Fonts.ui(theme.fontUI.caption, weight: .semibold),
+                .foregroundColor: theme.foregroundMuted.nsColor,
+            ])
+        return item
+    }
+
+    /// The adapter this menu knows for `kind`, or `nil` when ``adapters`` has nothing for it —
+    /// the legacy-registry case, and the ordinary case for an agent nobody has installed.
+    private func adapter(for kind: AgentKind) -> (any AgentAdapter)? {
+        adapters.first { $0.kind == kind }
     }
 
     /// "Default account ▸": which account **every new session in this group** gets.
@@ -236,8 +313,8 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     ///
     /// Changing it affects new sessions only: a running one already has `CLAUDE_CONFIG_DIR` in its
     /// child environment, and its `Session.accountKey` follows what the process actually reports
-    /// (`ClaudeIntegration.learnAccount`), not what was asked for.
-    private func accountItem(group: Group) -> NSMenuItem {
+    /// (`AgentIntegration.learnAccount`), not what was asked for.
+    private func accountItem(group: Group, sectioned: Bool) -> NSMenuItem {
         let current = group.defaultAccountKey
         let known = current.flatMap { accounts[$0] }
         let label = current.map { known?.label ?? $0 } ?? "none"
@@ -245,18 +322,19 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         item.identifier = ItemID.account
         let submenu = NSMenu()
         submenu.autoenablesItems = false
-        for key in accounts.keys.sorted() {
-            let account = accounts[key]
-            let row = NSMenuItem(
-                title: account?.label ?? key, action: #selector(selectAccountItem(_:)), keyEquivalent: "")
-            row.target = self
-            row.representedObject = key
-            row.identifier = ItemID.accountRow(key)
-            row.state = key == current ? .on : .off
-            // Name the target: which config dir this account means.
-            row.attributedTitle = attributed(
-                title: row.title, hint: nil, detail: account?.configDir ?? key, enabled: true)
-            submenu.addItem(row)
+        // Unchanged with one agent: a flat, key-sorted list. Grouped only once a second adapter
+        // means "which agent is this account for" is no longer obvious from the list alone.
+        if sectioned {
+            for adapter in adapters.filter(isAdapterInstalled) {
+                let keys = accounts.keys.filter { accounts[$0]?.agent == adapter.kind }.sorted()
+                guard !keys.isEmpty else { continue }
+                submenu.addItem(sectionHeader(for: adapter, identifier: ItemID.accountSectionHeader(adapter.kind)))
+                for key in keys { submenu.addItem(accountRow(key: key, current: current)) }
+            }
+        } else {
+            for key in accounts.keys.sorted() {
+                submenu.addItem(accountRow(key: key, current: current))
+            }
         }
         if accounts.isEmpty {
             submenu.addItem(disabled(title: "No accounts configured"))
@@ -286,6 +364,22 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     }
 
     // MARK: Item helpers
+
+    /// One row of the Default-account submenu: the account's label, its config dir as the detail,
+    /// and the checkmark for the group's current default.
+    private func accountRow(key: String, current: String?) -> NSMenuItem {
+        let account = accounts[key]
+        let row = NSMenuItem(
+            title: account?.label ?? key, action: #selector(selectAccountItem(_:)), keyEquivalent: "")
+        row.target = self
+        row.representedObject = key
+        row.identifier = ItemID.accountRow(key)
+        row.state = key == current ? .on : .off
+        // Name the target: which config dir this account means.
+        row.attributedTitle = attributed(
+            title: row.title, hint: nil, detail: account?.configDir ?? key, enabled: true)
+        return row
+    }
 
     private func disabled(title: String) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
@@ -336,13 +430,18 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
 
     // MARK: Resolution
 
-    /// `claude -w` from the repo root — design.md: a worktree is created *from the main checkout*.
-    public func worktreeLaunch(name: String? = nil) -> Launch? {
+    /// A worktree session, started from the repo root — the agent creates the worktree itself and
+    /// chdirs into it, which is why this launches from the *main* checkout.
+    ///
+    /// `nil` when `agent` has no adapter registered, or when its adapter cannot make a worktree.
+    /// There is deliberately no fallback command: guessing a command line for an agent we know
+    /// nothing about is how you end up running the wrong binary with the wrong flags.
+    public func worktreeLaunch(name: String? = nil, agent: AgentKind = .claude) -> Launch? {
         guard let group, let repoRoot = group.repoRoot else { return nil }
-        let command = name.map { "claude -w \($0)" } ?? "claude -w"
+        guard let command = adapter(for: agent)?.launchCommand(.worktree(name: name)) else { return nil }
         return Launch(
             kind: .worktree, command: command, cwd: repoRoot,
-            accountKey: effectiveAccountKey, groupID: group.id)
+            accountKey: effectiveAccountKey, groupID: group.id, agent: agent)
     }
 
     /// A bare login shell in the group's directory. The toolbar's `>_` ("new terminal") button.
@@ -359,11 +458,14 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             groupID: group.id)
     }
 
-    public func repoRootLaunch() -> Launch? {
+    /// `nil` when `agent` has no adapter registered — see ``worktreeLaunch(name:agent:)`` for why
+    /// there is no fallback command.
+    public func repoRootLaunch(agent: AgentKind = .claude) -> Launch? {
         guard let group, let repoRoot = group.repoRoot else { return nil }
+        guard let command = adapter(for: agent)?.launchCommand(.new) else { return nil }
         return Launch(
-            kind: .repoRoot, command: "claude", cwd: repoRoot,
-            accountKey: effectiveAccountKey, groupID: group.id)
+            kind: .repoRoot, command: command, cwd: repoRoot,
+            accountKey: effectiveAccountKey, groupID: group.id, agent: agent)
     }
 
     /// Hands a resolved launch to ``onLaunch``, or logs it. Public so the assembler can replay one.
@@ -384,13 +486,15 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
 
     // MARK: Actions
 
-    @objc private func newWorktree() {
-        guard let launch = worktreeLaunch() else { return }
+    @objc private func newWorktree(_ sender: NSMenuItem) {
+        let kind = sender.representedObject as? AgentKind ?? .claude
+        guard let launch = worktreeLaunch(agent: kind) else { return }
         perform(launch)
     }
 
-    @objc private func newInRepoRoot() {
-        guard let launch = repoRootLaunch() else { return }
+    @objc private func newInRepoRoot(_ sender: NSMenuItem) {
+        let kind = sender.representedObject as? AgentKind ?? .claude
+        guard let launch = repoRootLaunch(agent: kind) else { return }
         perform(launch)
     }
 

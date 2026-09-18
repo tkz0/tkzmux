@@ -73,6 +73,12 @@ public final class AttentionNotifier {
     /// A flip on that row posts nothing: the badge in front of them is enough.
     public var isSessionAttended: (SessionID) -> Bool = { _ in false }
 
+    /// What a row's agent is called, for a banner that names it — `AgentAdapter.displayName`,
+    /// keyed off `Session.agent`. This file never spells an agent's name itself: the assembler
+    /// wires this from the adapter registry, and the fallback is honest about not knowing rather
+    /// than guessing at a product name.
+    public var agentDisplayName: (AgentKind) -> String = { _ in "the agent" }
+
     /// The user clicked a banner; the window reveals this row and comes to the front.
     public var onActivate: ((SessionID) -> Void)?
 
@@ -179,7 +185,8 @@ public final class AttentionNotifier {
             return NotificationRequest(
                 identifier: AttentionNotifier.identifier(for: id),
                 title: session.displayTitle,
-                body: AttentionNotifier.needsYouBody(for: session))
+                body: AttentionNotifier.needsYouBody(
+                    for: session, agentName: agentDisplayName(session.agent)))
         }
         batchCounter += 1
         let titles = ids.compactMap { state.sessions[$0]?.displayTitle }
@@ -194,29 +201,30 @@ public final class AttentionNotifier {
         return NotificationRequest(
             identifier: AttentionNotifier.identifier(for: id),
             title: session?.displayTitle ?? "tkzmux",
-            body: AttentionNotifier.doneBody(for: session))
+            body: AttentionNotifier.doneBody(
+                for: session, agentName: agentDisplayName(session?.agent ?? .claude)))
     }
 
     static func identifier(for id: SessionID) -> String { "session.\(id.rawValue)" }
 
-    /// Claude's own words when a hook carried them; otherwise a line per reason. The descriptor
+    /// The agent's own words when a hook carried them; otherwise a line per reason. The descriptor
     /// file alone (no hook, e.g. the shim is not installed) only ever says `waiting`, which the
     /// derivation maps to `.permission`.
-    static func needsYouBody(for session: Session) -> String {
+    static func needsYouBody(for session: Session, agentName: String) -> String {
         if let message = session.live?.lastNotificationMessage, !message.isEmpty { return message }
         switch session.status {
-        case .waiting(.permission): return "Claude is waiting for permission"
-        case .waiting(.elicitation): return "Claude is asking you a question"
-        case .waiting(.agentInput): return "Claude needs your input"
+        case .waiting(.permission): return "\(agentName) is waiting for permission"
+        case .waiting(.elicitation): return "\(agentName) is asking you a question"
+        case .waiting(.agentInput): return "\(agentName) needs your input"
         default: return "Needs you"
         }
     }
 
-    /// The first line of what Claude said, or a plain "finished" when there is none.
-    static func doneBody(for session: Session?) -> String {
+    /// The first line of what the agent said, or a plain "finished" when there is none.
+    static func doneBody(for session: Session?, agentName: String) -> String {
         guard let message = session?.live?.lastStopMessage,
             let firstLine = ActivityEvent.firstLines(of: message, count: 1).first
-        else { return "Claude finished" }
+        else { return "\(agentName) finished" }
         let capped = firstLine.count > 120 ? String(firstLine.prefix(119)) + "…" : firstLine
         return "Finished: \(capped)"
     }

@@ -1,6 +1,6 @@
 // PerSessionCacheEvictionTests — removing a row must drop what was cached under its id.
 //
-// `ClaudeIntegration.fullMessages` is the one that motivated this: it holds the *complete* last
+// `AgentIntegration.fullMessages` is the one that motivated this: it holds the *complete* last
 // Stop message per session (the store only keeps a 4 KiB prefix), which for a reply containing a
 // pasted diff or a log dump is arbitrarily large. It had no removal path at all — not on session
 // close, not on row removal — so the app accumulated one entry per session id it had ever seen and
@@ -22,12 +22,12 @@ import TkzTerminalCore
 @Suite("Per-session cache eviction", .serialized)
 struct PerSessionCacheEvictionTests {
 
-    /// A throwaway directory: `ClaudeIntegration` writes shim files under whatever it is given,
+    /// A throwaway directory: `AgentIntegration` writes shim files under whatever it is given,
     /// and a test must never touch the real one.
-    private static func makeClaude(_ store: AppStore) -> ClaudeIntegration {
+    private static func makeClaude(_ store: AppStore) -> AgentIntegration {
         let dir = URL(filePath: NSTemporaryDirectory())
             .appending(path: "tkzmux-claude-\(UUID().uuidString)", directoryHint: .isDirectory)
-        return ClaudeIntegration(store: store, directory: dir)
+        return AgentIntegration(store: store, directory: dir)
     }
 
     @Test("removing a session drops its cached full Stop message")

@@ -1,4 +1,4 @@
-// PaneStartupOverlayView.swift — "Starting Claude…" over a pane whose boot command has not come
+// PaneStartupOverlayView.swift — "Starting <agent>…" over a pane whose boot command has not come
 // back yet.
 //
 // Drawn entirely with layers, like everything in `Sidebar/` and `EmptyStateView`, so it
@@ -17,7 +17,6 @@ import TkzCore
 final class PaneStartupOverlayView: NSView {
     /// Key the spin is registered under, so re-showing cannot stack a second one.
     static let spinAnimationKey = "tkz.pane.startup.spin"
-    static let title = "Starting Claude\u{2026}"
 
     static let spinnerDiameter: CGFloat = 22
     static let spinnerLineWidth: CGFloat = 2
@@ -31,6 +30,16 @@ final class PaneStartupOverlayView: NSView {
     private let spinner = CAShapeLayer()
     private let titleLayer: CATextLayer
     private let captionLayer: CATextLayer
+
+    /// What the headline calls the agent that is booting — `AgentAdapter.displayName`, set by the
+    /// controller from the pane's own adapter. Defaults to a name that admits it does not know
+    /// rather than asserting a product name nobody told this view.
+    var agentDisplayName: String = "the agent" {
+        didSet { if agentDisplayName != oldValue { titleLayer.string = title } }
+    }
+
+    /// "Starting Claude…" — or whichever agent this pane belongs to.
+    var title: String { "Starting \(agentDisplayName)\u{2026}" }
 
     init(theme: Theme) {
         self.theme = theme
@@ -63,7 +72,7 @@ final class PaneStartupOverlayView: NSView {
             "path": NSNull(), "strokeColor": NSNull(), "position": NSNull(), "bounds": NSNull(),
             "hidden": NSNull(),
         ]
-        titleLayer.string = Self.title
+        titleLayer.string = title
 
         layer?.addSublayer(spinner)
         layer?.addSublayer(titleLayer)

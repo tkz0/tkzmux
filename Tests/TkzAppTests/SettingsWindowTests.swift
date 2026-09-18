@@ -114,6 +114,17 @@ struct SettingsWindowTests {
         #expect(both[1].detail.contains("keeps running"))
     }
 
+    @Test("Statusline sentence names whichever agent the environment says, not a hard-coded product")
+    func statuslineNamesTheGivenAgent() {
+        var state = AppState.fixture
+        state.accounts = [
+            Account.defaultKey(for: .claude): Account(key: Account.defaultKey(for: .claude), configDir: "/h/.claude", label: "Private"),
+        ]
+        let environment = SettingsModel.Environment(agentDisplayName: { _ in "Stub Agent" })
+        let rows = SettingsModel.statuslineRows(state: state, environment: environment)
+        #expect(rows.first?.detail.contains("Let Stub Agent write its usage") == true)
+    }
+
     @Test("Shell page: the chip says what is on disk, and the sentence names the directory")
     func shellStatus() {
         let none = SettingsModel.make(state: .fixture).sections(for: .shell)[0].rows

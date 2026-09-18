@@ -256,7 +256,7 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
         item.title = "\u{FF0B} New session\u{2026}"   // ＋ New session…
         item.label = "New session"
         item.paletteLabel = "New session"
-        item.toolTip = "Start a Claude Code session in the selected group"
+        item.toolTip = "Start a new session in the selected group"
         item.showsIndicator = true
         item.menu = newSessionMenu
         item.isBordered = true

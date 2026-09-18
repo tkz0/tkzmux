@@ -81,6 +81,7 @@ struct StartupOverlayTests {
     func showAndHide() {
         let view = PaneStartupOverlayView(theme: .default)
         view.frame = NSRect(x: 0, y: 0, width: 400, height: 300)
+        view.agentDisplayName = "Claude"
         view.show(PaneStartupModel(command: "claude -w feature"), theme: .default)
         view.layout()
         #expect(!view.isHidden)
@@ -100,6 +101,16 @@ struct StartupOverlayTests {
         // Hiding twice is a no-op.
         view.hide()
         #expect(view.isHidden)
+    }
+
+    @Test("The headline names whichever agent it was told about, and admits it does not know otherwise")
+    func headlineNamesTheGivenAgent() {
+        let view = PaneStartupOverlayView(theme: .default)
+        #expect(view.title == "Starting the agent\u{2026}", "no adapter wired: honest, not a guess")
+        view.agentDisplayName = "Stub Agent"
+        #expect(view.title == "Starting Stub Agent\u{2026}")
+        view.show(PaneStartupModel(command: "stub"), theme: .default)
+        #expect(view.titleText == "Starting Stub Agent\u{2026}")
     }
 
     @Test("Showing after a hide spins again")

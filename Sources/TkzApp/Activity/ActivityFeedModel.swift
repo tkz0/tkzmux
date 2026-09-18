@@ -14,7 +14,7 @@ enum ActivityFeedModel {
         var sessionID: SessionID
         var title: String
         var groupName: String
-        /// `1h 3m` since Claude went busy; empty when the start is unknown.
+        /// `1h 3m` since the agent went busy; empty when the start is unknown.
         var elapsed: String
         var titleRanges: [Range<String.Index>]
     }

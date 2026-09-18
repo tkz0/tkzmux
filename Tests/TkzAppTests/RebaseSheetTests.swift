@@ -96,6 +96,7 @@ struct RebaseSheetModelTests {
 
     @Test func bodyPerPhase() {
         var model = RebaseSheetModel(baseRef: "origin/main", shortcut: "\u{2325}\u{2318}R")
+        model.agentDisplayName = "Claude"
         #expect(model.title == "Rebase onto main")
         #expect(model.body.lead == "Fetching origin/main\u{2026}")
         #expect(model.body.emphasis == nil)
@@ -135,6 +136,15 @@ struct RebaseSheetModelTests {
         #expect(model.body.lead == "Rebasing onto origin/main\u{2026}")
         #expect(!model.canRebase)
         #expect(model.rebaseHint == "Rebase in progress")
+    }
+
+    @Test func rebaseHintNamesWhicheverAgentItWasGiven() {
+        var model = RebaseSheetModel(baseRef: "origin/main", behind: 1, phase: .ready)
+        #expect(model.agentDisplayName == "the agent", "no adapter wired: honest, not a guess")
+        model.agentWorking = true
+        #expect(model.rebaseHint == "Wait for the agent to be idle \u{2014} it may be editing files")
+        model.agentDisplayName = "Stub Agent"
+        #expect(model.rebaseHint == "Wait for Stub Agent to be idle \u{2014} it may be editing files")
     }
 }
 

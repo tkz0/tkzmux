@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "Stop",
+  "session_id": "019e9000-0000-7000-8000-000000000001",
+  "turn_id": "turn-1",
+  "agent_type": "codex",
+  "transcript_path": "/Users/tester/.codex/sessions/2026/09/18/rollout-2026-09-18T10-00-00-019e9000-0000-7000-8000-000000000001.jsonl",
+  "cwd": "/Users/tester/project",
+  "model": "gpt-5.5"
+}

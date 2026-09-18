@@ -1,0 +1,8 @@
+{
+  "type": "agent-turn-complete",
+  "turn-id": "turn-1",
+  "thread-id": "019e9000-0000-7000-8000-000000000001",
+  "cwd": "/Users/tester/project",
+  "input-messages": ["add a regression test for the parser"],
+  "last-assistant-message": "Added the regression test and it passes."
+}
