@@ -170,6 +170,52 @@ private func connectBlocking(fd: Int32, path: String) throws {
         #expect(payload.agent == .codex)
     }
 
+    /// A launch frame with no `agent` field — an already-installed old shim — parses as Claude,
+    /// same fallback as a `hook` frame's `agent`.
+    @Test func launchFrameWithNoAgentFieldParsesAsClaude() async throws {
+        let dir = try makeSocketDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("hook.sock")
+        let collector = FrameCollector()
+        let server = HookServer(socketPath: socketPath) { collector.append($0) }
+        try server.start()
+        defer { server.stop() }
+
+        try sendLine(
+            #"{"v":1,"type":"launch","sid":"","pid":1,"cwd":"/tmp","config_dir":"/tmp/.claude","argv":["claude"]}"# + "\n",
+            to: socketPath)
+
+        let frames = await collector.waitFor(count: 1)
+        #expect(frames.count == 1)
+        guard case .launch(let announcement) = frames[0] else {
+            Issue.record("expected a .launch frame")
+            return
+        }
+        #expect(announcement.agent == .claude)
+    }
+
+    @Test func launchFrameWithAgentCodexParsesAsCodex() async throws {
+        let dir = try makeSocketDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("hook.sock")
+        let collector = FrameCollector()
+        let server = HookServer(socketPath: socketPath) { collector.append($0) }
+        try server.start()
+        defer { server.stop() }
+
+        try sendLine(
+            #"{"v":1,"type":"launch","sid":"","pid":1,"cwd":"/tmp","config_dir":"/tmp/.codex","agent":"codex","argv":["codex"]}"# + "\n",
+            to: socketPath)
+
+        let frames = await collector.waitFor(count: 1)
+        #expect(frames.count == 1)
+        guard case .launch(let announcement) = frames[0] else {
+            Issue.record("expected a .launch frame")
+            return
+        }
+        #expect(announcement.agent == .codex)
+    }
+
     @Test func malformedLineDroppedNextGoodFrameArrives() async throws {
         let dir = try makeSocketDir()
         defer { try? FileManager.default.removeItem(at: dir) }

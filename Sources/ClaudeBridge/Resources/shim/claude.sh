@@ -141,8 +141,17 @@ if [[ $merge_status -ne 0 || -z "$merged" ]]; then
     exec "$real" "$@"
 fi
 
+# Which account this Claude Code process belongs to follows from this directory and nothing else.
+# tkzmux-hook no longer knows `~/.claude` is a thing -- it just carries whatever the shim hands it.
+cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
 debug "merged settings: $merged"
-"$hook_bin" launch --pid $$ --cwd "$PWD" -- "$@" >/dev/null 2>&1
+"$hook_bin" launch --pid $$ --cwd "$PWD" --config-dir "$cfg" --agent claude -- "$@" >/dev/null 2>&1
+
+# Exported, not just set: the real `claude` process this line execs into inherits it, and so does
+# every hook process *it* spawns for each event -- that's the entire mechanism for the relay path
+# to know which agent it's relaying for, with no flag involved.
+export TKZMUX_AGENT=claude
 
 # macOS ships bash 3.2 as /bin/bash, where `"${args[@]}"` on an *empty* array is itself an
 # unbound-variable error under `set -u` (fixed in bash 4.4+, but this must work on 3.2 too).

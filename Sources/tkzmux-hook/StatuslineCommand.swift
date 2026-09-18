@@ -588,10 +588,19 @@ private func writeStdout(_ text: String) {
 
 // MARK: - Entry point
 
+/// `$CLAUDE_CONFIG_DIR`, else `$HOME/.claude`. Which account a Claude Code process belongs to
+/// follows from this directory and nothing else — see `statuslineAccountKey(configDir:)`. Unlike
+/// `launch`, Claude Code invokes the `statusLine.command` directly (no shim in between), so there
+/// is no `--config-dir` flag to receive it from; this path still has to resolve it itself.
+private func statuslineConfigDirectory() -> String {
+    if let configDir = envString("CLAUDE_CONFIG_DIR"), !configDir.isEmpty { return configDir }
+    return (envString("HOME") ?? "") + "/.claude"
+}
+
 /// Never returns: every path either execs into the previous command's exit status or exits 0.
 func runStatusline() -> Never {
     let (stdinBytes, hitCap) = readStdin()
-    let configDir = claudeConfigDirectory()
+    let configDir = statuslineConfigDirectory()
     let key = statuslineAccountKey(configDir: configDir)
 
     var root: JSONValue?

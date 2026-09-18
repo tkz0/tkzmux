@@ -93,13 +93,21 @@ public struct LaunchAnnouncement: Hashable, Sendable {
     public var cwd: String
     public var configDir: String
     public var argv: [String]
+    /// Which agent the shim launched. Defaults to `.claude` for the same reason
+    /// `HookPayload.agent` does: an already-installed shim keeps sending frames with no `agent`
+    /// field until `ShimInstaller.ensureInstalled` refreshes `bin/`, and those are always Claude's.
+    public var agent: AgentKind
 
-    public init(sessionID: SessionID?, rawSid: String, pid: pid_t, cwd: String, configDir: String, argv: [String]) {
+    public init(
+        sessionID: SessionID?, rawSid: String, pid: pid_t, cwd: String, configDir: String,
+        argv: [String], agent: AgentKind = .claude
+    ) {
         self.sessionID = sessionID
         self.rawSid = rawSid
         self.pid = pid
         self.cwd = cwd
         self.configDir = configDir
         self.argv = argv
+        self.agent = agent
     }
 }

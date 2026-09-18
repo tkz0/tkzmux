@@ -106,6 +106,27 @@ private func runHook(
     return (process.terminationStatus, stdoutData, stderrData, wallTime)
 }
 
+/// The best of up to three runs, for the same reason `stopFixtureArrivesWithCorrectFields` samples
+/// three times: `wallTime` contains a fork, an exec and a cold dyld load, and the suite runs in
+/// parallel with others that spawn processes by the dozen. One sample regularly measures the
+/// machine rather than the binary. A real regression makes every sample slow; a busy scheduler does
+/// not. `stopFixture…` already argues why this beats loosening the budget — doing that throws the
+/// contract away to silence the noise.
+///
+/// Stops early once a sample is inside `budget`, so the common case still costs one spawn.
+private func bestWallTime(
+    budget: TimeInterval, samples: Int = 3, _ run: () throws -> (exitCode: Int32, stdout: Data, stderr: Data, wallTime: TimeInterval)
+) throws -> TimeInterval {
+    var best = TimeInterval.infinity
+    for _ in 0..<samples {
+        let sample = try run()
+        #expect(sample.exitCode == 0)
+        best = min(best, sample.wallTime)
+        if best <= budget { break }
+    }
+    return best
+}
+
 @Suite struct HookBinaryTests {
     @Test func socketUnsetExitsZeroWithEmptyStdout() throws {
         let binary = try hookBinaryURL()
@@ -117,7 +138,20 @@ private func runHook(
         )
         #expect(result.exitCode == 0)
         #expect(result.stdout.isEmpty)
-        #expect(result.wallTime < 1.0)
+
+        // This test runs first in the suite, so its single sample used to pay the whole cold-start
+        // cost of the binary — which is what made a one-second budget flake on a loaded machine.
+        // What the budget is really protecting is "no socket means return immediately", as opposed
+        // to blocking on a connect that will never succeed; a hang is seconds, not milliseconds.
+        let best = try bestWallTime(budget: 1.0) {
+            try runHook(
+                ["Stop"],
+                stdin: Array(#"{"session_id":"x"}"#.utf8),
+                environment: cleanEnvironment(),
+                binary: binary
+            )
+        }
+        #expect(best < 1.0, "expected an immediate exit with no socket, best of 3 was \(best)s")
     }
 
     @Test func socketPointingNowhereExitsZeroFast() throws {
@@ -130,7 +164,19 @@ private func runHook(
         )
         #expect(result.exitCode == 0)
         #expect(result.stdout.isEmpty)
-        #expect(result.wallTime < 0.25)
+
+        // A socket path that cannot be connected to must fail immediately rather than sit in a
+        // connect retry. Sampled for the same reason as above: this budget is tighter than the
+        // spawn cost it is measured through.
+        let best = try bestWallTime(budget: 0.25) {
+            try runHook(
+                ["Stop"],
+                stdin: Array(#"{"session_id":"x"}"#.utf8),
+                environment: cleanEnvironment(["TKZMUX_SOCKET": "/tmp/tkzhs-does-not-exist/hook.sock"]),
+                binary: binary
+            )
+        }
+        #expect(best < 0.25, "expected an immediate exit on a dead socket, best of 3 was \(best)s")
     }
 
     @Test func stopFixtureArrivesWithCorrectFields() async throws {
@@ -358,11 +404,10 @@ private func runHook(
         let cwd = "/Users/someone/dev/tkzmux worktrees/agent one"
         let configDir = "/Users/someone/.claude-work"
         let result = try runHook(
-            ["launch", "--pid", "4242", "--cwd", cwd, "--", "claude", "--resume", "abc\"def", "arg with space"],
+            ["launch", "--pid", "4242", "--cwd", cwd, "--config-dir", configDir, "--", "claude", "--resume", "abc\"def", "arg with space"],
             environment: cleanEnvironment([
                 "TKZMUX_SOCKET": socketPath.path,
                 "TKZMUX_SESSION_ID": sessionID.rawValue,
-                "CLAUDE_CONFIG_DIR": configDir,
             ]),
             binary: binary
         )
@@ -381,10 +426,10 @@ private func runHook(
         #expect(announcement.argv == ["claude", "--resume", "abc\"def", "arg with space"])
     }
 
-    /// Contract #2: `config_dir` falls back to `$HOME/.claude` when `CLAUDE_CONFIG_DIR` is unset —
-    /// this is the string the account key is derived from (`~/.claude` → `claude`,
-    /// `~/.claude-work` → `claude-work`), so getting the fallback right matters.
-    @Test func launchConfigDirFallsBackToHomeDotClaude() async throws {
+    /// `tkzmux-hook` no longer knows `~/.claude` is a thing — that knowledge moved into the shim,
+    /// which now must always pass `--config-dir`. Omitting it is exactly as malformed as omitting
+    /// `--pid`/`--cwd`: send nothing.
+    @Test func launchWithoutConfigDirSendsNothing() async throws {
         let binary = try hookBinaryURL()
         let dir = try makeSocketDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -395,13 +440,33 @@ private func runHook(
         try server.start()
         defer { server.stop() }
 
-        let fakeHome = dir.appendingPathComponent("home").path
-        var env = cleanEnvironment(["TKZMUX_SOCKET": socketPath.path, "HOME": fakeHome])
-        env.removeValue(forKey: "CLAUDE_CONFIG_DIR")
-
         let result = try runHook(
             ["launch", "--pid", "1", "--cwd", "/tmp", "--", "claude"],
-            environment: env,
+            environment: cleanEnvironment(["TKZMUX_SOCKET": socketPath.path]),
+            binary: binary
+        )
+        #expect(result.exitCode == 0)
+        #expect(result.stdout.isEmpty)
+
+        let frames = await collector.waitFor(count: 1, timeout: 0.3)
+        #expect(frames.isEmpty, "a launch invocation with no --config-dir must send no frame at all")
+    }
+
+    /// The launch frame round-trips `--agent` end to end through the wire and `HookServer`'s parser.
+    @Test func launchFrameRoundTripsAgent() async throws {
+        let binary = try hookBinaryURL()
+        let dir = try makeSocketDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("hook.sock")
+
+        let collector = FrameCollector()
+        let server = HookServer(socketPath: socketPath) { collector.append($0) }
+        try server.start()
+        defer { server.stop() }
+
+        let result = try runHook(
+            ["launch", "--pid", "7", "--cwd", "/tmp", "--config-dir", "/tmp/.codex", "--agent", "codex", "--", "codex"],
+            environment: cleanEnvironment(["TKZMUX_SOCKET": socketPath.path]),
             binary: binary
         )
         #expect(result.exitCode == 0)
@@ -412,7 +477,164 @@ private func runHook(
             Issue.record("expected a .launch frame")
             return
         }
-        #expect(announcement.configDir == fakeHome + "/.claude")
+        #expect(announcement.agent == AgentKind(rawValue: "codex"))
+        #expect(announcement.configDir == "/tmp/.codex")
+    }
+
+    /// A launch invocation with no `--agent` at all (an old, already-installed shim) still produces
+    /// a frame the server accepts, defaulting to Claude. Backward compatibility is the point.
+    @Test func launchFrameWithoutAgentDefaultsToClaude() async throws {
+        let binary = try hookBinaryURL()
+        let dir = try makeSocketDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("hook.sock")
+
+        let collector = FrameCollector()
+        let server = HookServer(socketPath: socketPath) { collector.append($0) }
+        try server.start()
+        defer { server.stop() }
+
+        let result = try runHook(
+            ["launch", "--pid", "8", "--cwd", "/tmp", "--config-dir", "/tmp/.claude", "--", "claude"],
+            environment: cleanEnvironment(["TKZMUX_SOCKET": socketPath.path]),
+            binary: binary
+        )
+        #expect(result.exitCode == 0)
+
+        let frames = await collector.waitFor(count: 1)
+        #expect(frames.count == 1)
+        guard case .launch(let announcement) = frames[0] else {
+            Issue.record("expected a .launch frame")
+            return
+        }
+        #expect(announcement.agent == .claude)
+    }
+
+    /// A relay (hook-event) frame carries whatever `TKZMUX_AGENT` the calling agent's environment
+    /// set — the mechanism the shim wires up by exporting it before `exec`.
+    @Test func relayFrameCarriesTkzmuxAgent() async throws {
+        let binary = try hookBinaryURL()
+        let dir = try makeSocketDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("hook.sock")
+
+        let collector = FrameCollector()
+        let server = HookServer(socketPath: socketPath) { collector.append($0) }
+        try server.start()
+        defer { server.stop() }
+
+        let result = try runHook(
+            ["Stop"],
+            stdin: Array(#"{"session_id":"x"}"#.utf8),
+            environment: cleanEnvironment(["TKZMUX_SOCKET": socketPath.path, "TKZMUX_AGENT": "codex"]),
+            binary: binary
+        )
+        #expect(result.exitCode == 0)
+
+        let frames = await collector.waitFor(count: 1)
+        #expect(frames.count == 1)
+        guard case .hook(let payload, _, _, _) = frames[0] else {
+            Issue.record("expected a .hook frame")
+            return
+        }
+        #expect(payload.agent == AgentKind(rawValue: "codex"))
+    }
+
+    /// Without `TKZMUX_AGENT` set at all (an old shim, or an agent this binary hasn't been taught
+    /// about), the field is omitted entirely rather than sent empty — and the server reads that
+    /// omission as Claude.
+    @Test func relayFrameWithoutTkzmuxAgentOmitsField() async throws {
+        let binary = try hookBinaryURL()
+        let dir = try makeSocketDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("hook.sock")
+
+        let collector = FrameCollector()
+        let server = HookServer(socketPath: socketPath) { collector.append($0) }
+        try server.start()
+        defer { server.stop() }
+
+        var env = cleanEnvironment(["TKZMUX_SOCKET": socketPath.path])
+        env.removeValue(forKey: "TKZMUX_AGENT")
+        let result = try runHook(
+            ["Stop"],
+            stdin: Array(#"{"session_id":"x"}"#.utf8),
+            environment: env,
+            binary: binary
+        )
+        #expect(result.exitCode == 0)
+
+        let frames = await collector.waitFor(count: 1)
+        #expect(frames.count == 1)
+        guard case .hook(let payload, _, _, _) = frames[0] else {
+            Issue.record("expected a .hook frame")
+            return
+        }
+        #expect(payload.agent == .claude)
+    }
+
+    /// `notify-argv` produces a frame whose event is the payload's own `"type"`, using the real
+    /// Codex fixture — hyphenated keys and all, which is Codex's own spelling and none of this
+    /// binary's business to normalise.
+    @Test func notifyArgvEventNameComesFromPayloadType() async throws {
+        let binary = try hookBinaryURL()
+        let dir = try makeSocketDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("hook.sock")
+
+        let collector = FrameCollector()
+        let server = HookServer(socketPath: socketPath) { collector.append($0) }
+        try server.start()
+        defer { server.stop() }
+
+        let fixtureURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/codex/notify-agent-turn-complete.json")
+        let payload = try String(contentsOf: fixtureURL, encoding: .utf8)
+
+        let result = try runHook(
+            ["notify-argv", payload],
+            environment: cleanEnvironment(["TKZMUX_SOCKET": socketPath.path, "TKZMUX_AGENT": "codex"]),
+            binary: binary
+        )
+        #expect(result.exitCode == 0)
+        #expect(result.stdout.isEmpty)
+
+        let frames = await collector.waitFor(count: 1)
+        #expect(frames.count == 1)
+        guard case .hook(let hookPayload, _, _, _) = frames[0] else {
+            Issue.record("expected a .hook frame")
+            return
+        }
+        #expect(hookPayload.eventName == "agent-turn-complete")
+        #expect(hookPayload.agent == AgentKind(rawValue: "codex"))
+    }
+
+    /// Malformed argv (missing entirely, not JSON, no `type`, or not an object) must never crash or
+    /// hang — Codex is waiting synchronously on this process — and must send nothing.
+    @Test func notifyArgvMalformedSendsNothingAndExitsZero() async throws {
+        let binary = try hookBinaryURL()
+        let dir = try makeSocketDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("hook.sock")
+
+        let collector = FrameCollector()
+        let server = HookServer(socketPath: socketPath) { collector.append($0) }
+        try server.start()
+        defer { server.stop() }
+
+        for arguments in [["notify-argv"], ["notify-argv", "not json"], ["notify-argv", "{}"], ["notify-argv", "[1,2,3]"]] {
+            let result = try runHook(
+                arguments,
+                environment: cleanEnvironment(["TKZMUX_SOCKET": socketPath.path]),
+                binary: binary
+            )
+            #expect(result.exitCode == 0)
+            #expect(result.stdout.isEmpty)
+        }
+
+        let frames = await collector.waitFor(count: 1, timeout: 0.3)
+        #expect(frames.isEmpty, "no malformed notify-argv invocation should have sent a frame")
     }
 
     @Test func settingsMergeWithUserFixturePreservesUnrelatedKeys() throws {

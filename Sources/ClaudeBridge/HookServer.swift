@@ -346,13 +346,18 @@ public final class HookServer: Sendable {
               let argv = obj["argv"] as? [String]
         else { return nil }
         let sid = (obj["sid"] as? String) ?? ""
+        // Same fallback as `parseHookFrame`'s `agent`: an absent field is an older shim, and every
+        // one of those is Claude's.
+        let agentRaw = obj["agent"] as? String
+        let agent = agentRaw.map(AgentKind.init(rawValue:)) ?? .claude
         let announcement = LaunchAnnouncement(
             sessionID: sid.isEmpty ? nil : SessionID(sid),
             rawSid: sid,
             pid: pid_t(pidRaw),
             cwd: cwd,
             configDir: configDir,
-            argv: argv
+            argv: argv,
+            agent: agent
         )
         return .launch(announcement)
     }
