@@ -1,0 +1,55 @@
+Sources/ClaudeBridge/HookServer.swift
+  s_52496cea858318::t_7ed2698e77bcab 303,319
+Sources/ClaudeBridge/ProcessOwnership.swift
+  s_52496cea858318::t_55eef269780e33 7
+Sources/TkzApp/ClaudeIntegration.swift
+  s_52496cea858318::t_8d5f2f69fa470b 344,498,505,507,577,582-583,646,660,679,682
+Sources/TkzApp/MainWindowController.swift
+  s_52496cea858318::t_0504ea9863dc36 1290,2690,2952,3021
+Sources/TkzApp/SessionLauncher.swift
+  s_52496cea858318::t_54c93532eb4d73 14,356-358,361,364,368,373-374,382,392,402,409
+Sources/TkzCore/AppState.swift
+  s_52496cea858318::t_e92dfe69b5c2b8 31
+Sources/TkzCore/FixtureState.swift
+  s_52496cea858318::t_b907eaa9b67a82 229,246,279,286
+Sources/TkzCore/Models.swift
+  s_52496cea858318::t_6af19add6d9c87 171-174,206,224,409-412,1326-1327,1343,1354
+Sources/TkzCore/Reducers.swift
+  s_52496cea858318::t_4e8b09845ed91b 58,71,528,533,535,543-544,606-607,661
+Tests/ClaudeBridgeTests/HookBinaryTests.swift
+  s_52496cea858318::t_fe496b5971f83b 191
+Tests/ClaudeBridgeTests/HookServerTests.swift
+  s_52496cea858318::t_c75df2d361bf55 102
+Tests/ClaudeBridgeTests/StatuslineReaderTests.swift
+  s_52496cea858318::t_76b28f4365b8ab 354,359
+Tests/PersistenceTests/StateFileTests.swift
+  s_52496cea858318::t_77d53b23ca5689 39-40,99-123
+Tests/TkzAppTests/ClaudeIntegrationTests.swift
+  s_52496cea858318::t_d55680195ed04e 85,96,145,148,153,156,270,310,327,337,346,376,494,498,547
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_52496cea858318::t_39fa3c3946ce4e 256
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_52496cea858318::t_4e55e1fcb8640e 29
+Tests/TkzAppTests/ScrollRevealTests.swift
+  s_52496cea858318::t_b819b4a4eb0e0c 142-143
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_52496cea858318::t_063df0214718f1 64,71,121-122,246,251,259,269,274,314,321,327,375,378,390,397,400,412-414,419
+Tests/TkzCoreTests/ReducersTests.swift
+  s_52496cea858318::t_445ae0fb980094 53,615,618,756,908
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d51f261d312c8e4cdd677b122b62ff6075937849",
+  "prompts": {},
+  "sessions": {
+    "s_52496cea858318": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de04ce54-2a4f-4aea-b494-7b93f4cc1d37",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
