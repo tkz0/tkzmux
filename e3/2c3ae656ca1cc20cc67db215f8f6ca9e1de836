@@ -1,0 +1,131 @@
+Sources/TkzApp/AttentionNotifier.swift
+  s_12431d73203282::t_462e66a81a895c 76-81,188-189,204-205,210,213,216-218,223-224,227
+Sources/TkzApp/Rebase/RebaseSheetModel.swift
+  s_12431d73203282::t_ed305048031b00 32-34,67
+Tests/ClaudeBridgeTests/ClaudeAdapterTests.swift
+  s_12431d73203282::t_cd247403b17e6c 1-157
+Tests/ClaudeBridgeTests/Fixtures/codex/hook-interrupt.json
+  s_12431d73203282::t_c5293f1229d019 1-7
+Tests/ClaudeBridgeTests/Fixtures/codex/hook-stop.json
+  s_12431d73203282::t_b2c4fa94f2a1dd 1-9
+Tests/ClaudeBridgeTests/Fixtures/codex/notify-agent-turn-complete.json
+  s_12431d73203282::t_2fc3160b6e373a 1-8
+Tests/TkzTerminalCoreTests/TerminalEnvironmentTests.swift
+  s_12431d73203282::t_c5d9f1501b1599 125,262,268-269
+Sources/ClaudeBridge/AgentAdapter.swift
+  s_7583955c8e28c2::t_bcdbb6001c6b4b 1-165
+Sources/ClaudeBridge/Claude/ClaudeAdapter.swift
+  s_a2bd5916b92a10::t_23f3f610995b43 1-179
+Sources/ClaudeBridge/ClaudeSessionWatcher.swift
+  s_44debcbd07e96d::t_927f0fff3d7eb4 57
+Sources/TkzApp/Activity/ActivityFeedModel.swift
+  s_44debcbd07e96d::t_8703964301f138 17
+Sources/TkzApp/Activity/ActivityRowViews.swift
+  s_44debcbd07e96d::t_0b912193e0ea65 124,207-211,214-218
+Sources/TkzApp/AgentIntegration.swift
+  s_913ae43b3ff2a5::t_b5ebf1e00a4bb4 1-2,4-8,23-26,35,41-43,46-48,55-57,72,74,76,78-82,86-88,95-104,107,123,150,159,166-170,175-179,181,184-186,188,201-208,210,227-228,231-239,245,249,257,259,262,270,278,305,322,330,346-355,359,361,366,368,373,375,380,382,406,462-463,491-498,503,543-544,547-549,553-554,588-601,605-606,636,639-641,643,650,663,665,679,681,683-685,687,689,693,695-700,702,716-718,720-724,726,731,744-746,749-751,753,759,764-766,782,786-789,805
+Sources/TkzApp/AppDelegate.swift
+  s_44debcbd07e96d::t_56abae45b849ed 33,104,107,109,111,113,133,145,162
+Sources/TkzApp/MainWindowController.swift
+  s_913ae43b3ff2a5::t_87a1c6e57cdd8a 555,558,830,848,1096,1098,1219,1768,1770-1776,1778-1780,1784-1785,1787,1801,1847,1853-1855,1910,1917,1926,1953,1958,1969,1972,2020,2025,2034,2050,2058,2062,2064,2583-2586,2593-2594,2597,2691-2692,2702,2704,2757,2766,2780,2789,2792,2796,2798,2896,2900-2901,2939,2963-2966,2969,3278
+Sources/TkzApp/Menus/NewSessionMenu.swift
+  s_7583955c8e28c2::t_8ca5fae6c09a64 18,52-54,61-62,69,91-109,144-155,233-245,258-305,316-317,325-337,368-383,433-439,441,444,461-463,465,467-468,489-491,495-497
+Sources/TkzApp/Panes/PaneStartupOverlayView.swift
+  s_44debcbd07e96d::t_b05ea823af925e 1,34-43,75
+Sources/TkzApp/Prompt/PromptCardView.swift
+  s_44debcbd07e96d::t_530ba4c9bb8095 64-70,144-145,148-151,331
+Sources/TkzApp/SessionLauncher.swift
+  s_44debcbd07e96d::t_659457b5684c24 8,36,60-62,87,93,378-379,381-383,507-510,512-517,521-524,574-579,581-584,586
+Sources/TkzApp/Settings/SettingsModel.swift
+  s_44debcbd07e96d::t_144c59d0274a76 75,79-82,87-88,93,124,137-138,168,173,177,210
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_44debcbd07e96d::t_4373134b9156b3 28
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_44debcbd07e96d::t_8b4a03dd9117af 219
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_44debcbd07e96d::t_566392627c30e5 28,30,32,35,55,67
+Sources/TkzApp/Toolbar/MainToolbarController.swift
+  s_44debcbd07e96d::t_6fe8af56921bb3 259
+Sources/TkzTerminalCore/TerminalEnvironment.swift
+  s_44debcbd07e96d::t_94edd59d95ccf7 32-37,74-77,97,143-146,162,180
+Tests/ClaudeBridgeTests/Fixtures/codex/README.md
+  s_7583955c8e28c2::t_889f42906741bd 1-19
+Tests/ClaudeBridgeTests/Fixtures/codex/hook-permission-request.json
+  s_7583955c8e28c2::t_062f914e654512 1-15
+Tests/ClaudeBridgeTests/Fixtures/codex/rollout-short.jsonl
+  s_7583955c8e28c2::t_10a180c7001918 1-8
+Tests/ClaudeBridgeTests/Fixtures/codex/rollout-token-count.jsonl
+  s_7583955c8e28c2::t_15ffb48cc114e1 1-10
+Tests/ClaudeBridgeTests/Fixtures/codex/rollout-turn.jsonl
+  s_7583955c8e28c2::t_7acee36d63757c 1-8
+Tests/TkzAppTests/ActivityIntegrationTests.swift
+  s_913ae43b3ff2a5::t_bf21bd2bd0a749 1,14
+Tests/TkzAppTests/AgentIntegrationTests.swift
+  s_913ae43b3ff2a5::t_2cd974a10e221c 1-3,6-9,23,27,66-67,78-80,92-103,145,158,168,170,179,211,214,219,222,238,250,273,277,280,301,304,325,340,345-347,359-425,430,432,434,461,479,488,498,509,536,538,543-544,558,560,597,631,725
+Tests/TkzAppTests/AttentionNotifierTests.swift
+  s_44debcbd07e96d::t_f4b6915a795a73 55-57,146-161
+Tests/TkzAppTests/PerSessionCacheEvictionTests.swift
+  s_913ae43b3ff2a5::t_607fbb2083cc20 3,25,27,30
+Tests/TkzAppTests/PromptCardTests.swift
+  s_44debcbd07e96d::t_3309f7128293e5 46-47,49-50,52-53,55-63
+Tests/TkzAppTests/RebaseSheetTests.swift
+  s_44debcbd07e96d::t_b39362564cb13a 99,140-148
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_913ae43b3ff2a5::t_2203ee3aeb7ab0 8,52-54,60,64-140
+Tests/TkzAppTests/SettingsWindowTests.swift
+  s_44debcbd07e96d::t_607d4d6366a11a 117-127
+Tests/TkzAppTests/StartupOverlayTests.swift
+  s_44debcbd07e96d::t_f9b5eb24f952d9 84,106-115
+Tests/TkzAppTests/StatuslineConsentTests.swift
+  s_44debcbd07e96d::t_4b6f8c5b14b576 16,60,63,205
+Tests/TkzAppTests/NewSessionMenuTests.swift
+  s_913ae43b3ff2a5::t_6e5ca58b45932e 2,9-48,62-67,69-75,80-97,172,223,239,336-446
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e32c3ae656ca1cc20cc67db215f8f6ca9e1de836",
+  "prompts": {},
+  "sessions": {
+    "s_12431d73203282": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d87e540c-b1e2-422a-b2d8-bc8b72bc3bd2",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_44debcbd07e96d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a477e382de1e97c03",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_7583955c8e28c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78c694c2-5423-4e54-be95-757945b8e04d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_913ae43b3ff2a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a520863b98cdc4e22",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_a2bd5916b92a10": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a5eb51162070699ad",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
