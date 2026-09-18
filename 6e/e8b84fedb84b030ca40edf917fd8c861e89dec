@@ -1,0 +1,35 @@
+Sources/ClaudeBridge/Claude/ClaudeAdapter.swift
+  s_1af6090b9ef96f::t_080dc2fe85b295 122-126
+Sources/TkzApp/AgentIntegration.swift
+  s_1af6090b9ef96f::t_21a74de528155a 537-564
+Sources/TkzApp/MainWindowController.swift
+  s_1af6090b9ef96f::t_6625a77c52e32a 3567-3579
+Tests/TkzAppTests/AgentIntegrationTests.swift
+  s_1af6090b9ef96f::t_ec2596c9a63e3f 390-392,428-456
+Tests/TkzAppTests/TerminalNotificationTests.swift
+  s_7583955c8e28c2::t_d7491d761afd6e 1-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6ee8b84fedb84b030ca40edf917fd8c861e89dec",
+  "prompts": {},
+  "sessions": {
+    "s_1af6090b9ef96f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-adac8ffdb961c6173",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_7583955c8e28c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78c694c2-5423-4e54-be95-757945b8e04d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
