@@ -119,9 +119,11 @@ public struct ClaudeAdapter: AgentAdapter, Sendable {
         ClaudeHookMapper.map(payload)
     }
 
-    /// Claude reports its status through hooks; its OSC 9 terminal notifications carry no status
-    /// we can classify, so there is nothing honest to map them to. PR 8 is where a mapping would go
-    /// if a future Claude Code version ever shipped a notification worth acting on.
+    /// Claude reports its status through hooks, which is a richer channel than a terminal
+    /// notification could ever be, and today's Claude Code sends nothing over OSC 9 that this
+    /// method could tell apart from another. `nil` here is a decision, not a placeholder: were a
+    /// future Claude Code version to start sending a classifiable notification, mapping it would
+    /// mean reading `title`/`body`, not guessing at what "richer than hooks" might one day contain.
     public func mapTerminalNotification(title: String, body: String) -> AgentEvent? { nil }
 
     public func makeObservationWatcher(

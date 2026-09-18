@@ -534,6 +534,34 @@ public final class AgentIntegration {
         }
     }
 
+    /// An OSC 9 desktop notification landed in the pane that is running the agent (TKZ-85). The
+    /// caller — `MainWindowController.handle(_:for:)` — has already checked `paneHostsAgent`;
+    /// this is where the row's *own* adapter gets to say whether the title/body classify as
+    /// anything at all. Classification never crosses into TkzCore itself: the adapter turns raw
+    /// text into an `AgentEvent`, exactly as `mapHook` does for a hook frame, so the store still
+    /// never sees a notification title.
+    ///
+    /// A `nil` from the adapter — or no adapter for this row's agent — does nothing, which is the
+    /// honest answer for an agent whose notifications carry nothing we can classify (Claude, until
+    /// there is a reason to think otherwise).
+    func handleTerminalNotification(sessionID: SessionID, terminal: TerminalID, title: String, body: String) {
+        guard let session = store.state.sessions[sessionID], let adapter = adapters[session.agent],
+            let event = adapter.mapTerminalNotification(title: title, body: body)
+        else { return }
+        // Same attended handling a hook frame gets (`handle(_ frame:)`, above): a turn ending on
+        // the row the user is already looking at is attended outright, and anything else at least
+        // marks the row's feed read — the outline view never re-fires selection for the row that
+        // is already selected, so nothing else would clear it.
+        let attended = isSessionAttended(sessionID)
+        store.update { state in
+            let now = Date()
+            state.applyEvent(event, to: sessionID, now: now)
+            if attended {
+                if event.kind == .turnEnded { state.markAttended(sessionID, now: now) } else { state.markActivityRead(sessionID) }
+            }
+        }
+    }
+
     /// Sums `id`'s transcript for token usage and estimated spend, off the main actor, and lands
     /// the result on `Session.live.usage` (design: token usage and spend per session). The reader
     /// keeps its own byte-offset cursor per session, so calling this on every relevant hook is

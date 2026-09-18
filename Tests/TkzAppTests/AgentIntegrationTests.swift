@@ -387,7 +387,9 @@ struct AgentIntegrationTests {
         func mapHook(_ payload: HookPayload) -> AgentEvent? {
             AgentEvent(kind: .turnEnded, sessionID: nil, conversationId: payload.sessionId)
         }
-        func mapTerminalNotification(title: String, body: String) -> AgentEvent? { nil }
+        func mapTerminalNotification(title: String, body: String) -> AgentEvent? {
+            AgentEvent(kind: .turnEnded)
+        }
         func makeObservationWatcher(
             configDirs: [String], onEvent: @escaping @Sendable (ObservationEvent) -> Void
         ) -> (any AgentObservationWatcher)? { nil }
@@ -420,6 +422,35 @@ struct AgentIntegrationTests {
         // `.stub` row, so the agent-scoped fallback in `sessionID(forHook:ppid:agent:)` refuses it.
         h.store.update { $0.sessions[h.session]?.live?.lastEvent = nil }
         h.integration.handle(Self.hook("Stop", agent: .claude, conversationId: "stub-conv", ppid: 0))
+        #expect(h.store.state.sessions[h.session]?.live?.lastEvent == nil)
+    }
+
+    // MARK: - Terminal notifications (TKZ-85)
+
+    /// `handleTerminalNotification` is the other half of the seam `framesRouteByPayloadAgent`
+    /// proves for hooks: the row's own adapter classifies, and a `nil` — Claude's own answer,
+    /// always — leaves the row untouched. `MainWindowController` is what decides *whether* to call
+    /// this at all (`paneHostsAgent`); once it does, routing by `session.agent` is this type's job,
+    /// exercised here without a window at all.
+    @Test("a terminal notification routes to the row's own adapter, and Claude's nil leaves the row alone")
+    func terminalNotificationRoutesByAgent() {
+        let h = Self.makeHarness(adapters: [.claude: ClaudeAdapter(), StubAdapter.kind: StubAdapter()])
+        let terminal = TerminalID(uuid: h.session.uuid)
+        h.store.update { $0.sessions[h.session]?.agent = StubAdapter.kind }
+
+        // The stub maps every notification to a finished turn, whatever the title says.
+        h.integration.handleTerminalNotification(
+            sessionID: h.session, terminal: terminal, title: "anything at all", body: "")
+        #expect(h.store.state.sessions[h.session]?.live?.lastEvent?.kind == .turnEnded)
+
+        // Claude's own adapter maps every terminal notification to `nil` (it reports through
+        // hooks), so the same call on a Claude row changes nothing.
+        h.store.update { state in
+            state.sessions[h.session]?.agent = .claude
+            state.sessions[h.session]?.live?.lastEvent = nil
+        }
+        h.integration.handleTerminalNotification(
+            sessionID: h.session, terminal: terminal, title: "anything at all", body: "")
         #expect(h.store.state.sessions[h.session]?.live?.lastEvent == nil)
     }
 

@@ -3564,6 +3564,19 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             {
                 store.update { $0.endAgentStartup(session.id) }
             }
+        case .bell:
+            // BEL is emitted by far too many things — a shell completion ding, `vim`, `htop` — to
+            // mean anything about an agent's state. Only the structured OSC 9 notification below
+            // (TKZ-85) is treated as evidence; a bare bell stays inert.
+            break
+        case .notification(let title, let body):
+            // OSC 9 desktop notification (TKZ-85): evidence only when it lands in the pane that is
+            // actually running the agent. A notification from a plain shell pane, or from a split
+            // the agent is not running in, is not evidence about the agent — it could be `npm`,
+            // `make`, anything else sharing the row.
+            if let session = store.state.session(owning: id), session.paneHostsAgent(id) {
+                agents?.handleTerminalNotification(sessionID: session.id, terminal: id, title: title, body: body)
+            }
         default:
             // `.title` deliberately does not land in the store: `Session.title` is the rename slot
             // and a shell-set title is not a rename.
