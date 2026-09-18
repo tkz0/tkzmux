@@ -1,0 +1,85 @@
+Sources/Persistence/Migrations.swift
+  s_7c074d85bdb658::t_731e65bc90dbfe 9-10,38-39,95-135
+Sources/Persistence/PersistedState.swift
+  s_7c074d85bdb658::t_f7f90f76d5778b 126
+Sources/TkzApp/ClaudeIntegration.swift
+  s_c276b52f570a92::t_3bc5b8e8f2408b 146-148,151,202-204,207-208,217,271-273,590-592,594-596,672-674,676-677,704-709
+Sources/TkzApp/FileViewer/FilePathResolver.swift
+  s_c276b52f570a92::t_077c8cf068e53b 53
+Sources/TkzApp/MainWindowController.swift
+  s_c276b52f570a92::t_a6ba1b802dddb8 1931-1934,1939
+Sources/TkzApp/Settings/SettingsModel.swift
+  s_c276b52f570a92::t_0400a9712a23f5 145-147,149-152
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_c276b52f570a92::t_e6b074282bbe5d 191-196,198,200-201,209,215-216,218-223,232,236
+Sources/TkzCore/AgentKind.swift
+  s_7583955c8e28c2::t_8822a8045ea3a9 1-75
+Sources/TkzCore/FixtureState.swift
+  s_c276b52f570a92::t_f05bb1411d729f 167-170,216-219,221,235-237
+Sources/TkzCore/Models.swift
+  s_7583955c8e28c2::t_fd884e479ec1b8 169-172,208,227,315,394,397-403,411,413-415,830,832-833,840-843,847-850,855,860-866
+Sources/TkzCore/Reducers.swift
+  s_7583955c8e28c2::t_54f621dc1ae6f4 34,39-44,54-57,537-544,549-550,552,558-563,688
+Tests/PersistenceTests/ActivityPersistenceTests.swift
+  s_7583955c8e28c2::t_4f65032144c35b 39-44,48
+Tests/PersistenceTests/MigrationsTests.swift
+  s_7583955c8e28c2::t_15c1f99e0e8b16 19,38-39,41,64-155
+Tests/PersistenceTests/StateFileTests.swift
+  s_7583955c8e28c2::t_51373b568ce3ac 87-91,104-107,116-117,119-120,259
+Tests/TkzAppTests/ClaudeIntegrationTests.swift
+  s_c276b52f570a92::t_bb0f45632b0171 177-180
+Tests/TkzAppTests/FileViewerTests.swift
+  s_ecb29a612795fc::t_89d30ac8fcb36d 55-73
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_7c074d85bdb658::t_0bc714f0214c53 157,164
+Tests/TkzAppTests/SettingsWindowTests.swift
+  s_7c074d85bdb658::t_67e349e386a0b2 97,106,110,229,233,238,241
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_ecb29a612795fc::t_efdbd56dda3798 1002-1003,1005,1007-1008,1024-1042
+Tests/TkzAppTests/StatuslineConsentTests.swift
+  s_7c074d85bdb658::t_bf6ca4aa2e085b 69
+Tests/TkzCoreTests/AgentKindTests.swift
+  s_ecb29a612795fc::t_de9625de320e87 1-41
+Tests/TkzCoreTests/ReducersTests.swift
+  s_ecb29a612795fc::t_02abfc4abfd84b 41,272-297,559-577
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2b720c7bc12389a5d138ab16e2d2e595a9219ded",
+  "prompts": {},
+  "sessions": {
+    "s_7583955c8e28c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78c694c2-5423-4e54-be95-757945b8e04d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_7c074d85bdb658": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a8575a4cb7a7a2542",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_c276b52f570a92": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad7246c7354453b60",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_ecb29a612795fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acf888c5f0b25c6fa",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
