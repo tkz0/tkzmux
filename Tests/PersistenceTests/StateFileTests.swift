@@ -5,8 +5,7 @@
 //
 // The 50×SIGKILL crash acceptance cannot live in a test bundle — it needs a process to kill — and
 // follows the `SnapshotsTests` precedent of running in the harness instead:
-// `tkzmux-vtdump state-churn` driven by `scripts/state-crash-test.sh`, recorded in
-// docs/manual-checks.md.
+// `tkzmux-vtdump state-churn` driven by `scripts/state-crash-test.sh`.
 
 import Foundation
 import Testing

@@ -16,6 +16,7 @@
 
 import AppKit
 import ClaudeBridge
+import Synchronization
 import TkzCore
 
 @MainActor
@@ -332,52 +333,67 @@ final class PromptCardPanel: NSPanel {
 /// One `DispatchSource` on the transcript file, debounced, firing on the main queue. The file is
 /// append-only — Claude never rename-replaces it — so there is no inode to chase; a delete or
 /// rename simply ends the watch, and the next `present` opens a fresh one.
-@MainActor
-final class TranscriptWatch {
-    private var source: DispatchSourceFileSystemObject?
-    private var debounce: DispatchSourceTimer?
-    private let onChange: @MainActor () -> Void
+final class TranscriptWatch: Sendable {
+    /// Detection and debouncing run here, not on the main queue.
+    ///
+    /// Noticing that a file grew, and waiting 150 ms to see whether it grew again, are not user
+    /// interface work and gain nothing from the main queue — they only compete with it. Only the
+    /// callback needs the main actor, and it hops there once, at the end. The concrete symptom of
+    /// the old arrangement: under `swift test`, dozens of `@MainActor` suites run in parallel and
+    /// keep the main thread busy, so a timer scheduled on the main queue could sit unserviced for
+    /// the length of the run and the watch appeared never to fire at all.
+    private static let queue = DispatchQueue(label: "se.tkz.tkzmux.transcript-watch", qos: .utility)
 
-    init?(path: String, onChange: @escaping @MainActor () -> Void) {
+    private struct Storage {
+        var source: DispatchSourceFileSystemObject?
+        var debounce: DispatchSourceTimer?
+    }
+
+    private let storage = Mutex(Storage())
+    private let onChange: @MainActor @Sendable () -> Void
+
+    init?(path: String, onChange: @escaping @MainActor @Sendable () -> Void) {
         self.onChange = onChange
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else { return nil }
         let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd, eventMask: [.write, .extend, .delete, .rename], queue: .main)
+            fileDescriptor: fd, eventMask: [.write, .extend, .delete, .rename], queue: Self.queue)
         source.setEventHandler { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                if source.data.contains(.delete) || source.data.contains(.rename) {
-                    self.cancel()
-                    return
-                }
-                self.scheduleFire()
+            guard let self else { return }
+            if source.data.contains(.delete) || source.data.contains(.rename) {
+                self.cancel()
+                return
             }
+            self.scheduleFire()
         }
         source.setCancelHandler { close(fd) }
-        self.source = source
+        storage.withLock { $0.source = source }
         source.resume()
     }
 
     private func scheduleFire() {
-        debounce?.cancel()
-        let timer = DispatchSource.makeTimerSource(queue: .main)
+        let timer = DispatchSource.makeTimerSource(queue: Self.queue)
         timer.schedule(deadline: .now() + .milliseconds(150))
         timer.setEventHandler { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.debounce = nil
-                self.onChange()
-            }
+            guard let self else { return }
+            self.storage.withLock { $0.debounce = nil }
+            let onChange = self.onChange
+            Task { @MainActor in onChange() }
         }
-        debounce = timer
+        // Replace any timer still pending: a burst of writes collapses into one fire.
+        storage.withLock { storage in
+            storage.debounce?.cancel()
+            storage.debounce = timer
+        }
         timer.resume()
     }
 
     func cancel() {
+        let (source, debounce) = storage.withLock { storage -> (DispatchSourceFileSystemObject?, DispatchSourceTimer?) in
+            defer { storage.source = nil; storage.debounce = nil }
+            return (storage.source, storage.debounce)
+        }
         debounce?.cancel()
-        debounce = nil
         source?.cancel()
-        source = nil
     }
 }

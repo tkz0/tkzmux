@@ -1,4 +1,4 @@
-// ClaudeSessionWatcher — M3.1. See docs/design.md → Claude integration → Discovery.
+// ClaudeSessionWatcher — M3.1.
 //
 // Claude Code writes `<configDir>/sessions/<pid>.json` and rewrites it *in place* (same inode) as
 // status flips between idle/busy, so a directory watcher alone would miss those flips: every

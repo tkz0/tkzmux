@@ -43,8 +43,8 @@ public enum TerminalEnvironment {
     /// Hooks are a separate path and keep working, which is why NEEDS YOU and the done tint looked
     /// fine and only the green pulse was missing — a confusing symptom for an environment leak.
     ///
-    /// `CLAUDE_CONFIG_DIR` deliberately does **not** match: design.md → *Accounts are generic* says
-    /// an inherited config dir is left alone so the environment can choose the account.
+    /// `CLAUDE_CONFIG_DIR` deliberately does **not** match: an inherited config dir is left alone
+    /// so the environment can choose the account.
     public static let strippedKeyPrefixes = ["CLAUDE_CODE_"]
 
     /// The terminfo database shipped with tkzmux (`terminfo/78/xterm-ghostty`, `terminfo/67/ghostty`),

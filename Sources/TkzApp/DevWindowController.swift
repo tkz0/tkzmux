@@ -3,7 +3,7 @@
 //
 // One window, one `TerminalMetalView`, N login zsh sessions, and a "New session" / "Spawn 30"
 // pair of buttons. It no longer owns the session table: a `TerminalViewHost` does, and this file
-// is a *consumer* of the protocol design.md specifies. That is the point — the seam is proved by
+// is a *consumer* of the protocol. That is the point — the seam is proved by
 // something real driving it before M2.2 replaces this window with the sidebar.
 //
 // Input is M1.7 (keyboard) + M1.8 (mouse), both fully live: a `TerminalInputController` is the

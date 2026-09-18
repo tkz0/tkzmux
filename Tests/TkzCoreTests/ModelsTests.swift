@@ -53,7 +53,7 @@ import Testing
 }
 
 @Suite struct PersistenceShapeTests {
-    /// `live` is process state; `state.json` must not carry it (design.md → *Session flows*).
+    /// `live` is process state; `state.json` must not carry it.
     @Test func sessionCodingDropsLiveState() throws {
         var session = Session(groupID: .generate(), cwd: "~/dev/x", accountKey: "claude")
         session.live = LiveSessionState(pid: 42, status: .working)
@@ -88,7 +88,7 @@ import Testing
 }
 
 @Suite struct UsageAndSidecarTests {
-    /// The real `~/.claude/dash-usage-<key>.json` shape (design.md → *Evidence → Quota*).
+    /// The real `~/.claude/dash-usage-<key>.json` shape.
     @Test func decodesADashUsageDocument() throws {
         let json = """
             {

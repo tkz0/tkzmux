@@ -1,4 +1,4 @@
-// TkzTerminalCore — pty, VT bridge (libghostty-vt), TerminalSession. See docs/design.md → Terminal engine.
+// TkzTerminalCore — pty, VT bridge (libghostty-vt), TerminalSession.
 // M0.1 stub; libghostty-vt wrappers in GhosttyVt+Swift.swift (M1.1); Pty/TerminalSession arrive in M1.2–M1.3.
 import TkzPtyShim
 

@@ -1,6 +1,6 @@
 // TerminalEvent.swift — everything a `TerminalSession` can tell the app about.
 //
-// This enum is the seam described in docs/design.md → *TerminalHost*. It is deliberately COMPLETE:
+// This enum is the seam. It is deliberately COMPLETE:
 // later tickets (M1.9 session semantics, M2 sidebar, M3 Claude integration) consume it and must not
 // need to edit this file. Every case is `Sendable` and carries only value types, because events are
 // produced on a session's IO queue and consumed on the main actor through an `AsyncStream`.

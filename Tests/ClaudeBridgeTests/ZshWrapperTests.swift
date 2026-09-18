@@ -1,9 +1,8 @@
 // ZshWrapperTests — runs a real login `/bin/zsh -l -i` against the installed ZDOTDIR wrappers and a
 // fake HOME with the user's own dotfiles, verifying every startup file ran, in order, and that
 // HISTFILE / PATH / ZDOTDIR end up where the contract in the M3.3 ticket says they should. See
-// docs/design.md -> Claude integration -> Shim install, and TerminalEnvironment.swift for the env
-// contract this wrapper chain assumes (`ZDOTDIR`, `TKZMUX_ZDOTDIR`, `TKZMUX_USER_ZDOTDIR`,
-// `TKZMUX_BIN`).
+// TerminalEnvironment.swift for the env contract this wrapper chain assumes (`ZDOTDIR`,
+// `TKZMUX_ZDOTDIR`, `TKZMUX_USER_ZDOTDIR`, `TKZMUX_BIN`).
 import Foundation
 import Testing
 

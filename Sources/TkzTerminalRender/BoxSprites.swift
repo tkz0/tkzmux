@@ -1,5 +1,4 @@
 // BoxSprites — procedural box-drawing and block-element glyphs (M1.4).
-// See docs/design.md → Terminal engine → Metal renderer.
 //
 // U+2500…U+257F (box drawing) and U+2580…U+259F (block elements) are the two ranges a terminal has
 // to draw itself. A font lays its own versions out on the em box, not on the terminal cell, so

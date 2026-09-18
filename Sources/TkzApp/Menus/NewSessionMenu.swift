@@ -1,8 +1,8 @@
 // NewSessionMenu.swift — the “＋ New session…” menu (M2.4).
 //
-// design.md → App architecture → Toolbar: an `NSMenuToolbarItem` scoped to the selected group with
+// An `NSMenuToolbarItem` scoped to the selected group with
 // *New worktree (claude -w)*, *In repo root (claude)*, *In another repo…* and an Account submenu;
-// → Session flows: new worktree runs `claude -w [name]` **from the repo root**, repo root runs
+// new worktree runs `claude -w [name]` **from the repo root**, repo root runs
 // `claude`.
 //
 // The rule this ticket exists for: **the user must never wonder what "New session" does.** Every
@@ -126,13 +126,22 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     }
 
     /// Sends a row's action exactly as a click would — the assembler never needs this; tests do.
+    ///
+    /// The action goes straight to the row's own target rather than through
+    /// `NSMenu.performActionForItem(at:)`. That call routes through the shared `NSApplication`,
+    /// which a test process only has if some *other* test happened to touch `NSApplication.shared`
+    /// first — so this suite passed or failed depending on which suites ran before it, and failed
+    /// outright when run alone. Every row here sets an explicit target, so dispatching directly is
+    /// both what a click does and independent of global application state.
+    ///
+    /// Returns `false` when there is no such row, or when it has no target to send to.
     @discardableResult
     public func performItem(_ id: NSUserInterfaceItemIdentifier) -> Bool {
         for host in [menu] + menu.items.compactMap(\.submenu) {
-            if let index = host.items.firstIndex(where: { $0.identifier == id }) {
-                host.performActionForItem(at: index)
-                return true
-            }
+            guard let item = host.items.first(where: { $0.identifier == id }) else { continue }
+            guard let action = item.action, let target = item.target as? NSObject else { return false }
+            target.perform(action, with: item)
+            return true
         }
         return false
     }
@@ -249,7 +258,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             hint: nil,
             detail: "choose a folder \u{2014} it becomes a new group",
             enabled: true,
-            action: #selector(chooseAnotherRepo)
+            action: #selector(chooseAnotherRepo(_:))
         )
         another.identifier = ItemID.anotherRepo
         menu.addItem(another)
@@ -351,7 +360,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
             submenu.addItem(missing)
         }
         submenu.addItem(.separator())
-        let none = NSMenuItem(title: "None", action: #selector(selectNoAccountItem), keyEquivalent: "")
+        let none = NSMenuItem(title: "None", action: #selector(selectNoAccountItem(_:)), keyEquivalent: "")
         none.target = self
         none.identifier = ItemID.accountNone
         none.state = current == nil ? .on : .off
@@ -498,7 +507,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         perform(launch)
     }
 
-    @objc private func chooseAnotherRepo() {
+    @objc private func chooseAnotherRepo(_ sender: NSMenuItem) {
         onChooseAnotherRepo?()
     }
 
@@ -507,8 +516,8 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
         onSelectAccount?(group.id, key)
     }
 
-    /// "None": clear the group's default, so `CLAUDE_CONFIG_DIR` is left unset again.
-    @objc private func selectNoAccountItem() {
+    /// "None": clear the group's default, so the agent's config-dir variable is left unset again.
+    @objc private func selectNoAccountItem(_ sender: NSMenuItem) {
         guard let group else { return }
         onSelectAccount?(group.id, nil)
     }

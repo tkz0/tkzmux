@@ -1,6 +1,6 @@
 // SessionLauncher — every way a shell gets behind a sidebar row (M5.2).
 //
-// design.md → *Session flows & persistence*. The window controller used to own `launch(_:)`
+// The window controller used to own `launch(_:)`
 // directly (M2.5); this type takes that over and adds the rest of the lifecycle:
 //
 //   * `start(_:)`   — a *new* row: `Session` in the store → `TerminalHost.open` in the launch
@@ -25,7 +25,7 @@
 // **The account follows the session, not the store's account table.** Accounts are discovered,
 // never persisted, and today nothing discovers a second one — so after a relaunch every row's
 // `accountKey` names an account the store has never heard of. The env is therefore derived from
-// the key (`~/.<key>`, the inverse of design.md's account-key rule) whenever the table has no
+// the key (`~/.<key>`, the inverse of the account-key rule) whenever the table has no
 // entry, and only the primary key means "leave `CLAUDE_CONFIG_DIR` unset". A resume on the wrong
 // account is the one failure the ticket singles out.
 //

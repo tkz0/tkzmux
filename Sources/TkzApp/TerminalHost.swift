@@ -1,12 +1,12 @@
 // TerminalHost — the seam between the terminal engine and the app (M1.10).
-// See docs/design.md → *TerminalHost — the seam between halves*, and docs/perf.md → *GUI half*.
+// See docs/perf.md → *GUI half*.
 //
 // This file holds two things. (`SessionID` used to live here as a stopgap; M2.1 moved it to
 // `TkzCore/Models.swift` as a UUID wrapper, which is stricter than the old rule — anything that
 // could be a `.ghsnap` basename — but loses nothing, because every id ever written came from
 // `generate()` as an uppercase UUID.)
 //
-//   1. `TerminalHost` — the protocol design.md specifies, verbatim apart from `@MainActor`
+//   1. `TerminalHost` — the protocol, verbatim apart from `@MainActor`
 //      (see the DESIGN.MD DELTA in the ticket: an implementation over `NSView` cannot be
 //      nonisolated under Swift 6 strict concurrency).
 //   2. `TerminalViewHost` — its implementation over `TerminalMetalView` + `Pty` +
@@ -88,7 +88,7 @@ extension TerminalMetalView: TerminalPaneSurface {}
 /// What the app half may ask of the terminal half. Nothing above this line knows about libghostty,
 /// ptys or Metal; nothing below it knows about the sidebar.
 ///
-/// `@MainActor` is not in design.md's listing but is required: the implementation owns an `NSView`.
+/// `@MainActor` is required: the implementation owns an `NSView`.
 @MainActor
 public protocol TerminalHost: AnyObject {
     /// Spawns a login shell for the terminal `id` and returns its pid.
@@ -627,8 +627,8 @@ public final class TerminalViewHost: TerminalHost {
     ///
     /// The snapshot is deleted **whether or not the host holds the session**: a row restored from
     /// `state.json` that was never selected has a `.ghsnap` and no `HostSession`, and Remove on it
-    /// must still take the file with it (M5.2). Part of the protocol since M5.2; design.md's
-    /// `close` keeps the row resumable, so this is the only way to make one go away.
+    /// must still take the file with it (M5.2). Part of the protocol since M5.2; `close`
+    /// keeps the row resumable, so this is the only way to make one go away.
     /// It does **not** put something else on screen in place of a discarded visible terminal.
     /// It used to, when there was one surface and one visible session; with a store-driven window
     /// that is wrong — `MainWindowController.applySelection` decides what is visible, and quietly
@@ -668,8 +668,7 @@ public final class TerminalViewHost: TerminalHost {
     }
 
     /// Rebuilds `id`'s content from `data` and spawns a **fresh** shell under it: the user sees the
-    /// old scrollback with a new prompt below it, which is what design.md → *Session flows &
-    /// persistence* asks for ("restore content and spawn a fresh shell").
+    /// old scrollback with a new prompt below it ("restore content and spawn a fresh shell").
     ///
     /// The size is not a parameter of the protocol, and it does not need to be: `restore(from:)`
     /// adopts the snapshot's own cols/rows, so the pty is spawned at exactly the size the terminal

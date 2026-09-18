@@ -4,7 +4,7 @@
 //   1. Swift's view of TkzShaderTypes.h matches, field for field, the `_Static_assert`s the C and
 //      Metal compilers check. Swift, C and Metal cannot silently disagree about a struct layout.
 //   2. `Resources/Shaders/Terminal.metal` compiles at *runtime* through
-//      `device.makeLibrary(source:)` — the fallback path design.md requires when a hand-built
+//      `device.makeLibrary(source:)` — the fallback path taken when a hand-built
 //      `default.metallib` is absent (`swift run`, `swift test`) — and every entry point exists.
 //   3. All three pipelines build with the real pixel format and blend state, and the background
 //      pipeline actually rasterises the grid correctly into an offscreen `.bgra8Unorm` texture.

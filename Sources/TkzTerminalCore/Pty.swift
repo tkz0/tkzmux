@@ -1,5 +1,5 @@
 // Pty — fork/exec a shell on a pty (via TkzPtyShim) and pump it from a dedicated IO queue.
-// See docs/design.md → Terminal engine → Pty. M1.2.
+// M1.2.
 import Darwin
 import Dispatch
 import Foundation

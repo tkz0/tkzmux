@@ -1,5 +1,4 @@
 // The reducers, exercised without a store — they are plain `mutating` methods on `AppState`.
-// Flows: docs/design.md → *Session flows & persistence*.
 
 import Foundation
 import Testing
@@ -387,7 +386,7 @@ import Testing
     }
 
     @Test func disablingShowSessionSpendDoesNotFabricateLiveStateForADormantSession() {
-        // A restored-but-never-shown row has `live == nil` (design.md → *Session flows*): flipping
+        // A restored-but-never-shown row has `live == nil`: flipping
         // the global switch off must not wake one into existence just to clear a figure it never
         // had. `updateLive` would otherwise do exactly that.
         var state = AppState()

@@ -1,5 +1,5 @@
-// TkzCore — the single value that describes the whole app. See docs/design.md → *App architecture
-// → Store*: `AppStore` owns one of these, services post mutations into it, views read it.
+// TkzCore — the single value that describes the whole app. `AppStore` owns one of these, services
+// post mutations into it, views read it.
 //
 // Groups and sessions are stored in dictionaries keyed by id, not arrays. Two reasons:
 //   * the diff in `AppStore` is then O(n) by key and cannot confuse "moved" with "changed";

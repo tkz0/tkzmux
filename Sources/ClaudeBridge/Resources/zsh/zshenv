@@ -3,7 +3,7 @@
 # zsh reads /etc/zshenv, then $ZDOTDIR/.zshenv, unconditionally, before .zprofile/.zshrc/.zlogin.
 # We point ZDOTDIR here so libghostty-vt's login zsh sources *our* files first, then borrow the
 # user's own ZDOTDIR just long enough to source their counterpart, then restore ours -- so the
-# next wrapper in the chain runs the same way. See docs/design.md -> Claude integration.
+# next wrapper in the chain runs the same way.
 #
 # Guarded: with no TKZMUX_ZDOTDIR/TKZMUX_USER_ZDOTDIR (a plain zsh outside a tkzmux session that
 # happens to have this ZDOTDIR set some other way) this file does nothing.

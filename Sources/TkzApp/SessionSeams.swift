@@ -1,16 +1,12 @@
-// SessionEventHandler — M1.9: the app-level meaning of a `TerminalEvent`.
+// SessionSeams — the two OS surfaces the app writes to, each behind a protocol so tests never
+// reach the real one: the notification centre and the pasteboard.
 //
-// `TerminalSession` produces events; this type decides what they *mean* to the application:
-// which ones become published state a window binds to, which one becomes a macOS user
-// notification, and which one becomes a visible (never audible) alert.
-//
-// ## Why it does not own the stream
-//
-// `TerminalSession.events` is an `AsyncStream`, which is **single-consumer**: a second
-// `for await` loop over the same stream steals events from the first one rather than
-// mirroring them. `DevWindowController` (and M2's real `TerminalHost`) already drains the
-// stream, so this type deliberately exposes a synchronous `handle(_:)` that the existing
-// loop calls. Wiring is one line at the call site; see `docs/design.md` → *TerminalHost*.
+// These began as part of `SessionEventHandler` (M1.9), a type that turned a whole `TerminalEvent`
+// stream into published state and notifications. The app never adopted it: `MainWindowController`
+// drains the stream itself and `AttentionNotifier` owns "this row needs you, post a banner",
+// reusing the seams below. That left the handler, `SessionUIState` and `SessionProgress` as 250
+// lines of tested code nothing called, and a standing invitation to wire the wrong thing, so they
+// are gone. Its one surviving user, the OSC 7 path decoder, is now `PwdDecoder`.
 //
 // ## Why the notification centre is behind a protocol
 //
@@ -25,52 +21,6 @@ import TkzCore
 import TkzTerminalCore
 import UserNotifications
 import os
-
-// MARK: - Published state
-
-/// Everything a window needs to render *about* a session, as opposed to its grid contents.
-///
-/// A plain value type on purpose: `CLAUDE.md` rules out `@Observable` for app state, so a
-/// consumer subscribes with `onChange` and diffs (or just re-reads) whatever it cares about.
-public struct SessionUIState: Equatable, Sendable {
-    /// The last OSC 0 / OSC 2 title, or `nil` when the program never set one (or cleared it).
-    public var title: String?
-
-    /// The last OSC 7 / OSC 9 / OSC 1337 working directory, **already decoded** to a plain
-    /// filesystem path. `TerminalEvent.pwd` carries the raw bytes the shell emitted, which for
-    /// OSC 7 is a `file://host/path` URI; decoding is documented as the consumer's job.
-    public var pwd: String?
-
-    /// The raw, undecoded pwd payload, kept so a caller can tell `file://` from a bare path.
-    public var rawPwd: String?
-
-    /// How many bells arrived. A counter rather than a flag so a consumer can flash once per
-    /// bell even when two arrive inside one frame.
-    public var bellCount: Int = 0
-
-    /// The most recent OSC 9;4 progress report, or `nil` before any (or after `.remove`).
-    public var progress: SessionProgress?
-
-    /// Set once the child process ends; `nil` while the session is alive.
-    public var exit: ExitStatus?
-
-    /// True until `.exited` arrives.
-    public var isAlive: Bool { exit == nil }
-
-    public init() {}
-}
-
-/// An OSC 9;4 progress report, kept as published state.
-public struct SessionProgress: Equatable, Sendable {
-    public var state: TerminalProgressState
-    /// 0…100, or `nil` when the program omitted the percentage.
-    public var value: Int?
-
-    public init(state: TerminalProgressState, value: Int?) {
-        self.state = state
-        self.value = value
-    }
-}
 
 // MARK: - Seams
 
@@ -318,151 +268,3 @@ public final class SystemNotificationPresenter:
     }
 }
 
-// MARK: - SessionEventHandler
-
-/// Turns one session's `TerminalEvent`s into app-level behaviour and published state.
-///
-/// Deliberately knows nothing about `DevWindowController`, `NSWindow` or the sidebar: the two
-/// things it needs from the UI — "is the user looking at this?" and "flash something" — are
-/// injected closures.
-@MainActor
-public final class SessionEventHandler {
-    /// The session this handler speaks for. Used as the notification identifier prefix so two
-    /// sessions cannot coalesce each other's notifications.
-    public let sessionID: String
-
-    /// Current published state. Read it after `onChange` fires, or poll it.
-    public private(set) var state = SessionUIState()
-
-    /// Called on the main actor after `state` changed, with the new value.
-    public var onChange: (@MainActor (SessionUIState) -> Void)?
-
-    /// A **visible** bell: the app flashes something rather than beeping.
-    ///
-    /// Default is `NSApp.requestUserAttention(.informationalRequest)` — it bounces the Dock icon
-    /// when the app is in the background and does nothing intrusive when it is not. A window can
-    /// replace it with a screen flash. Audible bells are deliberately not the default; a caller
-    /// that wants `NSSound.beep()` has to ask for it.
-    public var onBell: (@MainActor () -> Void)?
-
-    /// Whether the user can currently see this session. Notifications are suppressed while true.
-    ///
-    /// The default treats "app active **and** its key window on screen and unoccluded" as visible,
-    /// which is the condition the ticket asks for ("only when the window is not key/visible").
-    public var isSessionVisible: @MainActor () -> Bool = SessionEventHandler.defaultVisibility
-
-    private let notifications: any NotificationPresenting
-    private let pasteboard: any PasteboardWriting
-    private var notificationCounter = 0
-
-    public init(
-        sessionID: String,
-        notifications: any NotificationPresenting = SystemNotificationPresenter(),
-        pasteboard: any PasteboardWriting = SystemPasteboardWriter()
-    ) {
-        self.sessionID = sessionID
-        self.notifications = notifications
-        self.pasteboard = pasteboard
-    }
-
-    /// The single entry point. Call it from whatever loop already drains
-    /// `TerminalSession.events`; it must not start a second consumer of that stream.
-    public func handle(_ event: TerminalEvent) {
-        var next = state
-        switch event {
-        case .title(let title):
-            next.title = title.isEmpty ? nil : title
-
-        case .pwd(let raw):
-            next.rawPwd = raw.isEmpty ? nil : raw
-            next.pwd = SessionEventHandler.decodePwd(raw)
-
-        case .bell:
-            next.bellCount += 1
-            (onBell ?? SessionEventHandler.defaultBell)()
-
-        case .notification(let title, let body):
-            postNotification(title: title, body: body)
-
-        case .progress(let progressState, let value):
-            next.progress = progressState == .remove
-                ? nil
-                : SessionProgress(state: progressState, value: value)
-
-        case .exited(let status):
-            next.exit = status
-
-        case .clipboardWrite(let text):
-            pasteboard.writeString(text)
-
-        case .foreground:
-            break
-        }
-        commit(next)
-    }
-
-    /// Drains a stream into this handler. Only for a caller that does **not** already consume
-    /// `session.events` itself — `DevWindowController` does, so it must call `handle(_:)`.
-    public func consume(_ events: AsyncStream<TerminalEvent>) async {
-        for await event in events { handle(event) }
-    }
-
-    private func commit(_ next: SessionUIState) {
-        guard next != state else { return }
-        state = next
-        onChange?(state)
-    }
-
-    private func postNotification(title: String, body: String) {
-        guard !isSessionVisible() else { return }
-        notificationCounter += 1
-        let shown = title.isEmpty ? (state.title ?? "tkzmux") : title
-        notifications.present(
-            title: shown, body: body, identifier: "\(sessionID).\(notificationCounter)")
-    }
-
-    // MARK: Defaults
-
-    /// "The user is looking at this app" — active *and* a key window that is on screen and not
-    /// covered. `NSApp.isActive` alone is not enough: a fully occluded key window still counts as
-    /// active, and the whole point of an OSC 9 notification is to reach a hidden window.
-    private static func defaultVisibility() -> Bool {
-        guard NSApp?.isActive == true, let window = NSApp.keyWindow else { return false }
-        return window.isVisible && window.occlusionState.contains(.visible)
-    }
-
-    private static func defaultBell() {
-        NSApp?.requestUserAttention(.informationalRequest)
-    }
-
-    // MARK: pwd decoding
-
-    /// Decodes what `TerminalEvent.pwd` carries into a plain path.
-    ///
-    /// OSC 7 sends `file://<host>/<percent-encoded path>`; OSC 9 and OSC 1337 CurrentDir send a
-    /// bare path. Returns `nil` for an empty payload (the shell clearing the pwd) and for a
-    /// `file://` URI naming some *other* host, which is not a path on this machine.
-    /// Names that mean "this machine" in an OSC 7 URI. Resolved once: `hostName` can block on
-    /// reverse DNS, and OSC 7 fires on every `cd` once shell integration lands (M3).
-    ///
-    /// Deliberately strict — a host this set does not know decodes to `nil`, and only
-    /// `SessionUIState.rawPwd` survives. `$HOST` drifting from `ProcessInfo.hostName` (a network
-    /// rename) is the way that happens in practice.
-    private nonisolated static let localHostNames: Set<String> = {
-        var names: Set<String> = ["localhost", "127.0.0.1", "::1"]
-        names.insert(ProcessInfo.processInfo.hostName.lowercased())
-        if let local = Host.current().localizedName { names.insert(local.lowercased()) }
-        for name in Host.current().names { names.insert(name.lowercased()) }
-        return names
-    }()
-
-    public nonisolated static func decodePwd(_ raw: String) -> String? {
-        guard !raw.isEmpty else { return nil }
-        guard raw.hasPrefix("file://") else { return raw }
-        guard let components = URLComponents(string: raw) else { return nil }
-        let host = components.host ?? ""
-        if !host.isEmpty, !localHostNames.contains(host.lowercased()) { return nil }
-        let path = components.percentEncodedPath.removingPercentEncoding ?? components.path
-        return path.isEmpty ? nil : path
-    }
-}

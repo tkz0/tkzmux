@@ -8,7 +8,7 @@
 //
 //     store.update { $0.renameSession(id, title: "review") }
 //
-// Flows are in docs/design.md → *Session flows & persistence*. Nothing here talks to the terminal,
+// Nothing here talks to the terminal,
 // git or Claude: creating a `Session` is a model edit, launching its pty is `TerminalHost`'s job.
 
 import Foundation
@@ -64,7 +64,7 @@ extension AppState {
     }
 
     /// Binds a discovered agent observation to a session: the "adopt" half of
-    /// design.md → *Claude integration → Identity*. Creates `live` if the session had none, and
+    /// the identity join. Creates `live` if the session had none, and
     /// refreshes `conversationId` (which rotates on `/clear`, resume and fork).
     ///
     /// Does nothing if the session is unknown.
@@ -669,8 +669,7 @@ extension AppState {
         session.conversationId = observation.conversationId
         session.lastActiveAt = now
         // `claude -w` starts Claude *inside* the worktree it just created, so the observation's
-        // cwd is the first thing that says where it went (design.md → *Session flows → New
-        // worktree*).
+        // cwd is the first thing that says where it went.
         if let cwd = observation.cwd, !cwd.isEmpty {
             // Where the agent runs is where `--resume` must run, and what the row is named after
             // even before the next observation binds — so it becomes the session's directory of

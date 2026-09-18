@@ -1,5 +1,4 @@
 // GlyphRasterizer — shaped grapheme → CPU bitmap + placement metrics (M1.4).
-// See docs/design.md → Terminal engine → Metal renderer.
 //
 // Grayscale glyphs go into an 8-bit alpha bitmap, colour glyphs (Apple Color Emoji) into BGRA with
 // *premultiplied* alpha, matching the two atlas formats. Subpixel positioning is on with

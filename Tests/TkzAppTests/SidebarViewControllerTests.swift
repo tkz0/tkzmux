@@ -1,8 +1,8 @@
 // SidebarViewControllerTests — M2.3, the binding half.
 //
 // `SidebarRowViewTests` proves the rows *draw* correctly from a literal model. This suite proves the
-// controller *drives* them from the store, and it exists almost entirely for one sentence in
-// docs/design.md → *Store*: a Claude status flip on one session must cost one
+// controller *drives* them from the store, and it exists almost entirely for one rule: a Claude
+// status flip on one session must cost one
 // `reloadData(forRowIndexes:)`, not forty row re-renders.
 //
 // That claim cannot be checked by looking at the screen, so `SidebarOutlineView` counts every

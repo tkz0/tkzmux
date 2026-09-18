@@ -24,7 +24,7 @@ import os
 
 @MainActor
 public final class StateAutosaver {
-    /// design.md → *Session flows & persistence*: "500 ms debounced atomic write".
+    /// "500 ms debounced atomic write".
     public static let defaultDebounce: Duration = .milliseconds(500)
 
     private let store: AppStore

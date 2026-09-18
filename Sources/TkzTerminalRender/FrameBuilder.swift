@@ -1,5 +1,4 @@
 // FrameBuilder — libghostty render state → instance buffers (M1.5).
-// See docs/design.md → Terminal engine → Metal renderer, and the Spike results (M1.1–M1.3) table.
 //
 // This is the performance thesis of the project in one file. Per tick:
 //

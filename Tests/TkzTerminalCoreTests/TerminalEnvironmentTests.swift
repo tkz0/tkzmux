@@ -93,8 +93,8 @@ private func hostEnvironment(home: String, shell: String = "/bin/zsh") -> [Strin
         #expect(env["TERM"] == "xterm-ghostty")
     }
 
-    /// The one CLAUDE_* variable that must survive: design.md → *Accounts are generic* says an
-    /// inherited config dir is left alone so the environment decides the account. Stripping it by
+    /// The one CLAUDE_* variable that must survive: an inherited config dir is left alone so the
+    /// environment decides the account. Stripping it by
     /// an over-broad `CLAUDE_` prefix would silently move sessions to the wrong Claude account.
     @Test func keepsInheritedClaudeConfigDir() throws {
         let home = try tempDir("config-dir")

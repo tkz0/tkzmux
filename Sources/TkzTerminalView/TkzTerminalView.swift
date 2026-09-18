@@ -1,4 +1,4 @@
-// TkzTerminalView — the AppKit half of the terminal engine. See docs/design.md → *View & input*.
+// TkzTerminalView — the AppKit half of the terminal engine.
 //
 // This file holds the module marker and `TerminalRenderContext`: the one app-wide owner of the
 // font set, glyph atlases and `TerminalRenderer`. It lives here rather than in `TerminalMetalView`

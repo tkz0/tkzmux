@@ -1,4 +1,4 @@
-// ProcessLiveness — M3.1. See docs/design.md → Claude integration → Discovery.
+// ProcessLiveness — M3.1.
 //
 // `kill(pid, 0)` tells us whether *a* process with that pid exists and is signalable, but pids get
 // reused: a descriptor's `startedAt` (ms since epoch) is compared against the live process's actual

@@ -4,7 +4,7 @@
 //
 //   * its `groups`/`sessions` are dictionaries keyed by `GroupID`/`SessionID`, and a `Codable`
 //     dictionary with a struct key encodes as a flat `[k, v, k, v]` array — unreadable by hand and
-//     nothing like design.md's `groups[]` / `sessions[]`;
+//     nothing like `groups[]` / `sessions[]`;
 //   * `CGRect` encodes as `[[x, y], [w, h]]`, where the ticket asks for explicit keys;
 //   * `accounts`, `usage` and `update` are not durable at all. Accounts come from config, usage
 //     from `UsageReader` and `update` from the release check; persisting any of them
@@ -12,8 +12,8 @@
 //     version is kept, in `preferences`.
 //
 // `Session.live` needs no handling here: `Session.CodingKeys` already omits it, so a decoded row has
-// `live == nil` and therefore `status == .exited` *by construction* (design.md → *Session flows &
-// persistence*). A restored row is a resumable row, and there is no code path that can make it
+// `live == nil` and therefore `status == .exited` *by construction*. A restored row is a resumable
+// row, and there is no code path that can make it
 // anything else.
 
 import CoreGraphics

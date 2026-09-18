@@ -3,8 +3,8 @@
 //
 // `DevWindowController` (M1.6 / M1.10) stays reachable behind **`TKZMUX_DEV_WINDOW=1`**: it carries
 // the M1.10 performance harness (`TKZMUX_DEV_SPAWN`, `TKZMUX_DEV_SWITCH_BENCH`, the snapshot
-// sweeps, the heartbeat) that `docs/perf.md` and `docs/manual-checks.md` document command lines
-// for. Losing it would invalidate the documented acceptance runs, so it is one env var away:
+// sweeps, the heartbeat) that `docs/perf.md` documents command lines for. Losing it would
+// invalidate the documented acceptance runs, so it is one env var away:
 //
 //   TKZMUX_DEV_WINDOW=1 TKZMUX_DEV_SPAWN=30 … swift run tkzmux    → the M1 dev window
 //   swift run tkzmux                                              → the main window

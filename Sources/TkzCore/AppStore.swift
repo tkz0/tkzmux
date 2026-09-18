@@ -1,4 +1,4 @@
-// TkzCore — the store. See docs/design.md → *App architecture → Store*.
+// TkzCore — the store.
 //
 // The reason this type exists instead of `@Observable`: the sidebar must learn *which* session
 // changed, so that a Claude status flip on one session costs one `reloadData(forRowIndexes:)`

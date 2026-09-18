@@ -33,7 +33,7 @@ struct StatusBarInteractionTests {
 
     @Test func noUpstreamDrawsDimmedDashesRatherThanZeroes() throws {
         // `↑0 ↓0` would claim the branch is in sync with a remote it does not have, and drawing
-        // nothing would read as "not measured yet". design.md: "no upstream → shown dimmed".
+        // nothing would read as "not measured yet". "No upstream → shown dimmed".
         let model = StatusBarModel(branch: "spike", upstreamMissing: true)
         let items = Self.items(model)
         let sync = try #require(items.first { $0.segment.plainText.contains("\u{2191}") })

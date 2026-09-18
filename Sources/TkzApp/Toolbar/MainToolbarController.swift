@@ -1,6 +1,6 @@
 // MainToolbarController.swift — the 48 pt unified title bar of the main window.
 //
-// design.md → App architecture → Toolbar:
+// Layout:
 //   title “<session> — <group>”; `NSMenuToolbarItem` “＋ New session…” scoped to the selected group;
 //   “Search sessions…” (⌘F, printed in the field); the three right-hand buttons (`>_` new terminal, `◫`/`⬓` splits).
 //   The design's fourth button, `◍` browser, was dropped rather than shipped disabled.
@@ -98,7 +98,7 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
     public var onSearchEndEditing: (() -> Void)?
 
     /// The menu shown by “＋ New session…”. Defaults to ``stubNewSessionMenu()``; M2.4 replaces it
-    /// with the group-scoped menu from design.md. Setting it updates the live toolbar item.
+    /// with the group-scoped menu. Setting it updates the live toolbar item.
     public var newSessionMenu: NSMenu {
         didSet { menuItem?.menu = newSessionMenu }
     }

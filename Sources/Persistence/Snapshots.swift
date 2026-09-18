@@ -1,5 +1,4 @@
-// Snapshots.swift — `.ghsnap` files on disk. See docs/design.md → *Terminal engine → Snapshot*
-// and *Session flows & persistence*, and docs/perf.md for the measured sizes and timings.
+// Snapshots.swift — `.ghsnap` files on disk. See docs/perf.md for the measured sizes and timings.
 //
 // `TerminalSession` owns the *encoding* (`snapshot() -> Data`, `restore(from:)`); this file owns
 // the *file system*: where a snapshot lives, how it is written without ever leaving a truncated
@@ -30,7 +29,7 @@ public struct SnapshotEntry: Sendable, Hashable {
 
 /// How much scrollback a snapshot is allowed to carry.
 ///
-/// design.md says to "lower `SCROLLBACK_MAX_BYTES` first to bound size" before encoding. That is a
+/// "Lower `SCROLLBACK_MAX_BYTES` first to bound size" before encoding. That is a
 /// *terminal* option, so `SnapshotStore` cannot apply it itself — it can only pass the bound to the
 /// closure that does the encoding. `maxBytes == nil` means "encode whatever the session holds".
 ///

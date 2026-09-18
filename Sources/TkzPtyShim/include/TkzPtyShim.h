@@ -2,7 +2,7 @@
 // Everything between fork() and execve() is async-signal-safe by construction: no malloc,
 // no Objective-C, no Swift, no locks that the parent could hold at fork time.
 //
-// Contract (see docs/design.md → Terminal engine → Pty):
+// Contract:
 //   openpty(&master, &slave, NULL, NULL, &ws)   with the initial winsize
 //   → pipe2-style FD_CLOEXEC error pipe
 //   → fork()

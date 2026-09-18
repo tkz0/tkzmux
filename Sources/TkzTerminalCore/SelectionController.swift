@@ -1,6 +1,6 @@
 // SelectionController.swift — pointer gestures → terminal selection (libghostty-vt `selection.h`).
 //
-// One of the files allowed to call the C API directly (docs/design.md → Spike checklist).
+// One of the files allowed to call the C API directly.
 // Headless on purpose: no AppKit, so the whole gesture state machine unit-tests. The view layer
 // supplies surface pixels, a monotonic timestamp and the double-click interval; it owns the
 // autoscroll *timer*, this file owns the autoscroll *policy*.
@@ -63,7 +63,7 @@ public enum SelectionBehavior: Sendable, Equatable {
     }
 }
 
-/// Single / double / triple click granularity. The default is the one design.md asks for:
+/// Single / double / triple click granularity. The default is:
 /// single = cell, double = word, triple = line.
 public struct SelectionBehaviors: Sendable, Equatable {
     public var singleClick: SelectionBehavior

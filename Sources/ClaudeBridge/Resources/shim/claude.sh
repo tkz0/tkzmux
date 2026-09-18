@@ -1,7 +1,6 @@
 #!/bin/bash
 # tkzmux's `claude` shim. Installed at `$TKZMUX_BIN/claude` by ShimInstaller; the ZDOTDIR wrapper
-# (`zshrc`) puts `$TKZMUX_BIN` first on PATH, after the user's own rc files ran. See
-# docs/design.md -> Claude integration -> Shim install, Shim.
+# (`zshrc`) puts `$TKZMUX_BIN` first on PATH, after the user's own rc files ran.
 #
 # Job: find the *real* claude, inject tkzmux's hooks via `--settings`, announce our pid over the
 # socket, then exec the real binary. Outside a tkzmux session (no TKZMUX_SESSION_ID/SOCKET) or for

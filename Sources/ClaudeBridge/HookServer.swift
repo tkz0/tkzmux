@@ -1,5 +1,5 @@
-// HookServer — the app-side half of the tkzmux-hook wire protocol. See docs/design.md → Claude
-// integration → tkzmux-hook, and Sources/tkzmux-hook for the client. M3.2.
+// HookServer — the app-side half of the tkzmux-hook wire protocol. See Sources/tkzmux-hook for
+// the client. M3.2.
 import Darwin
 import Dispatch
 import Foundation

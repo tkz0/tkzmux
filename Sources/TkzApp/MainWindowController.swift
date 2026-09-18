@@ -1,6 +1,6 @@
 // MainWindowController — the real main window (M2.2).
 //
-// design.md → *App architecture*: an `NSSplitViewController` with the sidebar on the left (300 pt,
+// An `NSSplitViewController` with the sidebar on the left (300 pt,
 // min 240, collapsible), the single terminal surface on the right, the 30 pt status strip along the
 // bottom and the unified 48 pt toolbar in the title bar. This file is the **assembler**: every
 // piece it puts together (sidebar, toolbar, status bar, palette, new-session menu, terminal host)
@@ -257,8 +257,8 @@ final class DetailViewController: NSViewController {
     }
 }
 
-/// "No session selected · ⌘N". Drawn rather than stacked so it rasterises headlessly (design.md →
-/// *Testing without UI*: a windowless `NSView` subtree does not render, a layer does).
+/// "No session selected · ⌘N". Drawn rather than stacked so it rasterises headlessly (a windowless
+/// `NSView` subtree does not render, a layer does).
 final class EmptyStateView: NSView {
     /// Nothing is selected at all.
     static let noSelectionMessage = "No session selected \u{00B7} \u{2318}N"
@@ -322,7 +322,7 @@ final class EmptyStateView: NSView {
 @MainActor
 public final class MainWindowController: NSObject, NSWindowDelegate {
 
-    // MARK: Geometry (design.md → App architecture; artboard 2c is 1240×820)
+    // MARK: Geometry (artboard 2c is 1240×820)
 
     /// The whole window, titlebar included — the artboard is drawn at this size.
     public static let defaultWindowSize = NSSize(width: 1240, height: 820)
@@ -471,7 +471,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// when the model actually differs, so a minute in which nothing changed costs one comparison.
     private var statusTickTimer: DispatchSourceTimer?
     public static let statusTickInterval: TimeInterval = 60
-    /// design.md → *Session flows*: "on a 5-min timer for live sessions".
+    /// "On a 5-min timer for live sessions".
     public static let snapshotInterval: TimeInterval = 300
     /// What the last lazy reopen of the selected row said, for the empty-state caption.
     private var lastReopenFailure: SessionLauncher.Failure?
@@ -1747,9 +1747,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public func windowDidResize(_ notification: Notification) { recordWindowFrame() }
     public func windowDidMove(_ notification: Notification) { recordWindowFrame() }
 
-    /// The user is looking at the selected row again: the `attendedAt` half of the NEEDS YOU rule
-    /// (design.md → *Claude integration → Status derivation*). Selecting a row already marks it
-    /// attended; this covers coming back to the window with a row still selected.
+    /// The user is looking at the selected row again: the `attendedAt` half of the NEEDS YOU rule.
+    /// Selecting a row already marks it attended; this covers coming back to the window with a row
+    /// still selected.
     public func windowDidBecomeKey(_ notification: Notification) {
         guard let id = store.state.selection else { return }
         store.update { $0.markAttended(id) }
@@ -2346,8 +2346,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     /// Shows a message in the status strip for a while, then puts the session's data back.
-    /// `AppDelegate` uses it for the `state.json` recovery notices (M5.1); design.md asks for a
-    /// non-modal notice and the 30 pt strip is the only one the app has.
+    /// `AppDelegate` uses it for the `state.json` recovery notices (M5.1); the notice must be
+    /// non-modal and the 30 pt strip is the only one the app has.
     public func showNotice(_ message: String, for duration: Duration = .seconds(10)) {
         transientNotice = message
         updateStatusBar()
@@ -2401,7 +2401,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         model.baseBranch = git?.baseBranch
         model.behindBase = git?.behindBase
         model.rebaseShortcut = ShortcutsTable.resolved(state: state)[.rebaseOntoBase]?.displayString
-        // Sidecar first, `gh` second — design.md → *Git integration → PR*. `GitStatusService` owns
+        // Sidecar first, `gh` second. `GitStatusService` owns
         // `GitSummary.pr` and has already merged whatever `PRLookup` found, so the sidecar only
         // wins where nothing was looked up.
         model.pullRequest = git?.pr ?? sidecar?.pr
@@ -3422,7 +3422,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     ///
     /// Only *bucket* changes are written. A steady session would otherwise produce a new value
     /// every minute, and every write is a `ChangeSet.sessions` entry that reloads that row — the
-    /// one thing the sidebar's design exists to avoid (design.md → *Store*).
+    /// one thing the sidebar's design exists to avoid.
     /// Takes the pids on the main thread, the syscalls off it, and the store write back on it.
     ///
     /// The walk is `proc_listchildpids` per node — a scan of the system process table, into a
@@ -3547,7 +3547,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // OSC 7 from the ZDOTDIR wrapper on every `cd`. The pane's directory is what a split
             // starts in; the *row's* also follows it, but only from the focused pane — otherwise a
             // `cd` in a background pane would rename the sidebar row (2026-09-08).
-            if let path = SessionEventHandler.decodePwd(raw) {
+            if let path = PwdDecoder.decode(raw) {
                 store.update { state in
                     state.setPaneCwd(id, path: path)
                     if let session = state.session(owning: id), session.focusedTerminalID == id {
@@ -3566,7 +3566,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             }
         default:
             // `.title` deliberately does not land in the store: `Session.title` is the rename slot
-            // (design.md → Session flows) and a shell-set title is not a rename.
+            // and a shell-set title is not a rename.
             break
         }
     }

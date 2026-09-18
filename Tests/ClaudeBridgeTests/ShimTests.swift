@@ -1,6 +1,6 @@
 // ShimTests — exercises the installed `claude.sh` shim end to end via `Process`, against a fake
-// real `claude` and a fake `tkzmux-hook` on a fully controlled PATH. See docs/design.md ->
-// Claude integration -> Shim, and the M3.3 ticket for the exact behavioural contract.
+// real `claude` and a fake `tkzmux-hook` on a fully controlled PATH. See the M3.3 ticket for the
+// exact behavioural contract.
 import Foundation
 import Testing
 

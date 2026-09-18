@@ -382,7 +382,7 @@ private func runHook(
     }
 
     /// Contract #2: `config_dir` falls back to `$HOME/.claude` when `CLAUDE_CONFIG_DIR` is unset —
-    /// this is the string design.md derives the account key from (`~/.claude` → `claude`,
+    /// this is the string the account key is derived from (`~/.claude` → `claude`,
     /// `~/.claude-work` → `claude-work`), so getting the fallback right matters.
     @Test func launchConfigDirFallsBackToHomeDotClaude() async throws {
         let binary = try hookBinaryURL()

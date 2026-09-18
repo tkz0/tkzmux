@@ -1,5 +1,5 @@
 // MouseController — the AppKit half of mouse reporting, selection, clipboard, scrolling and OSC 8
-// links (M1.8). See docs/design.md → Terminal engine → *View & input* → Mouse.
+// links (M1.8).
 //
 // Everything that needs a decision lives here; everything that needs libghostty lives behind
 // `MouseControllerTerminal`. That split is deliberate:
@@ -100,7 +100,7 @@ public enum MouseRoute: Sendable, Equatable {
     case select
 }
 
-/// Reporting-vs-selection, the one rule design.md states: report when the program asked for mouse
+/// Reporting-vs-selection, the one rule: report when the program asked for mouse
 /// tracking, unless Shift is held — Shift is the universal "let me select anyway" override.
 public func terminalMouseRoute(trackingEnabled: Bool, shiftHeld: Bool) -> MouseRoute {
     trackingEnabled && !shiftHeld ? .report : .select
@@ -109,7 +109,7 @@ public func terminalMouseRoute(trackingEnabled: Bool, shiftHeld: Bool) -> MouseR
 /// What to do with an OSC 8 URI a program put on the wire.
 ///
 /// A terminal program controls this string *entirely*, so the opener is an allow-list, never a
-/// deny-list: anything that is not one of the four schemes design.md names is refused outright
+/// deny-list: anything that is not one of the four schemes is refused outright
 /// rather than handed to `NSWorkspace`.
 public enum TerminalLinkAction: Sendable, Equatable {
     /// Safe to hand to `NSWorkspace.shared.open`.
@@ -720,8 +720,8 @@ public final class MouseController: NSObject, TerminalMouseHandling {
         pasteboard.canReadItem(withDataConformingToTypes: [UTType.image.identifier])
     }
 
-    /// OSC 52. `TkzApp`'s `SessionEventHandler` already routes `.clipboardWrite` to its own
-    /// pasteboard sink, so this is the seam for a host that does not — do not wire both.
+    /// OSC 52. This is the seam for a host that wants the payload to reach AppKit here rather than
+    /// routing `.clipboardWrite` to a pasteboard sink of its own — do not wire both.
     ///
     /// `TerminalSession` already answers the protocol (SUCCESS for the standard location,
     /// and clipboard *reads* are refused DENIED inside the session) and surfaces the payload as a

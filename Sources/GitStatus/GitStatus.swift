@@ -1,4 +1,4 @@
-// GitStatus — the module's git, PR and port services. See docs/design.md → *Git integration*.
+// GitStatus — the module's git, PR and port services.
 //
 // `GitProcess` (the one subprocess runner), `RepoInfo`, `GitStatusParsing`, `FSEventsWatcher` and
 // `GitStatusService` are M4.1; `PRLookup` is the lookup half of M4.2;

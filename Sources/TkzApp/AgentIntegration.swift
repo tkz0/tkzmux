@@ -10,7 +10,7 @@
 // and it holds the two pieces of state that belong to neither the services nor `AppState`:
 //
 //   * `pidToSession` — the `launch` frame's `pid → SessionID` binding. It is the primary identity
-//     join (design.md → *Claude integration → Identity*): the shim `exec`s the real `claude`, so the
+//     join: the shim `exec`s the real `claude`, so the
 //     pid it announces **is** the pid the descriptor will carry. Descriptor files, hook frames and
 //     the `ppid` tree are only fallbacks.
 //   * `fullMessages` — the *complete* `last_assistant_message` of the last Stop per session, for the
@@ -109,8 +109,8 @@ public final class AgentIntegration {
 
     /// "Is the user looking at this session right now?" — the selected row in a key, visible
     /// window. A Stop that lands while true is attended immediately, so the row the user is
-    /// watching never ages into NEEDS YOU under their nose (design.md → *Status derivation*:
-    /// `attendedAt` is set when the row is selected while the window is key). Injected so tests
+    /// watching never ages into NEEDS YOU under their nose (`attendedAt` is set when the row is
+    /// selected while the window is key). Injected so tests
     /// need no window; `MainWindowController` installs the real check.
     public var isSessionAttended: (SessionID) -> Bool = { _ in false }
 
@@ -628,7 +628,7 @@ public final class AgentIntegration {
         ProcessOwnership.owns(pid, selfPid: instancePID, selfName: executableName, ancestry: ancestry)
     }
 
-    /// `sid` → `payload.session_id` → the `ppid` tree, per design.md → *tkzmux-hook*.
+    /// `sid` → `payload.session_id` → the `ppid` tree.
     ///
     /// Only rows with live state are targets: a restored row has no shell, so nothing running can
     /// belong to it, and attributing to it (by a `conversationId` that a resume elsewhere reused)

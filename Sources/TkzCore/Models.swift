@@ -1,5 +1,4 @@
-// TkzCore — the app's domain model. See docs/design.md → *App architecture → Store*,
-// *Claude integration*, *Git integration* and *Session flows & persistence*.
+// TkzCore — the app's domain model.
 //
 // Everything in this file is a value type: `Hashable`, `Sendable`, and (where it is persisted)
 // `Codable`. No AppKit, no SwiftUI — TkzCore is the half of the app that can be tested headless,
@@ -147,8 +146,7 @@ public struct Group: Hashable, Sendable, Codable, Identifiable {
 /// One terminal session — a row in the sidebar and, when selected, the terminal surface.
 ///
 /// The stored properties are durable; `live` is not (see the file header). A restored session
-/// therefore has `live == nil` until it is first shown, when the launcher puts a shell behind it
-/// (design.md → *Session flows & persistence*).
+/// therefore has `live == nil` until it is first shown, when the launcher puts a shell behind it.
 public struct Session: Hashable, Sendable, Identifiable {
     public var id: SessionID
     public var groupID: GroupID
@@ -250,7 +248,7 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// Amber `NEEDS YOU` badge in the sidebar.
     public var needsAttention: Bool { live?.attention ?? false }
 
-    /// design.md → *Claude integration → Titles*: user rename → the agent's own `name` (unless the
+    /// Precedence: user rename → the agent's own `name` (unless the
     /// agent derived it) → worktree name → `basename(cwd)`, where `cwd` is **the agent's own**
     /// once an observation is bound: a shell started in the home group and `cd`'d into a repo
     /// before the agent started should read as that repo, not as the home directory (GUI pass
@@ -327,7 +325,7 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// Where a resume should start, best first: the worktree while it still applies, then the
     /// directory the session was started in, then the repo root. The launcher takes the first one
     /// that exists on disk (M5.2) — a worktree Claude removed on exit falls through to the repo
-    /// root, which is the "missing worktree → repoRoot" rule in design.md → *Session flows*.
+    /// root, which is the "missing worktree → repoRoot" rule.
     ///
     /// `cwd` outranks `repoRoot` deliberately: for a repo-root or worktree launch the two are the
     /// same directory, and for a session opened elsewhere `cwd` is where Claude actually ran,
@@ -600,8 +598,7 @@ public struct PendingNotification: Hashable, Sendable {
     }
 }
 
-/// The sidebar's status dot. Derivation rules live in design.md → *Claude integration →
-/// Status derivation*; this type only names the outcomes.
+/// The sidebar's status dot. This type only names the outcomes.
 public enum SessionStatus: Hashable, Sendable, Codable {
     case working
     case waiting(WaitReason)
@@ -676,8 +673,8 @@ extension Account {
     /// and the primary `claude` → `<home>/.claude`. `nil` only for a key that is not a config-dir
     /// basename (empty, or containing a `/`).
     ///
-    /// The key is the config dir's basename minus its leading dot (design.md → *Claude integration
-    /// → Account key*), so the mapping inverts without a lookup. This is the fallback for a session
+    /// The key is the config dir's basename minus its leading dot, so the mapping inverts without a
+    /// lookup. This is the fallback for a session
     /// whose account the store does not (yet) know — every restored row after a relaunch, since
     /// accounts are rediscovered rather than persisted — and it is what keeps a resume on the
     /// account the session was started with. **The primary is spelled out too** (M5.2, GUI pass):

@@ -45,7 +45,7 @@ import AppKit
 import TkzCore
 
 public final class SessionRowView: NSTableCellView {
-    // MARK: Metrics (all from the design; see docs/design.md → App architecture → Sidebar)
+    // MARK: Metrics (all from the design)
 
     /// The single-line row height. The outline view returns `height(for:width:)` from
     /// `heightOfRowByItem`, which is this unless the detail line wraps.

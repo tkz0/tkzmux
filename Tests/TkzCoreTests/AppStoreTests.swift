@@ -1,5 +1,4 @@
 // The store's contract: granular diffs, and one delivery per run-loop turn.
-// See docs/design.md → *App architecture → Store*.
 
 import Foundation
 import Testing

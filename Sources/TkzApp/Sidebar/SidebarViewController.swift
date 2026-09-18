@@ -1,5 +1,5 @@
 // SidebarViewController — the outline view that binds `AppStore` to the sidebar rows
-// (M2.3). See docs/design.md → *App architecture → Sidebar* and *Store*.
+// (M2.3).
 //
 // The whole reason this type is a hand-written `NSOutlineView` controller instead of a SwiftUI
 // `List` is the last sentence of the Store section: **a Claude status flip on one session must cost
@@ -934,7 +934,7 @@ public final class SidebarViewController: NSViewController {
     }
 
     /// `true` when a click on the status dot should open the popover instead of selecting the row
-    /// — design.md's amber/"done" rows, i.e. `waiting` or an idle row still showing the "done" tint.
+    /// — amber/"done" rows, i.e. `waiting` or an idle row still showing the "done" tint.
     private func statusDotClickIsEligible(for id: SessionID) -> Bool {
         guard let session = store.state.sessions[id] else { return false }
         return session.status.isWaiting || (session.live?.isDone ?? false)

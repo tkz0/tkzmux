@@ -1,4 +1,4 @@
-// Persistence — see docs/design.md. The module holds `state.json` (StateFile, PersistedState,
+// Persistence — the module holds `state.json` (StateFile, PersistedState,
 // Migrations, StateAutosaver, JSONValue — M5.1), the snapshot store (Snapshots.swift) and the
 // background-session idle policy below.
 
@@ -13,7 +13,7 @@ public enum PersistenceModule {
 
 /// *When* a background session should be handed to `ghostty_terminal_compress(INCREMENTAL)`.
 ///
-/// This is the pure half of design.md → *Threading* → "Background sessions: … optional
+/// This is the pure half of "Background sessions: … optional
 /// `ghostty_terminal_compress(INCREMENTAL)` from an idle timer (under the lock)". It owns no timer,
 /// no terminal and no clock: a caller ticks it with the current instant and it answers with the
 /// ids that are due. That makes the whole rule unit-testable without waiting 60 seconds.
@@ -40,7 +40,7 @@ public enum PersistenceModule {
 /// more conservative than the data requires; the ticket that wires the timer should re-tune it
 /// against real frame pacing.
 public struct IdleCompressionPolicy: Sendable, Equatable {
-    /// How long a session must be quiet before its first compression step. design.md says 60 s.
+    /// How long a session must be quiet before its first compression step. 60 s.
     public var idleThreshold: Duration
     /// Gap between two steps of the same session while work is still `PENDING`. Small on purpose:
     /// an incremental step is bounded work, and the session is idle by definition.

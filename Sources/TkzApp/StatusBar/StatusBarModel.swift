@@ -1,6 +1,6 @@
 // StatusBarModel.swift — the value type behind the 36 pt status strip.
 //
-// design.md → App architecture → Status bar:
+// Layout:
 //   `⎇ branch` · `WT` · `FABLE 5.1` · `+142 −38 · 12 files` · `↑0 ↓2` · ports · `Context 62%` ·
 //   `Usage 5% · 41%` (2c.1: the usage meter is two stacked bars — session quota over weekly —
 //   and the reset countdown moved from its own segment into the meter's tooltip)

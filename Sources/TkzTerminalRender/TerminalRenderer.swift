@@ -1,5 +1,5 @@
 // TerminalRenderer — the three-pass Metal renderer (M1.5).
-// See docs/design.md → Terminal engine → Metal renderer, and TkzShaderTypes.h for the contract.
+// See TkzShaderTypes.h for the contract.
 //
 // One instance app-wide: it owns the pipelines, the shared `GlyphCache` (both atlases), the
 // `FrameBuilder` and a 3-deep ring of shared `MTLBuffer`s guarded by a semaphore. Sessions come and
@@ -77,7 +77,7 @@ public final class TerminalRenderer {
     }
 
     /// `TkzUniforms.minContrast`. `1.0` (the default) disables the adjustment; `1.1` is the
-    /// "only fix invisible text" setting design.md suggests.
+    /// "only fix invisible text" setting.
     public var minContrast: Float = 1.0
 
     public private(set) var stats = RenderStats()

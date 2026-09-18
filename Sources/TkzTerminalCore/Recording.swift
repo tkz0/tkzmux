@@ -1,6 +1,6 @@
 // Recording.swift — the `.tkzrec` container: raw pty bytes + monotonic timestamps + a header.
 //
-// docs/design.md → *Testing without UI*. `tkzmux-vtdump record` tees everything a real
+// `tkzmux-vtdump record` tees everything a real
 // `claude` session writes to the pty into one of these; `replay` feeds it back into a
 // `TerminalSession` so the whole VT/render stack is testable headlessly and deterministically.
 //

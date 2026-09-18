@@ -1,14 +1,14 @@
 // WorktreeList — `git worktree list --porcelain`, parsed (M5.2).
 //
-// design.md → *Session flows → New worktree*: on session exit the app re-reads the repo's
+// On session exit the app re-reads the repo's
 // worktree list and drops the `WT` badge from any row whose worktree is gone. `claude -w` offers to
 // remove its worktree when the conversation ends, so "the row says WT but the directory is not
 // there any more" is the normal case after a finished session, not an edge case.
 //
 // The parser is a pure function over the porcelain text so it is tested against literal output;
 // `list(repoRoot:)` is the only thing here that runs a process. It runs `git` with
-// `GIT_OPTIONAL_LOCKS=0` and `--no-optional-locks`, as every git call in this app must
-// (design.md → *Git integration*), so a background refresh never contends with the user's own git.
+// `GIT_OPTIONAL_LOCKS=0` and `--no-optional-locks`, as every git call in this app must,
+// so a background refresh never contends with the user's own git.
 
 import Foundation
 

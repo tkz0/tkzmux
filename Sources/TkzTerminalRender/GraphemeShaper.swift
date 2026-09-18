@@ -1,5 +1,4 @@
 // GraphemeShaper — grapheme cluster → glyphs (M1.4).
-// See docs/design.md → Terminal engine → Metal renderer.
 //
 // A terminal shapes *per cell*, never across cells, so there are no ligatures in v1: `fi`, `->` and
 // `==` stay separate glyphs because they are separate grapheme clusters and are shaped separately.

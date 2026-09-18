@@ -1,6 +1,6 @@
 // FSEventsWatcher — the trigger half of M4.1.
 //
-// design.md → *Git integration*: "one `FSEventStream` per repoRoot (common-dir + session cwds;
+// "One `FSEventStream` per repoRoot (common-dir + session cwds;
 // ignore `.git/objects`, `node_modules`), 300 ms debounce". This type is only the stream: it knows
 // nothing about git, it hands `GitStatusService` a filtered list of changed paths on a queue the
 // service owns, and the service decides which sessions that touches and when to actually run git.
@@ -40,7 +40,7 @@ public final class FSEventsWatcher: Sendable {
     /// - Parameters:
     ///   - queue: the private serial queue the stream (and therefore `onChange`) runs on. The
     ///     service passes its per-repo queue so a filesystem event and a refresh cannot interleave.
-    ///   - latency: `FSEventStreamCreate`'s coalescing window; design.md's 0.3 s.
+    ///   - latency: `FSEventStreamCreate`'s coalescing window; 0.3 s.
     public init(
         queue: DispatchQueue,
         latency: CFTimeInterval = 0.3,

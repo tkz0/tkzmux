@@ -142,7 +142,7 @@ private func settle(until condition: @MainActor () -> Bool, timeout: Duration = 
         // `AppStore` coalesces deliveries to one per run-loop turn, so at ⌘Q there is normally a
         // mutation no observer has seen. `flush` must re-project from the store, not wait for it.
         // The id is read *outside* the closure: reading `store.state` inside `update` is the
-        // exclusivity trap design.md warns about.
+        // exclusivity trap.
         let id = try #require(store.state.orderedSessions.first?.id)
         store.update { $0.renameSession(id, title: "last words") }
         saver.flush()

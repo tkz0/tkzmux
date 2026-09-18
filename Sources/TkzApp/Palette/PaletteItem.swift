@@ -1,6 +1,6 @@
 // PaletteItem.swift — what ⌘P / ⇧⌘P search over (M2.4).
 //
-// design.md → App architecture → Palette: "fuzzy over sessions (title, branch, cwd, group), groups,
+// "Fuzzy over sessions (title, branch, cwd, group), groups,
 // commands". One flat item type covers all three; ``PaletteItem/Kind`` is what the panel
 // groups rows by, and ``PaletteItem/actionID`` is the only thing wave 3 has to dispatch on.
 //

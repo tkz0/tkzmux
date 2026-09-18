@@ -129,7 +129,7 @@ struct NewSessionMenuTests {
         #expect(another.isEnabled)
         #expect(Self.text(another).contains("new group"))
 
-        // The command hints are in the mono face (design.md: JetBrains Mono for command text).
+        // The command hints are in the mono face (JetBrains Mono for command text).
         let hintFont = worktree.attributedTitle?.attribute(
             .font, at: Self.text(worktree).distance(
                 from: Self.text(worktree).startIndex,
@@ -446,7 +446,7 @@ struct NewSessionMenuTests {
     }
 }
 
-/// design.md → Decisions → Shortcuts. The table is data; wave 3 builds the menu from it.
+/// The table is data; wave 3 builds the menu from it.
 @MainActor
 struct ShortcutsTableTests {
 
