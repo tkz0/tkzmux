@@ -169,8 +169,10 @@ struct MainWindowLaunchTests {
         #expect(harness.host.opened.count == 3)
         // The key is a basename; the child needs the directory.
         #expect(harness.host.opened[0].env["CLAUDE_CONFIG_DIR"] == "/tmp/alt")
-        // The wrapper re-exports this one after the user's rc files, so a rc cannot override it.
-        #expect(harness.host.opened[0].env["TKZMUX_CLAUDE_CONFIG_DIR"] == "/tmp/alt")
+        // The wrapper re-exports this one after the user's rc files, so a rc cannot override it
+        // (TKZ-84 generalized the single hard-coded variable into this name/value pair).
+        #expect(harness.host.opened[0].env["TKZMUX_ENV_CLAUDE_CONFIG_DIR"] == "/tmp/alt")
+        #expect(harness.host.opened[0].env["TKZMUX_REEXPORT"] == "CLAUDE_CONFIG_DIR")
         // An explicitly chosen primary account is pinned too (M5.2 GUI pass: the user's
         // environment may default to another account).
         #expect(harness.host.opened[1].env["CLAUDE_CONFIG_DIR"] == "/tmp/primary")

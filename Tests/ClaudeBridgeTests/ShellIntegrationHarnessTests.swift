@@ -206,7 +206,11 @@ private func runSession(_ fixture: HarnessFixture, bootCommand: String) async th
         "LANG": "en_US.UTF-8",
         "MARKER_LOG": fixture.markerLog.path,
         "REPORT": fixture.report.path,
-        "TKZMUX_CLAUDE_CONFIG_DIR": fixture.chosenConfigDir.path,
+        // TKZ-84 generalized the single hard-coded re-export into TKZMUX_REEXPORT / TKZMUX_ENV_<NAME>
+        // (see SessionLauncher.environment(accountKey:bootCommand:)) -- this is what it looks like
+        // for the one variable Claude needs today.
+        "TKZMUX_REEXPORT": "CLAUDE_CONFIG_DIR",
+        "TKZMUX_ENV_CLAUDE_CONFIG_DIR": fixture.chosenConfigDir.path,
         "TKZMUX_BOOT_COMMAND": bootCommand,
     ]
     let spawn = TerminalEnvironment.loginShellSpawn(

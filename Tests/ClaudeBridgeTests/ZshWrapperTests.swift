@@ -196,12 +196,15 @@ private func runLoginShellToPrompt(
 
 @Test func chosenAccountWinsOverTheUsersRc() throws {
     // The user's own .zshrc exports a default account; the account picked in tkzmux must win,
-    // and when none was picked the user's export must survive untouched (M5.2).
+    // and when none was picked the user's export must survive untouched (M5.2). TKZ-84 generalized
+    // the single hard-coded `TKZMUX_CLAUDE_CONFIG_DIR` re-export into the `TKZMUX_REEXPORT` /
+    // `TKZMUX_ENV_<NAME>` mechanism; this still exercises the same real behaviour (the app's
+    // choice beats the user's dotfile), just through it.
     let fixture = try makeWrapperFixture()
     let rc = fixture.fakeHome.appendingPathComponent(".zshrc")
     try (String(contentsOf: rc, encoding: .utf8) + "\nexport CLAUDE_CONFIG_DIR=\"$HOME/.claude-work\"\n")
         .write(to: rc, atomically: true, encoding: .utf8)
-    func configDir(_ extra: [String: String]) throws -> String {
+    func printedVars(_ names: [String], extra: [String: String]) throws -> [String] {
         var env: [String: String] = [
             "HOME": fixture.fakeHome.path,
             "ZDOTDIR": fixture.tkzmuxZdotdir.path,
@@ -213,14 +216,33 @@ private func runLoginShellToPrompt(
             "PATH": "/usr/bin:/bin",
         ]
         for (key, value) in extra { env[key] = value }
-        let result = try run(
-            URL(fileURLWithPath: "/bin/zsh"), ["-l", "-i", "-c", "print -r -- ${CLAUDE_CONFIG_DIR:-unset}"],
-            environment: env)
-        return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let script = names.map { "print -r -- ${\($0):-unset}" }.joined(separator: "; ")
+        let result = try run(URL(fileURLWithPath: "/bin/zsh"), ["-l", "-i", "-c", script], environment: env)
+        return result.stdout.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    }
+    func configDir(_ extra: [String: String]) throws -> String {
+        try printedVars(["CLAUDE_CONFIG_DIR"], extra: extra)[0]
     }
     #expect(try configDir([:]) == "\(fixture.fakeHome.path)/.claude-work")
     let pinned = "\(fixture.fakeHome.path)/.claude"
-    #expect(try configDir(["CLAUDE_CONFIG_DIR": pinned, "TKZMUX_CLAUDE_CONFIG_DIR": pinned]) == pinned)
+    #expect(
+        try configDir([
+            "CLAUDE_CONFIG_DIR": pinned, "TKZMUX_REEXPORT": "CLAUDE_CONFIG_DIR",
+            "TKZMUX_ENV_CLAUDE_CONFIG_DIR": pinned,
+        ]) == pinned)
+
+    // Two variables re-export at once -- the thing the generic mechanism makes possible that the
+    // single hard-coded name never could.
+    let results = try printedVars(
+        ["CLAUDE_CONFIG_DIR", "OTHER_AGENT_HOME"],
+        extra: [
+            "CLAUDE_CONFIG_DIR": pinned,
+            "TKZMUX_REEXPORT": "CLAUDE_CONFIG_DIR OTHER_AGENT_HOME",
+            "TKZMUX_ENV_CLAUDE_CONFIG_DIR": pinned,
+            "TKZMUX_ENV_OTHER_AGENT_HOME": "\(fixture.fakeHome.path)/.other-agent",
+        ])
+    #expect(results[0] == pinned)
+    #expect(results[1] == "\(fixture.fakeHome.path)/.other-agent")
 }
 
 

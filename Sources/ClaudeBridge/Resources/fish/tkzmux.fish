@@ -35,11 +35,22 @@ if set -q TKZMUX_BIN; and test -n "$TKZMUX_BIN"
     end
     __tkzmux_report_cwd
 
-    # The account the user picked in tkzmux wins over a `set -x CLAUDE_CONFIG_DIR ...` in the
-    # user's own configuration, which ran before this file. Unset when no account was chosen --
-    # then the user's environment decides, and the shim reports what it decided.
-    if set -q TKZMUX_CLAUDE_CONFIG_DIR; and test -n "$TKZMUX_CLAUDE_CONFIG_DIR"
-        set -gx CLAUDE_CONFIG_DIR $TKZMUX_CLAUDE_CONFIG_DIR
+    # Whatever the account picked in tkzmux needs re-exported (`CLAUDE_CONFIG_DIR`, or a future
+    # agent's own variable) wins over the same name set in the user's own configuration, which ran
+    # before this file -- that is the whole point of running this after it rather than before.
+    # TKZMUX_REEXPORT names the variables (space separated); TKZMUX_ENV_<NAME> carries each one's
+    # value. Nothing here when no account was chosen -- then the user's environment decides, and
+    # the shim reports what it decided. Fish has no `${!var}`-style indirection, so the variable
+    # named by a value is looked up with `$$name` instead.
+    if set -q TKZMUX_REEXPORT; and test -n "$TKZMUX_REEXPORT"
+        for __tkzmux_reexport_name in (string split ' ' -- $TKZMUX_REEXPORT)
+            set __tkzmux_reexport_var TKZMUX_ENV_$__tkzmux_reexport_name
+            if set -q $__tkzmux_reexport_var
+                set -gx $__tkzmux_reexport_name $$__tkzmux_reexport_var
+            end
+        end
+        set -e __tkzmux_reexport_name
+        set -e __tkzmux_reexport_var
     end
 end
 

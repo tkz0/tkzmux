@@ -50,10 +50,19 @@ if [[ -n "${TKZMUX_ZDOTDIR:-}" && -n "${TKZMUX_USER_ZDOTDIR:-}" ]]; then
     add-zsh-hook chpwd __tkzmux_report_cwd
     __tkzmux_report_cwd
 
-    # The account the user picked in tkzmux wins over an `export CLAUDE_CONFIG_DIR=...` in their
-    # own rc files, which ran above. Unset when no account was chosen -- then the user's
-    # environment decides, and the shim reports what it decided.
-    if [[ -n "${TKZMUX_CLAUDE_CONFIG_DIR:-}" ]]; then
-        export CLAUDE_CONFIG_DIR="$TKZMUX_CLAUDE_CONFIG_DIR"
+    # Whatever the account picked in tkzmux needs re-exported (`CLAUDE_CONFIG_DIR`, or a future
+    # agent's own variable) wins over the same name set in the user's own rc files, which ran
+    # above -- that is the whole point of running this after them rather than before. TKZMUX_REEXPORT
+    # names the variables (space separated); TKZMUX_ENV_<NAME> carries each one's value. Nothing
+    # here when no account was chosen -- then the user's environment decides, and the shim reports
+    # what it decided.
+    if [[ -n "${TKZMUX_REEXPORT:-}" ]]; then
+        for __tkzmux_reexport_name in ${=TKZMUX_REEXPORT}; do
+            __tkzmux_reexport_var="TKZMUX_ENV_${__tkzmux_reexport_name}"
+            if [[ -n "${(P)__tkzmux_reexport_var:-}" ]]; then
+                export "${__tkzmux_reexport_name}=${(P)__tkzmux_reexport_var}"
+            fi
+        done
+        unset __tkzmux_reexport_name __tkzmux_reexport_var
     fi
 fi

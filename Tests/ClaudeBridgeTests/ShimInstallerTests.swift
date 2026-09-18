@@ -28,7 +28,10 @@ private func modificationDate(of url: URL) throws -> Date {
 
 @Test func bundledResourcesLoadUnderSwiftTest() throws {
     let resources = try ShimResources.bundled()
-    #expect(resources.shimScript.contains("#!/bin/bash"))
+    #expect(resources.shimScripts.keys.sorted() == ["claude", "codex"])
+    for script in resources.shimScripts.values {
+        #expect(script.contains("#!/bin/bash"))
+    }
     #expect(resources.zshFiles.keys.sorted() == ["zlogin", "zprofile", "zshenv", "zshrc"])
     #expect(resources.wrappers.keys.sorted() == [
         "bash/tkzmux.bashrc", "fish/tkzmux.fish",
@@ -54,13 +57,16 @@ private func modificationDate(of url: URL) throws -> Date {
 
     let dir = root.appendingPathComponent("app-support")
     let claude = dir.appendingPathComponent("bin/claude")
+    let codex = dir.appendingPathComponent("bin/codex")
     let hook = dir.appendingPathComponent("bin/tkzmux-hook")
     let version = dir.appendingPathComponent("VERSION")
 
     #expect(FileManager.default.fileExists(atPath: claude.path))
+    #expect(FileManager.default.fileExists(atPath: codex.path))
     #expect(FileManager.default.fileExists(atPath: hook.path))
     #expect(FileManager.default.fileExists(atPath: version.path))
     #expect(try posixPermissions(of: claude) == 0o755)
+    #expect(try posixPermissions(of: codex) == 0o755)
     #expect(try posixPermissions(of: hook) == 0o755)
 
     for name in ShimResources.zshFileNames {
@@ -115,6 +121,36 @@ private func modificationDate(of url: URL) throws -> Date {
 
     #expect(try installer.ensureInstalled() == .updated)
     #expect(try installer.ensureInstalled() == .upToDate)
+}
+
+/// Adding `codex.sh` to the resource set changes the hashed `VERSION`, so an install made before
+/// this shipped rewrites `bin/` and every wrapper exactly once, then settles. This is the one-time
+/// upgrade the TKZ-84 brief calls out: harmless (idempotent, atomic writes) but worth asserting
+/// deliberately rather than being surprised by a stray `.updated` in some other test.
+@Test func addingANewShimTriggersOneUpdateThenSettles() throws {
+    let root = try makeTempDirectory("installer")
+    let hookBinary = try makeFakeHookBinary(in: root)
+    let bundled = try ShimResources.bundled()
+
+    // Simulate a pre-TKZ-84 install: only the `claude` shim existed.
+    var oldResources = bundled
+    oldResources.shimScripts = oldResources.shimScripts.filter { $0.key == "claude" }
+    #expect(oldResources.shimScripts.keys.sorted() == ["claude"])
+
+    let oldInstaller = ShimInstaller(
+        directory: root.appendingPathComponent("app-support"), hookBinary: hookBinary,
+        resources: oldResources)
+    #expect(try oldInstaller.ensureInstalled() == .installed)
+    let codexPath = root.appendingPathComponent("app-support/bin/codex").path
+    #expect(!FileManager.default.fileExists(atPath: codexPath))
+
+    // The real installer, with every shim including `codex`, sees a version mismatch and rewrites.
+    let newInstaller = ShimInstaller(
+        directory: root.appendingPathComponent("app-support"), hookBinary: hookBinary,
+        resources: bundled)
+    #expect(try newInstaller.ensureInstalled() == .updated)
+    #expect(FileManager.default.fileExists(atPath: codexPath))
+    #expect(try newInstaller.ensureInstalled() == .upToDate)
 }
 
 @Test func removeLeavesSessionsAndStateFileInPlace() throws {

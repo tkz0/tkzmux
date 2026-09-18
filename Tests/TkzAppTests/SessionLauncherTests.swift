@@ -119,6 +119,10 @@ struct SessionLauncherTests {
         _ = h.launcher.start(spec)
         #expect(h.host.opened.first?.env["STUB_CONFIG_DIR"] == "/somewhere/stub")
         #expect(h.host.opened.first?.env["CLAUDE_CONFIG_DIR"] == nil)
+        // The generic re-export pair rides alongside the adapter's own variable, so the shell
+        // wrapper can win the race against the user's rc files whatever the agent turns out to be.
+        #expect(h.host.opened.first?.env["TKZMUX_ENV_STUB_CONFIG_DIR"] == "/somewhere/stub")
+        #expect(h.host.opened.first?.env["TKZMUX_REEXPORT"] == "STUB_CONFIG_DIR")
     }
 
     @Test("resume: the boot command comes from the row's own adapter, not a literal claude --resume")
@@ -188,10 +192,12 @@ struct SessionLauncherTests {
         _ = h.launcher.start(NewSessionMenu.Launch(kind: .repoRoot, command: "claude", cwd: h.tree.repo, accountKey: "claude", groupID: h.group))
         _ = h.launcher.start(NewSessionMenu.Launch(kind: .repoRoot, command: "claude", cwd: h.tree.repo, accountKey: nil, groupID: h.group))
         #expect(h.host.opened[0].env["CLAUDE_CONFIG_DIR"] == "/somewhere/else")
-        #expect(h.host.opened[0].env["TKZMUX_CLAUDE_CONFIG_DIR"] == "/somewhere/else")
+        #expect(h.host.opened[0].env["TKZMUX_ENV_CLAUDE_CONFIG_DIR"] == "/somewhere/else")
+        #expect(h.host.opened[0].env["TKZMUX_REEXPORT"] == "CLAUDE_CONFIG_DIR")
         #expect(h.host.opened[1].env["CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
         #expect(h.host.opened[2].env["CLAUDE_CONFIG_DIR"] == nil)
-        #expect(h.host.opened[2].env["TKZMUX_CLAUDE_CONFIG_DIR"] == nil)
+        #expect(h.host.opened[2].env["TKZMUX_ENV_CLAUDE_CONFIG_DIR"] == nil)
+        #expect(h.host.opened[2].env["TKZMUX_REEXPORT"] == nil)
     }
 
     @Test("reopen and resume always pin the row's recorded account, the primary included")
@@ -203,7 +209,8 @@ struct SessionLauncherTests {
         // A row that ran on `~/.claude` must resume there even if the user's shell defaults
         // elsewhere — the recorded key is the truth, and the wrapper re-export enforces it.
         #expect(h.host.opened.first?.env["CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
-        #expect(h.host.opened.first?.env["TKZMUX_CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
+        #expect(h.host.opened.first?.env["TKZMUX_ENV_CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
+        #expect(h.host.opened.first?.env["TKZMUX_REEXPORT"] == "CLAUDE_CONFIG_DIR")
     }
 
     @Test("start: a missing directory fails before the host is asked")

@@ -505,24 +505,31 @@ public final class SessionLauncher {
     // MARK: - Environment
 
     /// The agent-specific config-dir variables for the account named by `accountKey` — the primary
-    /// included — from that account's own adapter (`CLAUDE_CONFIG_DIR` for Claude today). `nil`
-    /// means "no account was chosen": the variables are left alone, the user's environment decides,
-    /// and the shim's `launch` frame reports what that was (`AgentIntegration.learnAccount`).
+    /// included — from that account's own adapter (`CLAUDE_CONFIG_DIR` for Claude today, something
+    /// else for a future agent). `nil` means "no account was chosen": the variables are left alone,
+    /// the user's environment decides, and the shim's `launch` frame reports what that was
+    /// (`AgentIntegration.learnAccount`).
     ///
-    /// `TKZMUX_CLAUDE_CONFIG_DIR` is still emitted alongside, hard-coded, whatever the account's
-    /// agent turns out to be: the ZDOTDIR wrapper re-exports *that one name* after the user's own
-    /// rc files have run, so an `export CLAUDE_CONFIG_DIR=…` in a `.zshrc` cannot override an
-    /// account the user picked in the app. Generalizing the re-export mechanism itself is TKZ-84's
-    /// job — changing the wrapper contract here would touch the real-pty shell tests this ticket
-    /// does not own.
+    /// Every pair the adapter returns is also re-exported generically: `TKZMUX_ENV_<NAME>` carries
+    /// each value and `TKZMUX_REEXPORT` names them, space separated. The shell wrappers
+    /// (`Resources/{zsh,bash,fish}/…`) loop over that list *after* the user's own rc files have
+    /// run, so `export CLAUDE_CONFIG_DIR=…` in a `.zshrc` cannot override an account the user
+    /// picked in the app — this is what makes the mechanism generic across agents rather than
+    /// hard-coded to Claude's one variable (TKZ-84).
     public func environment(accountKey: String?, bootCommand: String? = nil) -> [String: String] {
         var env: [String: String] = [:]
         if let key = accountKey, let dir = configDirectory(forKey: key) {
             let agent = store.state.accounts[key]?.agent ?? .claude
             if let adapter = adapters[agent] {
-                for (name, value) in adapter.environment(configDir: dir) { env[name] = value }
+                let pairs = adapter.environment(configDir: dir)
+                for (name, value) in pairs {
+                    env[name] = value
+                    env["TKZMUX_ENV_\(name)"] = value
+                }
+                if !pairs.isEmpty {
+                    env["TKZMUX_REEXPORT"] = pairs.keys.sorted().joined(separator: " ")
+                }
             }
-            env["TKZMUX_CLAUDE_CONFIG_DIR"] = dir
         }
         // Read and `unset` by the ZDOTDIR `.zlogin` before it runs the command, so nothing the
         // command starts inherits it and runs it a second time. Not in `strippedKeys`: the strip

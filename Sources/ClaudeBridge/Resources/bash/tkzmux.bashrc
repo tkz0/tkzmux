@@ -102,10 +102,21 @@ if [ -n "${TKZMUX_BIN:-}" ]; then
 }__tkzmux_precmd" ;;
     esac
 
-    # The account the user picked in tkzmux wins over an `export CLAUDE_CONFIG_DIR=...` in their
-    # own profile, which ran above. Unset when no account was chosen -- then the user's
-    # environment decides, and the shim reports what it decided.
-    if [ -n "${TKZMUX_CLAUDE_CONFIG_DIR:-}" ]; then
-        export CLAUDE_CONFIG_DIR="$TKZMUX_CLAUDE_CONFIG_DIR"
+    # Whatever the account picked in tkzmux needs re-exported (`CLAUDE_CONFIG_DIR`, or a future
+    # agent's own variable) wins over the same name set in the user's own profile, which ran
+    # above -- that is the whole point of running this after it rather than before. TKZMUX_REEXPORT
+    # names the variables (space separated); TKZMUX_ENV_<NAME> carries each one's value. Nothing
+    # here when no account was chosen -- then the user's environment decides, and the shim reports
+    # what it decided. `${!var}` (bash's indirect expansion) works on bash 3.2, which is what
+    # /bin/bash is on macOS; `declare -n` namerefs do not, so they are avoided here.
+    if [ -n "${TKZMUX_REEXPORT:-}" ]; then
+        for __tkzmux_reexport_name in $TKZMUX_REEXPORT; do
+            __tkzmux_reexport_var="TKZMUX_ENV_${__tkzmux_reexport_name}"
+            __tkzmux_reexport_value="${!__tkzmux_reexport_var}"
+            if [ -n "$__tkzmux_reexport_value" ]; then
+                export "${__tkzmux_reexport_name}=${__tkzmux_reexport_value}"
+            fi
+        done
+        unset __tkzmux_reexport_name __tkzmux_reexport_var __tkzmux_reexport_value
     fi
 fi
