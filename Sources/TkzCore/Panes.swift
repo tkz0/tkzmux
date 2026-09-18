@@ -17,7 +17,7 @@ import Foundation
 /// Identity of one terminal — one pty, one VT, one `.ghsnap`.
 ///
 /// This, not `SessionID`, is the snapshot basename. `TKZMUX_SESSION_ID` still carries the **row's**
-/// `SessionID`, so every pane of a row is one row to the shim, the hook relay and ClaudeBridge.
+/// `SessionID`, so every pane of a row is one row to the shim, the hook relay and AgentBridge.
 ///
 /// Every session migrated from schema v1 has exactly one leaf whose `uuid` **is** its
 /// `SessionID.uuid` (see `Migrations.liftV1ToV2`). That is why no `<uuid>.ghsnap` had to be

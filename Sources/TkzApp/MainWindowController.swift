@@ -26,7 +26,7 @@
 // reports what the window is doing back into the store, and applies what the store says.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import GitStatus
 import Persistence

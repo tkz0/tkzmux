@@ -15,7 +15,7 @@ or `swift run` never check (their version is not a release), unless `TKZMUX_UPDA
 them at a feed on purpose. That is the whole `URLSession` story — there is no other one, and no
 `Network.framework` or `AF_INET` socket anywhere else in `Sources/`. The only other socket it
 creates is an `AF_UNIX` one — a file in its own support directory, used by the hook relay
-(`Sources/ClaudeBridge/HookServer.swift`, `Sources/tkzmux-hook/Socket.swift`).
+(`Sources/AgentBridge/HookServer.swift`, `Sources/tkzmux-hook/Socket.swift`).
 
 It also reaches the network **indirectly, in two places**. The PR badge shells out to
 `gh pr view` (`Sources/GitStatus/PRLookup.swift`), and `gh` talks to GitHub under your own
@@ -73,11 +73,11 @@ you started — it opens no connection to those ports and sends nothing anywhere
 config dir — is read, never written:
 
 - `<config dir>/sessions/<pid>.json`, the session descriptors Claude Code publishes, are read and
-  watched for changes (`Sources/ClaudeBridge/ClaudeSessionWatcher.swift`). Only files whose basename
+  watched for changes (`Sources/AgentBridge/ClaudeSessionWatcher.swift`). Only files whose basename
   is an integer pid are opened; the sibling `<pid>.<sha>.key` files are ignored.
 - `settings.json`, `sessions/` and `.claude.json` are used **only as existence markers** when
   discovering accounts — `FileManager.fileExists`, never opened or parsed
-  (`Sources/ClaudeBridge/Claude/ClaudeAdapter.swift`, `discoverAccounts`). `.claude.json` is Claude
+  (`Sources/AgentBridge/Claude/ClaudeAdapter.swift`, `discoverAccounts`). `.claude.json` is Claude
   Code's own configuration file; the one thing tkzmux ever reads out of it is `oauthAccount`, and
   only to put a name and plan on an account badge (`Sources/tkzmux-hook/StatuslineCommand.swift`).
   It is read only when the account's own sidecar carries no label yet, and never written.
@@ -85,19 +85,19 @@ config dir — is read, never written:
   tkzmux's hooks into it (`Sources/tkzmux-hook/SettingsMerge.swift`).
 - `<config dir>/projects/*/<session id>.jsonl` — each session's own Claude Code transcript — is read
   in two places: `TranscriptReader` reads the head and tail of the file for the first-prompt card
-  and Claude's own recap (`Sources/ClaudeBridge/TranscriptReader.swift`), and
+  and Claude's own recap (`Sources/AgentBridge/TranscriptReader.swift`), and
   `TranscriptUsageReader` reads every `"type":"assistant"` line's `message.usage` object to sum
   token counts for the *Usage and spend* feature below. Neither ever writes to a transcript.
 
 **Codex.** `~/.codex` — and any sibling `~/.codex-*` directory that looks like a second config
 dir — is read the same way, and only while `codex` is actually on your `PATH`
-(`Sources/ClaudeBridge/Codex/CodexAdapter.swift`, `discoverAccounts`): a leftover `~/.codex` from
+(`Sources/AgentBridge/Codex/CodexAdapter.swift`, `discoverAccounts`): a leftover `~/.codex` from
 an agent you have since uninstalled produces no account. `config.toml` and `auth.json` are used
 only as existence markers, `FileManager.fileExists`, never opened or parsed by account discovery.
 Codex writes no session-descriptor file of its own, so there is nothing there for tkzmux to watch —
 its status comes entirely from hooks (below). `<config dir>/sessions/**/rollout-*.jsonl` — Codex's
 own transcript — is read the same two ways Claude Code's is, by a Codex-specific implementation of
-the same reader interface (`Sources/ClaudeBridge/Codex/CodexTranscriptReader.swift`).
+the same reader interface (`Sources/AgentBridge/Codex/CodexTranscriptReader.swift`).
 
 **What it writes.** Everything lives under `~/Library/Application Support/tkzmux`:
 
@@ -111,10 +111,10 @@ the same reader interface (`Sources/ClaudeBridge/Codex/CodexTranscriptReader.swi
   prints — can end up in one of these files. They are deleted with the session.
 - `bin/claude`, `bin/codex`, `bin/tkzmux-hook`, `zsh/.{zshenv,zprofile,zshrc,zlogin}`,
   `bash/tkzmux.bashrc`, `fish/tkzmux.fish`, `VERSION` — the shell integration
-  (`Sources/ClaudeBridge/ShimInstaller.swift`). Both shims are written whether or not you have that
+  (`Sources/AgentBridge/ShimInstaller.swift`). Both shims are written whether or not you have that
   agent installed; only the one whose name a shell actually resolves to ever runs.
 - `codex-hooks/previous-<account>.json` — the Codex `hooks.json` you had before, kept so it can be
-  restored (`Sources/ClaudeBridge/Codex/CodexHooksInstaller.swift`). Written only while Codex's
+  restored (`Sources/AgentBridge/Codex/CodexHooksInstaller.swift`). Written only while Codex's
   hooks integration is installed — see below.
 - `statusline/usage-<account>.json`, `statusline/context-<session id>.json` — what the status line
   command captures: quota percentages and reset times, and per session the context percentage,
@@ -124,7 +124,7 @@ the same reader interface (`Sources/ClaudeBridge/Codex/CodexTranscriptReader.swi
 - `usage/<session id>.json` — **Usage and spend.** A running per-model token count (input, output,
   cache write, cache read) for the session, summed off its own transcript, plus the byte offset
   already parsed so a relaunch resumes instead of re-reading the file
-  (`Sources/ClaudeBridge/TranscriptUsageReader.swift`). Estimated USD cost is *not* stored here — it
+  (`Sources/AgentBridge/TranscriptUsageReader.swift`). Estimated USD cost is *not* stored here — it
   is computed from the token counts against a hand-maintained price table
   (`Sources/TkzCore/ModelPricing.swift`) each time the status bar reads it, so an edit to that table
   is retroactive. This file is a recomputable cache, not a record: deleting it just costs one re-read
@@ -135,8 +135,8 @@ the same reader interface (`Sources/ClaudeBridge/Codex/CodexTranscriptReader.swi
 **Shell integration and hooks.** Terminals tkzmux opens run your login shell (`$SHELL`, else the
 account database) with a wrapper that runs *after* your own startup files and puts tkzmux's `bin/`
 first on `PATH`, so inside a tkzmux terminal `claude` resolves to a small bash shim
-(`Sources/ClaudeBridge/Resources/shim/claude.sh`). For zsh the wrapper is a set of `ZDOTDIR` files
-that source your real rc files (`Sources/ClaudeBridge/Resources/zsh/`); for bash it is an `--rcfile`
+(`Sources/AgentBridge/Resources/shim/claude.sh`). For zsh the wrapper is a set of `ZDOTDIR` files
+that source your real rc files (`Sources/AgentBridge/Resources/zsh/`); for bash it is an `--rcfile`
 that sources `/etc/profile` and your `.bash_profile` itself (`Resources/bash/tkzmux.bashrc`); for
 fish it is an `--init-command` that runs after `config.fish` (`Resources/fish/tkzmux.fish`). None
 of them touches a file in your home directory. The shim `exec`s the real `claude` with a
@@ -150,7 +150,7 @@ direnv's have exported their environment, so Claude sees your `.envrc`. *Remove 
 in Settings (⌘,) › Shell deletes `bin/` and the wrapper directories again, until the next launch
 installs them afresh.
 
-Codex's own shim (`Sources/ClaudeBridge/Resources/shim/codex.sh`) works the same way up through
+Codex's own shim (`Sources/AgentBridge/Resources/shim/codex.sh`) works the same way up through
 finding the real `codex` and passing through untouched for a subcommand, a flag, or outside a
 tkzmux session — but it never merges a settings document, because Codex has no `--settings`
 equivalent to merge one into. All it adds is one `launch` announcement over the same socket before
@@ -163,7 +163,7 @@ limits and context usage to the `statusLine` command on stdin and writes them no
 *Context*, model and *Usage* segments cannot work without tkzmux being that command. Nothing happens
 until you say yes: the app asks once, shows the exact before/after of the `statusLine` key, and only
 then sets `statusLine.command` in `<config dir>/settings.json` to `"…/bin/tkzmux-hook" statusline`
-(`Sources/ClaudeBridge/StatuslineInstaller.swift`). Every other key in that file — and its key order,
+(`Sources/AgentBridge/StatuslineInstaller.swift`). Every other key in that file — and its key order,
 and its number formatting — is preserved byte for byte, because the rewrite goes through the hook's
 own JSON parser rather than `JSONSerialization`.
 
@@ -188,7 +188,7 @@ the rewrite goes through the same kind of order-preserving JSON parser the statu
 uses, never `JSONSerialization`. The whole prior document is saved to
 `codex-hooks/previous-<account>.json` first, and *Hooks integration* in Settings puts it back
 exactly (or deletes the file if there was none), refusing rather than guessing if `hooks.json` no
-longer carries tkzmux's command for every one of those events (`Sources/ClaudeBridge/Codex/CodexHooksInstaller.swift`).
+longer carries tkzmux's command for every one of those events (`Sources/AgentBridge/Codex/CodexHooksInstaller.swift`).
 
 **A hook written this way does not run until Codex trusts it.** Codex keys hook trust by source and
 skips an untrusted one silently — no error, the turn just completes without it — so a freshly
@@ -201,7 +201,7 @@ of its own (Codex merges both files, so an install here never replaces what is a
 only adds alongside it).
 
 **Hook payloads.** Each hook sends one NDJSON frame over the `AF_UNIX` socket — which agent sent it
-(`Sources/ClaudeBridge/HookFrame.swift`), the event name, the agent's own session id, the hook
+(`Sources/AgentBridge/HookFrame.swift`), the event name, the agent's own session id, the hook
 process's ppid, a timestamp, and that agent's own payload, which includes `cwd` and
 `transcript_path`. Claude's and Codex's hooks share this one socket and one frame shape; only the
 payload fields each agent actually sends differ. The app keeps up to 4 KiB of

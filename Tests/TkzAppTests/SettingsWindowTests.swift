@@ -6,7 +6,7 @@
 // ended a Swift Testing run on this machine before.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Testing
 import TkzCore
 
@@ -189,21 +189,21 @@ struct SettingsWindowTests {
         #expect(!none[0].detail.contains("config.toml"))
 
         var withConfigToml = base
-        withConfigToml.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+        withConfigToml.hooksDetection = ["codex": AgentBridge.CodexHooksDetection(
             producer: .none, configTomlHasHooks: true, trust: .unknown)]
         let noneWithToml = SettingsModel.hooksRows(state: state, environment: withConfigToml)
         #expect(noneWithToml[0].detail.contains("config.toml"))
         #expect(noneWithToml[0].detail.contains("alongside them"))
 
         var other = base
-        other.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+        other.hooksDetection = ["codex": AgentBridge.CodexHooksDetection(
             producer: .other, configTomlHasHooks: false, trust: .unknown)]
         let otherRows = SettingsModel.hooksRows(state: state, environment: other)
         #expect(otherRows[0].control == .button(title: "Configure\u{2026}", destructive: false))
         #expect(otherRows[0].detail.contains("alongside the hooks already there"))
 
         var stale = base
-        stale.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+        stale.hooksDetection = ["codex": AgentBridge.CodexHooksDetection(
             producer: .stale(paths: ["/old/tkzmux-hook"]), configTomlHasHooks: false, trust: .unknown)]
         let staleRows = SettingsModel.hooksRows(state: state, environment: stale)
         #expect(staleRows[0].control == .button(title: "Remove\u{2026}", destructive: false))
@@ -216,19 +216,19 @@ struct SettingsWindowTests {
         state.accounts = ["codex": Account(key: "codex", configDir: "/h/.codex", label: "Codex", agent: .codex)]
         var environment = SettingsModel.Environment(hooksInstallRequired: { $0 == .codex })
 
-        environment.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+        environment.hooksDetection = ["codex": AgentBridge.CodexHooksDetection(
             producer: .tkzmux, configTomlHasHooks: false, trust: .mentionsOurConfig)]
         let mentions = SettingsModel.hooksRows(state: state, environment: environment)
         #expect(mentions[0].detail.contains("trust ledger already mentions this file"))
         #expect(mentions[0].control == .button(title: "Remove\u{2026}", destructive: false))
 
-        environment.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+        environment.hooksDetection = ["codex": AgentBridge.CodexHooksDetection(
             producer: .tkzmux, configTomlHasHooks: false, trust: .doesNotMentionOurConfig)]
         let notTrusted = SettingsModel.hooksRows(state: state, environment: environment)
         #expect(notTrusted[0].detail.contains("has not trusted this yet"))
         #expect(notTrusted[0].detail.contains("/hooks"))
 
-        environment.hooksDetection = ["codex": ClaudeBridge.CodexHooksDetection(
+        environment.hooksDetection = ["codex": AgentBridge.CodexHooksDetection(
             producer: .tkzmux, configTomlHasHooks: false, trust: .unknown)]
         let unknown = SettingsModel.hooksRows(state: state, environment: environment)
         #expect(unknown[0].detail.contains("cannot tell whether"))

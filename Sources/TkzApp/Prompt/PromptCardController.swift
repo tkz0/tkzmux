@@ -15,7 +15,7 @@
 // turn's Stop, and a card that only read once would show the previous one until reopened.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Synchronization
 import TkzCore
 

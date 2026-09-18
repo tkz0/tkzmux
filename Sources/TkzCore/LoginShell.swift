@@ -2,7 +2,7 @@
 // The pty used to spawn `/bin/zsh -l` for everyone; now it spawns the user's login shell.
 //
 // The single source of truth shared by `TerminalEnvironment` (TkzTerminalCore, builds the argv and
-// the environment) and `ShimInstaller` (ClaudeBridge, writes the wrapper files): both need to
+// the environment) and `ShimInstaller` (AgentBridge, writes the wrapper files): both need to
 // agree on where the wrappers live under the application-support directory, and neither may depend
 // on the other. Pure data — no AppKit, no process spawning.
 //
@@ -29,7 +29,7 @@ public struct LoginShell: Sendable, Equatable, Hashable {
         case zsh, bash, fish, other
     }
 
-    /// One wrapper file: where it is read from in the ClaudeBridge resource bundle, and where the
+    /// One wrapper file: where it is read from in the AgentBridge resource bundle, and where the
     /// installer writes it, relative to the application-support directory.
     public struct WrapperFile: Sendable, Equatable, Hashable {
         /// Resource subdirectory (`"zsh"`, `"bash"`, `"fish"`).

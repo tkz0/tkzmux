@@ -1,7 +1,7 @@
 // AgentIntegration — the app-side coordinator for M3, generalized by TKZ-82 from the
 // Claude-only `ClaudeIntegration` into one driven by an `[AgentKind: any AgentAdapter]` table.
 //
-// `ClaudeBridge` ships two kinds of service that each know one thing: `HookServer` (frames from
+// `AgentBridge` ships two kinds of service that each know one thing: `HookServer` (frames from
 // `tkzmux-hook`) and an `AgentObservationWatcher` per adapter that has one (descriptor files, for
 // Claude). Neither knows what a `Session` is. (`UsageReader` and the per-session sidecar reader
 // are M3.5, still in the backlog; the account-label half of M3.5 is here, reached through the
@@ -26,7 +26,7 @@
 // registers a stub to prove it.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import TkzCore
 import os

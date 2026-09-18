@@ -4,7 +4,7 @@
 // some descendant pid, not necessarily the session's own pid — `npm run dev` forks node, which may
 // fork again. So the scan walks the whole descendant tree (BFS, depth-capped) and inspects every
 // process's open file descriptors for listening sockets, the same shape of problem
-// `ClaudeBridge.ProcessLiveness` solves for liveness. `GitStatus` does not depend on `ClaudeBridge`
+// `AgentBridge.ProcessLiveness` solves for liveness. `GitStatus` does not depend on `AgentBridge`
 // (and must not — it is a lower-level, git-focused module usable without Claude at all), so the
 // `proc_listchildpids` walk is re-implemented here rather than shared; the duplication is
 // deliberate, not an oversight.
@@ -129,8 +129,8 @@ public enum PortScanner {
     }
 
     // Direct children of `pid` via `proc_listchildpids`. Re-implemented from
-    // `ClaudeBridge.ProcessTree.children(of:)` rather than shared, per the header comment above:
-    // `GitStatus` must not depend on `ClaudeBridge`. Its return value is the **number of pids
+    // `AgentBridge.ProcessTree.children(of:)` rather than shared, per the header comment above:
+    // `GitStatus` must not depend on `AgentBridge`. Its return value is the **number of pids
     // written**, not a byte count, and (unlike proc_listallpids) it does not support the
     // NULL-sizing idiom, so a fixed, generous buffer is used and the return value indexes directly
     // into it.

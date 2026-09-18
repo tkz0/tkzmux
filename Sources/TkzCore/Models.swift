@@ -432,7 +432,7 @@ public struct LiveSessionState: Hashable, Sendable {
     /// agent's schema — see `AgentObservation`. `nil` for an agent with no descriptor file, or one
     /// tkzmux has not found yet.
     public var observation: AgentObservation?
-    /// Derived by `ClaudeBridge`/`TkzCore` (M3.4) from the observation + hooks + liveness; the
+    /// Derived by `AgentBridge`/`TkzCore` (M3.4) from the observation + hooks + liveness; the
     /// sidebar's dot.
     public var status: SessionStatus
     /// `true` = the amber `NEEDS YOU` badge. Set for `waiting(.doneUnattended)` and for pending
@@ -1043,7 +1043,7 @@ public struct SessionSidecar: Hashable, Sendable, Codable {
 // MARK: - Token usage / spend
 
 /// One model's token totals for a session, summed out of its transcript by `TranscriptUsageReader`
-/// (ClaudeBridge), and their estimated cost from ``ModelPricing``. `costUSD` is `nil` when
+/// (AgentBridge), and their estimated cost from ``ModelPricing``. `costUSD` is `nil` when
 /// `modelId` has no pricing entry — tokens are still shown, just with no `$` figure.
 public struct ModelUsage: Hashable, Sendable, Codable {
     public var modelId: String

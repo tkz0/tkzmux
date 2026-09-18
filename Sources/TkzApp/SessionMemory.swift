@@ -21,7 +21,7 @@
 // `ri_phys_footprint` is the same accounting. It works on any process the user owns, which is
 // exactly the set spawned from our own ptys.
 
-import ClaudeBridge
+import AgentBridge
 import Darwin
 import Foundation
 

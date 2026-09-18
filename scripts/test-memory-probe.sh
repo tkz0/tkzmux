@@ -32,7 +32,7 @@ OUT_DIR="${OUT_DIR:-.build/memory-probe}"
 POLL_S="${POLL_S:-0.1}"
 
 DEFAULT_TARGETS=(
-  TkzCoreTests PersistenceTests ClaudeBridgeTests GitStatusTests
+  TkzCoreTests PersistenceTests AgentBridgeTests GitStatusTests
   TkzTerminalCoreTests TkzTerminalRenderTests TkzTerminalViewTests TkzAppTests
 )
 # `ALL` means the unfiltered `swift test` — every test in one helper process, which is the

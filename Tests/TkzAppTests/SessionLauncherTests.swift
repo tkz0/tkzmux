@@ -5,7 +5,7 @@
 // the "first directory that exists" rule is exercised against the file system rather than mocked.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import Synchronization
 import Testing

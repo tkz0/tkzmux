@@ -10,7 +10,7 @@
 // see that file's header for why a visible test window is a real bug here, not a style nit.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import Testing
 import TkzCore

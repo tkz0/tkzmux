@@ -7,7 +7,7 @@
 // window. Pages exist only where a setting already exists: General, Shell, Appearance. The
 // artboard's Sessions / Usage / Git are not drawn until something lives on them.
 
-import ClaudeBridge
+import AgentBridge
 import TkzCore
 
 /// One page of the nav column.

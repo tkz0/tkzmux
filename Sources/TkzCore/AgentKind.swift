@@ -1,7 +1,7 @@
 // TkzCore — which coding agent a row runs.
 //
 // The discriminator the rest of the app branches on. Everything that knows a path, a JSON schema
-// or a CLI flag lives behind an `AgentAdapter` in ClaudeBridge; this type is only the name.
+// or a CLI flag lives behind an `AgentAdapter` in AgentBridge; this type is only the name.
 //
 // **A struct, not an enum, on purpose.** `state.json` carries this value, and a file written by a
 // build that knows `gemini` has to keep loading in a build that does not. An enum would fail to

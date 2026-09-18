@@ -209,7 +209,7 @@ public struct ChangeSet: Hashable, Sendable {
 /// store.removeObserver(token)
 /// ```
 ///
-/// Services (`ClaudeBridge`, `GitStatus`) run on their own queues and hop to the main actor to call
+/// Services (`AgentBridge`, `GitStatus`) run on their own queues and hop to the main actor to call
 /// `update`; they never touch views.
 @MainActor
 public final class AppStore {

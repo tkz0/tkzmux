@@ -15,7 +15,7 @@
 // and their test hooks; this controller only asks for them by account key.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import TkzCore
 
 @MainActor

@@ -15,7 +15,7 @@
 // it would run. M2.5 replaces the closure with the real `TerminalHost` call.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import TkzCore
 import os
 

@@ -12,7 +12,7 @@ import AppKit
 import Foundation
 import Synchronization
 import Testing
-import ClaudeBridge
+import AgentBridge
 import TkzCore
 import TkzTerminalCore
 
@@ -363,7 +363,7 @@ struct AgentIntegrationTests {
 
     // MARK: - The adapter seam itself
 
-    /// Defined only here, never in `ClaudeBridge` or `TkzApp` — the whole point is that
+    /// Defined only here, never in `AgentBridge` or `TkzApp` — the whole point is that
     /// `AgentIntegration` needs no change to route a second agent's frames, only a second entry in
     /// its `adapters` table.
     private struct StubTranscriptProvider: TranscriptProvider {

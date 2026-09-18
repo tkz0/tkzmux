@@ -10,7 +10,7 @@
 // the choke point these assertions go through.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import Testing
 import TkzCore

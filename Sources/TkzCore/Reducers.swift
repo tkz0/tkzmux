@@ -558,7 +558,7 @@ extension AppState {
         updateLive(id) { $0.context = nil }
     }
 
-    /// What `TranscriptUsageReader` (ClaudeBridge) summed off a session's transcript, joined on
+    /// What `TranscriptUsageReader` (AgentBridge) summed off a session's transcript, joined on
     /// Claude's own session id — same reasoning as ``setSessionSidecar(_:agent:)``: the reader knows
     /// nothing about tkzmux rows, only about a Claude session id and its transcript, and the id is
     /// opaque per agent so the join needs `agent` too.

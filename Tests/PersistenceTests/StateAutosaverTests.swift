@@ -41,7 +41,7 @@ private func withSaver(
 @MainActor
 ///
 /// 10 s rather than 2 s: the whole suite runs in parallel in one process, and since M3 added the
-/// process-spawning ClaudeBridge suites the main actor was measured to be starved for more than
+/// process-spawning AgentBridge suites the main actor was measured to be starved for more than
 /// 2 s while these tests waited (they pass alone and in pairs with every other suite). The saver's
 /// own debounce is 20–60 ms here, so a real regression still fails fast.
 private func settle(until condition: @MainActor () -> Bool, timeout: Duration = .seconds(10)) async {

@@ -5,7 +5,7 @@
 // exposes `confirmInstallStatusline` / `confirmRemoveStatusline` as the injection points, the same
 // pattern "Remove Shell Integration" already uses.
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import Testing
 import TkzCore

@@ -33,7 +33,7 @@
 // and cannot report a failure, so a missing directory would start the shell somewhere else and the
 // resume would land in the wrong project. Every path is validated before `open`/`restore`.
 
-import ClaudeBridge
+import AgentBridge
 import Darwin
 import Foundation
 import GitStatus

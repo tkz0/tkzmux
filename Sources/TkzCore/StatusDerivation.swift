@@ -1,7 +1,7 @@
 // TkzCore — status derivation.
 //
 // Pure and table-driven: no clock (`now` is always a parameter), no I/O, no AppKit. `Reducers.swift`
-// is the only caller inside TkzCore; `ClaudeBridge` and `TkzApp` never derive status themselves —
+// is the only caller inside TkzCore; `AgentBridge` and `TkzApp` never derive status themselves —
 // they feed `AppState.applyEvent`/`applyObservation`/… and read `LiveSessionState.status` back.
 //
 // Rule order (first match wins):

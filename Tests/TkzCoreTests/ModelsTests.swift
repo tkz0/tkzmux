@@ -1,6 +1,6 @@
 // The model contract: identifiers that round-trip as file basenames, and persisted shapes that
 // keep `live` out. The descriptor parser's own tests (`ClaudeSessionInfo`) moved to
-// `ClaudeBridgeTests` with the type itself (TKZ-81) — TkzCore no longer names it.
+// `AgentBridgeTests` with the type itself (TKZ-81) — TkzCore no longer names it.
 
 import Foundation
 import Testing

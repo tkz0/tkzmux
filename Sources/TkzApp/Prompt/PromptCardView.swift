@@ -10,7 +10,7 @@
 // without a window.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import TkzCore
 
 @MainActor

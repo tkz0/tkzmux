@@ -11,7 +11,7 @@
 // exposes `confirmInstallCodexHooks` as the injection point, exactly the way `confirmInstallStatusline`
 // does for the other agent's own consent flow.
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import Testing
 import TkzCore

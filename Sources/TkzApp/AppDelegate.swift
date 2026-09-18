@@ -13,7 +13,7 @@
 // so either window can be smoke-tested headlessly.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import Persistence
 import TkzCore

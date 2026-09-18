@@ -3,7 +3,7 @@
 
 import Foundation
 import Testing
-import ClaudeBridge
+import AgentBridge
 import TkzCore
 
 @testable import TkzApp

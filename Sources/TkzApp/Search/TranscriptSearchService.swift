@@ -14,7 +14,7 @@
 //
 // Nothing is indexed until the user actually types, so a session that is never searched costs zero.
 
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import TkzCore
 

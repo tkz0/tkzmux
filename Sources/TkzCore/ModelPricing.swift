@@ -5,7 +5,7 @@
 // show tokens with no `$` figure in that case.
 //
 // **No OpenAI rates were added here for TKZ-86 part 2.** The model id a real Codex capture named
-// (`gpt-5.6-terra`, off `turn_context.payload.model` in `Tests/ClaudeBridgeTests/Fixtures/codex/
+// (`gpt-5.6-terra`, off `turn_context.payload.model` in `Tests/AgentBridgeTests/Fixtures/codex/
 // rollout-exec.jsonl`) is not a publicly documented id with a published per-token rate as of this
 // writing, so inventing one would be exactly the guessed number the paragraph above rules out. The
 // chain this leaves in place, verified rather than assumed: `cost(modelId:)` returns `nil` for it →

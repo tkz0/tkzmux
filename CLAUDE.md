@@ -33,8 +33,8 @@ make clean                  # rm -rf .build build
 | `TkzTerminalRender` | Swift | fonts, glyph atlas, `FrameBuilder`, Metal renderer |
 | `TkzTerminalView` | Swift | `TerminalMetalView`, keyboard/IME, mouse/selection |
 | `TkzCore` | Swift | models, `AppStore`/`ChangeSet`, status derivation, theme tokens — no AppKit |
-| `ClaudeBridge` | Swift | `AgentAdapter` seam, session watcher, hook server, shim installer, usage reader |
-| `Sources/ClaudeBridge/Codex/` | (in `ClaudeBridge`) | `CodexAdapter`, `CodexHooksInstaller`, `CodexTranscriptReader`, `CodexHookMapper` — everything Codex-specific, behind the same seam |
+| `AgentBridge` | Swift | `AgentAdapter` seam, session watcher, hook server, shim installer, usage reader |
+| `Sources/AgentBridge/Codex/` | (in `AgentBridge`) | `CodexAdapter`, `CodexHooksInstaller`, `CodexTranscriptReader`, `CodexHookMapper` — everything Codex-specific, behind the same seam |
 | `GitStatus` | Swift | git status service, FSEvents, PR lookup, port scanner |
 | `Persistence` | Swift | `state.json`, snapshots |
 | `TkzApp` | Swift | `AppDelegate`, window, sidebar, status bar, palette, `TerminalHost` |

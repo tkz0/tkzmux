@@ -36,7 +36,7 @@
 // The host is keyed by `TerminalID` — one pty, one VT, one `.ghsnap`. A `SessionID` is a *row*,
 // and a row owns one or more terminals. `open` and `restore` therefore take both: the terminal
 // they are creating, and the row it belongs to, because the row's id is what goes into the child's
-// `TKZMUX_SESSION_ID` and so what the shim, the hook relay and ClaudeBridge correlate on. Every
+// `TKZMUX_SESSION_ID` and so what the shim, the hook relay and AgentBridge correlate on. Every
 // pane of a row is one row to them, by design.
 //
 // ## Snapshot/compress ordering
@@ -404,7 +404,7 @@ public final class TerminalViewHost: TerminalHost {
         size: TerminalSize
     ) throws -> Pty {
         // The **row's** id, not the terminal's: every pane of a row must look like one row to the
-        // shim, the hook relay and ClaudeBridge.
+        // shim, the hook relay and AgentBridge.
         let spawn = TerminalEnvironment.loginShellSpawn(
             sessionID: sessionID.rawValue,
             cwd: cwd,

@@ -120,7 +120,7 @@ func runSettingsMerge(arg: String?) -> Int32 {
 /// `tkzmux-hook statusline-settings <settings.json> install|uninstall|value <previous.json>`
 ///
 /// Prints the rewritten `settings.json` on stdout; the app writes it atomically. This lives in the
-/// hook binary rather than in `ClaudeBridge` for one reason: `JSONParser`/`jsonSerializePretty`
+/// hook binary rather than in `AgentBridge` for one reason: `JSONParser`/`jsonSerializePretty`
 /// preserve key order and number source text, so every key the user has that tkzmux knows nothing
 /// about survives the round trip byte for byte. `Persistence.JSONValue` would reorder and reformat.
 ///

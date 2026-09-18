@@ -2,11 +2,11 @@
 //
 // Some agents write a descriptor file describing themselves while they run; Claude Code does, at
 // `<configDir>/sessions/<pid>.json`. That file is one agent's schema, so the parsed form of it
-// belongs in that agent's adapter (`ClaudeBridge/Claude/ClaudeSessionInfo.swift`), not here. This
+// belongs in that agent's adapter (`AgentBridge/Claude/ClaudeSessionInfo.swift`), not here. This
 // is the projection of it that the store reacts to — the fields any such file would have to supply
 // to be useful, and nothing agent-specific.
 //
-// Carrying only this is what makes the layering work: `TkzCore` cannot import `ClaudeBridge` (the
+// Carrying only this is what makes the layering work: `TkzCore` cannot import `AgentBridge` (the
 // dependency runs the other way), so `LiveSessionState` could not hold a Claude type even if we
 // wanted it to. An agent with no descriptor file at all — Codex has none — simply never produces
 // an observation, and `StatusDerivation`'s rule 4b covers that case from hook evidence instead.

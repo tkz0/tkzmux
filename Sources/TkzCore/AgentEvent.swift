@@ -2,7 +2,7 @@
 //
 // `AgentEvent` is deliberately *not* a hook frame. A hook frame is one agent's wire format, full of
 // that agent's event names, notification types and payload keys; this is the handful of things the
-// store actually reacts to. Translating one into the other is an adapter's job, in ClaudeBridge —
+// store actually reacts to. Translating one into the other is an adapter's job, in AgentBridge —
 // `ClaudeHookMapper` for Claude, `CodexHookMapper` later — which is what keeps TkzCore free of any
 // agent's vocabulary. Grepping this directory for any agent's literal event or notification names
 // and finding nothing is the mechanical form of that rule.

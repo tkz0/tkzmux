@@ -7,7 +7,7 @@
 //
 // The shape mirrors the incident this code exists for: the runaway was five levels below the pty.
 
-import ClaudeBridge
+import AgentBridge
 import Darwin
 import Foundation
 import Testing
