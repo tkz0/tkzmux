@@ -460,14 +460,26 @@ public final class ClaudeIntegration {
         switch frame {
         case .launch(let launch):
             bind(launch)
-        case .hook(let event, let ppid, let fullMessage, _, let transcriptPath):
+        case .hook(let payload, let frameSessionID, let ppid, let fullMessage):
+            // Hard-wired to Claude's own mapper for now: only Claude exists today, so a payload
+            // from any other agent has nobody to translate it and is dropped rather than
+            // misread by a mapper that speaks a different vocabulary. TKZ-82's adapter table,
+            // which will route on `payload.agent` instead of this single `==`, is a later
+            // ticket's job, not this one's.
+            guard payload.agent == .claude, var event = ClaudeHookMapper.map(payload) else {
+                logger.info("unmapped hook agent=\(payload.agent.rawValue, privacy: .public) event=\(payload.eventName, privacy: .public)")
+                return
+            }
+            event.sessionID = frameSessionID
             guard let id = sessionID(forHook: event, ppid: ppid) else {
                 logger.info("unattributed hook \(String(describing: event.kind), privacy: .public) sid=\(event.sessionID?.rawValue ?? "-", privacy: .public) ppid=\(ppid)")
                 return
             }
             logger.info("hook \(String(describing: event.kind), privacy: .public) → \(id.rawValue, privacy: .public)")
-            if event.kind == .stop, let fullMessage { fullMessages[id] = fullMessage }
-            if let transcriptPath, !transcriptPath.isEmpty { transcriptPaths[id] = transcriptPath }
+            if event.kind == .turnEnded, let fullMessage { fullMessages[id] = fullMessage }
+            if let transcriptPath = payload.transcriptPath, !transcriptPath.isEmpty {
+                transcriptPaths[id] = transcriptPath
+            }
             // A hook landing on the row the user is looking at is seen as it lands: a Stop is
             // attended outright (the NEEDS YOU clock never starts), and any other kind at least
             // leaves the row's feed entries read — the outline view never re-fires selection for
@@ -475,19 +487,19 @@ public final class ClaudeIntegration {
             let attended = isSessionAttended(id)
             store.update { state in
                 let now = Date()
-                state.applyHook(event, to: id, now: now)
+                state.applyEvent(event, to: id, now: now)
                 if attended {
-                    if event.kind == .stop { state.markAttended(id, now: now) } else { state.markActivityRead(id) }
+                    if event.kind == .turnEnded { state.markAttended(id, now: now) } else { state.markActivityRead(id) }
                 }
             }
-            if event.kind == .stop { onStop?(id) }
-            if event.kind == .sessionEnd, store.state.sessions[id]?.live?.ended == true {
+            if event.kind == .turnEnded { onStop?(id) }
+            if case .sessionEnd = event.kind, store.state.sessions[id]?.live?.ended == true {
                 onClaudeExited?(id)
             }
             switch event.kind {
-            case .sessionStart, .stop, .sessionEnd, .userPromptSubmit:
+            case .sessionStart, .turnEnded, .sessionEnd, .promptSubmitted:
                 refreshUsage(for: id)
-            case .notification, .unknown:
+            case .attention, .attentionCleared, .unknown:
                 break
             }
         }
@@ -584,7 +596,7 @@ public final class ClaudeIntegration {
     /// Only rows with live state are targets: a restored row has no shell, so nothing running can
     /// belong to it, and attributing to it (by a `conversationId` that a resume elsewhere reused)
     /// would resurrect a dead row without a terminal behind it.
-    func sessionID(forHook event: HookEvent, ppid: pid_t) -> SessionID? {
+    func sessionID(forHook event: AgentEvent, ppid: pid_t) -> SessionID? {
         let state = store.state
         if let id = event.sessionID, state.sessions[id]?.live != nil { return id }
         // `tkzmux-hook` only ever speaks for Claude, so the fallback join must not let a

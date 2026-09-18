@@ -2,7 +2,7 @@
 //
 // A real `AppStore` drives a real `AttentionNotifier`; the one seam that would reach macOS — the
 // notification centre — is a recording fake. Every flip goes through the same reducers the hooks
-// use (`applyHook`, `markAttended`, `rederiveStatuses`), so the tests assert the rule ("a change
+// use (`applyEvent`, `markAttended`, `rederiveStatuses`), so the tests assert the rule ("a change
 // from a known state, on a row you are not looking at") and not a mock of it.
 
 import AppKit
@@ -56,14 +56,15 @@ private struct Rig {
 
     func at(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(seconds) }
 
-    /// One `Notification` hook, delivered.
+    /// One `Notification` hook, delivered, already mapped to the `AttentionKind` the mapper would
+    /// have produced from Claude's own `notification_type` string.
     func prompt(
-        _ id: SessionID, _ type: HookEvent.NotificationType = .permissionPrompt,
+        _ id: SessionID, _ kind: AttentionKind = .permission,
         message: String? = nil, after seconds: TimeInterval = 0
     ) {
         store.update {
-            $0.applyHook(
-                HookEvent(kind: .notification, notificationType: type, message: message),
+            $0.applyEvent(
+                AgentEvent(kind: .attention(kind), message: message),
                 to: id, now: at(seconds))
         }
         store.flush()
@@ -74,7 +75,7 @@ private struct Rig {
     /// the derivation reads a Stop as attended when it is not strictly newer than `attendedAt`.
     func stop(_ id: SessionID, message: String = "done", attended: Bool = false, after seconds: TimeInterval = 0) {
         store.update { state in
-            state.applyHook(HookEvent(kind: .stop, lastAssistantMessage: message), to: id, now: at(seconds))
+            state.applyEvent(AgentEvent(kind: .turnEnded, lastAssistantMessage: message), to: id, now: at(seconds))
             if attended { state.markAttended(id, now: at(seconds)) }
         }
         store.flush()
@@ -83,7 +84,7 @@ private struct Rig {
     /// The prompt was answered: `UserPromptSubmit` clears the pending notification, and with it
     /// the badge. (`markAttended` alone would not — the derivation re-raises a pending prompt.)
     func answer(_ id: SessionID, after seconds: TimeInterval = 0) {
-        store.update { $0.applyHook(HookEvent(kind: .userPromptSubmit), to: id, now: at(seconds)) }
+        store.update { $0.applyEvent(AgentEvent(kind: .promptSubmitted), to: id, now: at(seconds)) }
         store.flush()
     }
 
@@ -114,7 +115,7 @@ struct AttentionNotifierTests {
         #expect(rig.notifier.presented[request.identifier] == [rig.ids[0]])
 
         // Still NEEDS YOU, another delivery for the same row: not a new event.
-        rig.prompt(rig.ids[0], .elicitationDialog, after: 1)
+        rig.prompt(rig.ids[0], .question, after: 1)
         #expect(rig.presenter.requests.count == 1)
 
         // Answered, then blocked again: that *is* a new event, under the same identifier.
@@ -127,14 +128,14 @@ struct AttentionNotifierTests {
 
     @Test("without a hook message the body names the reason")
     func fallbackBodyPerReason() {
-        let cases: [(HookEvent.NotificationType, String)] = [
-            (.permissionPrompt, "Claude is waiting for permission"),
-            (.elicitationDialog, "Claude is asking you a question"),
-            (.agentNeedsInput, "Claude needs your input"),
+        let cases: [(AttentionKind, String)] = [
+            (.permission, "Claude is waiting for permission"),
+            (.question, "Claude is asking you a question"),
+            (.agentInput, "Claude needs your input"),
         ]
-        for (type, body) in cases {
+        for (kind, body) in cases {
             let rig = Rig(count: 1)
-            rig.prompt(rig.ids[0], type)
+            rig.prompt(rig.ids[0], kind)
             #expect(rig.presenter.requests.map(\.body) == [body])
         }
     }
@@ -166,7 +167,7 @@ struct AttentionNotifierTests {
 
         // No message at all: a plain line.
         let bare = Rig(count: 1)
-        bare.store.update { $0.applyHook(HookEvent(kind: .stop), to: bare.ids[0], now: bare.now) }
+        bare.store.update { $0.applyEvent(AgentEvent(kind: .turnEnded), to: bare.ids[0], now: bare.now) }
         bare.store.flush()
         #expect(bare.presenter.requests.map(\.body) == ["Claude finished"])
     }
@@ -201,8 +202,8 @@ struct AttentionNotifierTests {
         let rig = Rig(count: 1, live: false)
         rig.store.update { state in
             state.setLive(LiveSessionState(status: .idle), for: rig.ids[0])
-            state.applyHook(
-                HookEvent(kind: .notification, notificationType: .permissionPrompt),
+            state.applyEvent(
+                AgentEvent(kind: .attention(.permission)),
                 to: rig.ids[0], now: rig.now)
         }
         rig.store.flush()
@@ -226,7 +227,7 @@ struct AttentionNotifierTests {
         #expect(rig.store.state.sessions[rig.ids[0]]?.needsAttention == true, "the prompt is still up")
 
         // Still looking, still pending: nothing new. Another row: business as usual.
-        rig.prompt(rig.ids[0], .elicitationDialog, after: 2)
+        rig.prompt(rig.ids[0], .question, after: 2)
         #expect(rig.presenter.requests.count == 1)
         rig.prompt(rig.ids[1], after: 3)
         #expect(rig.presenter.requests.map(\.title) == ["row0", "row1"])
@@ -237,8 +238,8 @@ struct AttentionNotifierTests {
         let rig = Rig()
         rig.store.update { state in
             for id in rig.ids {
-                state.applyHook(
-                    HookEvent(kind: .notification, notificationType: .permissionPrompt),
+                state.applyEvent(
+                    AgentEvent(kind: .attention(.permission)),
                     to: id, now: rig.now)
             }
         }
@@ -279,8 +280,8 @@ struct AttentionNotifierTests {
         rig.answer(rig.ids[0], after: 5)
         rig.store.update { state in
             for id in rig.ids {
-                state.applyHook(
-                    HookEvent(kind: .notification, notificationType: .permissionPrompt),
+                state.applyEvent(
+                    AgentEvent(kind: .attention(.permission)),
                     to: id, now: rig.at(6))
             }
         }
@@ -358,8 +359,8 @@ struct AttentionNotifierTests {
 
         rig.store.update { state in
             for id in rig.ids.prefix(2) {
-                state.applyHook(
-                    HookEvent(kind: .notification, notificationType: .permissionPrompt),
+                state.applyEvent(
+                    AgentEvent(kind: .attention(.permission)),
                     to: id, now: rig.now)
             }
         }

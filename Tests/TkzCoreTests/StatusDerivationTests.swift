@@ -1,6 +1,5 @@
-// StatusDerivationTests — M3.4. The table in `StatusDerivation.swift` / design.md →
-// *Claude integration → Status derivation*, exercised row by row, plus the clearing rules and the
-// "degrades to descriptor-only" claims.
+// StatusDerivationTests — M3.4. The table in `StatusDerivation.swift`, exercised row by row, plus
+// the clearing rules and the "degrades to descriptor-only" claims.
 
 import Foundation
 import Testing
@@ -31,7 +30,7 @@ import Testing
     @Test func rule1b_ended_isIdle_notExited_evenWithAPendingPrompt() {
         let outcome = StatusDerivation.derive(
             StatusInput(
-                ended: true, pending: PendingNotification(type: .permissionPrompt, receivedAt: Self.epoch),
+                ended: true, pending: PendingNotification(kind: .permission, receivedAt: Self.epoch),
                 lastStopAt: Self.epoch.addingTimeInterval(-120),
                 now: Self.epoch))
         #expect(outcome.status == .idle)
@@ -45,16 +44,16 @@ import Testing
         let outcome = StatusDerivation.derive(
             StatusInput(
                 descriptor: Self.descriptor(status: .busy),
-                pending: PendingNotification(type: .permissionPrompt, receivedAt: Self.epoch),
+                pending: PendingNotification(kind: .permission, receivedAt: Self.epoch),
                 now: Self.epoch))
         #expect(outcome.status == .waiting(.permission))
         #expect(outcome.attention == true)
     }
 
-    @Test func rule2_pendingElicitation_waits() {
+    @Test func rule2_pendingQuestion_waits() {
         let outcome = StatusDerivation.derive(
             StatusInput(
-                pending: PendingNotification(type: .elicitationDialog, receivedAt: Self.epoch), now: Self.epoch))
+                pending: PendingNotification(kind: .question, receivedAt: Self.epoch), now: Self.epoch))
         #expect(outcome.status == .waiting(.elicitation))
         #expect(outcome.attention == true)
     }
@@ -62,9 +61,20 @@ import Testing
     @Test func rule2_pendingAgentInput_waits() {
         let outcome = StatusDerivation.derive(
             StatusInput(
-                pending: PendingNotification(type: .agentNeedsInput, receivedAt: Self.epoch), now: Self.epoch))
+                pending: PendingNotification(kind: .agentInput, receivedAt: Self.epoch), now: Self.epoch))
         #expect(outcome.status == .waiting(.agentInput))
         #expect(outcome.attention == true)
+    }
+
+    /// The ticket's prose claims `AttentionKind` maps 1:1 onto `WaitReason`; it does not.
+    /// `.idleNudge` has no `waitReason` and must not light `NEEDS YOU` on its own — its only job is
+    /// rule 5, accelerating an already-unattended `Stop` (see the tests below).
+    @Test func rule2_pendingIdleNudgeAlone_fallsThroughToIdle() {
+        let outcome = StatusDerivation.derive(
+            StatusInput(
+                pending: PendingNotification(kind: .idleNudge, receivedAt: Self.epoch), now: Self.epoch))
+        #expect(outcome.status == .idle)
+        #expect(outcome.attention == false)
     }
 
     /// Measured 2026-09-08: Claude Code writes `status: "waiting"` while a permission prompt is
@@ -79,7 +89,7 @@ import Testing
         let elicitation = StatusDerivation.derive(
             StatusInput(
                 descriptor: Self.descriptor(status: .waiting),
-                pending: PendingNotification(type: .elicitationDialog, receivedAt: Self.epoch),
+                pending: PendingNotification(kind: .question, receivedAt: Self.epoch),
                 now: Self.epoch))
         #expect(elicitation.status == .waiting(.elicitation))
 
@@ -118,24 +128,42 @@ import Testing
         #expect(outcome.isDone == false)
     }
 
-    @Test func rule5_idlePromptAfterAFreshStop_isDoneUnattendedEvenUnder60s() {
+    @Test func rule5_idleNudgeAfterAFreshStop_isDoneUnattendedEvenUnder60s() {
         let stop = Self.epoch.addingTimeInterval(-5)
         let outcome = StatusDerivation.derive(
             StatusInput(
-                pending: PendingNotification(type: .idlePrompt, receivedAt: Self.epoch.addingTimeInterval(-1)),
+                pending: PendingNotification(kind: .idleNudge, receivedAt: Self.epoch.addingTimeInterval(-1)),
                 lastStopAt: stop, now: Self.epoch))
         #expect(outcome.status == .waiting(.doneUnattended))
         #expect(outcome.attention == true)
     }
 
-    @Test func rule5_idlePromptBeforeTheStop_doesNotCountAsAfter() {
+    @Test func rule5_idleNudgeBeforeTheStop_doesNotCountAsAfter() {
         let stop = Self.epoch.addingTimeInterval(-5)
         let outcome = StatusDerivation.derive(
             StatusInput(
-                pending: PendingNotification(type: .idlePrompt, receivedAt: Self.epoch.addingTimeInterval(-10)),
+                pending: PendingNotification(kind: .idleNudge, receivedAt: Self.epoch.addingTimeInterval(-10)),
                 lastStopAt: stop, now: Self.epoch))
         #expect(outcome.status == .idle)
         #expect(outcome.isDone == true)
+    }
+
+    /// The rule the ticket's prose gets wrong, pinned end to end: an `.idleNudge` on its own is
+    /// never `NEEDS YOU`, but the very same nudge, arriving after an unattended `Stop`, short-
+    /// circuits the 60 s grace and makes the row `NEEDS YOU` immediately.
+    @Test func idleNudgeAloneIsNotAttention_butAfterAnUnattendedStopItIsImmediateNeedsYou() {
+        let alone = StatusDerivation.derive(
+            StatusInput(pending: PendingNotification(kind: .idleNudge, receivedAt: Self.epoch), now: Self.epoch))
+        #expect(alone.status == .idle)
+        #expect(alone.attention == false)
+
+        let stop = Self.epoch.addingTimeInterval(-10)  // well under the 60s grace
+        let afterStop = StatusDerivation.derive(
+            StatusInput(
+                pending: PendingNotification(kind: .idleNudge, receivedAt: Self.epoch),
+                lastStopAt: stop, now: Self.epoch))
+        #expect(afterStop.status == .waiting(.doneUnattended))
+        #expect(afterStop.attention == true)
     }
 
     @Test func rule6_stopOlderThanAttended_isPlainIdle() {
@@ -160,7 +188,7 @@ import Testing
     @Test func precedence_endedBeatsPending() {
         let outcome = StatusDerivation.derive(
             StatusInput(
-                ended: true, pending: PendingNotification(type: .agentNeedsInput, receivedAt: Self.epoch),
+                ended: true, pending: PendingNotification(kind: .agentInput, receivedAt: Self.epoch),
                 now: Self.epoch))
         #expect(outcome.status == .idle)
         #expect(outcome.attention == false)
@@ -176,11 +204,11 @@ import Testing
         let outcome = StatusDerivation.derive(
             StatusInput(
                 descriptor: Self.descriptor(status: .busy),
-                pending: PendingNotification(type: .permissionPrompt, receivedAt: Self.epoch), now: Self.epoch))
+                pending: PendingNotification(kind: .permission, receivedAt: Self.epoch), now: Self.epoch))
         #expect(outcome.status == .waiting(.permission))
     }
 
-    // MARK: - Clearing rules (folded through `applyHook`/`applyDescriptor`, but the derivation
+    // MARK: - Clearing rules (folded through `applyEvent`/`applyDescriptor`, but the derivation
     // itself only sees the *result* of a clear — a `nil` pending — so these prove the pending
     // notification, once cleared, no longer drives `.waiting`)
 
@@ -190,12 +218,12 @@ import Testing
         #expect(outcome.status == .working)
     }
 
-    // Clearing on UserPromptSubmit/Stop/SessionEnd/elicitation_complete, and the busy-descriptor
+    // Clearing on promptSubmitted/turnEnded/sessionEnd/attentionCleared, and the busy-descriptor
     // rule (newer clears, older does not), are reducer behaviour — see `ReducersTests.HookTests`.
 
     // MARK: - Degradation
 
-    @Test func degradesToDescriptorOnly_withNoHooks() {
+    @Test func degradesToDescriptorOnly_withNoEvents() {
         let busy = StatusDerivation.derive(
             StatusInput(descriptor: Self.descriptor(status: .busy), now: Self.epoch))
         #expect(busy.status == .working)
@@ -205,7 +233,7 @@ import Testing
         #expect(idle.status == .idle)
     }
 
-    @Test func plainShell_noDescriptorNoHooks_isIdleWhileAlive() {
+    @Test func plainShell_noDescriptorNoEvents_isIdleWhileAlive() {
         let outcome = StatusDerivation.derive(StatusInput(alive: true, now: Self.epoch))
         #expect(outcome.status == .idle)
         #expect(outcome.attention == false)

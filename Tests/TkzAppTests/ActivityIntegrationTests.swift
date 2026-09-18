@@ -18,14 +18,14 @@ struct ActivityIntegrationTests {
         let h = H.makeHarness()
         h.integration.handle(H.launch(h.session, pid: 4242))
         h.integration.isSessionAttended = { _ in true }
-        let stop = HookEvent(kind: .stop, sessionID: h.session, lastAssistantMessage: "seen")
-        h.integration.handle(HookFrame.hook(stop, ppid: 4242, fullMessage: "seen", cwd: nil, transcriptPath: nil))
+        h.integration.handle(H.hook(
+            "Stop", sessionID: h.session, lastAssistantMessage: "seen", ppid: 4242, fullMessage: "seen"))
         h.store.flush()
         #expect(h.store.state.activity.map(\.unread) == [false])
 
         h.integration.isSessionAttended = { _ in false }
-        let later = HookEvent(kind: .stop, sessionID: h.session, lastAssistantMessage: "unseen")
-        h.integration.handle(HookFrame.hook(later, ppid: 4242, fullMessage: "unseen", cwd: nil, transcriptPath: nil))
+        h.integration.handle(H.hook(
+            "Stop", sessionID: h.session, lastAssistantMessage: "unseen", ppid: 4242, fullMessage: "unseen"))
         h.store.flush()
         #expect(h.store.state.activity.map(\.unread) == [false, true])
     }
@@ -36,8 +36,8 @@ struct ActivityIntegrationTests {
         h.integration.handle(H.launch(h.session, pid: 4242))
         h.integration.isSessionAttended = { _ in true }
         let attendedBefore = h.store.state.sessions[h.session]?.live?.attendedAt
-        let prompt = HookEvent(kind: .notification, sessionID: h.session, notificationType: .permissionPrompt)
-        h.integration.handle(HookFrame.hook(prompt, ppid: 4242, fullMessage: nil, cwd: nil, transcriptPath: nil))
+        h.integration.handle(H.hook(
+            "Notification", sessionID: h.session, notificationType: "permission_prompt", ppid: 4242))
         h.store.flush()
         #expect(h.store.state.activity.map(\.kind) == [.needsYou(reason: .permission, message: nil)])
         #expect(h.store.state.activity.map(\.unread) == [false])

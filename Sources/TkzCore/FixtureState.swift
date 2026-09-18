@@ -285,8 +285,8 @@ public enum Fixture {
         if spec.status == .waiting(.doneUnattended) {
             live.lastStopMessage = "Done — the failing test now passes; want me to open a PR?"
             live.lastStopAt = now.addingTimeInterval(-420)
-            live.lastHook = HookEvent(
-                kind: .stop, sessionID: session.id, conversationId: session.conversationId,
+            live.lastEvent = AgentEvent(
+                kind: .turnEnded, sessionID: session.id, conversationId: session.conversationId,
                 lastAssistantMessage: live.lastStopMessage, pid: live.pid,
                 receivedAt: now.addingTimeInterval(-420))
         }

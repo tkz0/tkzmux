@@ -569,55 +569,44 @@ extension AppState {
 // MARK: - Status: hooks, descriptors, liveness
 
 extension AppState {
-    /// Folds one relayed hook frame into a session's live state, then re-derives its status.
-    /// design.md → *Claude integration → Status derivation* names exactly what each hook kind
-    /// clears/sets; this is that table.
-    public mutating func applyHook(_ event: HookEvent, to id: SessionID, now: Date = Date()) {
+    /// Folds one already-translated agent event into a session's live state, then re-derives its
+    /// status. What each kind clears/sets is exactly the table below; the wire-level decisions
+    /// (which notification types exist, which ending reasons are an exit) belong to the adapter
+    /// that produced the event, not here — see `AgentEvent`.
+    public mutating func applyEvent(_ event: AgentEvent, to id: SessionID, now: Date = Date()) {
         guard let session = sessions[id] else { return }
         let wasEnded = session.live?.ended ?? false
         updateLive(id) { live in
-            live.lastHook = event
+            live.lastEvent = event
             switch event.kind {
             case .sessionStart:
                 live.ended = false
                 live.pendingNotification = nil
                 // Claude is up: whatever launch this row was waiting on has arrived.
                 live.claudeStartup = nil
-            case .sessionEnd:
-                // `clear` and `resume` are not an exit — see the SessionEnd `reason` values in
-                // design.md → *Claude integration*.
-                let reason = event.reason
-                live.ended = !(reason == "clear" || reason == "resume")
+            case .sessionEnd(let exited):
+                live.ended = exited
                 live.pendingNotification = nil
-            case .userPromptSubmit:
+            case .promptSubmitted:
                 live.lastPromptAt = now
                 live.attendedAt = now
                 live.pendingNotification = nil
-            case .stop:
+            case .turnEnded:
                 live.lastStopAt = now
                 if let message = event.lastAssistantMessage {
                     live.lastStopMessage = message
                 }
                 live.pendingNotification = nil
-            case .notification:
-                if let type = event.notificationType {
-                    switch type {
-                    case .permissionPrompt, .elicitationDialog, .agentNeedsInput:
-                        live.pendingNotification = PendingNotification(type: type, receivedAt: now)
-                        // Claude's own line for the banner ("Claude needs your permission to use
-                        // Bash"). Only the three prompts that become NEEDS YOU keep it.
-                        if let message = event.message, !message.isEmpty {
-                            live.lastNotificationMessage = message
-                        }
-                    case .idlePrompt:
-                        live.pendingNotification = PendingNotification(type: type, receivedAt: now)
-                    case .elicitationComplete:
-                        live.pendingNotification = nil
-                        live.lastNotificationMessage = nil
-                    case .unknown:
-                        break
-                    }
+            case .attention(let kind):
+                live.pendingNotification = PendingNotification(kind: kind, receivedAt: now)
+                // Claude's own line for the banner ("Claude needs your permission to use Bash").
+                // Only the three prompts that become NEEDS YOU keep it.
+                if kind.waitReason != nil, let message = event.message, !message.isEmpty {
+                    live.lastNotificationMessage = message
                 }
+            case .attentionCleared:
+                live.pendingNotification = nil
+                live.lastNotificationMessage = nil
             case .unknown:
                 break
             }
@@ -625,12 +614,12 @@ extension AppState {
         if event.kind == .sessionStart, let conversationId = event.conversationId {
             sessions[id]?.conversationId = conversationId
         }
-        // The feed: a finished turn, an exit (once — `clear`/`resume` are not one, and a second
-        // `SessionEnd` on an already-ended row says nothing new), and typing a prompt as proof the
+        // The feed: a finished turn, an exit (once — a `sessionEnd(exited: false)` is not one, and
+        // a second exit on an already-ended row says nothing new), and typing a prompt as proof the
         // user is looking at the row. NEEDS YOU entries come from `rederiveStatus` below, which
-        // also sees the flips no hook announces.
+        // also sees the flips no event announces.
         switch event.kind {
-        case .stop:
+        case .turnEnded:
             appendActivity(
                 .stop(message: ActivityEvent.storedMessage(event.lastAssistantMessage ?? "")),
                 for: id, now: now)
@@ -638,9 +627,9 @@ extension AppState {
             if !wasEnded, sessions[id]?.live?.ended == true {
                 appendActivity(.sessionEnded(reason: event.reason), for: id, now: now)
             }
-        case .userPromptSubmit:
+        case .promptSubmitted:
             markActivityRead(id)
-        case .sessionStart, .notification, .unknown:
+        case .sessionStart, .attention, .attentionCleared, .unknown:
             break
         }
         rederiveStatus(for: id, now: now)
@@ -660,7 +649,7 @@ extension AppState {
         live.descriptor = descriptor
         live.alive = alive
         // A *live* descriptor bound to this row means Claude is running in it — the launch is
-        // over, whether or not the `SessionStart` hook got here first. A dead one is no such
+        // over, whether or not a `sessionStart` event got here first. A dead one is no such
         // evidence: a stale `sessions/<pid>.json` from before a crash matches a resumed row by
         // its conversation id, and must not take the overlay down before the new Claude is up.
         if alive {

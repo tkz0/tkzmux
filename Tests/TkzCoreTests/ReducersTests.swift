@@ -649,26 +649,24 @@ import Testing
 
     @Test func sessionStartClearsEndedAndPendingAndAdoptsTheClaudeID() {
         var (state, id) = makeState()
-        state.updateLive(id) { $0.ended = true; $0.pendingNotification = PendingNotification(type: .permissionPrompt, receivedAt: now) }
-        state.applyHook(.init(kind: .sessionStart, conversationId: "new-id", source: "startup"), to: id, now: now)
+        state.updateLive(id) { $0.ended = true; $0.pendingNotification = PendingNotification(kind: .permission, receivedAt: now) }
+        state.applyEvent(.init(kind: .sessionStart, conversationId: "new-id", source: "startup"), to: id, now: now)
         #expect(state.sessions[id]?.live?.ended == false)
         #expect(state.sessions[id]?.live?.pendingNotification == nil)
         #expect(state.sessions[id]?.conversationId == "new-id")
     }
 
-    @Test func sessionEndTreatsClearAndResumeAsNotExited() {
-        for reason in ["clear", "resume"] {
-            var (state, id) = makeState()
-            state.applyHook(.init(kind: .sessionEnd, reason: reason), to: id, now: now)
-            #expect(state.sessions[id]?.live?.ended == false, "reason \(reason)")
-            #expect(state.sessions[id]?.status == .idle, "reason \(reason)")
-        }
+    @Test func sessionEndNotExitedLeavesTheRowAlive() {
+        var (state, id) = makeState()
+        state.applyEvent(.init(kind: .sessionEnd(exited: false), reason: "clear"), to: id, now: now)
+        #expect(state.sessions[id]?.live?.ended == false)
+        #expect(state.sessions[id]?.status == .idle)
     }
 
-    @Test func sessionEndTreatsOtherReasonsAsClaudeGone_theShellStaysIdle() {
+    @Test func sessionEndExitedLeavesTheShellAliveButClaudeGone() {
         for reason in ["logout", "prompt_input_exit", "other", nil] {
             var (state, id) = makeState()
-            state.applyHook(.init(kind: .sessionEnd, reason: reason), to: id, now: now)
+            state.applyEvent(.init(kind: .sessionEnd(exited: true), reason: reason), to: id, now: now)
             #expect(state.sessions[id]?.live?.ended == true, "reason \(String(describing: reason))")
             // The terminal is still there (`alive`), so never `exited` — that would dim a live shell.
             #expect(state.sessions[id]?.status == .idle, "reason \(String(describing: reason))")
@@ -678,8 +676,8 @@ import Testing
 
     @Test func userPromptSubmitMarksAttendedAndClearsPending() {
         var (state, id) = makeState()
-        state.updateLive(id) { $0.pendingNotification = PendingNotification(type: .agentNeedsInput, receivedAt: now) }
-        state.applyHook(.init(kind: .userPromptSubmit), to: id, now: now)
+        state.updateLive(id) { $0.pendingNotification = PendingNotification(kind: .agentInput, receivedAt: now) }
+        state.applyEvent(.init(kind: .promptSubmitted), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastPromptAt == now)
         #expect(state.sessions[id]?.live?.attendedAt == now)
         #expect(state.sessions[id]?.live?.pendingNotification == nil)
@@ -687,32 +685,32 @@ import Testing
 
     @Test func stopRecordsTheMessageAndKeepsThePreviousOneWhenAbsent() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "done"), to: id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "done"), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastStopAt == now)
         #expect(state.sessions[id]?.live?.lastStopMessage == "done")
 
         let later = now.addingTimeInterval(30)
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: nil), to: id, now: later)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: nil), to: id, now: later)
         #expect(state.sessions[id]?.live?.lastStopAt == later)
         #expect(state.sessions[id]?.live?.lastStopMessage == "done")  // kept
     }
 
-    @Test func notificationSetsPendingByType() {
-        let cases: [(HookEvent.NotificationType, WaitReason)] = [
-            (.permissionPrompt, .permission), (.elicitationDialog, .elicitation), (.agentNeedsInput, .agentInput),
+    @Test func attentionSetsPendingByKind() {
+        let cases: [(AttentionKind, WaitReason)] = [
+            (.permission, .permission), (.question, .elicitation), (.agentInput, .agentInput),
         ]
-        for (type, reason) in cases {
+        for (kind, reason) in cases {
             var (state, id) = makeState()
-            state.applyHook(.init(kind: .notification, notificationType: type), to: id, now: now)
-            #expect(state.sessions[id]?.live?.pendingNotification?.type == type)
+            state.applyEvent(.init(kind: .attention(kind)), to: id, now: now)
+            #expect(state.sessions[id]?.live?.pendingNotification?.kind == kind)
             #expect(state.sessions[id]?.status == .waiting(reason))
         }
     }
 
-    @Test func elicitationCompleteClearsPending() {
+    @Test func attentionClearedClearsPending() {
         var (state, id) = makeState()
-        state.updateLive(id) { $0.pendingNotification = PendingNotification(type: .elicitationDialog, receivedAt: now) }
-        state.applyHook(.init(kind: .notification, notificationType: .elicitationComplete), to: id, now: now)
+        state.updateLive(id) { $0.pendingNotification = PendingNotification(kind: .question, receivedAt: now) }
+        state.applyEvent(.init(kind: .attentionCleared), to: id, now: now)
         #expect(state.sessions[id]?.live?.pendingNotification == nil)
     }
 
@@ -720,38 +718,38 @@ import Testing
     /// NEEDS YOU, and gone once the prompt is answered or the row attended.
     @Test func notificationKeepsClaudesMessageForBlockedPromptsOnly() {
         var (state, id) = makeState()
-        state.applyHook(
-            .init(kind: .notification, notificationType: .permissionPrompt, message: "Claude needs your permission to use Bash"),
+        state.applyEvent(
+            .init(kind: .attention(.permission), message: "Claude needs your permission to use Bash"),
             to: id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == "Claude needs your permission to use Bash")
 
         // A prompt without a message keeps the previous line rather than blanking it.
-        state.applyHook(.init(kind: .notification, notificationType: .elicitationDialog, message: ""), to: id, now: now)
+        state.applyEvent(.init(kind: .attention(.question), message: ""), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == "Claude needs your permission to use Bash")
 
-        state.applyHook(.init(kind: .notification, notificationType: .elicitationComplete), to: id, now: now)
+        state.applyEvent(.init(kind: .attentionCleared), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == nil)
 
-        // An idle prompt is not a blocked prompt: its message is not the banner's.
-        state.applyHook(.init(kind: .notification, notificationType: .idlePrompt, message: "Claude is waiting for your input"), to: id, now: now)
+        // An idle nudge is not a blocked prompt: its message is not the banner's.
+        state.applyEvent(.init(kind: .attention(.idleNudge), message: "Claude is waiting for your input"), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == nil)
 
-        state.applyHook(.init(kind: .notification, notificationType: .agentNeedsInput, message: "Agent needs input"), to: id, now: now)
+        state.applyEvent(.init(kind: .attention(.agentInput), message: "Agent needs input"), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == "Agent needs input")
         state.markAttended(id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == nil)
     }
 
-    @Test func unknownNotificationIsIgnored() {
+    @Test func unknownEventIsIgnored() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .notification, notificationType: .unknown("mystery")), to: id, now: now)
+        state.applyEvent(.init(kind: .unknown("mystery")), to: id, now: now)
         #expect(state.sessions[id]?.live?.pendingNotification == nil)
     }
 
     @Test func busyDescriptorNewerThanPendingClearsIt() {
         var (state, id) = makeState()
         state.updateLive(id) {
-            $0.pendingNotification = PendingNotification(type: .permissionPrompt, receivedAt: now)
+            $0.pendingNotification = PendingNotification(kind: .permission, receivedAt: now)
         }
         let descriptor = ClaudeSessionInfo(
             configDir: "~/.claude", pid: 1, sessionId: "s", status: .busy,
@@ -764,7 +762,7 @@ import Testing
     @Test func busyDescriptorOlderThanPendingDoesNotClearIt() {
         var (state, id) = makeState()
         state.updateLive(id) {
-            $0.pendingNotification = PendingNotification(type: .permissionPrompt, receivedAt: now)
+            $0.pendingNotification = PendingNotification(kind: .permission, receivedAt: now)
         }
         let descriptor = ClaudeSessionInfo(
             configDir: "~/.claude", pid: 1, sessionId: "s", status: .busy,
@@ -836,7 +834,7 @@ import Testing
 
     @Test func rederiveStatusesAgesAnUnattendedStopIntoDoneUnattended() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "done"), to: id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "done"), to: id, now: now)
         #expect(state.sessions[id]?.status == .idle)  // fresh, <60s
         #expect(state.sessions[id]?.live?.isDone == true)
 
@@ -866,7 +864,7 @@ import Testing
 
     @Test func markAttendedClearsDoneUnattended() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "done"), to: id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "done"), to: id, now: now)
         state.rederiveStatuses(now: now.addingTimeInterval(61))
         #expect(state.sessions[id]?.status == .waiting(.doneUnattended))
 
@@ -881,8 +879,8 @@ import Testing
         let store = AppStore(state: state)
         var delivered: ChangeSet?
         _ = store.addObserver { delivered = $0 }
-        // idle → waiting(.permission), driven by `applyHook` itself.
-        store.update { $0.applyHook(.init(kind: .notification, notificationType: .permissionPrompt), to: id, now: now) }
+        // idle → waiting(.permission), driven by `applyEvent` itself.
+        store.update { $0.applyEvent(.init(kind: .attention(.permission)), to: id, now: now) }
         store.flush()
         let change = try #require(delivered)
         #expect(change.sessions == [id])
@@ -893,14 +891,14 @@ import Testing
     @Test func summaryCountsNeedsYouFollowsAttention() {
         let (state, id) = makeState()
         let store = AppStore(state: state)
-        store.update { $0.applyHook(.init(kind: .notification, notificationType: .permissionPrompt), to: id, now: now) }
+        store.update { $0.applyEvent(.init(kind: .attention(.permission)), to: id, now: now) }
         store.flush()
         #expect(store.state.summaryCounts.needsYou == 1)
         store.update { $0.markAttended(id, now: now.addingTimeInterval(1)) }
         store.flush()
         // A permission prompt is still pending, so attendance alone does not clear it.
         #expect(store.state.summaryCounts.needsYou == 1)
-        store.update { $0.applyHook(.init(kind: .userPromptSubmit), to: id, now: now.addingTimeInterval(2)) }
+        store.update { $0.applyEvent(.init(kind: .promptSubmitted), to: id, now: now.addingTimeInterval(2)) }
         store.flush()
         #expect(store.state.summaryCounts.needsYou == 0)
     }
@@ -943,7 +941,7 @@ import Testing
 
     @Test func sessionStartEndsIt() {
         var (state, id, _) = makeState()
-        state.applyHook(.init(kind: .sessionStart, conversationId: "new"), to: id, now: now)
+        state.applyEvent(.init(kind: .sessionStart, conversationId: "new"), to: id, now: now)
         #expect(state.sessions[id]?.live?.claudeStartup == nil)
     }
 
@@ -965,10 +963,13 @@ import Testing
         #expect(state.sessions[id]?.live?.claudeStartup != nil)
     }
 
-    @Test func otherHooksLeaveItAlone() {
-        for kind in [HookEvent.Kind.userPromptSubmit, .stop, .notification, .sessionEnd] {
+    @Test func otherEventsLeaveItAlone() {
+        let kinds: [AgentEvent.Kind] = [
+            .promptSubmitted, .turnEnded, .attention(.permission), .sessionEnd(exited: true),
+        ]
+        for kind in kinds {
             var (state, id, _) = makeState()
-            state.applyHook(.init(kind: kind), to: id, now: now)
+            state.applyEvent(.init(kind: kind), to: id, now: now)
             #expect(state.sessions[id]?.live?.claudeStartup != nil, "\(kind)")
         }
     }

@@ -17,9 +17,9 @@ private func makeState() -> (AppState, SessionID, SessionID) {
     state.setLive(LiveSessionState(status: .idle), for: one)
     state.setLive(LiveSessionState(status: .idle), for: two)
     let t0 = Date(timeIntervalSince1970: 1_800_000_000)
-    state.applyHook(.init(kind: .stop, lastAssistantMessage: "one is done"), to: one, now: t0)
-    state.applyHook(
-        .init(kind: .notification, notificationType: .permissionPrompt, message: "Bash?"),
+    state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "one is done"), to: one, now: t0)
+    state.applyEvent(
+        .init(kind: .attention(.permission), message: "Bash?"),
         to: two, now: t0.addingTimeInterval(1))
     state.select(one, now: t0.addingTimeInterval(2))
     return (state, one, two)

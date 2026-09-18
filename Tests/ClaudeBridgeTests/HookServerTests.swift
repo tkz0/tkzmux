@@ -94,12 +94,12 @@ private func connectBlocking(fd: Int32, path: String) throws {
         let frames = await collector.waitFor(count: 2)
         #expect(frames.count == 2)
         for frame in frames {
-            guard case .hook(let event, _, _, _, _) = frame else {
+            guard case .hook(let payload, let sessionID, _, _) = frame else {
                 Issue.record("expected a .hook frame")
                 continue
             }
-            #expect(event.sessionID == nil)
-            #expect(event.conversationId == "claude-session-1" || event.conversationId == "claude-session-2")
+            #expect(sessionID == nil)
+            #expect(payload.sessionId == "claude-session-1" || payload.sessionId == "claude-session-2")
         }
     }
 
@@ -120,12 +120,54 @@ private func connectBlocking(fd: Int32, path: String) throws {
 
         let frames = await collector.waitFor(count: 2)
         #expect(frames.count == 2)
-        guard case .hook(let first, _, _, _, _) = frames[0], case .hook(let second, _, _, _, _) = frames[1] else {
+        guard case .hook(let first, _, _, _) = frames[0], case .hook(let second, _, _, _) = frames[1] else {
             Issue.record("expected two .hook frames")
             return
         }
-        #expect(first.kind == .userPromptSubmit)
-        #expect(second.kind == .stop)
+        #expect(first.eventName == "UserPromptSubmit")
+        #expect(second.eventName == "Stop")
+    }
+
+    /// A frame with no `agent` field is what an already-installed old shim keeps sending until
+    /// `ShimInstaller.ensureInstalled` refreshes `bin/`, and every one of those is Claude's.
+    @Test func frameWithNoAgentFieldParsesAsClaude() async throws {
+        let dir = try makeSocketDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("hook.sock")
+        let collector = FrameCollector()
+        let server = HookServer(socketPath: socketPath) { collector.append($0) }
+        try server.start()
+        defer { server.stop() }
+
+        try sendLine(#"{"v":1,"type":"hook","event":"Stop","sid":"","ppid":1,"ts":1,"payload":{}}"# + "\n", to: socketPath)
+
+        let frames = await collector.waitFor(count: 1)
+        #expect(frames.count == 1)
+        guard case .hook(let payload, _, _, _) = frames[0] else {
+            Issue.record("expected a .hook frame")
+            return
+        }
+        #expect(payload.agent == .claude)
+    }
+
+    @Test func frameWithAgentCodexParsesAsCodex() async throws {
+        let dir = try makeSocketDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("hook.sock")
+        let collector = FrameCollector()
+        let server = HookServer(socketPath: socketPath) { collector.append($0) }
+        try server.start()
+        defer { server.stop() }
+
+        try sendLine(#"{"v":1,"type":"hook","event":"Stop","agent":"codex","sid":"","ppid":1,"ts":1,"payload":{}}"# + "\n", to: socketPath)
+
+        let frames = await collector.waitFor(count: 1)
+        #expect(frames.count == 1)
+        guard case .hook(let payload, _, _, _) = frames[0] else {
+            Issue.record("expected a .hook frame")
+            return
+        }
+        #expect(payload.agent == .codex)
     }
 
     @Test func malformedLineDroppedNextGoodFrameArrives() async throws {
@@ -149,11 +191,11 @@ private func connectBlocking(fd: Int32, path: String) throws {
 
         let frames = await collector.waitFor(count: 1)
         #expect(frames.count == 1)
-        guard case .hook(let event, let ppid, _, _, _) = frames[0] else {
+        guard case .hook(let payload, _, let ppid, _) = frames[0] else {
             Issue.record("expected a .hook frame")
             return
         }
-        #expect(event.kind == .stop)
+        #expect(payload.eventName == "Stop")
         #expect(ppid == 9)
     }
 

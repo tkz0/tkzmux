@@ -33,9 +33,9 @@ struct ActivityFeedTests {
         let beta = Fixture.sessionID(1)
         harness.mutate { state in
             for id in [alpha, beta] { state.setLive(LiveSessionState(status: .idle), for: id) }
-            state.applyHook(.init(kind: .stop, lastAssistantMessage: "alpha finished"), to: alpha, now: now)
-            state.applyHook(
-                .init(kind: .notification, notificationType: .permissionPrompt, message: "Bash?"),
+            state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "alpha finished"), to: alpha, now: now)
+            state.applyEvent(
+                .init(kind: .attention(.permission), message: "Bash?"),
                 to: beta, now: now.addingTimeInterval(1))
         }
         harness.controller.activityFeed.now = { now.addingTimeInterval(120) }
@@ -89,7 +89,7 @@ struct ActivityFeedTests {
         defer { world.harness.tearDown() }
         // A second Stop on alpha so it has something to fold.
         world.harness.mutate { state in
-            state.applyHook(.init(kind: .stop, lastAssistantMessage: "alpha again"), to: world.alpha, now: Self.now.addingTimeInterval(5))
+            state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "alpha again"), to: world.alpha, now: Self.now.addingTimeInterval(5))
         }
         world.feed.present(over: nil)
         #expect(world.feed.rowsForTesting.map(\.sessionID) == [world.alpha, world.beta])
@@ -151,7 +151,7 @@ struct ActivityFeedTests {
         let gamma = Fixture.sessionID(2)
         world.harness.mutate { state in
             state.setLive(LiveSessionState(status: .idle), for: gamma)
-            state.applyHook(.init(kind: .stop, lastAssistantMessage: "gamma too"), to: gamma, now: Self.now.addingTimeInterval(30))
+            state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "gamma too"), to: gamma, now: Self.now.addingTimeInterval(30))
         }
         #expect(world.feed.rowsForTesting.map(\.sessionID) == [gamma, world.beta, world.alpha])
         #expect(world.feed.selectedIndexForTesting == 2, "still alpha")

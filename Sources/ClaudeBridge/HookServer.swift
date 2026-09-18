@@ -295,13 +295,20 @@ public final class HookServer: Sendable {
     // MARK: - Frame parsing
 
     private static func parseHookFrame(_ obj: [String: Any]) -> HookFrame? {
-        guard let event = obj["event"] as? String else { return nil }
+        // The envelope's own `event` is the shim's argv[1]; a real hook payload from either agent
+        // prefers its own `hook_event_name` when present (both Claude and Codex spell it that way),
+        // falling back to the envelope only when the payload omits it.
+        guard let envelopeEvent = obj["event"] as? String else { return nil }
         let sid = (obj["sid"] as? String) ?? ""
         let ppidRaw = (obj["ppid"] as? Int) ?? 0
         let payload = (obj["payload"] as? [String: Any]) ?? [:]
 
+        let agentRaw = obj["agent"] as? String
+        let agent = agentRaw.map(AgentKind.init(rawValue:)) ?? .claude
+        let eventName = (payload["hook_event_name"] as? String) ?? envelopeEvent
+
         let conversationId = payload["session_id"] as? String
-        let notificationTypeRaw = payload["notification_type"] as? String
+        let notificationType = payload["notification_type"] as? String
         let lastAssistantMessageFull = payload["last_assistant_message"] as? String
         // `Notification.message` — Claude's own one-liner ("Claude needs your permission to use
         // Bash"), the text the NEEDS YOU banner shows. Capped like the Stop message.
@@ -310,24 +317,26 @@ public final class HookServer: Sendable {
         let reason = payload["reason"] as? String
         let cwd = payload["cwd"] as? String
         let transcriptPath = payload["transcript_path"] as? String
+        let toolName = payload["tool_name"] as? String
 
-        let sessionID = sid.isEmpty ? nil : SessionID(sid)
-
-        let hookEvent = HookEvent(
-            kind: .init(raw: event),
-            sessionID: sessionID,
-            conversationId: conversationId,
-            notificationType: notificationTypeRaw.map(HookEvent.NotificationType.init(raw:)),
-            lastAssistantMessage: lastAssistantMessageFull.map { prefixUTF8($0, maxBytes: 4096) },
+        let hookPayload = HookPayload(
+            agent: agent,
+            eventName: eventName,
+            sessionId: conversationId,
+            transcriptPath: transcriptPath,
+            cwd: cwd,
+            notificationType: notificationType,
             message: message.map { prefixUTF8($0, maxBytes: 1024) },
-            source: source,
+            lastAssistantMessage: lastAssistantMessageFull.map { prefixUTF8($0, maxBytes: 4096) },
             reason: reason,
-            pid: nil,
-            receivedAt: Date()
+            source: source,
+            toolName: toolName
         )
         return .hook(
-            hookEvent, ppid: pid_t(ppidRaw), fullMessage: lastAssistantMessageFull, cwd: cwd,
-            transcriptPath: transcriptPath)
+            hookPayload,
+            sessionID: sid.isEmpty ? nil : SessionID(sid),
+            ppid: pid_t(ppidRaw),
+            fullMessage: lastAssistantMessageFull)
     }
 
     private static func parseLaunchFrame(_ obj: [String: Any]) -> HookFrame? {

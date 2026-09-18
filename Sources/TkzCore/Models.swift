@@ -173,7 +173,7 @@ public struct Session: Hashable, Sendable, Identifiable {
     public var accountKey: String
     /// The agent's own conversation id — for Claude, its `session_id` — used for
     /// `claude --resume <id>`. Opaque to tkzmux. Rotates on `/clear`, resume and fork, so it is
-    /// updated whenever a descriptor or SessionStart says so.
+    /// updated whenever an observation or a session-start event says so.
     public var conversationId: String?
     public var createdAt: Date
     public var lastActiveAt: Date
@@ -442,8 +442,9 @@ public struct LiveSessionState: Hashable, Sendable {
     /// when the prompt is answered or the row is attended.
     public var lastNotificationMessage: String?
     public var lastStopAt: Date?
-    /// The most recent hook frame received for this session.
-    public var lastHook: HookEvent?
+    /// The most recent event received for this session, already mapped out of its agent's own
+    /// wire vocabulary by that agent's adapter.
+    public var lastEvent: AgentEvent?
     public var git: GitSummary?
     /// Listening TCP ports found under the shell pid, ascending.
     public var ports: [UInt16]
@@ -461,11 +462,11 @@ public struct LiveSessionState: Hashable, Sendable {
     /// The `claude` process (when a descriptor is bound) or the shell is running. `false` only once
     /// the pty itself has gone away — see `AppState.setAlive`/`descriptorLost`.
     public var alive: Bool
-    /// `true` once a `SessionEnd` with a reason other than `clear`/`resume` has been seen; reset by
-    /// `SessionStart` or by binding a new descriptor. design.md → *Claude integration → Status
-    /// derivation*.
+    /// `true` once the agent reported an ending that really was one — `sessionEnd(exited: true)`,
+    /// which the agent's own adapter decides, since only it knows that agent's reason vocabulary.
+    /// Reset by a session-start event or by binding a new observation.
     public var ended: Bool
-    /// The most recent unanswered `Notification` hook, if any.
+    /// The most recent unanswered attention signal, if any.
     public var pendingNotification: PendingNotification?
     /// When the user last looked at this session — the other half of the `NEEDS YOU` (60 s) rule.
     public var attendedAt: Date?
@@ -513,7 +514,7 @@ public struct LiveSessionState: Hashable, Sendable {
         lastStopMessage: String? = nil,
         lastNotificationMessage: String? = nil,
         lastStopAt: Date? = nil,
-        lastHook: HookEvent? = nil,
+        lastEvent: AgentEvent? = nil,
         git: GitSummary? = nil,
         ports: [UInt16] = [],
         portOwners: [UInt16: String] = [:],
@@ -539,7 +540,7 @@ public struct LiveSessionState: Hashable, Sendable {
         self.lastStopMessage = lastStopMessage
         self.lastNotificationMessage = lastNotificationMessage
         self.lastStopAt = lastStopAt
-        self.lastHook = lastHook
+        self.lastEvent = lastEvent
         self.git = git
         self.ports = ports
         self.portOwners = portOwners
@@ -559,8 +560,8 @@ public struct LiveSessionState: Hashable, Sendable {
     }
 }
 
-/// The Claude launch a row is waiting on: the boot command `.zlogin` is running, until Claude is
-/// up (a descriptor binds, or `SessionStart` arrives) or the command returns to the prompt (the
+/// The agent launch a row is waiting on: the boot command `.zlogin` is running, until the agent is
+/// up (an observation binds, or a session-start event arrives) or the command returns to the prompt (the
 /// OSC 9;4 *remove* `.zlogin` emits after it). Only launches that carry a boot command record
 /// one — a bare shell (⌘T, ⌘D, `.shell`) never does. Drives the pane's "Starting Claude…"
 /// overlay; the give-up delay lives at the AppKit edge (`StartupOverlayPolicy`).
@@ -579,14 +580,16 @@ public struct ClaudeStartup: Hashable, Sendable {
     }
 }
 
-/// One outstanding `Notification` hook — the kind and when it was received. design.md → *Claude
-/// integration → Status derivation*.
+/// One outstanding attention signal — what the agent wants, and when it said so.
+///
+/// Named `kind` rather than `type` since it stopped being a Claude notification type and became
+/// `AttentionKind`, which every agent's adapter maps its own vocabulary onto.
 public struct PendingNotification: Hashable, Sendable {
-    public var type: HookEvent.NotificationType
+    public var kind: AttentionKind
     public var receivedAt: Date
 
-    public init(type: HookEvent.NotificationType, receivedAt: Date) {
-        self.type = type
+    public init(kind: AttentionKind, receivedAt: Date) {
+        self.kind = kind
         self.receivedAt = receivedAt
     }
 }
@@ -616,9 +619,10 @@ public enum WaitReason: String, Hashable, Sendable, Codable, CaseIterable {
     case permission
     /// An elicitation dialog is open.
     case elicitation
-    /// `Notification.notification_type == agent_needs_input`.
+    /// The agent is blocked on input that is neither a permission nor a question.
     case agentInput
-    /// Claude stopped while the session was not attended (idle_prompt, or ≥ 60 s) — `NEEDS YOU`.
+    /// The agent finished while the session was not attended — either an idle nudge arrived after
+    /// the turn ended, or ≥ 60 s passed. `NEEDS YOU`.
     case doneUnattended
 }
 
@@ -1286,94 +1290,5 @@ public struct SessionUsage: Hashable, Sendable, Codable {
         self.perModel = perModel
         self.totalCostUSD = totalCostUSD
         self.lastUpdatedAt = lastUpdatedAt
-    }
-}
-
-// MARK: - Hooks
-
-/// One hook frame relayed by `tkzmux-hook` (M3.2). Typed rather than `[String: Any]`, both because
-/// `Any` cannot be `Sendable` and because only these fields drive status derivation.
-public struct HookEvent: Hashable, Sendable, Codable {
-    public enum Kind: Hashable, Sendable, Codable {
-        case sessionStart
-        case sessionEnd
-        case userPromptSubmit
-        case stop
-        case notification
-        case unknown(String)
-
-        /// Maps the hook names injected by the shim (`SessionStart`, `Stop`, …).
-        public init(raw: String) {
-            switch raw {
-            case "SessionStart": self = .sessionStart
-            case "SessionEnd": self = .sessionEnd
-            case "UserPromptSubmit": self = .userPromptSubmit
-            case "Stop": self = .stop
-            case "Notification": self = .notification
-            default: self = .unknown(raw)
-            }
-        }
-    }
-
-    /// `Notification.notification_type`. Matcher list in design.md → *Shim*.
-    public enum NotificationType: Hashable, Sendable, Codable {
-        case permissionPrompt
-        case idlePrompt
-        case elicitationDialog
-        case elicitationComplete
-        case agentNeedsInput
-        case unknown(String)
-
-        public init(raw: String) {
-            switch raw {
-            case "permission_prompt": self = .permissionPrompt
-            case "idle_prompt": self = .idlePrompt
-            case "elicitation_dialog", "elicitation_url_dialog": self = .elicitationDialog
-            case "elicitation_complete", "elicitation_response": self = .elicitationComplete
-            case "agent_needs_input": self = .agentNeedsInput
-            default: self = .unknown(raw)
-            }
-        }
-    }
-
-    public var kind: Kind
-    /// `TKZMUX_SESSION_ID` as sent by the shim, when it parsed.
-    public var sessionID: SessionID?
-    /// The agent's conversation id from the hook payload — for Claude, its `session_id`.
-    public var conversationId: String?
-    public var notificationType: NotificationType?
-    /// Up to 4 KiB of `Stop.last_assistant_message`.
-    public var lastAssistantMessage: String?
-    /// `Notification.message` — Claude's own one-liner for the prompt, capped at 1 KiB.
-    public var message: String?
-    /// `SessionStart.source`.
-    public var source: String?
-    /// `SessionEnd.reason` — `clear` and `resume` do **not** mean the session exited.
-    public var reason: String?
-    public var pid: pid_t?
-    public var receivedAt: Date
-
-    public init(
-        kind: Kind,
-        sessionID: SessionID? = nil,
-        conversationId: String? = nil,
-        notificationType: NotificationType? = nil,
-        lastAssistantMessage: String? = nil,
-        message: String? = nil,
-        source: String? = nil,
-        reason: String? = nil,
-        pid: pid_t? = nil,
-        receivedAt: Date = Date()
-    ) {
-        self.kind = kind
-        self.sessionID = sessionID
-        self.conversationId = conversationId
-        self.notificationType = notificationType
-        self.lastAssistantMessage = lastAssistantMessage
-        self.message = message
-        self.source = source
-        self.reason = reason
-        self.pid = pid
-        self.receivedAt = receivedAt
     }
 }

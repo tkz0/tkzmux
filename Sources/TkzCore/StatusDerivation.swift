@@ -1,25 +1,24 @@
-// TkzCore — status derivation. See docs/design.md → *Claude integration → Status derivation*.
+// TkzCore — status derivation.
 //
 // Pure and table-driven: no clock (`now` is always a parameter), no I/O, no AppKit. `Reducers.swift`
 // is the only caller inside TkzCore; `ClaudeBridge` and `TkzApp` never derive status themselves —
-// they feed `AppState.applyHook`/`applyDescriptor`/… and read `LiveSessionState.status` back.
+// they feed `AppState.applyEvent`/`applyDescriptor`/… and read `LiveSessionState.status` back.
 //
-// Rule order (first match wins — see the table in design.md):
+// Rule order (first match wins):
 //
 //   1. `!alive`                                                        → `.idle` (the row is about to be removed)
-//   1b. `ended` (SessionEnd, reason ∉ clear/resume: Claude quit, the
-//      shell is still there)                                          → `.idle`
-//   2. a pending permission/elicitation/agent-input prompt              → `.waiting(reason)`
+//   1b. `ended` (the agent exited; the shell is still there)           → `.idle`
+//   2. a pending `AttentionKind` with a `waitReason`                    → `.waiting(reason)`
 //   2b. `descriptor.status == .waiting` (Claude's own prompt flag)      → `.waiting(.permission)`
 //   3. `descriptor.parkedJobId != nil`                                  → `.idle` (parked)
 //   4. `descriptor.status == .busy`                                     → `.working`
-//   5. a `Stop` newer than `attendedAt`, and (an `idle_prompt` after it,
+//   5. a `Stop` newer than `attendedAt`, and (an `.idleNudge` after it,
 //      or ≥ `unattendedGrace` since it)                                 → `.waiting(.doneUnattended)`
 //   6. a `Stop` newer than `attendedAt`, still fresh                    → `.idle`, `isDone = true`
 //   7. otherwise                                                        → `.idle`
 //
-// Without any hooks this degrades to descriptor-only (busy → working, idle → idle); with neither
-// hooks nor a descriptor (a plain shell) it is `.idle` while alive — both asserted in
+// Without any events this degrades to descriptor-only (busy → working, idle → idle); with neither
+// events nor a descriptor (a plain shell) it is `.idle` while alive — both asserted in
 // `StatusDerivationTests`.
 
 import Foundation
@@ -89,18 +88,10 @@ public enum StatusDerivation {
             return StatusOutcome(status: .idle, attention: false, isDone: false)
         }
 
-        // 2. A prompt is on screen and unanswered.
-        if let pending = input.pending {
-            switch pending.type {
-            case .permissionPrompt:
-                return StatusOutcome(status: .waiting(.permission), attention: true, isDone: false)
-            case .elicitationDialog:
-                return StatusOutcome(status: .waiting(.elicitation), attention: true, isDone: false)
-            case .agentNeedsInput:
-                return StatusOutcome(status: .waiting(.agentInput), attention: true, isDone: false)
-            case .idlePrompt, .elicitationComplete, .unknown:
-                break  // handled below (idlePrompt) or not status-bearing at all
-            }
+        // 2. A prompt is on screen and unanswered. `.idleNudge` has no `waitReason` and falls
+        // through by construction — it is not status-bearing on its own, only rule 5 reads it.
+        if let pending = input.pending, let reason = pending.kind.waitReason {
+            return StatusOutcome(status: .waiting(reason), attention: true, isDone: false)
         }
 
         // 2b. The descriptor says Claude is waiting on a prompt. Claude Code writes
@@ -124,7 +115,7 @@ public enum StatusDerivation {
         if let lastStopAt = input.lastStopAt {
             let stopIsUnattended = input.attendedAt.map { lastStopAt > $0 } ?? true
             if stopIsUnattended {
-                let idlePromptAfterStop = input.pending?.type == .idlePrompt
+                let idlePromptAfterStop = input.pending?.kind == .idleNudge
                     && input.pending!.receivedAt > lastStopAt
                 let elapsed = input.now.timeIntervalSince(lastStopAt)
                 if idlePromptAfterStop || elapsed >= unattendedGrace {

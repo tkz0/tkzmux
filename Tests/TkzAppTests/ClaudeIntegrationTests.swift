@@ -69,6 +69,32 @@ struct ClaudeIntegrationTests {
             configDir: "/tmp/nowhere/.claude", argv: ["--model", "haiku"]))
     }
 
+    /// A `.hook` frame built from Claude's own wire vocabulary, the way `HookServer` would parse
+    /// one off the socket — so a test only ever speaks event names and notification types, never
+    /// the `AgentEvent` they map to.
+    static func hook(
+        _ eventName: String,
+        agent: AgentKind = .claude,
+        sessionID: SessionID? = nil,
+        conversationId: String? = nil,
+        notificationType: String? = nil,
+        lastAssistantMessage: String? = nil,
+        reason: String? = nil,
+        transcriptPath: String? = nil,
+        ppid: pid_t,
+        fullMessage: String? = nil
+    ) -> HookFrame {
+        let payload = HookPayload(
+            agent: agent,
+            eventName: eventName,
+            sessionId: conversationId,
+            transcriptPath: transcriptPath,
+            notificationType: notificationType,
+            lastAssistantMessage: lastAssistantMessage,
+            reason: reason)
+        return .hook(payload, sessionID: sessionID, ppid: ppid, fullMessage: fullMessage)
+    }
+
     // MARK: - Synthetic frames
 
     @Test("launch binds the pid; a descriptor for that pid then drives the row")
@@ -93,9 +119,9 @@ struct ClaudeIntegrationTests {
         let t0 = Date()
         h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .busy, statusUpdatedAt: t0), alive: true))
 
-        let prompt = HookEvent(kind: .notification, sessionID: h.session, conversationId: "claude-sid",
-                               notificationType: .permissionPrompt, receivedAt: t0.addingTimeInterval(1))
-        h.integration.handle(HookFrame.hook(prompt, ppid: 4242, fullMessage: nil, cwd: nil, transcriptPath: nil))
+        h.integration.handle(Self.hook(
+            "Notification", sessionID: h.session, conversationId: "claude-sid",
+            notificationType: "permission_prompt", ppid: 4242))
         #expect(h.store.state.sessions[h.session]?.status == .waiting(.permission))
         #expect(h.store.state.sessions[h.session]?.needsAttention == true)
         #expect(h.store.state.summaryCounts.needsYou == 1)
@@ -114,8 +140,9 @@ struct ClaudeIntegrationTests {
         h.integration.handle(Self.launch(h.session, pid: 4242))
         h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .idle), alive: true))
         let full = String(repeating: "x", count: 10_000)
-        let stop = HookEvent(kind: .stop, sessionID: h.session, lastAssistantMessage: String(full.prefix(4096)))
-        h.integration.handle(HookFrame.hook(stop, ppid: 4242, fullMessage: full, cwd: nil, transcriptPath: nil))
+        h.integration.handle(Self.hook(
+            "Stop", sessionID: h.session, lastAssistantMessage: String(full.prefix(4096)),
+            ppid: 4242, fullMessage: full))
         let session = h.store.state.sessions[h.session]
         #expect(session?.live?.lastStopMessage?.count == 4096)
         #expect(h.integration.lastMessage(for: h.session) == full)
@@ -129,8 +156,8 @@ struct ClaudeIntegrationTests {
         let h = Self.makeHarness()
         h.integration.isSessionAttended = { _ in true }
         h.integration.handle(Self.launch(h.session, pid: 4242))
-        let stop = HookEvent(kind: .stop, sessionID: h.session, lastAssistantMessage: "done")
-        h.integration.handle(HookFrame.hook(stop, ppid: 4242, fullMessage: "done", cwd: nil, transcriptPath: nil))
+        h.integration.handle(Self.hook(
+            "Stop", sessionID: h.session, lastAssistantMessage: "done", ppid: 4242, fullMessage: "done"))
         let live = h.store.state.sessions[h.session]?.live
         #expect(live?.isDone == false)
         #expect(live?.attendedAt != nil)
@@ -142,7 +169,7 @@ struct ClaudeIntegrationTests {
         let h = Self.makeHarness()
         // No launch frame, no descriptor: only the shell pid (1, i.e. launchd — the walk stops there
         // without matching anything else) is known.
-        let bySid = HookEvent(kind: .stop, sessionID: nil, conversationId: "resumed-sid")
+        let bySid = AgentEvent(kind: .turnEnded, sessionID: nil, conversationId: "resumed-sid")
         #expect(h.integration.sessionID(forHook: bySid, ppid: 0) == nil)
 
         h.store.update { $0.sessions[h.session]?.conversationId = "resumed-sid" }
@@ -150,10 +177,10 @@ struct ClaudeIntegrationTests {
 
         // ppid tree: a frame whose ppid *is* a bound claude pid.
         h.integration.handle(Self.launch(h.session, pid: 4242))
-        let byTree = HookEvent(kind: .stop, sessionID: nil, conversationId: "unrelated")
+        let byTree = AgentEvent(kind: .turnEnded, sessionID: nil, conversationId: "unrelated")
         #expect(h.integration.sessionID(forHook: byTree, ppid: 4242) == h.session)
         // A sid that is not in the store must not be trusted over the fallbacks.
-        let strangerSid = HookEvent(kind: .stop, sessionID: .generate(), conversationId: "resumed-sid")
+        let strangerSid = AgentEvent(kind: .turnEnded, sessionID: .generate(), conversationId: "resumed-sid")
         #expect(h.integration.sessionID(forHook: strangerSid, ppid: 0) == h.session)
     }
 
@@ -271,10 +298,26 @@ struct ClaudeIntegrationTests {
         h.store.update { $0.setLive(nil, for: h.session) }
         h.integration.handle(Self.launch(h.session, pid: 4242))
         #expect(h.integration.pidToSession[4242] == nil)
-        let hook = HookEvent(kind: .stop, sessionID: h.session, conversationId: "claude-sid")
-        #expect(h.integration.sessionID(forHook: hook, ppid: 0) == nil)
-        h.integration.handle(HookFrame.hook(hook, ppid: 0, fullMessage: nil, cwd: nil, transcriptPath: nil))
+        let event = AgentEvent(kind: .turnEnded, sessionID: h.session, conversationId: "claude-sid")
+        #expect(h.integration.sessionID(forHook: event, ppid: 0) == nil)
+        h.integration.handle(Self.hook("Stop", sessionID: h.session, conversationId: "claude-sid", ppid: 0))
         #expect(h.store.state.sessions[h.session]?.live == nil)
+    }
+
+    /// Today only Claude exists, so this constructs the one shape a mapper table would need to
+    /// reject: a payload from an agent nobody has registered. It must be dropped and logged rather
+    /// than attributed to a row by `ClaudeHookMapper`, which knows only Claude's own vocabulary —
+    /// the behaviour TKZ-82's adapter table depends on when a second agent's payloads start
+    /// arriving on the same socket.
+    @Test("a hook payload from an unregistered agent is dropped, not attributed")
+    func unmappedAgentIsDropped() {
+        let h = Self.makeHarness()
+        h.integration.handle(Self.launch(h.session, pid: 4242))
+        h.integration.handle(Self.hook(
+            "Stop", agent: AgentKind(rawValue: "gemini"), sessionID: h.session,
+            conversationId: "gemini-sid", lastAssistantMessage: "done", ppid: 4242, fullMessage: "done"))
+        #expect(h.store.state.sessions[h.session]?.live?.lastEvent == nil)
+        #expect(h.store.state.sessions[h.session]?.live?.lastStopMessage == nil)
     }
 
     @Test("a descriptor nobody owns is kept as external, and removal forgets it")
@@ -338,8 +381,8 @@ struct ClaudeIntegrationTests {
         #expect(live?.pid == nil)
         #expect(live?.descriptor == nil)
         // The bare walk refuses too: a hook from that tree with no sid is unattributed.
-        let hook = HookEvent(kind: .stop, sessionID: nil, conversationId: "unrelated")
-        #expect(h.integration.sessionID(forHook: hook, ppid: 5000) == nil)
+        let event = AgentEvent(kind: .turnEnded, sessionID: nil, conversationId: "unrelated")
+        #expect(h.integration.sessionID(forHook: event, ppid: 5000) == nil)
     }
 
     @Test("a descriptor whose ancestry reaches launchd without us is external")
@@ -471,8 +514,9 @@ struct ClaudeIntegrationTests {
         #expect(await Self.load(h).isEmpty)
 
         // No transcript, a Stop: the Stop message is the recap.
-        let stop = HookEvent(kind: .stop, sessionID: h.session, lastAssistantMessage: "Done, tests green.")
-        h.integration.handle(HookFrame.hook(stop, ppid: 4242, fullMessage: "Done, tests green.", cwd: nil, transcriptPath: nil))
+        h.integration.handle(Self.hook(
+            "Stop", sessionID: h.session, lastAssistantMessage: "Done, tests green.",
+            ppid: 4242, fullMessage: "Done, tests green."))
         var summary = await Self.load(h)
         #expect(summary.recap == "Done, tests green.")
         #expect(summary.recapSource == .stopMessage)
@@ -496,7 +540,9 @@ struct ClaudeIntegrationTests {
         #expect(summary.recap?.hasPrefix("Goal was the build") == true)
 
         // The path came from the hook frame, and the fallback locates by conversationId.
-        h.integration.handle(HookFrame.hook(stop, ppid: 4242, fullMessage: nil, cwd: nil, transcriptPath: "/tmp/from-hook.jsonl"))
+        h.integration.handle(Self.hook(
+            "Stop", sessionID: h.session, lastAssistantMessage: "Done, tests green.",
+            transcriptPath: "/tmp/from-hook.jsonl", ppid: 4242))
         #expect(h.integration.transcriptPath(for: h.session) == "/tmp/from-hook.jsonl")
         h.integration.forget(h.session)
         #expect(h.integration.transcriptPath(for: h.session) == nil, "no path, no conversationId → nothing to locate")
@@ -547,8 +593,8 @@ struct ClaudeIntegrationTests {
         }
         let live = store.state.sessions[session.id]?.live
         #expect(live?.lastStopMessage == "hello from the relay")
-        #expect(live?.lastHook?.kind == .stop)
-        #expect(live?.lastHook?.conversationId == "abc")
+        #expect(live?.lastEvent?.kind == .turnEnded)
+        #expect(live?.lastEvent?.conversationId == "abc")
         #expect(live?.isDone == true)
     }
 

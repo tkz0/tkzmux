@@ -61,7 +61,7 @@ public struct AppState: Hashable, Sendable {
     /// persisted — see `UpdateState`.
     public var update: UpdateState
     /// The activity feed's event log (⌘I), oldest first, at most `activityCap` entries. Appended
-    /// by `applyHook`/`rederiveStatus`, read flags cleared by `markAttended`. Durable, its own
+    /// by `applyEvent`/`rederiveStatus`, read flags cleared by `markAttended`. Durable, its own
     /// top-level key in `state.json`; `ChangeSet.activity` is its bucket.
     public var activity: [ActivityEvent]
 

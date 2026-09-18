@@ -182,17 +182,17 @@ private func runHook(
         // Warm-up + measured run, plus whatever extra samples the timing loop needed.
         let frames = await collector.waitFor(count: 2)
         #expect(frames.count >= 2)
-        guard case .hook(let event, let ppid, let fullMessage, let cwd, let transcriptPath) = frames.last! else {
+        guard case .hook(let payload, let sessionID, let ppid, let fullMessage) = frames.last! else {
             Issue.record("expected a .hook frame")
             return
         }
-        #expect(event.kind == .stop)
-        #expect(event.sessionID == SessionID("22222222-3333-4444-5555-666666666666"))
-        #expect(event.conversationId == "11111111-2222-3333-4444-555555555555")
-        #expect(event.lastAssistantMessage == "All done, the build is green.")
+        #expect(payload.eventName == "Stop")
+        #expect(sessionID == SessionID("22222222-3333-4444-5555-666666666666"))
+        #expect(payload.sessionId == "11111111-2222-3333-4444-555555555555")
+        #expect(payload.lastAssistantMessage == "All done, the build is green.")
         #expect(fullMessage == "All done, the build is green.")
-        #expect(cwd == "/Users/someone/dev/tkzmux")
-        #expect(transcriptPath == "/Users/someone/.claude/projects/tkzmux/transcript.jsonl")
+        #expect(payload.cwd == "/Users/someone/dev/tkzmux")
+        #expect(payload.transcriptPath == "/Users/someone/.claude/projects/tkzmux/transcript.jsonl")
         #expect(ppid > 0)
     }
 
@@ -220,13 +220,13 @@ private func runHook(
 
         let frames = await collector.waitFor(count: 1)
         #expect(frames.count == 1)
-        guard case .hook(let event, _, let fullMessage, _, _) = frames[0] else {
+        guard case .hook(let payload, _, _, let fullMessage) = frames[0] else {
             Issue.record("expected a .hook frame")
             return
         }
         #expect(fullMessage?.utf8.count == 200 * 1024)
-        #expect(event.lastAssistantMessage?.utf8.count == 4096)
-        #expect(fullMessage?.hasPrefix(event.lastAssistantMessage ?? "") == true)
+        #expect(payload.lastAssistantMessage?.utf8.count == 4096)
+        #expect(fullMessage?.hasPrefix(payload.lastAssistantMessage ?? "") == true)
     }
 
     /// A `Notification` hook's `message` reaches the app, capped at 1 KiB.
@@ -255,16 +255,16 @@ private func runHook(
 
         let frames = await collector.waitFor(count: 2)
         #expect(frames.count == 2)
-        guard case .hook(let first, _, _, _, _) = frames[0],
-              case .hook(let second, _, _, _, _) = frames[1]
+        guard case .hook(let first, _, _, _) = frames[0],
+              case .hook(let second, _, _, _) = frames[1]
         else {
             Issue.record("expected two .hook frames")
             return
         }
-        #expect(first.kind == .notification)
-        #expect(first.notificationType == .permissionPrompt)
+        #expect(first.eventName == "Notification")
+        #expect(first.notificationType == "permission_prompt")
         #expect(first.message == "Claude needs your permission to use Bash")
-        #expect(second.notificationType == .elicitationDialog)
+        #expect(second.notificationType == "elicitation_dialog")
         #expect(second.message?.utf8.count == 1024)
     }
 
@@ -295,7 +295,7 @@ private func runHook(
 
         let frames = await collector.waitFor(count: 1)
         #expect(frames.count == 1)
-        guard case .hook(_, _, let fullMessage, _, _) = frames[0] else {
+        guard case .hook(_, _, _, let fullMessage) = frames[0] else {
             Issue.record("expected a .hook frame")
             return
         }
@@ -335,7 +335,7 @@ private func runHook(
         // wire protocol) — but if something arrived, it must be exactly the marker, never a
         // "successful" frame carrying 2 MiB of message.
         if let frame = frames.first {
-            guard case .hook(_, _, let fullMessage, _, _) = frame else {
+            guard case .hook(_, _, _, let fullMessage) = frame else {
                 Issue.record("expected a .hook frame")
                 return
             }

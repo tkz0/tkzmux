@@ -253,7 +253,7 @@ struct MainWindowLaunchTests {
         #expect(pane.chrome.startupOverlay.isSpinning)
 
         // Claude is up: the delivery that carries it hides the overlay.
-        harness.mutate { $0.applyHook(.init(kind: .sessionStart, conversationId: "s"), to: id) }
+        harness.mutate { $0.applyEvent(.init(kind: .sessionStart, conversationId: "s"), to: id) }
         #expect(harness.store.state.sessions[id]?.live?.claudeStartup == nil)
         #expect(!pane.chrome.isShowingStartup)
         #expect(!pane.chrome.startupOverlay.isSpinning)
