@@ -96,11 +96,11 @@ struct PaneHeaderViewTests {
         state.setPaneCwd(first, path: "/Users/someone/dev/repo")
         state.setPaneCwd(second, path: "/Users/someone/dev/repo")
         state.updateLive(session.id) {
-            $0.descriptor = ClaudeSessionInfo(
-                configDir: "/home/.claude", pid: 99, sessionId: "s",
+            $0.observation = AgentObservation(
+                pid: 99, conversationId: "s", configDir: "/home/.claude",
                 cwd: "/Users/someone/dev/repo/.claude/worktrees/wt")
         }
-        state.setClaudeTerminal(session.id, first)
+        state.setAgentTerminal(session.id, first)
 
         let a = try #require(PaneHeaderAdapter.model(for: first, in: state, home: "/Users/someone"))
         #expect(a.title == "wt")

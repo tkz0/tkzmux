@@ -7,6 +7,7 @@
 
 import AppKit
 import Foundation
+import Synchronization
 import Testing
 import ClaudeBridge
 import TkzCore
@@ -24,6 +25,7 @@ struct ClaudeIntegrationTests {
         let group: GroupID
         let session: SessionID
         let directory: URL
+        let liveness: FakeLiveness
     }
 
     /// A process tree as two tables, for the ownership walk and the pid joins. Anything not in
@@ -35,12 +37,30 @@ struct ClaudeIntegrationTests {
         func name(of pid: pid_t) -> String? { names[pid] }
     }
 
+    /// Reports every pid alive unless a test names it dead. This file's pids (4242, 5000, …) never
+    /// correspond to a real process, so a harness that leaves `deadPids` empty must read as "always
+    /// alive" — otherwise every test that lets the 5 s tick fire would flake against the liveness
+    /// sweep in `tickFired()` rather than exercising what it actually means to test.
+    ///
+    /// State lives in a `Mutex`, as everywhere else in this codebase — never `@unchecked Sendable`
+    /// (CLAUDE.md). The tick calls `isAlive` off the main actor, so the box has to be genuinely
+    /// safe rather than asserted to be.
+    final class FakeLiveness: ProcessLiveness, Sendable {
+        private let storage = Mutex<Set<pid_t>>([])
+        var deadPids: Set<pid_t> {
+            get { storage.withLock { $0 } }
+            set { storage.withLock { $0 = newValue } }
+        }
+        func markDead(_ pid: pid_t) { storage.withLock { _ = $0.insert(pid) } }
+        func isAlive(pid: pid_t, startedAt: Date?) -> Bool { storage.withLock { !$0.contains(pid) } }
+    }
+
     /// The pid every harness integration believes it is; `FakeAncestry` trees end here.
     static let instancePID: pid_t = 777
 
     static func makeHarness(
         home: String? = nil, shellPid: pid_t = 1, ancestry: FakeAncestry = FakeAncestry(),
-        instancePID: pid_t = ClaudeIntegrationTests.instancePID
+        instancePID: pid_t = ClaudeIntegrationTests.instancePID, liveness: FakeLiveness = FakeLiveness()
     ) -> Harness {
         let directory = URL(filePath: NSTemporaryDirectory())
             .appending(path: "tkzci-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -53,8 +73,10 @@ struct ClaudeIntegrationTests {
         let store = AppStore(state: state)
         let integration = ClaudeIntegration(
             store: store, directory: directory, home: home ?? directory.path, installer: nil,
-            instancePID: instancePID, ancestry: ancestry)
-        return Harness(store: store, integration: integration, group: group, session: session.id, directory: directory)
+            instancePID: instancePID, ancestry: ancestry, liveness: liveness)
+        return Harness(
+            store: store, integration: integration, group: group, session: session.id,
+            directory: directory, liveness: liveness)
     }
 
     static func descriptor(pid: pid_t, sessionId: String = "claude-sid", status: ClaudeSessionInfo.Status,
@@ -107,7 +129,7 @@ struct ClaudeIntegrationTests {
         h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .busy), alive: true))
         let live = h.store.state.sessions[h.session]?.live
         #expect(live?.status == .working)
-        #expect(live?.descriptor?.pid == 4242)
+        #expect(live?.observation?.pid == 4242)
         #expect(h.store.state.sessions[h.session]?.conversationId == "claude-sid")
         #expect(h.integration.externalDescriptors.isEmpty)
     }
@@ -379,7 +401,7 @@ struct ClaudeIntegrationTests {
         let live = h.store.state.sessions[h.session]?.live
         #expect(live?.status == .idle)
         #expect(live?.pid == nil)
-        #expect(live?.descriptor == nil)
+        #expect(live?.observation == nil)
         // The bare walk refuses too: a hook from that tree with no sid is unattributed.
         let event = AgentEvent(kind: .turnEnded, sessionID: nil, conversationId: "unrelated")
         #expect(h.integration.sessionID(forHook: event, ppid: 5000) == nil)
@@ -456,9 +478,64 @@ struct ClaudeIntegrationTests {
         #expect(h.store.state.sessions[h.session]?.status == .working)
         h.integration.handle(DescriptorEvent.removed(DescriptorKey(configDir: "/tmp/nowhere/.claude", pid: 4242)))
         let live = h.store.state.sessions[h.session]?.live
-        #expect(live?.descriptor == nil)
+        #expect(live?.observation == nil)
         #expect(live?.pid == nil)
         #expect(h.store.state.sessions[h.session]?.status == .idle)
+    }
+
+    // MARK: - Liveness poll for rows with no observation
+
+    /// The Codex-shaped gap the tick exists for: a bound launch pid, no descriptor file ever
+    /// arrives, and the process dies. Nothing else would ever learn that — there is no descriptor
+    /// to lose — so the sweep must ask the liveness fake itself and clean up on a "no".
+    @Test("the tick's liveness sweep catches a bound pid with no observation that has died")
+    func tickLivenessSweepCatchesADeadRowWithNoObservation() {
+        let h = Self.makeHarness()
+        h.integration.handle(Self.launch(h.session, pid: 4242))
+        #expect(h.store.state.sessions[h.session]?.live?.pid == 4242)
+        #expect(h.store.state.sessions[h.session]?.live?.observation == nil)
+
+        var exited: [SessionID] = []
+        h.integration.onAgentExited = { exited.append($0) }
+        h.liveness.deadPids.insert(4242)
+        h.integration.tickFired()
+
+        #expect(exited == [h.session])
+        let live = h.store.state.sessions[h.session]?.live
+        #expect(live?.pid == nil)
+        #expect(live?.observation == nil)
+        #expect(h.store.state.sessions[h.session]?.status == .idle)
+    }
+
+    /// A row with an observation is the watcher's to lose (`.removed` → `agentLost`), never this
+    /// sweep's — so the fake is set up to answer "dead" and the tick must not even ask it.
+    @Test("a row with a bound observation is never polled by the tick")
+    func tickLivenessSweepSkipsRowsWithAnObservation() {
+        let h = Self.makeHarness()
+        h.integration.handle(Self.launch(h.session, pid: 4242))
+        h.integration.handle(DescriptorEvent.updated(Self.descriptor(pid: 4242, status: .busy), alive: true))
+        #expect(h.store.state.sessions[h.session]?.live?.observation != nil)
+
+        var exited: [SessionID] = []
+        h.integration.onAgentExited = { exited.append($0) }
+        h.liveness.deadPids.insert(4242)
+        h.integration.tickFired()
+
+        #expect(exited.isEmpty)
+        #expect(h.store.state.sessions[h.session]?.live?.pid == 4242)
+        #expect(h.store.state.sessions[h.session]?.status == .working)
+    }
+
+    /// The common case: the pid is alive, so the tick must leave the row exactly as it found it.
+    @Test("the tick leaves a row with a live pid and no observation untouched")
+    func tickLivenessSweepLeavesALiveRowAlone() {
+        let h = Self.makeHarness()
+        h.integration.handle(Self.launch(h.session, pid: 4242))
+        var exited: [SessionID] = []
+        h.integration.onAgentExited = { exited.append($0) }
+        h.integration.tickFired()
+        #expect(exited.isEmpty)
+        #expect(h.store.state.sessions[h.session]?.live?.pid == 4242)
     }
 
     @Test("a status flip is a one-row change, never structural")

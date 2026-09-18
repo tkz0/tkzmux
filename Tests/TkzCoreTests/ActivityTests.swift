@@ -65,10 +65,10 @@ import Testing
         #expect(WaitReason.doneUnattended.feedLabel == "unattended")
     }
 
-    @Test func aDescriptorOnlyWaitingAppendsNeedsYouWithoutAnyEvent() {
+    @Test func anObservationOnlyWaitingAppendsNeedsYouWithoutAnyEvent() {
         var (state, id) = makeState()
-        let descriptor = ClaudeSessionInfo(configDir: "~/.claude", pid: 7, sessionId: "s", status: .waiting)
-        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
+        let observation = AgentObservation(pid: 7, conversationId: "s", configDir: "~/.claude", activity: .waiting)
+        state.applyObservation(observation, alive: true, to: id, now: now)
         #expect(state.activity.map(\.kind) == [.needsYou(reason: .permission, message: nil)])
         // The tick sees the same state again: nothing new.
         state.rederiveStatuses(now: now.addingTimeInterval(5))

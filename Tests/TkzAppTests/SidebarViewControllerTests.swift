@@ -156,7 +156,7 @@ struct SidebarViewControllerTests {
     func heightsAreRenotedOnlyWhenTheyChange() throws {
         let harness = Self.makeHarness()
         harness.outline.resetCounters()
-        // Session 3: no rename, a live descriptor with a `.derived` name, so its title is the
+        // Session 3: no rename, a live observation with a derived name, so its title is the
         // folder and it carries no subtitle yet.
         let target = Fixture.sessionID(3)
         let before = try #require(harness.store.state.sessions[target])
@@ -175,10 +175,10 @@ struct SidebarViewControllerTests {
         harness.outline.resetCounters()
         harness.mutate { state in
             state.updateLive(target) { $0.git = GitSummary(branch: "feature/reporting-scheduler-rewrite") }
-            var descriptor = state.sessions[target]!.live!.descriptor!
-            descriptor.name = "Move reporting onto the new scheduler"
-            descriptor.nameSource = .auto
-            state.adoptDescriptor(descriptor, for: target)
+            var observation = state.sessions[target]!.live!.observation!
+            observation.name = "Move reporting onto the new scheduler"
+            observation.nameIsDerived = false
+            state.adoptDescriptor(observation, for: target)
         }
         let after = try #require(harness.store.state.sessions[target])
         let model = SidebarRowAdapter.sessionModel(after, in: harness.store.state)

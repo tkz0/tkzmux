@@ -92,11 +92,11 @@ public final class ClaudeIntegration {
     /// need no window; `MainWindowController` installs the real check.
     public var isSessionAttended: (SessionID) -> Bool = { _ in false }
 
-    /// Claude left a row — its descriptor vanished, or a `SessionEnd` that is an exit arrived —
+    /// The agent left a row — its observation vanished, or a `SessionEnd` that is an exit arrived —
     /// while the shell may well still be there. `MainWindowController` re-reads the repo's
     /// worktree list on it (M5.2): `claude -w` removes its worktree at this moment, not at the
     /// shell's exit.
-    public var onClaudeExited: ((SessionID) -> Void)?
+    public var onAgentExited: ((SessionID) -> Void)?
 
     /// A `Stop` hook landed for this row — Claude has finished a turn, and whatever it did to the
     /// working tree is on disk now. `GitIntegration` (M4) refreshes git and re-scans ports on it;
@@ -117,6 +117,9 @@ public final class ClaudeIntegration {
     /// app bundle both report `tkzmux`; a binary built under some other name would not be
     /// recognised, and only that one topology would cross-claim again.
     let executableName: String
+    /// `kill(pid,0)` plus the pid-reuse guard, for the tick's liveness sweep (below). Injected the
+    /// same way `ancestry` is, so a test can report a bound pid dead without a real process.
+    let liveness: any ProcessLiveness
 
     public init(
         store: AppStore,
@@ -124,7 +127,8 @@ public final class ClaudeIntegration {
         home: String = NSHomeDirectory(),
         installer: ShimInstaller? = nil,
         instancePID: pid_t = getpid(),
-        ancestry: any ProcessAncestry = SystemProcessAncestry()
+        ancestry: any ProcessAncestry = SystemProcessAncestry(),
+        liveness: any ProcessLiveness = SystemProcessLiveness()
     ) {
         self.store = store
         self.directory = directory
@@ -132,6 +136,7 @@ public final class ClaudeIntegration {
         self.installer = installer
         self.instancePID = instancePID
         self.ancestry = ancestry
+        self.liveness = liveness
         self.executableName = ancestry.name(of: instancePID) ?? ""
 
         // Accounts are discovered, never hard-coded: `~/.claude` plus every `~/.claude-*` that
@@ -450,8 +455,35 @@ public final class ClaudeIntegration {
         try installer?.remove()
     }
 
-    private func tickFired() {
+    /// Internal rather than `private`: the 5 s timer is what calls this in the app, but the tests
+    /// drive it directly rather than sleeping for a real interval.
+    func tickFired() {
+        pollLivenessForRowsWithNoObservation()
         store.update { $0.rederiveStatuses(now: Date()) }
+    }
+
+    /// The fallback for an agent that writes no descriptor file at all. Claude always has an
+    /// observation while its process is alive, so a Claude row learns of a crash from
+    /// `handle(_ event: DescriptorEvent)`'s `.removed` case — the file vanishing is the signal.
+    /// Codex has no such file, so a row bound to a Codex pid would otherwise sit at whatever
+    /// status its last hook left it in forever, even after the process is long gone. This sweep
+    /// is what catches that: a row with a bound launch pid and no observation is asked, once a
+    /// tick, whether that pid still exists, and `agentLost` runs if it does not.
+    ///
+    /// A row with an observation is skipped outright — that is the watcher's job, not this one's
+    /// — and this cannot fire for Claude today precisely because Claude never leaves that gap.
+    private func pollLivenessForRowsWithNoObservation() {
+        for id in store.state.sessions.keys {
+            guard let live = store.state.sessions[id]?.live, let pid = live.pid, live.observation == nil
+            else { continue }
+            // Only a row this instance itself bound the pid for — `pidToSession` is the launch
+            // frame's own record, so a stray pid that merely matches (already handled elsewhere,
+            // or belonging to a row that has moved on) is left alone.
+            guard pidToSession[pid] == id else { continue }
+            guard !liveness.isAlive(pid: pid, startedAt: nil) else { continue }
+            store.update { $0.agentLost(for: id, now: Date()) }
+            onAgentExited?(id)
+        }
     }
 
     // MARK: Hook frames
@@ -494,7 +526,7 @@ public final class ClaudeIntegration {
             }
             if event.kind == .turnEnded { onStop?(id) }
             if case .sessionEnd = event.kind, store.state.sessions[id]?.live?.ended == true {
-                onClaudeExited?(id)
+                onAgentExited?(id)
             }
             switch event.kind {
             case .sessionStart, .turnEnded, .sessionEnd, .promptSubmitted:
@@ -549,30 +581,30 @@ public final class ClaudeIntegration {
         }
         logger.info("launch pid \(launch.pid) → \(id.rawValue, privacy: .public) config_dir=\(launch.configDir, privacy: .public)")
         pidToSession[launch.pid] = id
-        // Which pane the frame came from, resolved *before* the descriptor below is applied —
-        // applying a live descriptor is what clears `claudeStartup`, the cheap answer.
-        let terminal = claudeTerminal(for: launch, in: id)
+        // Which pane the frame came from, resolved *before* the observation below is applied —
+        // applying a live observation is what clears `agentStartup`, the cheap answer.
+        let terminal = agentTerminal(for: launch, in: id)
         store.update { state in
             state.updateLive(id) { $0.pid = launch.pid }
-            state.setClaudeTerminal(id, terminal)
+            state.setAgentTerminal(id, terminal)
         }
         learnAccount(configDir: launch.configDir, for: id)
         for (key, state) in watcher.snapshot() where state.info.pid == launch.pid {
             // Seen before the frame: it was filed as external; it has an owner now.
             externalDescriptors[key] = nil
-            store.update { $0.applyDescriptor(state.info, alive: state.alive, to: id, now: Date()) }
+            store.update { $0.applyObservation(state.info.observation, alive: state.alive, to: id, now: Date()) }
             learnAccount(configDir: state.info.configDir, for: id)
         }
     }
 
     /// The pane whose shell is running the `claude` the shim just announced. A boot command or a
-    /// resume recorded its pane in `claudeStartup`; a `claude` typed by hand in a split did not,
+    /// resume recorded its pane in `agentStartup`; a `claude` typed by hand in a split did not,
     /// so the frame's pid (the shim's `$$`, a child of the pane's login shell) is walked up
     /// `panePids` the same way `sessionID(forProcess:)` walks it. `nil` when neither places it;
     /// `GitIntegration` then falls back to "the row's only pane".
-    func claudeTerminal(for launch: LaunchAnnouncement, in id: SessionID) -> TerminalID? {
+    func agentTerminal(for launch: LaunchAnnouncement, in id: SessionID) -> TerminalID? {
         guard let live = store.state.sessions[id]?.live else { return nil }
-        if let startup = live.claudeStartup { return startup.terminal }
+        if let startup = live.agentStartup { return startup.terminal }
         guard !live.panePids.isEmpty else { return nil }
         var current = launch.pid
         for _ in 0..<8 {
@@ -654,7 +686,9 @@ public final class ClaudeIntegration {
                 return
             }
             externalDescriptors[key] = nil
-            store.update { $0.applyDescriptor(info, alive: alive, to: id, now: Date()) }
+            // The watcher hands us Claude's own descriptor; what crosses into the store is its
+            // agent-blind projection (the file header's boundary rule).
+            store.update { $0.applyObservation(info.observation, alive: alive, to: id, now: Date()) }
             // The descriptor's directory is where Claude *actually* keeps this session — truer
             // than the launch frame, which reports the shell's environment before Claude ran.
             learnAccount(configDir: info.configDir, for: id)
@@ -662,8 +696,8 @@ public final class ClaudeIntegration {
             externalDescriptors[key] = nil
             let bound = store.state.sessions.values.first { $0.live?.pid == key.pid }
             if let bound {
-                store.update { $0.descriptorLost(for: bound.id, now: Date()) }
-                onClaudeExited?(bound.id)
+                store.update { $0.agentLost(for: bound.id, now: Date()) }
+                onAgentExited?(bound.id)
             }
         }
     }
@@ -686,7 +720,7 @@ public final class ClaudeIntegration {
         // row. TKZ-82's adapter table will replace this with `adapters[session.agent]`.
         if let match = state.sessions.values.first(where: {
             $0.agent == .claude && $0.conversationId == info.sessionId && $0.live != nil
-                && $0.live?.descriptor == nil
+                && $0.live?.observation == nil
         }) {
             return match.id
         }

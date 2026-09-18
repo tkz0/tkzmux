@@ -124,11 +124,11 @@ public final class SessionLauncher {
             $0.setLive(
                 LiveSessionState(shellPid: pid, status: .idle, panePids: [terminal: pid]),
                 for: id)
-            // A command means Claude is on its way: the pane shows "Starting Claude…" until a
-            // descriptor or `SessionStart` says it arrived (`.shell` carries none, and shows
+            // A command means Claude is on its way: the pane shows "Starting Claude…" until an
+            // observation or `SessionStart` says it arrived (`.shell` carries none, and shows
             // nothing).
             if !spec.command.isEmpty {
-                $0.beginClaudeStartup(id, terminal: terminal, command: spec.command, now: now)
+                $0.beginAgentStartup(id, terminal: terminal, command: spec.command, now: now)
             }
             $0.select(id)
         }
@@ -218,7 +218,7 @@ public final class SessionLauncher {
                 LiveSessionState(shellPid: shellPid, status: .idle, panePids: pids), for: id)
             // The boot command went to the focused pane, so that is where Claude is starting.
             if let bootCommand, !bootCommand.isEmpty, pids[focused] != nil {
-                $0.beginClaudeStartup(id, terminal: focused, command: bootCommand, now: now)
+                $0.beginAgentStartup(id, terminal: focused, command: bootCommand, now: now)
             }
         }
         logLaunch(kind: "reopen", id: id, cwd: cwd, env: env, command: "")
@@ -297,8 +297,8 @@ public final class SessionLauncher {
         guard let session = store.state.sessions[id] else { return .failure(.unknownSession) }
         let source = session.focusedTerminalID
 
-        let claudeCwd = session.paneHostsClaude(source)
-            ? session.live?.descriptor?.cwd.flatMap { $0.isEmpty ? nil : $0 } : nil
+        let claudeCwd = session.paneHostsAgent(source)
+            ? session.live?.observation?.cwd.flatMap { $0.isEmpty ? nil : $0 } : nil
         let cwd = Paths.expandingTilde(
             claudeCwd
                 ?? store.state.paneCwd(source)
@@ -353,7 +353,7 @@ public final class SessionLauncher {
 
     /// What `resume` did.
     public enum ResumeOutcome: Equatable, Sendable {
-        /// The agent is already running in this row (a descriptor is bound); nothing typed.
+        /// The agent is already running in this row (an observation is bound); nothing typed.
         case agentRunning
         /// The row has no `conversationId` to resume; the shell was (re)opened and that is all.
         case nothingToResume
@@ -365,7 +365,7 @@ public final class SessionLauncher {
     @discardableResult
     public func resume(_ id: SessionID, select: Bool = true) -> Result<ResumeOutcome, Failure> {
         guard let before = store.state.sessions[id] else { return .failure(.unknownSession) }
-        if before.live?.descriptor != nil { return .success(.agentRunning) }
+        if before.live?.observation != nil { return .success(.agentRunning) }
 
         let hadShell = before.live != nil
         // Worked out before the shell is opened: a shell this call spawns is handed the command as
@@ -406,7 +406,7 @@ public final class SessionLauncher {
         var failed: [(SessionID, Failure)] = []
         for id in ids {
             guard let session = store.state.sessions[id],
-                  session.conversationId != nil, session.live?.descriptor == nil
+                  session.conversationId != nil, session.live?.observation == nil
             else { continue }
             switch resume(id, select: false) {
             case .success(.resumed): resumed.append(id)

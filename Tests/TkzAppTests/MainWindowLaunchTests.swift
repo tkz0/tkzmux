@@ -238,7 +238,7 @@ struct MainWindowLaunchTests {
         harness.layout()
         let id = try #require(harness.host.opened.first?.id)
         let terminal = TerminalID(uuid: id.uuid)
-        let startedAt = try #require(harness.store.state.sessions[id]?.live?.claudeStartup?.startedAt)
+        let startedAt = try #require(harness.store.state.sessions[id]?.live?.agentStartup?.startedAt)
         let pane = try #require(harness.controller.panes[terminal])
 
         // Right after the launch: pending, nothing on screen.
@@ -254,7 +254,7 @@ struct MainWindowLaunchTests {
 
         // Claude is up: the delivery that carries it hides the overlay.
         harness.mutate { $0.applyEvent(.init(kind: .sessionStart, conversationId: "s"), to: id) }
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup == nil)
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup == nil)
         #expect(!pane.chrome.isShowingStartup)
         #expect(!pane.chrome.startupOverlay.isSpinning)
     }
@@ -268,7 +268,7 @@ struct MainWindowLaunchTests {
         harness.store.flush()
         harness.layout()
         let id = try #require(harness.host.opened.first?.id)
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup == nil)
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup == nil)
         let pane = try #require(harness.controller.panes[TerminalID(uuid: id.uuid)])
         harness.controller.applyStartupOverlay(now: Date().addingTimeInterval(3600))
         #expect(!pane.chrome.isShowingStartup)
@@ -293,22 +293,22 @@ struct MainWindowLaunchTests {
         harness.host.emit(.progress(state: .remove, value: nil), forTerminal: other)
         try await Task.sleep(for: .milliseconds(50))
         harness.store.flush()
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup?.terminal == boot)
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup?.terminal == boot)
 
         // Neither is the "indeterminate" that opens the bracket.
         harness.host.emit(.progress(state: .indeterminate, value: nil), forTerminal: boot)
         try await Task.sleep(for: .milliseconds(50))
         harness.store.flush()
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup?.terminal == boot)
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup?.terminal == boot)
 
         harness.host.emit(.progress(state: .remove, value: nil), forTerminal: boot)
         let deadline = ContinuousClock.now + .seconds(5)
         while ContinuousClock.now < deadline {
             harness.store.flush()
-            if harness.store.state.sessions[id]?.live?.claudeStartup == nil { break }
+            if harness.store.state.sessions[id]?.live?.agentStartup == nil { break }
             try await Task.sleep(for: .milliseconds(10))
         }
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup == nil)
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup == nil)
     }
 
     @Test("Once the give-up passes, the launch is forgotten")
@@ -320,7 +320,7 @@ struct MainWindowLaunchTests {
         harness.store.flush()
         harness.layout()
         let id = try #require(harness.host.opened.first?.id)
-        let startedAt = try #require(harness.store.state.sessions[id]?.live?.claudeStartup?.startedAt)
+        let startedAt = try #require(harness.store.state.sessions[id]?.live?.agentStartup?.startedAt)
 
         harness.controller.applyStartupOverlay(
             now: startedAt.addingTimeInterval(StartupOverlayPolicy.giveUp))
@@ -328,10 +328,10 @@ struct MainWindowLaunchTests {
         let deadline = ContinuousClock.now + .seconds(5)
         while ContinuousClock.now < deadline {
             harness.store.flush()
-            if harness.store.state.sessions[id]?.live?.claudeStartup == nil { break }
+            if harness.store.state.sessions[id]?.live?.agentStartup == nil { break }
             try await Task.sleep(for: .milliseconds(10))
         }
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup == nil)
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup == nil)
         let pane = try #require(harness.controller.panes[TerminalID(uuid: id.uuid)])
         #expect(!pane.chrome.isShowingStartup)
     }

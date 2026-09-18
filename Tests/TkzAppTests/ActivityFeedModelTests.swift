@@ -37,8 +37,8 @@ import TkzCore
             .init(kind: .attention(.permission), message: "Claude needs your permission to use Bash"),
             to: beta, now: now.addingTimeInterval(30))
 
-        state.applyDescriptor(
-            ClaudeSessionInfo(configDir: "~/.claude", pid: 9, sessionId: "g", status: .busy,
+        state.applyObservation(
+            AgentObservation(pid: 9, conversationId: "g", configDir: "~/.claude", activity: .busy,
                               statusUpdatedAt: now.addingTimeInterval(-63 * 60)),
             alive: true, to: gamma, now: now)
         return World(state: state, alpha: alpha, beta: beta, gamma: gamma)

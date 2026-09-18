@@ -7,7 +7,8 @@
 // build that knows `gemini` has to keep loading in a build that does not. An enum would fail to
 // decode the whole session; a raw-string struct decodes it into an agent nobody has an adapter
 // for, and the row shows as an unknown agent with resume disabled. Same reason
-// `ClaudeSessionInfo.Kind` carries `.unknown(String)`.
+// `AgentObservation.activity` is `nil` rather than a guess when an agent's own descriptor reports
+// a status this build does not recognise.
 
 import Foundation
 

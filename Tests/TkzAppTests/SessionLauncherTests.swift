@@ -292,8 +292,8 @@ struct SessionLauncherTests {
         ).get()
         h.store.flush()
         #expect(
-            h.session(started)?.live?.claudeStartup
-                == ClaudeStartup(
+            h.session(started)?.live?.agentStartup
+                == AgentStartup(
                     terminal: TerminalID(uuid: started.uuid), command: "claude -w feature",
                     startedAt: now))
 
@@ -302,12 +302,12 @@ struct SessionLauncherTests {
             NewSessionMenu.Launch(kind: .shell, command: "", cwd: h.tree.repo, accountKey: nil, groupID: h.group), now: now
         ).get()
         h.store.flush()
-        #expect(h.session(shell)?.live?.claudeStartup == nil)
+        #expect(h.session(shell)?.live?.agentStartup == nil)
 
         // A split adds a shell, never a launch.
         let split = try h.launcher.addTerminal(to: started, splitting: .horizontal).get()
         h.store.flush()
-        #expect(h.session(started)?.live?.claudeStartup?.terminal == TerminalID(uuid: started.uuid))
+        #expect(h.session(started)?.live?.agentStartup?.terminal == TerminalID(uuid: started.uuid))
         #expect(split != TerminalID(uuid: started.uuid))
 
         // A resume of a restored split row: the focused pane, and only it.
@@ -320,14 +320,14 @@ struct SessionLauncherTests {
         #expect(h.session(restored)?.focusedTerminalID == focused, "a split focuses the new pane")
         #expect(h.launcher.resume(restored) == .success(.resumed(conversationId: "abc-123")))
         h.store.flush()
-        #expect(h.session(restored)?.live?.claudeStartup?.terminal == focused)
-        #expect(h.session(restored)?.live?.claudeStartup?.command == "claude --resume abc-123")
+        #expect(h.session(restored)?.live?.agentStartup?.terminal == focused)
+        #expect(h.session(restored)?.live?.agentStartup?.command == "claude --resume abc-123")
 
         // A plain reopen carries no command, so it records nothing.
         let plain = Self.restoredRow(h, conversationId: nil)
         _ = h.launcher.reopen(plain)
         h.store.flush()
-        #expect(h.session(plain)?.live?.claudeStartup == nil)
+        #expect(h.session(plain)?.live?.agentStartup == nil)
     }
 
     /// The shell under `claude -w` never `cd`s: the command is typed in the main checkout and
@@ -343,9 +343,9 @@ struct SessionLauncherTests {
         let claudePane = TerminalID(uuid: id.uuid)
         h.store.update { state in
             state.updateLive(id) {
-                $0.descriptor = ClaudeSessionInfo(
-                    configDir: h.tree.home + "/.claude", pid: 99, sessionId: "s", cwd: h.tree.worktree)
-                $0.claudeTerminal = claudePane
+                $0.observation = AgentObservation(
+                    pid: 99, conversationId: "s", configDir: h.tree.home + "/.claude", cwd: h.tree.worktree)
+                $0.agentTerminal = claudePane
             }
             // What the shell reported: still the main checkout.
             state.setPaneCwd(claudePane, path: h.tree.repo)
@@ -390,8 +390,8 @@ struct SessionLauncherTests {
         let running = Self.restoredRow(h, conversationId: "abc")
         h.store.update { state in
             state.setLive(LiveSessionState(shellPid: 1), for: running)
-            state.applyDescriptor(
-                ClaudeSessionInfo(configDir: "/x/.claude", pid: 9, sessionId: "abc", status: .busy),
+            state.applyObservation(
+                AgentObservation(pid: 9, conversationId: "abc", configDir: "/x/.claude", activity: .busy),
                 alive: true, to: running)
         }
         #expect(h.launcher.resume(running) == .success(.agentRunning))

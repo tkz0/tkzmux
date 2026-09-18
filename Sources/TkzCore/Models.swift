@@ -250,22 +250,23 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// Amber `NEEDS YOU` badge in the sidebar.
     public var needsAttention: Bool { live?.attention ?? false }
 
-    /// design.md → *Claude integration → Titles*: user rename → descriptor `name` (unless the
-    /// descriptor derived it) → worktree name → `basename(cwd)`, where `cwd` is **Claude's own**
-    /// once a descriptor is bound: a shell started in the home group and `cd`'d into a repo before
-    /// `claude` should read as that repo, not as the home directory (GUI pass 2026-09-08, 5a).
+    /// design.md → *Claude integration → Titles*: user rename → the agent's own `name` (unless the
+    /// agent derived it) → worktree name → `basename(cwd)`, where `cwd` is **the agent's own**
+    /// once an observation is bound: a shell started in the home group and `cd`'d into a repo
+    /// before the agent started should read as that repo, not as the home directory (GUI pass
+    /// 2026-09-08, 5a).
     public var displayTitle: String {
         if let title, !title.isEmpty { return title }
-        if let name = live?.descriptor?.name, !name.isEmpty, live?.descriptor?.nameSource != .derived {
+        if let name = live?.observation?.name, !name.isEmpty, live?.observation?.nameIsDerived != true {
             return name
         }
         return directoryTitle
     }
 
-    /// The title the session would have with no rename and no descriptor name: the worktree name
-    /// for a `claude -w` session, else the last segment of `effectiveCwd`. The sidebar shows it as
-    /// `…/<name>` under the title whenever `displayTitle` is something else (design 2c.1), so the
-    /// folder stays visible once Claude has named the session after the task.
+    /// The title the session would have with no rename and no name from the agent: the worktree
+    /// name for a `claude -w` session, else the last segment of `effectiveCwd`. The sidebar shows
+    /// it as `…/<name>` under the title whenever `displayTitle` is something else (design 2c.1),
+    /// so the folder stays visible once the agent has named the session after the task.
     public var directoryTitle: String {
         if isWorktree, let worktreePath, !worktreePath.isEmpty {
             return Self.title(forPath: worktreePath)
@@ -273,10 +274,10 @@ public struct Session: Hashable, Sendable, Identifiable {
         return Self.title(forPath: effectiveCwd)
     }
 
-    /// Where the session *is*: Claude's cwd while a descriptor is bound, else the shell's last
-    /// reported cwd (it follows `cd`), else the directory the session was started in.
+    /// Where the session *is*: the agent's own cwd while an observation is bound, else the shell's
+    /// last reported cwd (it follows `cd`), else the directory the session was started in.
     public var effectiveCwd: String {
-        if let claudeCwd = live?.descriptor?.cwd, !claudeCwd.isEmpty { return claudeCwd }
+        if let agentCwd = live?.observation?.cwd, !agentCwd.isEmpty { return agentCwd }
         if let shellCwd = live?.shellCwd, !shellCwd.isEmpty { return shellCwd }
         return cwd
     }
@@ -284,27 +285,27 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// Where `terminal`'s shell is standing, for the pane header and for git: its own OSC 7,
     /// or the row's `effectiveCwd` while it has not reported one (a split in its first second).
     ///
-    /// **Except in the pane that is running Claude**, where the shell's OSC 7 is stale by
+    /// **Except in the pane that is running the agent**, where the shell's OSC 7 is stale by
     /// construction: `claude -w <name>` is typed in the main checkout and chdirs into
     /// `.claude/worktrees/<name>` itself, and the shell underneath never `cd`s. That pane
-    /// (`live.claudeTerminal`, or the row's only pane) answers with Claude's own cwd while a live
-    /// descriptor is bound. Every other pane keeps its shell's answer.
+    /// (`live.agentTerminal`, or the row's only pane) answers with the agent's own cwd while a
+    /// live observation is bound. Every other pane keeps its shell's answer.
     public func paneDirectory(_ terminal: TerminalID) -> String {
         guard let live else { return effectiveCwd }
-        if let claudeCwd = live.descriptor?.cwd, !claudeCwd.isEmpty, paneHostsClaude(terminal) {
-            return claudeCwd
+        if let agentCwd = live.observation?.cwd, !agentCwd.isEmpty, paneHostsAgent(terminal) {
+            return agentCwd
         }
         return live.paneCwds[terminal] ?? effectiveCwd
     }
 
-    /// `terminal` is where the bound `claude` runs: the pane the shim's `launch` frame was placed
+    /// `terminal` is where the bound agent runs: the pane the shim's `launch` frame was placed
     /// in, or — when the frame could not be placed — the row's only pane, since a *live*
-    /// descriptor means Claude is running in *some* pane of this row. A dead one (a stale
-    /// descriptor from before a crash, matched to a resumed row by its conversation id) is no
+    /// observation means the agent is running in *some* pane of this row. A dead one (a stale
+    /// observation from before a crash, matched to a resumed row by its conversation id) is no
     /// such evidence, and its cwd may name a worktree that no longer exists.
-    public func paneHostsClaude(_ terminal: TerminalID) -> Bool {
-        guard let live, live.descriptor != nil, live.alive else { return false }
-        if let claudeTerminal = live.claudeTerminal { return claudeTerminal == terminal }
+    public func paneHostsAgent(_ terminal: TerminalID) -> Bool {
+        guard let live, live.observation != nil, live.alive else { return false }
+        if let agentTerminal = live.agentTerminal { return agentTerminal == terminal }
         let panes = terminalIDs
         return panes.count == 1 && panes[0] == terminal
     }
@@ -394,11 +395,12 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// The worktree a path lies in for *this row's agent*, or `nil`.
     ///
     /// Claude Code creates its worktrees under `<repo>/.claude/worktrees/<name>` and starts the
-    /// session with that directory as its cwd, which is what the descriptor then reports. An agent
-    /// with no worktree flag (`AgentKind.worktreeMarker == nil`) never matches — see `AgentKind`.
+    /// session with that directory as its cwd, which is what the observation then reports. An
+    /// agent with no worktree flag (`AgentKind.worktreeMarker == nil`) never matches — see
+    /// `AgentKind`.
     ///
     /// An instance method, not a static one, because both in-module callers (`showsWorktreeBadge`
-    /// and `applyDescriptor`) already hold the session, and TkzCore has no adapter registry to ask.
+    /// and `applyObservation`) already hold the session, and TkzCore has no adapter registry to ask.
     public func worktreeRoot(ofPath path: String) -> String? {
         agent.worktreeRoot(ofPath: path)
     }
@@ -420,16 +422,20 @@ extension Session: Codable {
 
 // MARK: - Live state
 
-/// The volatile half of a session: the process, what Claude says about it, and what the
+/// The volatile half of a session: the process, what the agent says about itself, and what the
 /// services (git, ports, sidecar) have most recently learned.
 public struct LiveSessionState: Hashable, Sendable {
-    /// pid of the `claude` process, once the shim's `launch` frame or a descriptor has bound it.
+    /// pid of the agent's own process, once the shim's `launch` frame or an observation has bound
+    /// it.
     public var pid: pid_t?
     /// pid of the login shell in the pty (known immediately; the fallback for pid attribution).
     public var shellPid: pid_t?
-    /// The parsed `~/.claude*/sessions/<pid>.json` descriptor, when one exists.
-    public var descriptor: ClaudeSessionInfo?
-    /// Derived by `ClaudeBridge` (M3.4) from descriptor + hooks + liveness; the sidebar's dot.
+    /// What the agent's own descriptor file says about itself right now, projected out of that
+    /// agent's schema — see `AgentObservation`. `nil` for an agent with no descriptor file, or one
+    /// tkzmux has not found yet.
+    public var observation: AgentObservation?
+    /// Derived by `ClaudeBridge`/`TkzCore` (M3.4) from the observation + hooks + liveness; the
+    /// sidebar's dot.
     public var status: SessionStatus
     /// `true` = the amber `NEEDS YOU` badge. Set for `waiting(.doneUnattended)` and for pending
     /// permission/elicitation prompts; kept separate from `status` because the badge and the dot
@@ -459,8 +465,8 @@ public struct LiveSessionState: Hashable, Sendable {
     /// cursor cache survives a relaunch under `~/Library/Application Support/tkzmux/usage/`), so
     /// there is nothing here worth persisting in `state.json` itself.
     public var usage: SessionUsage?
-    /// The `claude` process (when a descriptor is bound) or the shell is running. `false` only once
-    /// the pty itself has gone away — see `AppState.setAlive`/`descriptorLost`.
+    /// The agent's own process (when an observation is bound) or the shell is running. `false`
+    /// only once the pty itself has gone away — see `AppState.setAlive`/`agentLost`.
     public var alive: Bool
     /// `true` once the agent reported an ending that really was one — `sessionEnd(exited: true)`,
     /// which the agent's own adapter decides, since only it knows that agent's reason vocabulary.
@@ -495,20 +501,20 @@ public struct LiveSessionState: Hashable, Sendable {
     /// decision that cwd is process state holds for panes too, so a reopened pane starts in the
     /// row's resume directory.
     public var paneCwds: [TerminalID: String]
-    /// The Claude launch this row is waiting on, while the boot command is still starting up —
+    /// The agent launch this row is waiting on, while the boot command is still starting up —
     /// what the pane's "Starting Claude…" overlay reads. Process state, never persisted.
-    public var claudeStartup: ClaudeStartup?
-    /// The pane whose shell is running the bound `claude` process, once the shim's `launch`
+    public var agentStartup: AgentStartup?
+    /// The pane whose shell is running the bound agent process, once the shim's `launch`
     /// frame has said which. That pane's OSC 7 is stale by construction: `claude -w` chdirs into
     /// the worktree it created and the shell underneath never follows, so the git strip must
-    /// read Claude's own cwd there and the shell's everywhere else (`GitIntegration`). Process
-    /// state: cleared when the descriptor is lost or the pane closes, never persisted.
-    public var claudeTerminal: TerminalID?
+    /// read the agent's own cwd there and the shell's everywhere else (`GitIntegration`). Process
+    /// state: cleared when the observation is lost or the pane closes, never persisted.
+    public var agentTerminal: TerminalID?
 
     public init(
         pid: pid_t? = nil,
         shellPid: pid_t? = nil,
-        descriptor: ClaudeSessionInfo? = nil,
+        observation: AgentObservation? = nil,
         status: SessionStatus = .idle,
         attention: Bool = false,
         lastStopMessage: String? = nil,
@@ -529,12 +535,12 @@ public struct LiveSessionState: Hashable, Sendable {
         shellCwd: String? = nil,
         panePids: [TerminalID: pid_t] = [:],
         paneCwds: [TerminalID: String] = [:],
-        claudeStartup: ClaudeStartup? = nil,
-        claudeTerminal: TerminalID? = nil
+        agentStartup: AgentStartup? = nil,
+        agentTerminal: TerminalID? = nil
     ) {
         self.pid = pid
         self.shellPid = shellPid
-        self.descriptor = descriptor
+        self.observation = observation
         self.status = status
         self.attention = attention
         self.lastStopMessage = lastStopMessage
@@ -555,8 +561,8 @@ public struct LiveSessionState: Hashable, Sendable {
         self.shellCwd = shellCwd
         self.panePids = panePids
         self.paneCwds = paneCwds
-        self.claudeStartup = claudeStartup
-        self.claudeTerminal = claudeTerminal
+        self.agentStartup = agentStartup
+        self.agentTerminal = agentTerminal
     }
 }
 
@@ -565,7 +571,7 @@ public struct LiveSessionState: Hashable, Sendable {
 /// OSC 9;4 *remove* `.zlogin` emits after it). Only launches that carry a boot command record
 /// one — a bare shell (⌘T, ⌘D, `.shell`) never does. Drives the pane's "Starting Claude…"
 /// overlay; the give-up delay lives at the AppKit edge (`StartupOverlayPolicy`).
-public struct ClaudeStartup: Hashable, Sendable {
+public struct AgentStartup: Hashable, Sendable {
     /// The pane the command runs in — the row's first leaf for a new row, the focused pane for a
     /// resume.
     public var terminal: TerminalID
@@ -624,209 +630,6 @@ public enum WaitReason: String, Hashable, Sendable, Codable, CaseIterable {
     /// The agent finished while the session was not attended — either an idle nudge arrived after
     /// the turn ended, or ≥ 60 s passed. `NEEDS YOU`.
     case doneUnattended
-}
-
-// MARK: - Claude descriptor
-
-/// A parsed `~/.claude/sessions/<pid>.json` (or `~/.claude-work/…`) descriptor.
-///
-/// Shape from design.md → *Evidence*. **Another program writes this file in place**, so a read can
-/// land mid-write: decoding is deliberately forgiving. Only `pid` and `sessionId` are required;
-/// every other field is optional, unknown keys are ignored, and unknown enum values fall back to
-/// `.unknown(raw)` rather than throwing the whole descriptor away. A *torn* file (truncated JSON)
-/// still throws a `DecodingError` — there is nothing to salvage — and the watcher's contract is to
-/// keep the previous value in that case.
-///
-/// `configDir` is **not** in the JSON: it is the directory the file was found in, which is what
-/// tells us which account the session belongs to. Inject it with `decode(_:configDir:)`, or set
-/// `decoder.userInfo[ClaudeSessionInfo.configDirUserInfoKey]`.
-public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
-    public enum Kind: Hashable, Sendable {
-        case interactive
-        case background
-        case unknown(String)
-
-        public init(raw: String) {
-            switch raw {
-            case "interactive": self = .interactive
-            case "bg", "background": self = .background
-            default: self = .unknown(raw)
-            }
-        }
-    }
-
-    public enum NameSource: Hashable, Sendable {
-        case auto
-        case derived
-        case unknown(String)
-
-        public init(raw: String) {
-            switch raw {
-            case "auto": self = .auto
-            case "derived": self = .derived
-            default: self = .unknown(raw)
-            }
-        }
-    }
-
-    public enum Status: Hashable, Sendable {
-        case idle
-        case busy
-        /// Claude Code 2.1.263 writes `"waiting"` while a permission prompt is on screen
-        /// (measured 2026-09-08: idle → busy on submit → waiting at the prompt → busy the moment
-        /// it is answered → idle at Stop). It is the hook-free way to see NEEDS YOU.
-        case waiting
-        case unknown(String)
-
-        public init(raw: String) {
-            switch raw {
-            case "idle": self = .idle
-            case "busy": self = .busy
-            case "waiting": self = .waiting
-            default: self = .unknown(raw)
-            }
-        }
-    }
-
-    /// The directory the descriptor was found in (`~/.claude`, `~/.claude-work`) — the account key
-    /// is its basename. Injected, never decoded.
-    public var configDir: String
-    public var pid: pid_t
-    public var sessionId: String
-    public var cwd: String?
-    /// Decoded from epoch **milliseconds**; also the pid-reuse guard against `pbi_start_tvsec`.
-    public var startedAt: Date?
-    public var version: String?
-    public var kind: Kind?
-    public var entrypoint: String?
-    public var name: String?
-    public var nameSource: NameSource?
-    public var status: Status?
-    public var updatedAt: Date?
-    public var statusUpdatedAt: Date?
-    public var messagingSocketPath: String?
-    public var bridgeSessionId: String?
-    public var parkedJobId: String?
-    public var jobId: String?
-
-    /// The account key: the basename of the config dir **minus its leading dot**, so
-    /// `~/.claude` → `"claude"` and `~/.claude-work` → `"claude-work"`. That is the spelling
-    /// `Account.key`, `Session.accountKey` and the `statusline/usage-<key>.json` filenames all use, and
-    /// the join key for `descriptor.accountKey == session.accountKey` in M3.
-    public var accountKey: String {
-        let basename = (configDir as NSString).lastPathComponent
-        return basename.hasPrefix(".") ? String(basename.dropFirst()) : basename
-    }
-
-    /// A background descriptor parked under this job id belongs to the interactive session whose
-    /// `jobId` matches — design.md → *Claude integration → Discovery*.
-    public var isBackground: Bool { kind == .background }
-
-    public init(
-        configDir: String,
-        pid: pid_t,
-        sessionId: String,
-        cwd: String? = nil,
-        startedAt: Date? = nil,
-        version: String? = nil,
-        kind: Kind? = nil,
-        entrypoint: String? = nil,
-        name: String? = nil,
-        nameSource: NameSource? = nil,
-        status: Status? = nil,
-        updatedAt: Date? = nil,
-        statusUpdatedAt: Date? = nil,
-        messagingSocketPath: String? = nil,
-        bridgeSessionId: String? = nil,
-        parkedJobId: String? = nil,
-        jobId: String? = nil
-    ) {
-        self.configDir = configDir
-        self.pid = pid
-        self.sessionId = sessionId
-        self.cwd = cwd
-        self.startedAt = startedAt
-        self.version = version
-        self.kind = kind
-        self.entrypoint = entrypoint
-        self.name = name
-        self.nameSource = nameSource
-        self.status = status
-        self.updatedAt = updatedAt
-        self.statusUpdatedAt = statusUpdatedAt
-        self.messagingSocketPath = messagingSocketPath
-        self.bridgeSessionId = bridgeSessionId
-        self.parkedJobId = parkedJobId
-        self.jobId = jobId
-    }
-
-    /// `decoder.userInfo` key carrying the config dir (a `String`) into `init(from:)`.
-    public static let configDirUserInfoKey = CodingUserInfoKey(rawValue: "se.tkz.tkzmux.configDir")!
-
-    /// The supported way to parse a descriptor file.
-    /// - Throws: `DecodingError` when the bytes are not a JSON object with `pid` and `sessionId`
-    ///   (a torn write); the caller keeps the previous value.
-    public static func decode(_ data: Data, configDir: String) throws -> ClaudeSessionInfo {
-        let decoder = JSONDecoder()
-        decoder.userInfo[configDirUserInfoKey] = configDir
-        return try decoder.decode(ClaudeSessionInfo.self, from: data)
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case pid, sessionId, cwd, startedAt, version, kind, entrypoint, name, nameSource
-        case status, updatedAt, statusUpdatedAt, messagingSocketPath, bridgeSessionId
-        case parkedJobId, jobId
-    }
-
-    public init(from decoder: any Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        configDir = decoder.userInfo[Self.configDirUserInfoKey] as? String ?? ""
-        // Required: without these two the descriptor identifies nothing.
-        guard let pid = Self.int(c, .pid).map({ pid_t($0) }) else {
-            throw DecodingError.keyNotFound(
-                CodingKeys.pid,
-                .init(codingPath: c.codingPath, debugDescription: "descriptor has no usable 'pid'"))
-        }
-        guard let sessionId = try? c.decode(String.self, forKey: .sessionId), !sessionId.isEmpty else {
-            throw DecodingError.keyNotFound(
-                CodingKeys.sessionId,
-                .init(codingPath: c.codingPath, debugDescription: "descriptor has no 'sessionId'"))
-        }
-        self.pid = pid
-        self.sessionId = sessionId
-        cwd = try? c.decodeIfPresent(String.self, forKey: .cwd)
-        startedAt = Self.date(c, .startedAt)
-        version = try? c.decodeIfPresent(String.self, forKey: .version)
-        kind = (try? c.decodeIfPresent(String.self, forKey: .kind)).map(Kind.init(raw:))
-        entrypoint = try? c.decodeIfPresent(String.self, forKey: .entrypoint)
-        name = try? c.decodeIfPresent(String.self, forKey: .name)
-        nameSource = (try? c.decodeIfPresent(String.self, forKey: .nameSource))
-            .map(NameSource.init(raw:))
-        status = (try? c.decodeIfPresent(String.self, forKey: .status)).map(Status.init(raw:))
-        updatedAt = Self.date(c, .updatedAt)
-        statusUpdatedAt = Self.date(c, .statusUpdatedAt)
-        messagingSocketPath = try? c.decodeIfPresent(String.self, forKey: .messagingSocketPath)
-        bridgeSessionId = try? c.decodeIfPresent(String.self, forKey: .bridgeSessionId)
-        parkedJobId = try? c.decodeIfPresent(String.self, forKey: .parkedJobId)
-        jobId = try? c.decodeIfPresent(String.self, forKey: .jobId)
-    }
-
-    /// Number or numeric string — Claude Code has shipped both shapes for ids.
-    private static func int(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> Int? {
-        if let value = try? c.decodeIfPresent(Int.self, forKey: key) { return value }
-        if let value = try? c.decodeIfPresent(Double.self, forKey: key) { return Int(value) }
-        if let text = try? c.decodeIfPresent(String.self, forKey: key) { return Int(text) }
-        return nil
-    }
-
-    /// Epoch **milliseconds** → `Date`; tolerant of a numeric string.
-    private static func date(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> Date? {
-        var millis: Double?
-        if let value = try? c.decodeIfPresent(Double.self, forKey: key) { millis = value }
-        else if let text = try? c.decodeIfPresent(String.self, forKey: key) { millis = Double(text) }
-        guard let millis, millis > 0 else { return nil }
-        return Date(timeIntervalSince1970: millis / 1000)
-    }
 }
 
 // MARK: - Accounts & usage

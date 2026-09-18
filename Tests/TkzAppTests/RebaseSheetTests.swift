@@ -122,10 +122,10 @@ struct RebaseSheetModelTests {
         #expect(!model.canRebase)
 
         model.behind = 3
-        model.claudeWorking = true
+        model.agentWorking = true
         #expect(!model.canRebase)
         #expect(model.rebaseHint == "Wait for Claude to be idle \u{2014} it may be editing files")
-        model.claudeWorking = false
+        model.agentWorking = false
 
         model.phase = .fetchFailed("could not read from remote")
         #expect(model.body.lead == "Fetch failed: could not read from remote")

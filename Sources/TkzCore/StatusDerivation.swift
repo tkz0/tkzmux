@@ -2,23 +2,32 @@
 //
 // Pure and table-driven: no clock (`now` is always a parameter), no I/O, no AppKit. `Reducers.swift`
 // is the only caller inside TkzCore; `ClaudeBridge` and `TkzApp` never derive status themselves —
-// they feed `AppState.applyEvent`/`applyDescriptor`/… and read `LiveSessionState.status` back.
+// they feed `AppState.applyEvent`/`applyObservation`/… and read `LiveSessionState.status` back.
 //
 // Rule order (first match wins):
 //
 //   1. `!alive`                                                        → `.idle` (the row is about to be removed)
 //   1b. `ended` (the agent exited; the shell is still there)           → `.idle`
 //   2. a pending `AttentionKind` with a `waitReason`                    → `.waiting(reason)`
-//   2b. `descriptor.status == .waiting` (Claude's own prompt flag)      → `.waiting(.permission)`
-//   3. `descriptor.parkedJobId != nil`                                  → `.idle` (parked)
-//   4. `descriptor.status == .busy`                                     → `.working`
+//   2b. `observation.activity == .waiting` (the agent's own prompt flag) → `.waiting(.permission)`
+//   3. `observation.parked == true`                                     → `.idle` (parked)
+//   4. `observation.activity == .busy`                                  → `.working`
+//   4b. no observation, and `lastPromptAt` is newer than `lastStopAt`
+//      (or there is a `lastPromptAt` and no `lastStopAt` at all)        → `.working`
 //   5. a `Stop` newer than `attendedAt`, and (an `.idleNudge` after it,
 //      or ≥ `unattendedGrace` since it)                                 → `.waiting(.doneUnattended)`
 //   6. a `Stop` newer than `attendedAt`, still fresh                    → `.idle`, `isDone = true`
 //   7. otherwise                                                        → `.idle`
 //
-// Without any events this degrades to descriptor-only (busy → working, idle → idle); with neither
-// events nor a descriptor (a plain shell) it is `.idle` while alive — both asserted in
+// Rule 4b exists for an agent like Codex that has hooks but writes no descriptor file: with no
+// observation to trust, a submitted prompt that has not yet been followed by a `Stop` is the only
+// evidence available that a turn is in progress. It is gated on `observation == nil` because an
+// agent that *does* write a descriptor has strictly better evidence — Claude always has an
+// observation while it runs, so 4b never fires for it, and a lagging descriptor or a cancelled
+// prompt cannot flip an idle Claude row to working through this rule.
+//
+// Without any events this degrades to observation-only (busy → working, idle → idle); with
+// neither events nor an observation (a plain shell) it is `.idle` while alive — both asserted in
 // `StatusDerivationTests`.
 
 import Foundation
@@ -26,29 +35,33 @@ import Foundation
 /// Everything `StatusDerivation.derive` needs, in one value. Built either directly (tests) or via
 /// the `LiveSessionState` convenience below.
 public struct StatusInput: Hashable, Sendable {
-    public var descriptor: ClaudeSessionInfo?
+    public var observation: AgentObservation?
     public var alive: Bool
     public var ended: Bool
     public var pending: PendingNotification?
     public var lastStopAt: Date?
     public var attendedAt: Date?
+    /// `UserPromptSubmit`'s timestamp — rule 4b's only evidence for an agent with no observation.
+    public var lastPromptAt: Date?
     public var now: Date
 
     public init(
-        descriptor: ClaudeSessionInfo? = nil,
+        observation: AgentObservation? = nil,
         alive: Bool = true,
         ended: Bool = false,
         pending: PendingNotification? = nil,
         lastStopAt: Date? = nil,
         attendedAt: Date? = nil,
+        lastPromptAt: Date? = nil,
         now: Date
     ) {
-        self.descriptor = descriptor
+        self.observation = observation
         self.alive = alive
         self.ended = ended
         self.pending = pending
         self.lastStopAt = lastStopAt
         self.attendedAt = attendedAt
+        self.lastPromptAt = lastPromptAt
         self.now = now
     }
 }
@@ -94,21 +107,35 @@ public enum StatusDerivation {
             return StatusOutcome(status: .waiting(reason), attention: true, isDone: false)
         }
 
-        // 2b. The descriptor says Claude is waiting on a prompt. Claude Code writes
+        // 2b. The observation says the agent is waiting on a prompt. Claude Code writes
         // `status: waiting` while a permission prompt is up (measured 2026-09-08), so a session
         // without hooks (`--bare`, a bypassed shim, a session started elsewhere) still lights up.
-        if input.descriptor?.status == .waiting {
+        if input.observation?.activity == .waiting {
             return StatusOutcome(status: .waiting(.permission), attention: true, isDone: false)
         }
 
         // 3. A background job parked under this session — not busy, not waiting.
-        if input.descriptor?.parkedJobId != nil {
+        if input.observation?.parked == true {
             return StatusOutcome(status: .idle, attention: false, isDone: false)
         }
 
-        // 4. The descriptor itself says Claude is working.
-        if input.descriptor?.status == .busy {
+        // 4. The observation itself says the agent is working.
+        if input.observation?.activity == .busy {
             return StatusOutcome(status: .working, attention: false, isDone: false)
+        }
+
+        // 4b. No observation to trust, and a prompt was submitted more recently than the last
+        // `Stop` (or there is a prompt and no `Stop` at all): the only evidence available says a
+        // turn is still in progress. Gated on `observation == nil` — an agent that writes a
+        // descriptor has strictly better evidence than a submitted-prompt timestamp, and Claude
+        // always has an observation while it runs, so this rule is inert for it and every
+        // existing Claude expectation holds. It exists for an agent like Codex, which has hooks
+        // but no descriptor file of its own.
+        if input.observation == nil, let lastPromptAt = input.lastPromptAt {
+            let promptIsNewer = input.lastStopAt.map { lastPromptAt > $0 } ?? true
+            if promptIsNewer {
+                return StatusOutcome(status: .working, attention: false, isDone: false)
+            }
         }
 
         // 5 & 6. A Stop the user has not yet attended to.
@@ -133,12 +160,13 @@ public enum StatusDerivation {
     public static func derive(_ live: LiveSessionState, now: Date) -> StatusOutcome {
         derive(
             StatusInput(
-                descriptor: live.descriptor,
+                observation: live.observation,
                 alive: live.alive,
                 ended: live.ended,
                 pending: live.pendingNotification,
                 lastStopAt: live.lastStopAt,
                 attendedAt: live.attendedAt,
+                lastPromptAt: live.lastPromptAt,
                 now: now
             ))
     }

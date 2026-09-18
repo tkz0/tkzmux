@@ -250,19 +250,15 @@ public enum Fixture {
             attention: spec.attention,
             ports: spec.ports
         )
-        live.descriptor = ClaudeSessionInfo(
-            configDir: spec.account == "claude" ? "~/.claude" : "~/.\(spec.account)",
+        live.observation = AgentObservation(
             pid: pid_t(40_000 + n),
-            sessionId: session.conversationId ?? "",
+            conversationId: session.conversationId ?? "",
+            configDir: spec.account == "claude" ? "~/.claude" : "~/.\(spec.account)",
             cwd: cwd,
-            startedAt: created,
-            version: "2.1.263",
-            kind: .interactive,
-            entrypoint: "cli",
+            activity: spec.status == .working ? .busy : .idle,
             name: spec.title,
-            nameSource: spec.title == nil ? .auto : .derived,
-            status: spec.status == .working ? .busy : .idle,
-            updatedAt: now,
+            nameIsDerived: spec.title != nil,
+            startedAt: created,
             statusUpdatedAt: now
         )
         live.git = GitSummary(

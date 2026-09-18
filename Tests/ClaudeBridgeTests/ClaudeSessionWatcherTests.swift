@@ -387,6 +387,40 @@ struct ClaudeSessionWatcherTests {
         #expect(noParent == nil)
     }
 
+    /// `observation` is the projection that crosses into `TkzCore`; verify the parts of it that
+    /// aren't a straight field copy.
+    @Test func observationProjectsTheAgentBlindHalf() {
+        let base = ClaudeSessionInfo(
+            configDir: "/Users/x/.claude", pid: 7, sessionId: "sid-7", kind: .interactive)
+
+        // sessionId lands on conversationId.
+        #expect(base.observation.conversationId == "sid-7")
+
+        // A status this build doesn't recognise is "no evidence", not "idle".
+        var unknownStatus = base
+        unknownStatus.status = .unknown("thinking")
+        #expect(unknownStatus.observation.activity == nil)
+
+        // Known statuses still map straight across.
+        var busy = base
+        busy.status = .busy
+        #expect(busy.observation.activity == .busy)
+
+        // A parked job id collapses to a boolean.
+        var parked = base
+        parked.parkedJobId = "job-4"
+        #expect(parked.observation.parked == true)
+        #expect(base.observation.parked == false)
+
+        // A derived name loses to tkzmux's own title derivation.
+        var derived = base
+        derived.nameSource = .derived
+        #expect(derived.observation.nameIsDerived == true)
+        var auto = base
+        auto.nameSource = .auto
+        #expect(auto.observation.nameIsDerived == false)
+    }
+
     @Test func idleCostIsLow() throws {
         let fixture = try Fixture()
         defer { fixture.cleanup() }

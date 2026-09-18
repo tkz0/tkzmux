@@ -1186,7 +1186,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         var model = RebaseSheetModel(baseRef: base)
         model.behind = gitSummary?.behindBase
         model.shortcut = ShortcutsTable.resolved(state: store.state)[.rebaseOntoBase]?.displayString
-        model.claudeWorking = session.status == .working
+        model.agentWorking = session.status == .working
         let request = git?.rebaseRequest(for: id)
         // No coordinator yet (a test harness): nothing to fetch with, so the count shown is the
         // last refresh's and the sheet is ready at once.
@@ -1521,7 +1521,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     /// Shows or hides the "Starting Claude…" overlay on the selected row's boot pane, from the
-    /// store's `claudeStartup` and the clock, and arms the timer for the next edge.
+    /// store's `agentStartup` and the clock, and arms the timer for the next edge.
     ///
     /// The fact lives in the store because `panes` is pruned on every tab or row switch; the
     /// *timing* lives here because the store has no clock. `StartupOverlayPolicy` turns the two
@@ -1532,7 +1532,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         startupOverlayTimer = nil
 
         let selected = store.state.selection.flatMap { store.state.sessions[$0] }
-        let startup = selected?.live?.claudeStartup
+        let startup = selected?.live?.agentStartup
         // Every visible pane but the boot pane: nothing to show. Cheap — `hide()` no-ops.
         for (id, pane) in panes where id != startup?.terminal {
             pane.chrome.setStartup(nil)
@@ -1553,7 +1553,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // to reason about, and the cost is one run-loop turn.
             pane.chrome.setStartup(nil)
             let id = selected.id
-            armStartupOverlayTimer(at: now, now: now) { $0.store.update { $0.endClaudeStartup(id) } }
+            armStartupOverlayTimer(at: now, now: now) { $0.store.update { $0.endAgentStartup(id) } }
         }
     }
 
@@ -1772,7 +1772,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             claude.isSessionAttended = { [weak self] id in self?.isSessionAttended(id) ?? false }
             // `claude -w` removes its worktree when the conversation ends, which is before the
             // shell exits — so the worktree list is re-read on Claude's exit, not only the shell's.
-            claude.onClaudeExited = { [weak self] id in self?.launcher.noteExit(id) }
+            claude.onAgentExited = { [weak self] id in self?.launcher.noteExit(id) }
             claude.onStop = { [weak self] id in self?.git?.sessionDidStop(id) }
             promptCard.summaryProvider = { id, done in
                 // The last read first, so a reopened card never flashes "Loading…"; the fresh
@@ -2953,7 +2953,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         menu.autoenablesItems = false
 
         let resume = contextItem("Resume", action: #selector(contextResume(_:)), id: id.rawValue)
-        resume.isEnabled = session.conversationId != nil && session.live?.descriptor == nil
+        resume.isEnabled = session.conversationId != nil && session.live?.observation == nil
         resume.identifier = ContextItemID.resume
         menu.addItem(resume)
 
@@ -3022,7 +3022,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         menu.addItem(new)
         let resumeAll = contextItem("Resume all in \(group.name)", action: #selector(contextResumeAll(_:)), id: id.rawValue)
         resumeAll.isEnabled = store.state.sessions(in: id).contains {
-            $0.conversationId != nil && $0.live?.descriptor == nil
+            $0.conversationId != nil && $0.live?.observation == nil
         }
         resumeAll.identifier = ContextItemID.resumeAll
         menu.addItem(resumeAll)
@@ -3547,9 +3547,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // — Claude quit, or never started (`claude: command not found`). Either way the
             // launch this pane was waiting on is over. Other progress states stay unread.
             if let session = store.state.session(owning: id),
-                session.live?.claudeStartup?.terminal == id
+                session.live?.agentStartup?.terminal == id
             {
-                store.update { $0.endClaudeStartup(session.id) }
+                store.update { $0.endAgentStartup(session.id) }
             }
         default:
             // `.title` deliberately does not land in the store: `Session.title` is the rename slot
