@@ -1,0 +1,99 @@
+Sources/TkzCore/AgentEvent.swift
+  s_12431d73203282::t_654089995c6265 1-104
+Tests/PersistenceTests/ActivityPersistenceTests.swift
+  s_12431d73203282::t_1601f535ec9c20 20-22
+Sources/ClaudeBridge/Claude/ClaudeHookMapper.swift
+  s_cc1a42d128066a::t_36a65d9a2829b1 1-68
+Sources/ClaudeBridge/HookFrame.swift
+  s_7583955c8e28c2::t_6144da5b151770 1-2,4,7-68,71-81,85-86
+Sources/ClaudeBridge/HookServer.swift
+  s_290b3737c29f2f::t_56dfc6b06f8783 298-301,306-309,311,320,322-328,330,332-333,336-339
+Sources/TkzApp/ClaudeIntegration.swift
+  s_290b3737c29f2f::t_05b2e0a46333e7 463-473,479-482,490,492,495-496,500,502,599
+Sources/TkzCore/FixtureState.swift
+  s_290b3737c29f2f::t_a39ee1e461bd84 288-289
+Sources/TkzCore/Models.swift
+  s_290b3737c29f2f::t_e2063d4411f21e 176,445-447,465-467,469,517,543,563-564,583-586,588,591-592,622,624-625
+Sources/TkzCore/Reducers.swift
+  s_290b3737c29f2f::t_b4494aa0c3cf32 572-576,580,587-588,590,594,600-605,607-609,617-618,620,622,630,632,652
+Sources/TkzCore/StatusDerivation.swift
+  s_290b3737c29f2f::t_ba1f4f93ad01a1 1,5,7,10-11,15,20-21,91-94,118
+Tests/ClaudeBridgeTests/ClaudeHookMapperTests.swift
+  s_cc1a42d128066a::t_f95d1232dc52d1 1-110
+Tests/ClaudeBridgeTests/HookBinaryTests.swift
+  s_71717cbadf6c44::t_a14a1234945f7d 185,189-192,194-195,223,228-229,258-259,264-265,267,298,338
+Tests/ClaudeBridgeTests/HookServerTests.swift
+  s_290b3737c29f2f::t_967f2b181597dc 97,101-102,123,127-170,194,198
+Tests/TkzAppTests/ActivityFeedModelTests.swift
+  s_290b3737c29f2f::t_7ef70beceba572 31-34,36-37,90
+Tests/TkzAppTests/ActivityFeedTests.swift
+  s_290b3737c29f2f::t_b4583d45d55eb5 36-38,92,154
+Tests/TkzAppTests/ActivityIntegrationTests.swift
+  s_290b3737c29f2f::t_bdb7c3230562aa 21-22,27-28,39-40
+Tests/TkzAppTests/AttentionNotifierTests.swift
+  s_290b3737c29f2f::t_dcf2c84e46ad51 5,59-60,62,66-67,78,87,118,131-134,136,138,170,205-206,230,241-242,283-284,362-363
+Tests/TkzAppTests/ClaudeIntegrationTests.swift
+  s_290b3737c29f2f::t_af6eca998a1d56 72-97,122-124,143-145,159-160,172,180,183,301-303,307-322,384-385,517-519,543-545,596-597
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_290b3737c29f2f::t_b20210f29d53ba 256
+Tests/TkzAppTests/RenameAndDoneTests.swift
+  s_290b3737c29f2f::t_2b5b99ee54a0b8 44
+Tests/TkzCoreTests/ActivityTests.swift
+  s_290b3737c29f2f::t_83eec28eebd591 25,40,46-47,53-54,68,81,95,107,110,118,121-124,134,145-146,165-166,173-174,180-182,196
+Tests/TkzCoreTests/ReducersTests.swift
+  s_290b3737c29f2f::t_7e86f166b4c391 652-653,659-663,666,669,679-680,688,693,698-700,702,704-705,710,712-713,721-722,727,730,733-734,737,743,745,752,765,837,867,882-883,894,901,944,966-970,972
+Tests/TkzCoreTests/StatusDerivationTests.swift
+  s_290b3737c29f2f::t_c3405a81d08c9b 1-2,33,47,53,56,64,69-79,92,131,135,141,145,151-168,191,207,211,221,226,236
+Sources/TkzCore/Activity.swift
+  s_290b3737c29f2f::t_3aedba8d10f9f6 5,19-20
+Sources/TkzCore/AppState.swift
+  s_290b3737c29f2f::t_2deca481b75c87 64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e0a9077a8f91a3c654f4a5dd207501966e4e4d1b",
+  "prompts": {},
+  "sessions": {
+    "s_12431d73203282": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d87e540c-b1e2-422a-b2d8-bc8b72bc3bd2",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_290b3737c29f2f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-afb216f9e64d3627d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_71717cbadf6c44": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a44adfba19954fd9a",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_7583955c8e28c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78c694c2-5423-4e54-be95-757945b8e04d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_cc1a42d128066a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a86820a08f30f15fa",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
