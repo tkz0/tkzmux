@@ -1,0 +1,53 @@
+Sources/tkzmux-hook/HookFrameBuilder.swift
+  s_12431d73203282::t_61feb7458778c2 66-75,85-89,91,95,99,102,105-108,110-112
+Sources/tkzmux-hook/LaunchCommand.swift
+  s_12431d73203282::t_37674bc1b65c99 1-2,7-12,16-17,29-34,46-47,53
+Sources/tkzmux-hook/StatuslineCommand.swift
+  s_12431d73203282::t_b0b0a11ffce22f 591-599,603
+Sources/ClaudeBridge/HookFrame.swift
+  s_773354764313a9::t_b79631b1b38aff 96-99,101-104,111
+Sources/ClaudeBridge/HookServer.swift
+  s_773354764313a9::t_d7a715b0daffd3 349-352,359-360
+Sources/ClaudeBridge/Resources/shim/claude.sh
+  s_773354764313a9::t_723ebd66191dc0 144-147,149-154
+Sources/tkzmux-hook/NotifyArgvCommand.swift
+  s_773354764313a9::t_947d5c07fa6a21 1-38
+Sources/tkzmux-hook/main.swift
+  s_773354764313a9::t_af5e00894e5ff9 37-40,47-51
+Tests/ClaudeBridgeTests/HookBinaryTests.swift
+  s_50d385edf5dd60::t_40ef12729839c8 109-129,141-154,167-179,407,429-432,445-469,480-637
+Tests/ClaudeBridgeTests/HookServerTests.swift
+  s_773354764313a9::t_3e94fbf24b4779 173-218
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a2d28d609a5c384f97cfe54ed59b31eddadda228",
+  "prompts": {},
+  "sessions": {
+    "s_12431d73203282": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d87e540c-b1e2-422a-b2d8-bc8b72bc3bd2",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_50d385edf5dd60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a131419ea92016059",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_773354764313a9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a5684882e2a32e1f3",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
