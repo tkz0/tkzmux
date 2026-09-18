@@ -1,0 +1,35 @@
+Tests/ClaudeBridgeTests/Fixtures/codex/README.md
+  s_7583955c8e28c2::t_78258a739b3c62 3-4,6-11,13-16,18-34
+Tests/ClaudeBridgeTests/Fixtures/codex/hook-post-tool-use.json
+  s_7583955c8e28c2::t_c8cc1e9c1fb98f 1-15
+Tests/ClaudeBridgeTests/Fixtures/codex/hook-pre-tool-use.json
+  s_7583955c8e28c2::t_13539fd33c2f62 1-14
+Tests/ClaudeBridgeTests/Fixtures/codex/hook-session-end.json
+  s_7583955c8e28c2::t_35f7d5d9a9b831 1-7
+Tests/ClaudeBridgeTests/Fixtures/codex/hook-session-start.json
+  s_7583955c8e28c2::t_36ae73bcc91ff3 1-9
+Tests/ClaudeBridgeTests/Fixtures/codex/hook-stop.json
+  s_7583955c8e28c2::t_37b22fb5c44fe2 2-4,6-10
+Tests/ClaudeBridgeTests/Fixtures/codex/hook-user-prompt-submit.json
+  s_7583955c8e28c2::t_207f54cbf41f7c 1-10
+Tests/ClaudeBridgeTests/Fixtures/codex/rollout-exec.jsonl
+  s_7583955c8e28c2::t_1342ff0b6282ab 1-23
+Tests/ClaudeBridgeTests/Fixtures/codex/rollout-token-count.jsonl
+  s_7583955c8e28c2::t_a0102435b5e6e7 1-5,7-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b009ebbb6f41ed9d55c9565f28122ceefc81438b",
+  "prompts": {},
+  "sessions": {
+    "s_7583955c8e28c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78c694c2-5423-4e54-be95-757945b8e04d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
