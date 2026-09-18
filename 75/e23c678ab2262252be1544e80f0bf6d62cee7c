@@ -1,0 +1,83 @@
+Sources/TkzCore/ModelPricing.swift
+  s_12431d73203282::t_1220657473a166 7-16
+Tests/ClaudeBridgeTests/CodexTranscriptReaderTests.swift
+  s_12431d73203282::t_2ab9ddbe37d718 1-156
+Tests/ClaudeBridgeTests/Fixtures/codex/hooks-json-verified.json
+  s_12431d73203282::t_f80367713655e6 1-11
+Tests/ClaudeBridgeTests/TranscriptUsageReaderTests.swift
+  s_12431d73203282::t_9df986e513c0ee 8,13-18,136-209
+Sources/ClaudeBridge/Codex/CodexAdapter.swift
+  s_c29841aea1562d::t_ff680ea08f1ee1 1-144
+Sources/ClaudeBridge/Codex/CodexHookMapper.swift
+  s_6060f69d20da43::t_b4e2541675c44d 1-86
+Sources/ClaudeBridge/Codex/CodexTranscriptReader.swift
+  s_6060f69d20da43::t_34db60b623dccd 1-293
+Sources/ClaudeBridge/Codex/CodexUsageExtractor.swift
+  s_6060f69d20da43::t_20d16fddeb7294 1-105
+Sources/ClaudeBridge/TranscriptUsageReader.swift
+  s_6060f69d20da43::t_67be16f18843d7 11-36,45-53,67-70,78,82-86,89-90,117-123,125-128,151-153,156,160,169-171,174-176,184,188-216
+Sources/TkzApp/AgentIntegration.swift
+  s_c29841aea1562d::t_b8cdb0256c764c 150,159-166,177,185,209,234-250
+Tests/ClaudeBridgeTests/CodexAdapterTests.swift
+  s_c29841aea1562d::t_6c1d8b3548078a 1-152
+Tests/ClaudeBridgeTests/CodexHookMapperTests.swift
+  s_c29841aea1562d::t_859787215e4d28 1-152
+Tests/ClaudeBridgeTests/CodexHooksInstallerTests.swift
+  s_8ec252eb21f551::t_f21eabda811df0 1-496
+Tests/ClaudeBridgeTests/CodexHygieneTests.swift
+  s_7583955c8e28c2::t_4ba2d9482568eb 1-86
+Tests/TkzAppTests/AgentIntegrationTests.swift
+  s_c29841aea1562d::t_379b9733050061 250-255,795-828
+Tests/TkzCoreTests/UsageTests.swift
+  s_6060f69d20da43::t_eddc25e35cf019 39-49
+Sources/ClaudeBridge/Codex/CodexHooksInstaller.swift
+  s_6060f69d20da43::t_09eafa46f9aadb 1-926
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "75e23c678ab2262252be1544e80f0bf6d62cee7c",
+  "prompts": {},
+  "sessions": {
+    "s_12431d73203282": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d87e540c-b1e2-422a-b2d8-bc8b72bc3bd2",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_6060f69d20da43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9bbaadb094e5c3cc",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_7583955c8e28c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78c694c2-5423-4e54-be95-757945b8e04d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_8ec252eb21f551": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a5011e740ef10ac97",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_c29841aea1562d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a547c6b693794b53b",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
