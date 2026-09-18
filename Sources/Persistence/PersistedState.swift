@@ -139,12 +139,15 @@ public struct PersistedState: Hashable, Sendable, Codable {
     /// and this build reads a file without it as an empty log — neither of the two reasons the
     /// v2→v3 bump gives applies.
     public var activity: [ActivityEvent]
+    /// The Kanban board's cards, column order preserved. Its own top-level key and no schema
+    /// bump, for the reasons `activity` gives.
+    public var board: [BoardTask]
 
     /// The keys this build writes. Anything else in the file is a newer build's and is carried in
     /// `StateDocument.extras`.
     static let knownKeys: Set<String> = [
         "schemaVersion", "groups", "sessions", "selection", "sidebar", "windowFrame",
-        "shortcuts", "preferences", "activity",
+        "shortcuts", "preferences", "activity", "board",
     ]
 
     public init(
@@ -156,7 +159,8 @@ public struct PersistedState: Hashable, Sendable, Codable {
         windowFrame: PersistedFrame? = nil,
         shortcuts: [String: String] = [:],
         preferences: PersistedPreferences = PersistedPreferences(),
-        activity: [ActivityEvent] = []
+        activity: [ActivityEvent] = [],
+        board: [BoardTask] = []
     ) {
         self.schemaVersion = schemaVersion
         self.groups = groups
@@ -167,11 +171,12 @@ public struct PersistedState: Hashable, Sendable, Codable {
         self.shortcuts = shortcuts
         self.preferences = preferences
         self.activity = activity
+        self.board = board
     }
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, groups, sessions, selection, sidebar, windowFrame, shortcuts
-        case preferences, activity
+        case preferences, activity, board
     }
 
     /// `preferences` is optional on the way in: files written before M5.2 have no such key.
@@ -187,6 +192,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
         preferences = try c.decodeIfPresent(PersistedPreferences.self, forKey: .preferences)
             ?? PersistedPreferences()
         activity = try c.decodeIfPresent([ActivityEvent].self, forKey: .activity) ?? []
+        board = try c.decodeIfPresent([BoardTask].self, forKey: .board) ?? []
     }
 
     // MARK: Projection
@@ -218,7 +224,8 @@ public struct PersistedState: Hashable, Sendable, Codable {
                 showSessionSpend: state.showSessionSpend,
                 checkOriginPeriodically: state.checkOriginPeriodically,
                 notifyOnDone: state.notifyOnDone),
-            activity: state.activity)
+            activity: state.activity,
+            board: state.board)
     }
 
     // MARK: Restore
@@ -273,6 +280,18 @@ public struct PersistedState: Hashable, Sendable, Codable {
         let dropped = activity.count { state.sessions[$0.sessionID] == nil }
         if dropped > 0 { warnings.append("\(dropped) activity entr\(dropped == 1 ? "y" : "ies") for unknown sessions; dropped") }
         state.activity = Array(activity.filter { state.sessions[$0.sessionID] != nil }.suffix(AppState.activityCap))
+        // A card outlives what it names: the text is the user's work, so a card pointing at a
+        // row or group that did not make it back is kept and loses only the pointer. Nothing is
+        // *In Progress* after a relaunch: the agent's turn died with the pty. Those go to *In
+        // Review*, not back to *To Do* — To Do would paste the prompt a second time into whatever
+        // auto-resume brings back, and how far the first run got is the user's call to make.
+        state.board = board.map { task in
+            var task = task
+            if let group = task.groupID, state.groups[group] == nil { task.groupID = nil }
+            if let assignee = task.assignee, state.sessions[assignee] == nil { task.assignee = nil }
+            if task.column == .inProgress { task.column = .inReview }
+            return task
+        }
         state.autoResumeOnLaunch = preferences.autoResumeOnLaunch
         state.statuslineOffered = preferences.statuslineOffered
         state.dismissedUpdateVersion = preferences.dismissedUpdateVersion

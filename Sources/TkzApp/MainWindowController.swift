@@ -369,6 +369,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// The activity feed (⌘I): the catch-up inbox of every row's turns and prompts, over the
     /// terminal like the prompt card.
     let activityFeed: ActivityFeedController
+    /// The Kanban board over the terminal (⇧⌘K, the toolbar's calendar button).
+    let board: BoardController
+    /// Pastes board cards into the agents that are free for them. Created with the window, so
+    /// cards keep flowing whether or not the board is on screen.
+    let boardDispatcher: BoardDispatcher
+    /// The row *Start New Agent* just launched. `SessionLauncher.start` selects it, and a
+    /// selection change otherwise closes the board; this one is the board's own doing.
+    private var boardLaunchedSelection: SessionID?
     /// The other way onto the card: scrolling up in the focused terminal peeks it. One policy for
     /// the window — it only ever describes the selected row's focused pane, and is reset when
     /// that changes.
@@ -525,6 +533,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         self.rebaseSheet = RebaseSheetController(theme: theme)
         self.settings = SettingsWindowController(store: store, theme: theme)
         self.activityFeed = ActivityFeedController(store: store, theme: theme)
+        self.board = BoardController(store: store, theme: theme)
+        self.boardDispatcher = BoardDispatcher(store: store, host: host)
         self.chrome = ChromeViewController(
             splitViewController: splitViewController, overlay: cheatSheet.view, theme: theme)
 
@@ -567,6 +577,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         wirePromptCard()
         wireActivityFeed()
         wireChangesViewer()
+        wireBoard()
         wireTabStrip()
         wireSettings()
         registerMenuHandlers()
@@ -952,6 +963,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             newSessionMenu.perform(launch)
         }
         // `◫`/`⬓` — the buttons the design drew disabled behind "Coming later" until the pane split landed.
+        toolbarController.onToggleBoard = { [weak self] in self?.toggleBoard() }
         toolbarController.onSplitVertically = { [weak self] in
             self?.addTerminal(splitting: .horizontal)
         }
@@ -1207,6 +1219,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             changes.dismiss()
             return
         }
+        // One view over the terminal at a time.
+        board.dismiss()
         guard let id = store.state.selection, let session = store.state.sessions[id] else { return }
         // The repo's toplevel, not the pane's cwd: paths in the viewer are toplevel-relative,
         // and for a worktree that is the worktree's own root. Before `GitStatusService` has
@@ -1214,6 +1228,81 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let toplevel = git?.service.repoInfo(for: id)?.toplevel ?? session.effectiveCwd
         guard !toplevel.isEmpty else { return }
         changes.present(for: id, toplevel: toplevel, git: session.live?.git)
+    }
+
+    // MARK: Board
+
+    /// Installed after the changes viewer, so it is above it in z; the two are never up together
+    /// (`toggleBoard`, `toggleChangesViewer`).
+    private func wireBoard() {
+        detail.install(changesView: board.view)
+        board.onDismiss = { [weak self] in
+            self?.focusTerminalIfSessionShown()
+            // The user is back in a terminal, so it is reserved again — and a card that was held
+            // for a row they had been in can go now that the picture has changed.
+            self?.boardDispatcher.evaluate()
+        }
+        // The row the user is *in* takes no group card: a paste there would land in whatever
+        // they are typing. With the board up they are in no terminal at all.
+        boardDispatcher.reserved = { [weak self] in
+            guard let self, !self.board.isShown, let selection = self.store.state.selection else { return [] }
+            return [selection]
+        }
+        // A click on a session row means "show me this session" — including the row that is
+        // already selected, which changes nothing in the store and so never reaches `apply`.
+        sidebar.onSessionClicked = { [weak self] _ in self?.board.dismiss() }
+        board.onOpenSession = { [weak self] id in
+            guard let self else { return }
+            // Selecting the row closes the board (`apply`); a chip for the row that is already
+            // selected changes nothing in the store, so it is closed by hand.
+            if self.store.state.selection == id { self.board.dismiss() }
+            self.store.update { $0.select(id) }
+        }
+        board.onStartAgent = { [weak self] id in self?.startBoardAgent(for: id) }
+        boardDispatcher.onDispatched = { [weak self] dispatch in
+            guard let self, let task = self.store.state.boardTask(dispatch.task),
+                let session = self.store.state.sessions[dispatch.session]
+            else { return }
+            self.showNotice("Board: \u{201C}\(task.title)\u{201D} \u{2192} \(session.displayTitle)", for: .seconds(4))
+        }
+    }
+
+    /// ⇧⌘K, or the toolbar's calendar button: the board over the terminal, or back to the terminal.
+    public func toggleBoard() {
+        if !board.isShown {
+            promptCard.dismiss()
+            palette.dismiss()
+            activityFeed.dismiss()
+            changes.dismiss()
+        }
+        board.toggle()
+        // Which row is reserved depends on whether the board is up; nothing in the store changed,
+        // so the dispatcher has to be told to look again.
+        boardDispatcher.evaluate()
+    }
+
+    /// *Start New Agent* on a card: `claude -w` in the card's group — a worktree of its own, so
+    /// several agents can work one repo side by side — with the card assigned to the new
+    /// row. Nothing is typed here: `BoardDispatcher` pastes the prompt once Claude is up.
+    private func startBoardAgent(for id: BoardTaskID) {
+        guard let task = store.state.boardTask(id), let groupID = task.groupID else { return }
+        store.flush()
+        newSessionMenu.configure(state: store.state, groupID: groupID)
+        guard let launch = newSessionMenu.worktreeLaunch() ?? newSessionMenu.repoRootLaunch() else {
+            showNotice("That group has no folder to start Claude in", for: .seconds(4))
+            return
+        }
+        switch launcher.start(launch) {
+        case .success(let session):
+            boardLaunchedSelection = session
+            store.update { $0.assignBoardTask(id, to: session) }
+        case .failure(.missingDirectory(let path)):
+            presentLaunchFailure("\(path) is not a directory.")
+        case .failure(.spawnFailed(let reason)):
+            presentLaunchFailure(reason)
+        case .failure(.unknownSession):
+            presentLaunchFailure("unknown session")
+        }
     }
 
     /// The card's data comes from `claude` (set later by `AppDelegate`); only the notice is wired
@@ -1736,6 +1825,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         promptCard.dismiss()
         activityFeed.dismiss()
         changes.dismiss()
+        board.dismiss()
         rebaseSheet.dismiss()
         settings.close()
         if let commandKeyMonitor {
@@ -2079,6 +2169,17 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             promptCard.dismiss()
             changes.dismiss()
             rebaseSheet.dismiss()
+            // A row picked in the sidebar is a request to see it, so the board gets out of the
+            // way — unless the board made the selection itself by starting an agent, in which
+            // case it stays up and takes the keyboard back from `applySelection`.
+            if board.isShown {
+                if store.state.selection == boardLaunchedSelection {
+                    board.view.takeKeyboard()
+                } else {
+                    board.dismiss()
+                }
+            }
+            boardLaunchedSelection = nil
             _ = scrollReveal.reset()
         }
         // The sheet's Rebase button follows the row's Claude status (off while working).
@@ -2833,6 +2934,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         palette.theme = new
         promptCard.theme = new
         activityFeed.theme = new
+        board.theme = new
         changes.theme = new
         rebaseSheet.theme = new
         settings.theme = new
@@ -3596,6 +3698,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         dispatcher.setHandler(.copyLastMessage) { [weak self] in self?.copyLastMessage() }
         dispatcher.setHandler(.showFirstPrompt) { [weak self] in self?.toggleFirstPromptCard() }
         dispatcher.setHandler(.showChanges) { [weak self] in self?.toggleChangesViewer() }
+        dispatcher.setHandler(.showBoard) { [weak self] in self?.toggleBoard() }
         dispatcher.setHandler(.rebaseOntoBase) { [weak self] in self?.toggleRebaseSheet() }
         // Present in the menu whatever the branch's state (the menu is the inventory of what the
         // app can do), enabled only while there is something to rebase onto.

@@ -295,6 +295,12 @@ public final class SidebarViewController: NSViewController {
     /// session, with the same confirmation ⌘W has.
     public var onRemoveSession: (@MainActor (SessionID) -> Void)?
 
+    /// A session row was clicked — **including the row that is already selected**, which
+    /// `outlineViewSelectionDidChange` never reports because nothing changed. The assembler uses
+    /// it to put the terminal back on screen when something is laid over it (the board): "go to
+    /// this session" has to work for the session you were already on.
+    public var onSessionClicked: (@MainActor (SessionID) -> Void)?
+
     /// A link on the update card was clicked. The `✕` is handled here — it is a store
     /// write — but what "Update via Homebrew" or "Restart" *does* belongs to the assembler.
     public var onUpdateAction: (@MainActor (UpdateAction) -> Void)? {
@@ -1009,10 +1015,18 @@ public final class SidebarViewController: NSViewController {
 
     @objc private func outlineClicked() {
         let row = outline.clickedRow
-        guard row >= 0, let item = outline.item(atRow: row) as? SidebarItem, let groupID = item.groupID
-        else { return }
+        guard row >= 0, let item = outline.item(atRow: row) as? SidebarItem else { return }
+        if let sessionID = item.sessionID {
+            onSessionClicked?(sessionID)
+            return
+        }
+        guard let groupID = item.groupID else { return }
         toggleCollapse(groupID)
     }
+
+    /// What a click on `id`'s row does beyond selecting it. Tests drive this: `clickedRow` is only
+    /// set inside a real mouse event.
+    func sessionRowClicked(_ id: SessionID) { onSessionClicked?(id) }
 }
 
 // MARK: - Data source

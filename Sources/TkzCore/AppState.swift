@@ -64,6 +64,10 @@ public struct AppState: Hashable, Sendable {
     /// by `applyHook`/`rederiveStatus`, read flags cleared by `markAttended`. Durable, its own
     /// top-level key in `state.json`; `ChangeSet.activity` is its bucket.
     public var activity: [ActivityEvent]
+    /// The Kanban board's cards (⇧⌘K). One flat array: a column's order is the array's — see
+    /// `Board.swift`. Durable, its own top-level key in `state.json`; `ChangeSet.board` is its
+    /// bucket.
+    public var board: [BoardTask]
 
     /// How many feed entries are kept; the oldest go first.
     public static let activityCap = 200
@@ -86,7 +90,8 @@ public struct AppState: Hashable, Sendable {
         notifyOnDone: Bool = true,
         themePreset: Theme.Preset = Theme.default.preset,
         update: UpdateState = UpdateState(),
-        activity: [ActivityEvent] = []
+        activity: [ActivityEvent] = [],
+        board: [BoardTask] = []
     ) {
         self.groups = groups
         self.sessions = sessions
@@ -106,6 +111,7 @@ public struct AppState: Hashable, Sendable {
         self.themePreset = themePreset
         self.update = update
         self.activity = activity
+        self.board = board
     }
 
     // MARK: Update card

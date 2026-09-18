@@ -58,6 +58,9 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     /// says ⌘D, but that is *Split Vertically* in the cmux bindings, so "G for git"
     /// takes the shift chord. Toggles; Esc also closes it.
     public static let showChanges = ShortcutAction("showChanges")
+    /// ⇧⌘K — the Kanban board over the terminal: cards, the group they belong to, the agent that
+    /// works them. Toggles; Esc also closes it. Also the toolbar's calendar button.
+    public static let showBoard = ShortcutAction("showBoard")
     /// ⌥⌘R — the rebase sheet for the selected session's branch: fetch the repo's base branch
     /// (`origin/main`) and rebase onto it (design 5a/5b). The artboard says ⌘R, but that is
     /// *Resume Session* and ⇧⌘R is *Rename*, so "R for rebase" takes the ⌥ chord. Also the
@@ -173,7 +176,7 @@ public enum ShortcutsTable {
             .newSession, .searchSessions, .commandPalette, .toggleSidebar, .renameSession,
             .closeTerminal, .closeSession, .jumpToNeedsYou, .notifications, .settings,
             .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
-            .showFirstPrompt, .showChanges, .rebaseOntoBase,
+            .showFirstPrompt, .showChanges, .showBoard, .rebaseOntoBase,
             .resumeSession, .resumeAllInGroup, .toggleTheme,
             .newTerminal, .splitVertically, .splitHorizontally,
             .focusPaneLeft, .focusPaneRight, .focusPaneUp, .focusPaneDown,
@@ -200,6 +203,7 @@ public enum ShortcutsTable {
             .copyLastMessage: Shortcut("c", [.shift, .command]),
             .showFirstPrompt: Shortcut("p", [.option, .command]),
             .showChanges: Shortcut("g", [.shift, .command]),
+            .showBoard: Shortcut("k", [.shift, .command]),
             .rebaseOntoBase: Shortcut("r", [.option, .command]),
             .resumeSession: Shortcut("r", .command),
             .closeSession: Shortcut("w", [.shift, .command]),
@@ -239,6 +243,7 @@ public enum ShortcutsTable {
         case .copyLastMessage: "Copy Last Message"
         case .showFirstPrompt: "Show First Prompt & Recap"
         case .showChanges: "Show Changes"
+        case .showBoard: "Show Board"
         // Static like `.toggleTheme`: the sheet and the notices name the real ref.
         case .rebaseOntoBase: "Rebase onto Base Branch\u{2026}"
         case .resumeSession: "Resume Session"

@@ -3,6 +3,7 @@
 // design.md → App architecture → Toolbar:
 //   title “<session> — <group>”; `NSMenuToolbarItem` “＋ New session…” scoped to the selected group;
 //   “Search sessions…” (⌘F, printed in the field); the three right-hand buttons (`>_` new terminal, `◫`/`⬓` splits).
+//   The Kanban board, a calendar symbol, sits right after `>_` (2026-09-18) — not in the design, which predates the board.
 //   The design's fourth button, `◍` browser, was dropped rather than shipped disabled.
 //
 // This wave builds the chrome only. The controller owns no application state and holds no
@@ -19,7 +20,7 @@ public extension NSToolbarItem.Identifier {
     static let tkzTitle = NSToolbarItem.Identifier("tkzmux.title")
     /// `NSSearchToolbarItem` — “Search sessions…” (⌘F).
     static let tkzSearch = NSToolbarItem.Identifier("tkzmux.search")
-    /// The three-button `NSSegmentedControl` cluster: `>_`, `◫`, `⬓`.
+    /// The `NSSegmentedControl` cluster: `>_`, the calendar symbol, `◫`, `⬓`, `☾`.
     static let tkzViewCluster = NSToolbarItem.Identifier("tkzmux.viewCluster")
 }
 
@@ -29,20 +30,23 @@ public extension NSToolbarItem.Identifier {
 /// whenever the selection changes.
 @MainActor
 public final class MainToolbarController: NSObject, NSToolbarDelegate {
-    /// The four right-hand buttons, in order. `rawValue` doubles as the segment index.
+    /// The right-hand buttons, in order. `rawValue` doubles as the segment index.
     public enum ViewButton: Int, CaseIterable, Sendable {
         case terminal = 0   // >_
-        case splitV = 1     // ◫
-        case splitH = 2     // ⬓
-        case theme = 3      // ☾ / ☀
+        case board = 1      // a calendar symbol — see `symbolName`
+        case splitV = 2     // ◫ in the design; drawn as a symbol — see `symbolName`
+        case splitH = 3     // ⬓ in the design; drawn as a symbol
+        case theme = 4      // ☾ / ☀
 
         /// The glyph reflects the theme that is *on*, which is what the artboards draw: 2c shows ☾,
         /// its light twin shows ☀. Only `.theme` varies, hence the parameter.
+        ///
+        /// Empty for a button that draws a symbol instead (`symbolName`): a segment with both would
+        /// show both.
         func glyph(isDark: Bool) -> String {
             switch self {
             case .terminal: ">_"
-            case .splitV: "\u{25EB}"    // ◫
-            case .splitH: "\u{2B13}"    // ⬓
+            case .board, .splitV, .splitH: ""
             case .theme: isDark ? "\u{263E}" : "\u{2600}"   // ☾ / ☀
             }
         }
@@ -56,11 +60,44 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
             // another terminal inside this one. ⌘T is the latter, and the two would
             // otherwise read as the same verb.
             case .terminal: "New shell session"
+            case .board: "Show the board"
             case .splitV: "Split vertically"
             case .splitH: "Split horizontally"
             case .theme: isDark ? "Switch to the light theme" : "Switch to the dark theme"
             }
         }
+
+        /// The SF Symbol a button draws instead of a text glyph.
+        ///
+        /// The board came first: Unicode has no calendar that reads at 12 pt (📅 is an emoji and
+        /// ignores the control's tint). The two splits followed it (2026-09-18): as text, `◫`/`⬓`
+        /// are ~7.5 pt squares at `clusterGlyphSize` and looked small beside the calendar, and the
+        /// control has one font for every segment, so they could not be enlarged without `>_` and
+        /// `☾` growing too. Symbols at one point size share a height by design, and a template
+        /// image takes the segment's colour in both themes for free.
+        var symbolName: String? {
+            switch self {
+            case .board: "calendar"
+            case .splitV: "rectangle.split.2x1"   // side by side — the design's ◫
+            case .splitH: "rectangle.split.1x2"   // stacked — the design's ⬓
+            case .terminal, .theme: nil
+            }
+        }
+    }
+
+    /// Point size of the cluster's symbols — one size for all three, which is what makes the
+    /// calendar and the splits the same height. Chosen by eye against a 4× render: 15 pt dwarfed
+    /// the text glyphs either side, and much under 10 pt the calendar's date dots smear.
+    static let clusterSymbolSize: Double = 10.5
+
+    /// The image for a symbol button, or `nil` for a text one.
+    static func symbolImage(for button: ViewButton, isDark: Bool) -> NSImage? {
+        guard let name = button.symbolName else { return nil }
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: button.label(isDark: isDark))
+        let sized = image?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: clusterSymbolSize, weight: .medium))
+        sized?.isTemplate = true
+        return sized
     }
 
     /// Point size of the cluster glyphs. Toolbar chrome, not a theme token: the sidebar's 10 pt
@@ -71,6 +108,8 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
 
     /// Invoked when the `>_` button is clicked: a new bare-shell *session row*.
     public var onNewTerminal: (() -> Void)?
+    /// The calendar button — toggle the Kanban board over the terminal.
+    public var onToggleBoard: (() -> Void)?
     /// `◫` — split the selected session's focused pane side by side.
     public var onSplitVertically: (() -> Void)?
     /// `⬓` — split it stacked.
@@ -210,6 +249,7 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
     func activate(_ button: ViewButton) {
         switch button {
         case .terminal: onNewTerminal?()
+        case .board: onToggleBoard?()
         case .splitV: onSplitVertically?()
         case .splitH: onSplitHorizontally?()
         case .theme: onToggleTheme?()
@@ -306,6 +346,11 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
         control.font = Theme.Fonts.mono(Self.clusterGlyphSize, weight: .medium)
         for button in ViewButton.allCases {
             control.setToolTip(button.label(isDark: theme.isDark), forSegment: button.rawValue)
+            if let image = Self.symbolImage(for: button, isDark: theme.isDark) {
+                control.setImage(image, forSegment: button.rawValue)
+                // Drawn at the size it was configured at, not squeezed to the text's line height.
+                control.setImageScaling(.scaleNone, forSegment: button.rawValue)
+            }
         }
         segmented = control
 

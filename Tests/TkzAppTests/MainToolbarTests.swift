@@ -132,7 +132,7 @@ struct MainToolbarTests {
 
         // The disabled ◍ browser placeholder was dropped; the ☾/☀ theme toggle then took the
         // fourth slot. Four buttons, all live.
-        #expect(control.segmentCount == 4)
+        #expect(control.segmentCount == 5)
         #expect(control.segmentCount == MainToolbarController.ViewButton.allCases.count)
         for button in MainToolbarController.ViewButton.allCases {
             #expect(control.isEnabled(forSegment: button.rawValue))

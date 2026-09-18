@@ -201,6 +201,7 @@ extension AppState {
         if selection == id { selection = successor }
         // A feed entry that can jump nowhere is dead.
         activity.removeAll { $0.sessionID == id }
+        boardSessionRemoved(id)
     }
 
     /// Records that the user looked at a session — the `attendedAt` half of the NEEDS YOU rule.
@@ -351,6 +352,7 @@ extension AppState {
         } else {
             for session in members { removeSession(session.id) }
         }
+        boardGroupRemoved(id, reassignedTo: destination.flatMap { groups[$0] != nil ? $0 : nil })
         groups[id] = nil
         normalizeGroupOrder()
     }
@@ -615,6 +617,9 @@ extension AppState {
             appendActivity(
                 .stop(message: ActivityEvent.storedMessage(event.lastAssistantMessage ?? "")),
                 for: id, now: now)
+            // The turn that was working a board card is over: the card is up for review, and the
+            // agent is free for its next one.
+            boardTurnEnded(id)
         case .sessionEnd:
             if !wasEnded, sessions[id]?.live?.ended == true {
                 appendActivity(.sessionEnded(reason: event.reason), for: id, now: now)

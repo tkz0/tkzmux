@@ -28,6 +28,7 @@ import Foundation
 /// | sidebar visibility, sidebar width, window frame, shortcuts | `chrome` |
 /// | the active theme preset | `theme` — **never** `chrome` |
 /// | the activity feed's log — an entry appended, read or re-flagged unread | `activity` — **never** `chrome`: read flips ride every selection, and only the feed panel cares |
+/// | the Kanban board — a card added, edited, moved, assigned, dispatched or removed | `board` — **never** `sessions`: a card naming a row changes nothing the row draws |
 /// | the global spend-visibility toggle | `sessions` = every session id — **never** `chrome`: it changes what every row's badge and the status bar show, which is what `sessions` is for, and `chrome` is not observed by either |
 /// | a session's own spend-tracking opt-out | `sessions = [id]`, via the ordinary value-inequality rule — no special case needed |
 ///
@@ -75,6 +76,8 @@ public struct ChangeSet: Hashable, Sendable {
     /// `AppState.activity` differs: an entry was appended, marked read or marked unread. The
     /// activity feed panel is its observer; the sidebar and status bar ignore it.
     public var activity: Bool
+    /// `AppState.board` differs. The board view and `BoardDispatcher` are its observers.
+    public var board: Bool
 
     public init(
         sessions: Set<SessionID> = [],
@@ -85,7 +88,8 @@ public struct ChangeSet: Hashable, Sendable {
         usage: Bool = false,
         chrome: Bool = false,
         theme: Bool = false,
-        activity: Bool = false
+        activity: Bool = false,
+        board: Bool = false
     ) {
         self.sessions = sessions
         self.groups = groups
@@ -96,6 +100,7 @@ public struct ChangeSet: Hashable, Sendable {
         self.chrome = chrome
         self.theme = theme
         self.activity = activity
+        self.board = board
     }
 
     /// Nothing changed; no delivery happens for one of these.
@@ -103,7 +108,7 @@ public struct ChangeSet: Hashable, Sendable {
 
     public var isEmpty: Bool {
         sessions.isEmpty && groups.isEmpty && layout.isEmpty && !structure && !selection
-            && !usage && !chrome && !theme && !activity
+            && !usage && !chrome && !theme && !activity && !board
     }
 
     public mutating func formUnion(_ other: ChangeSet) {
@@ -116,6 +121,7 @@ public struct ChangeSet: Hashable, Sendable {
         chrome = chrome || other.chrome
         theme = theme || other.theme
         activity = activity || other.activity
+        board = board || other.board
     }
 
     /// Does this change set touch a given session? (The status bar's re-render test.)
@@ -187,6 +193,7 @@ public struct ChangeSet: Hashable, Sendable {
         }
         if old.themePreset != new.themePreset { change.theme = true }
         if old.activity != new.activity { change.activity = true }
+        if old.board != new.board { change.board = true }
 
         return change
     }
