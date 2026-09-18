@@ -1,0 +1,101 @@
+Sources/TkzCore/AgentObservation.swift
+  s_12431d73203282::t_2cc5e449a09040 1-72
+Tests/TkzAppTests/ActivityFeedModelTests.swift
+  s_12431d73203282::t_53b64441eb8239 40-41
+Tests/TkzAppTests/RebaseSheetTests.swift
+  s_12431d73203282::t_875dd8801125d7 125,128
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_12431d73203282::t_ef9e1568c9e4b8 295-296,305,310,323-324,330,346-348,393-394
+Sources/ClaudeBridge/Claude/ClaudeSessionInfo.swift
+  s_3a43ee4b61aa7b::t_bcd02397319622 1-244
+Sources/TkzApp/Activity/ActivityFeedModel.swift
+  s_83dac79c326fd4::t_10cef675d9d668 195,198
+Sources/TkzApp/ClaudeIntegration.swift
+  s_83dac79c326fd4::t_e899919faaf623 95,99,120-122,130-131,139,458-461,465-488,529,584-586,589,595,601,605,607,689-691,699-700,723
+Sources/TkzApp/MainWindowController.swift
+  s_83dac79c326fd4::t_91c8f17566efbe 1189,1524,1535,1556,1775,2956,3025,3550,3552
+Sources/TkzApp/Rebase/RebaseSheetController.swift
+  s_83dac79c326fd4::t_06db8237776142 122-123
+Sources/TkzApp/Rebase/RebaseSheetModel.swift
+  s_3a43ee4b61aa7b::t_463d549e23b175 29,31,54,64
+Sources/TkzApp/SessionLauncher.swift
+  s_83dac79c326fd4::t_773059c2b42d6e 127-128,131,221,300-301,356,368,409
+Sources/TkzCore/AgentKind.swift
+  s_3a43ee4b61aa7b::t_86fddcbc0bc94f 10-11
+Sources/TkzCore/FixtureState.swift
+  s_3a43ee4b61aa7b::t_68920c10bafb9b 253,255-256,258,260-261
+Sources/TkzCore/Models.swift
+  s_3a43ee4b61aa7b::t_02879ba1164c1f 253-257,260,266-269,277-278,280,288,291-292,295-296,301,303-304,306-308,398-400,403,425,428-429,433-438,468-469,504,506-507,510-512,517,538-539,543,564-565,574
+Sources/TkzCore/PaneReducers.swift
+  s_3a43ee4b61aa7b::t_85d11e79174aac 106-107,109-110
+Sources/TkzCore/Reducers.swift
+  s_3a43ee4b61aa7b::t_2d3bb1697a3450 66,72,78-79,81,585-586,638-642,646-649,651,654,656,661-662,669,671-677,688-690,693,696,701,703,705,716,718-720,725,729,731-733
+Sources/TkzCore/StatusDerivation.swift
+  s_3a43ee4b61aa7b::t_adfbbd8f2f977e 5,12-16,22-30,38,44-45,49,55,58,64,110,113,118,122-123,127-140,163,169
+Tests/ClaudeBridgeTests/ClaudeSessionInfoTests.swift
+  s_3a43ee4b61aa7b::t_0f10d815dff734 1-118
+Tests/ClaudeBridgeTests/ClaudeSessionWatcherTests.swift
+  s_3a43ee4b61aa7b::t_c596b14201ca5f 390-423
+Tests/TkzAppTests/ClaudeIntegrationTests.swift
+  s_7583955c8e28c2::t_343377df69f89d 10,28,40-57,63,76-79,132,404,481-504,506,510-540
+Tests/TkzAppTests/GitIntegrationTests.swift
+  s_83dac79c326fd4::t_06272df2e24822 50-51,62-63,95,102-103,106,120-121,128,134,141-142,145,147,151,157-159
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_3a43ee4b61aa7b::t_ab227c6b84ef9a 241,257,271,296,302,308,311,323,331,334
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_3a43ee4b61aa7b::t_ffe760704f6e5b 172-173
+Tests/TkzAppTests/PaneHeaderViewTests.swift
+  s_3a43ee4b61aa7b::t_d40fc6c399b17b 99-100,103
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_83dac79c326fd4::t_ae4a69a86a9e3b 159,178-181
+Tests/TkzCoreTests/ActivityTests.swift
+  s_3a43ee4b61aa7b::t_fbf61634e324f7 68,70-71
+Tests/TkzCoreTests/AppStoreTests.swift
+  s_3a43ee4b61aa7b::t_e16598a85e8551 50,55,63,68
+Tests/TkzCoreTests/ModelsTests.swift
+  s_3a43ee4b61aa7b::t_f85d75344a1e1c 1-3
+Tests/TkzCoreTests/ReducersTests.swift
+  s_3a43ee4b61aa7b::t_2683d2c42d1712 44,48-51,54,57,88-91,96,98-100,112-113,116,128-130,255-257,264,300,308-311,316,320-321,749,754-755,757,762,767-768,770,775,779,781-782,786,788-790,797,804-806,814,816-819,855,920,927-928,938,946,949,951-952,954,957,959,961-962,964,974,984,990,996,998,1076-1077,1080,1084,1086-1087,1089-1091,1096,1101,1107
+Tests/TkzCoreTests/StatusDerivationTests.swift
+  s_3a43ee4b61aa7b::t_0fcc3935f6cccd 2,12-16,46,83,85,91,97,103,108,110-157,245,252,263,267,272,274,278,292,295
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7da194819f44f8b63d078a5fd6165331a20e36d1",
+  "prompts": {},
+  "sessions": {
+    "s_12431d73203282": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d87e540c-b1e2-422a-b2d8-bc8b72bc3bd2",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_3a43ee4b61aa7b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab48cc2b97b3b0411",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_7583955c8e28c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78c694c2-5423-4e54-be95-757945b8e04d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_83dac79c326fd4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a42ff3a8a9e31a041",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
