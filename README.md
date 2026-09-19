@@ -1,14 +1,16 @@
 # tkzmux
 
-A native macOS session manager for coding agents — [Claude Code](https://claude.com/claude-code)
-and [Codex CLI](https://developers.openai.com/codex/cli) today. Every conversation gets its own
-real terminal in one window. A sidebar lists the sessions grouped by repository, and each row shows
-a status derived from the agent's own hooks — plus, for Claude Code, its session descriptors too:
-*working*, *done*, or **NEEDS YOU** when a permission prompt or an unattended answer is waiting. The
-terminal is a from-scratch Metal renderer driving
+A native macOS session manager for coding agents — [Claude Code](https://claude.com/claude-code),
+[Codex CLI](https://developers.openai.com/codex/cli) and the
+[Antigravity CLI](https://antigravity.google) today. Every conversation gets its own real terminal
+in one window, whichever agent is driving it. A sidebar lists the sessions grouped by repository,
+and each row shows a status derived from that agent's own hooks — plus, for Claude Code, its
+session descriptors too: *working*, *done*, or **NEEDS YOU** when a permission prompt or an
+unattended answer is waiting. The terminal is a from-scratch Metal renderer driving
 [libghostty-vt](https://github.com/ghostty-org/ghostty), the project's only third-party dependency.
 Sessions survive a quit: screen and scrollback are snapshotted, and a restored row reopens under a
-fresh shell with its own resume command — `claude --resume` or `codex resume` — a keystroke away.
+fresh shell with its own agent's resume command — `claude --resume`, `codex resume` or
+`agy --conversation` — a keystroke away.
 
 <!-- SCREENSHOT: a shot of the main window (sidebar + terminal) goes here. Not added yet. -->
 
@@ -18,12 +20,33 @@ A personal project, built for one person's workflow, developed in the open. It i
 supported product**: no roadmap, no compatibility promise, no commitment to answer issues. Use it
 if it helps you, fork it if it nearly does.
 
+## Agents
+
+Every agent sits behind the same seam, so a row is a row whichever one started it: same terminal,
+same snapshot and restore, same status vocabulary. What differs is how much each CLI is willing to
+tell a session manager about itself, and tkzmux claims only what its adapter actually measured
+against a real, logged-in binary.
+
+|                       | Claude Code | Codex CLI | Antigravity CLI |
+|---|---|---|---|
+| Binary                | `claude`    | `codex`   | `agy`           |
+| Status from hooks     | ✅          | ✅        | ✅              |
+| Resume a conversation | ✅          | ✅        | ✅              |
+| Live session descriptors | ✅       | —         | —               |
+| Usage and context     | ✅ (status line) | ✅ (transcript) | — (records none) |
+| Worktree launch flag  | ✅          | —         | —               |
+| Several accounts      | ✅ `CLAUDE_CONFIG_DIR` | ✅ `CODEX_HOME` | — one per machine |
+
+Each sidebar group remembers its own agent, so the New-session rows in the menu launch that one;
+the other installed agents live under *Other agent* for a one-off launch. tkzmux only ever offers
+the agents it finds on your `PATH`.
+
 ## Requirements
 
 - macOS 26 (Tahoe) or later, Apple Silicon only.
-- [Claude Code](https://claude.com/claude-code) or [Codex CLI](https://developers.openai.com/codex/cli)
-  installed and working in your shell — one is enough, and tkzmux only ever looks for the ones it
-  finds on `PATH`.
+- [Claude Code](https://claude.com/claude-code), [Codex CLI](https://developers.openai.com/codex/cli)
+  or the [Antigravity CLI](https://antigravity.google) installed and working in your shell — one is
+  enough, and tkzmux only ever looks for the ones it finds on `PATH`.
 - `zsh`, `bash` or `fish` as your login shell, for the shell integration.
 - Optional: the [GitHub CLI](https://cli.github.com) (`gh`), authenticated, for the PR badge.
 
@@ -69,10 +92,13 @@ and `make dist` cuts a tagged, notarized release.
 No telemetry, analytics or crash reporting. tkzmux makes one network request of its own: a release
 build periodically asks GitHub for the latest release, sending nothing about you or your sessions.
 The PR badge shells out to `gh pr view`, under your own credentials and only for GitHub origins.
-`~/.claude` and `~/.codex` are read, never written; everything tkzmux writes lives under
-`~/Library/Application Support/tkzmux`. Two exceptions, both opt-in and asked for by name before
+Each agent's config directory — `~/.claude`, `~/.codex` and, for Antigravity, `~/.gemini` — is
+read, never written; everything tkzmux writes lives under
+`~/Library/Application Support/tkzmux`. The exceptions are opt-in and asked for by name before
 anything is touched: the status line integration sets the `statusLine` key in Claude Code's
-`settings.json`, and the hooks integration writes tkzmux's hooks into Codex's own `hooks.json`.
+`settings.json`, and the hooks integration writes tkzmux's hooks into Codex's own `hooks.json` and
+into Antigravity's `~/.gemini/config/hooks.json`. Each agent is asked for separately, so declining
+one does not answer for the others.
 
 **Terminal snapshots contain your screen and scrollback verbatim, unencrypted**, in that support
 directory. They are deleted with the session.
@@ -81,14 +107,18 @@ The full accounting, file by file, is in [docs/privacy.md](docs/privacy.md).
 
 ## Known gaps
 
-- **Usage and context need the status line installed.** Claude Code publishes that data nowhere
-  else. The integration is offered once at startup and lives in Settings (⌘,) › General.
+- **Usage and context differ per agent.** Claude Code needs the status line installed — it
+  publishes that data nowhere else; the integration is offered once at startup and lives in
+  Settings (⌘,) › General. Codex is read straight from its transcript. Antigravity records no token
+  or cost accounting at all, so its rows show no spend badge.
 - **The PR badge needs `gh`** and a GitHub origin. Branch, diff stats, ahead/behind (against the
   upstream, and the `⤿ 7 behind main` chip against the base branch) and ports work without it.
 - **Shell integration differs a little per shell.** bash runs as a non-login shell with `--rcfile`;
   shells other than zsh, bash and fish only get `bin/` prepended to `PATH`. Details in
   [docs/privacy.md](docs/privacy.md).
-- **One Claude per session.** Splits and tabs share the row's Claude session and status.
+- **Antigravity is one account per machine.** Nothing but `HOME` relocates its config directory, so
+  there is no second account to switch to and no account chip on its rows.
+- **One agent session per row.** Splits and tabs share the row's agent session and status.
 
 ## License and credits
 
@@ -103,3 +133,5 @@ MIT — see [LICENSE](LICENSE).
   by, or supported by Anthropic.
 - Codex and Codex CLI are products of OpenAI. This project is not affiliated with, endorsed by, or
   supported by OpenAI.
+- Antigravity is a product of Google. This project is not affiliated with, endorsed by, or
+  supported by Google.
