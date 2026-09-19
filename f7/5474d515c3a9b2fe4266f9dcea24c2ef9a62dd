@@ -1,0 +1,125 @@
+Sources/AgentBridge/Resources/shim/agy.sh
+  s_470491e2546e82::t_b2cf75be070ee7 1-150
+Sources/Persistence/PersistedState.swift
+  s_470491e2546e82::t_e721cbadd9cac5 71-77,101,110,119-120,128-136,143-163,259,322
+Sources/TkzApp/Settings/SettingsModel.swift
+  s_470491e2546e82::t_2a0ff2e80f9b60 14-19,22,29,39,60-62,128-131,145-146,156,165,169-214
+Sources/TkzCore/AppState.swift
+  s_470491e2546e82::t_4eeef856d75a16 37-44,91,111
+Sources/TkzCore/AppStore.swift
+  s_470491e2546e82::t_46de71e27c0d07 183
+Sources/TkzCore/Reducers.swift
+  s_470491e2546e82::t_9ed7044ebbf8d7 333-346,483-490
+Tests/AgentBridgeTests/AntigravityShimTests.swift
+  s_470491e2546e82::t_1c8ee9f1d8963d 1-208
+Tests/PersistenceTests/StateFileTests.swift
+  s_470491e2546e82::t_10e281d2e30325 33-35,56,95-98,110,173-176,178,182,190,192-251,273
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_470491e2546e82::t_7eabcd067431f4 6,163,165-169,447-510
+Sources/AgentBridge/AgentAdapter.swift
+  s_b43f6e3105e090::t_edb48d2cef3cad 136-138,157-171
+Sources/AgentBridge/Antigravity/AntigravityAdapter.swift
+  s_b43f6e3105e090::t_b5b624d788d4ae 1-180
+Sources/AgentBridge/Antigravity/AntigravityHookMapper.swift
+  s_b43f6e3105e090::t_c50d323de29f02 1-66
+Sources/AgentBridge/Antigravity/AntigravityHooksInstaller.swift
+  s_b43f6e3105e090::t_151c8dd70a6308 1-308
+Sources/AgentBridge/Antigravity/AntigravityTranscriptReader.swift
+  s_b43f6e3105e090::t_c23d3cbbd5e2e8 1-180
+Sources/AgentBridge/HookServer.swift
+  s_b43f6e3105e090::t_52c76a5f7e5c0e 297-307,319,321-324,331-332
+Sources/AgentBridge/TranscriptUsageReader.swift
+  s_b43f6e3105e090::t_02c1099d4c9916 151-154,163-178
+Sources/TkzApp/AgentIntegration.swift
+  s_b43f6e3105e090::t_d653900e84081f 181-185,252-256,693-696,867-868
+Sources/TkzApp/MainWindowController.swift
+  s_b43f6e3105e090::t_8a1690cb968b41 1792-1796,2108-2111,2113,2190-2192,2195,2766-2769,2771-2773,2779-2780,3025-3034,3258,3294,3436-3522,3565-3573
+Sources/TkzApp/Menus/NewSessionMenu.swift
+  s_b43f6e3105e090::t_bd0533b4b203f6 3-6,52-54,92-94,98,102,106-118,188-191,221-242,244-270,272,302-306,309-336,350,354-431,433-450,452,460,469-470,623-627,629,633,650-652,654,658,680,685,689-693
+Sources/TkzApp/SessionLauncher.swift
+  s_b43f6e3105e090::t_958cd865370526 62-68,132-134,137,530,532-535,554-573
+Sources/TkzApp/Settings/SettingsView.swift
+  s_b43f6e3105e090::t_2b5cd4b8ff7df2 70-76
+Sources/TkzApp/Settings/SettingsWindowController.swift
+  s_b43f6e3105e090::t_edab9638ee29b7 56-63,149-150,188-201
+Sources/TkzCore/AgentKind.swift
+  s_b43f6e3105e090::t_dde7e11181241e 24-25,29
+Sources/TkzCore/Models.swift
+  s_b43f6e3105e090::t_568e80574778e5 124-137,146-147,156
+Tests/AgentBridgeTests/AntigravityAdapterTests.swift
+  s_b43f6e3105e090::t_bc15bfa5a8c11a 1-198
+Tests/AgentBridgeTests/AntigravityHookMapperTests.swift
+  s_b43f6e3105e090::t_4dec8b48597bc5 1-90
+Tests/AgentBridgeTests/AntigravityHooksInstallerTests.swift
+  s_b43f6e3105e090::t_a7ea16e24ae879 1-277
+Tests/AgentBridgeTests/AntigravityHygieneTests.swift
+  s_b43f6e3105e090::t_ce1fbd87ad99b3 1-75
+Tests/AgentBridgeTests/AntigravityTranscriptReaderTests.swift
+  s_b43f6e3105e090::t_f39f1c49bddadd 1-108
+Tests/AgentBridgeTests/Fixtures/antigravity/README.md
+  s_b43f6e3105e090::t_f2fc34ebf0e3e6 1-102
+Tests/AgentBridgeTests/Fixtures/antigravity/help.txt
+  s_b43f6e3105e090::t_a8a49353307a01 1-39
+Tests/AgentBridgeTests/Fixtures/antigravity/hook-post-invocation.json
+  s_b43f6e3105e090::t_13a9a9a0e7d0cc 1-9
+Tests/AgentBridgeTests/Fixtures/antigravity/hook-pre-invocation.json
+  s_b43f6e3105e090::t_fb6dc56abb91ac 1-9
+Tests/AgentBridgeTests/Fixtures/antigravity/hook-stop.json
+  s_b43f6e3105e090::t_dc9d93db4cca38 1-11
+Tests/AgentBridgeTests/Fixtures/antigravity/hooks-json-rejected.json
+  s_b43f6e3105e090::t_8eb9011502288d 1-26
+Tests/AgentBridgeTests/Fixtures/antigravity/hooks-json-verified.json
+  s_b43f6e3105e090::t_056a76d29335ba 1-49
+Tests/AgentBridgeTests/Fixtures/antigravity/transcript-short.jsonl
+  s_b43f6e3105e090::t_ea2a6747aeecbd 1-2
+Tests/AgentBridgeTests/Fixtures/antigravity/version.txt
+  s_b43f6e3105e090::t_8f2b5343c53763 1
+Tests/AgentBridgeTests/ShimInstallerTests.swift
+  s_b43f6e3105e090::t_38f151dc4f0fa1 31-34
+Tests/AgentBridgeTests/TranscriptUsageReaderTests.swift
+  s_b43f6e3105e090::t_31e8cf8f2723c1 210-254
+Tests/PersistenceTests/MigrationsTests.swift
+  s_b43f6e3105e090::t_0b4e2d8f1eb11f 23-65
+Tests/TkzAppTests/AgentIntegrationTests.swift
+  s_b43f6e3105e090::t_c36ef024a92b75 104-106,109-110,355-369,376-377
+Tests/TkzAppTests/CodexHooksConsentTests.swift
+  s_b43f6e3105e090::t_1ce319149852fe 91,107,124
+Tests/TkzAppTests/NewSessionMenuTests.swift
+  s_b43f6e3105e090::t_f4f766eb37ee60 359-360,368-369,371-374,389,394-439,450-452,454-457,459-460,463-561
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_b43f6e3105e090::t_f24f1f6cc57a5e 128-191
+Tests/TkzAppTests/SettingsWindowTests.swift
+  s_b43f6e3105e090::t_86cecb3db1a438 60-62,67-137,389-393
+Tests/TkzCoreTests/AgentKindTests.swift
+  s_b43f6e3105e090::t_326e6f7f4bd988 20-23,25,27,43
+Tests/TkzCoreTests/AppStoreTests.swift
+  s_b43f6e3105e090::t_7f98001dc3e56c 189-202
+Tests/TkzCoreTests/ModelsTests.swift
+  s_b43f6e3105e090::t_4caefd1aa17f5c 71-72,74-75,84-99
+Tests/TkzCoreTests/ReducersTests.swift
+  s_b43f6e3105e090::t_a38a2962e5f6d3 516-554
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f75474d515c3a9b2fe4266f9dcea24c2ef9a62dd",
+  "prompts": {},
+  "sessions": {
+    "s_470491e2546e82": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3206eaac-17ae-40b6-8415-39bf8fe6be11",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_b43f6e3105e090": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1ac34d4-01bb-49b5-82a2-c4135661106a",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
