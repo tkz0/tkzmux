@@ -125,6 +125,70 @@ struct SessionLauncherTests {
         #expect(h.host.opened.first?.env["TKZMUX_REEXPORT"] == "STUB_CONFIG_DIR")
     }
 
+    /// The row records the agent whose menu row was clicked. `Launch` has carried `agent` since the
+    /// menu learned to draw more than one adapter's rows, but `start` dropped it on the way into
+    /// `createSession`, so every row landed in the store as Claude's — and everything that reads the
+    /// agent back off the row (resume, transcript reading, usage accounting, the sidebar glyph)
+    /// then used the wrong adapter.
+    @Test("start: the row is stored as the agent that was launched, not always Claude")
+    func startStoresTheRowsOwnAgent() throws {
+        let h = try Self.makeHarness(adapters: [.claude: ClaudeAdapter(), StubAdapter.kind: StubAdapter()])
+        defer { h.tree.tearDown() }
+        let spec = NewSessionMenu.Launch(
+            kind: .repoRoot, command: "stub-agent", cwd: h.tree.repo, accountKey: nil,
+            groupID: h.group, agent: StubAdapter.kind)
+        guard case .success(let id) = h.launcher.start(spec) else {
+            Issue.record("launch failed")
+            return
+        }
+        #expect(h.session(id)?.agent == StubAdapter.kind)
+        // With no explicit account and no fitting group default, `createSession` falls back to the
+        // agent's *own* primary key rather than to `claude` — which only works now that the agent
+        // reaching it is the real one.
+        #expect(h.session(id)?.accountKey == Account.defaultKey(for: StubAdapter.kind))
+    }
+
+    /// A group default naming another agent's account must not be forced onto this row. The rule
+    /// lives in `AppState.createSession`, but it was unreachable while every launch arrived as
+    /// Claude's — this is the launcher-level proof that it now applies.
+    @Test("start: a group default for another agent is not inherited")
+    func startDoesNotInheritAnotherAgentsGroupDefault() throws {
+        let h = try Self.makeHarness(adapters: [.claude: ClaudeAdapter(), StubAdapter.kind: StubAdapter()])
+        defer { h.tree.tearDown() }
+        h.store.update {
+            $0.setAccount(Account(key: "claude-work", configDir: "/somewhere/claude", label: "Work", agent: .claude))
+            $0.setGroupDefaultAccount(h.group, accountKey: "claude-work")
+        }
+        let spec = NewSessionMenu.Launch(
+            kind: .repoRoot, command: "stub-agent", cwd: h.tree.repo, accountKey: nil,
+            groupID: h.group, agent: StubAdapter.kind)
+        guard case .success(let id) = h.launcher.start(spec) else {
+            Issue.record("launch failed")
+            return
+        }
+        #expect(h.session(id)?.accountKey == Account.defaultKey(for: StubAdapter.kind))
+    }
+
+    /// The table is filled after construction (`MainWindowController.agents.didSet`), because the
+    /// real one needs a support directory the window does not have when it builds the launcher.
+    /// While `adapters` was a `let`, that assignment was impossible and the launcher stayed
+    /// Claude-only for the life of the process.
+    @Test("adapters can be replaced after construction")
+    func adaptersAreAssignableAfterConstruction() throws {
+        let h = try Self.makeHarness()
+        defer { h.tree.tearDown() }
+        #expect(h.launcher.adapters[StubAdapter.kind] == nil)
+        h.launcher.adapters = [.claude: ClaudeAdapter(), StubAdapter.kind: StubAdapter()]
+        h.store.update {
+            $0.setAccount(Account(key: "stub-work", configDir: "/somewhere/stub", label: "Stub", agent: StubAdapter.kind))
+        }
+        let spec = NewSessionMenu.Launch(
+            kind: .repoRoot, command: "", cwd: h.tree.repo, accountKey: "stub-work",
+            groupID: h.group, agent: StubAdapter.kind)
+        _ = h.launcher.start(spec)
+        #expect(h.host.opened.first?.env["STUB_CONFIG_DIR"] == "/somewhere/stub")
+    }
+
     @Test("resume: the boot command comes from the row's own adapter, not a literal claude --resume")
     func resumeCommandComesFromTheAdapter() throws {
         let h = try Self.makeHarness(adapters: [.claude: ClaudeAdapter(), StubAdapter.kind: StubAdapter()])

@@ -1789,6 +1789,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // menu's row order must be stable across launches, not whatever `Dictionary` iteration
             // happens to produce this time.
             newSessionMenu.adapters = agents.adapters.values.sorted { $0.kind.rawValue < $1.kind.rawValue }
+            // The launcher's own copy. It cannot be handed one at construction (`:508`) — the real
+            // table needs the support directory, which only `AppDelegate` has — so this is the one
+            // place it can be filled. Without it the launcher keeps its Claude-only default and a
+            // non-Claude row gets no config-dir variable and cannot resume.
+            launcher.adapters = agents.adapters
             sidebar.lastMessageProvider = { id in agents.lastMessage(for: id) }
             agents.isSessionAttended = { [weak self] id in self?.isSessionAttended(id) ?? false }
             // `claude -w` removes its worktree when the conversation ends, which is before the
@@ -2100,11 +2105,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     ///
     /// Asked only when `detect` reports `.none` for that account: `.tkzmux`/`.stale` mean there is
     /// nothing to offer, and `.other` (some other tool's Codex hooks) is left for the Settings
-    /// page rather than sprung on someone mid-launch. `codexHooksOffered` is a single flag for the
-    /// whole app, not one per account (see its doc comment in `AppState`), so once any account has
-    /// been asked — accepted or declined — no later account ever triggers this again.
+    /// page rather than sprung on someone mid-launch. `hooksOffered` is one entry **per agent**,
+    /// not per account (see its doc comment in `AppState`), so once any Codex account has been
+    /// asked — accepted or declined — no later Codex account triggers this again, while another
+    /// agent's own offer is unaffected.
     func offerCodexHooksIfNeeded(accountKey: String) {
-        guard let agents, !store.state.codexHooksOffered,
+        guard let agents, !store.state.hooksOffered.contains(.codex),
               let detection = agents.codexHooksDetection(accountKey: accountKey),
               detection.producer == .none
         else { return }
@@ -2181,9 +2187,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     /// Records the answer and installs when it was yes — the Codex counterpart to
     /// `finishStatuslineOffer`. A decline is still an answer, so the flag is set either way.
+    ///
+    /// Recorded against `.codex` specifically: declining here must not silence the same question
+    /// for a different agent that also installs its hooks into a file.
     private func finishCodexHooksOffer(confirmed: Bool, accountKey: String) {
         guard let agents else { return }
-        store.update { $0.setCodexHooksOffered(true) }
+        store.update { $0.setHooksOffered(.codex) }
         guard confirmed else { return }
         do {
             try agents.installCodexHooks(accountKey: accountKey)
@@ -2754,14 +2763,21 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         guard var launch = newSessionMenu.repoRootLaunch() ?? newSessionMenu.shellLaunch(
             fallbackDirectory: NSHomeDirectory())
         else { return }
-        let agent = launch.accountKey.flatMap { store.state.accounts[$0]?.agent } ?? .claude
+        // The group's agent, the same one the ＋ menu's top-level rows run. This used to derive the
+        // agent from the *account* instead — the implicit rule `Group.agent` replaces — so setting
+        // a group to one agent and starting a session from the palette would quietly run another.
+        let agent = launch.agent
         guard let command = agents?.adapters[agent]?.launchCommand(.prompt(action.prompt)) else { return }
+        // `agent:` was missing here too, so a row started from the palette was *stored* as Claude
+        // no matter whose command line it had just been given — the launcher then read the wrong
+        // adapter back off it for resume and usage.
         launch = NewSessionMenu.Launch(
             kind: launch.kind,
             command: command,
             cwd: launch.cwd,
             accountKey: launch.accountKey,
-            groupID: launch.groupID)
+            groupID: launch.groupID,
+            agent: agent)
         newSessionMenu.perform(launch)
     }
 
@@ -3006,6 +3022,16 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
                 // human can have the Settings window open.
                 guard let installer = self?.agents?.installer else { return [] }
                 return installer.resources.shimScripts.keys.sorted()
+            },
+            installedAgents: { [weak self] in
+                // The ＋ menu's own list and order, so the Settings popup and the context-menu
+                // picker can never offer a different set or a different order.
+                self?.installedAdapters().map(\.kind) ?? []
+            },
+            setGroupAgent: { [weak self] groupID, agent in
+                // Through the controller's writer, never `store.update` directly: it also
+                // re-scopes the ＋ menu, which holds a value copy of the group.
+                self?.setGroupAgent(groupID, agent: agent)
             })
     }
 
@@ -3229,6 +3255,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // both menus.
         menu.addItem(.separator())
         menu.addItem(groupColorMenuItem(for: session.groupID))
+        menu.addItem(groupAgentMenuItem(for: session.groupID))
         menu.addItem(groupDefaultAccountMenuItem(for: session.groupID))
         return menu
     }
@@ -3264,6 +3291,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
         menu.addItem(.separator())
         menu.addItem(groupColorMenuItem(for: id))
+        menu.addItem(groupAgentMenuItem(for: id))
         menu.addItem(groupDefaultAccountMenuItem(for: id))
         return menu
     }
@@ -3405,6 +3433,93 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let key: String?
     }
 
+    // MARK: Group agent
+
+    /// "Agent ▸": which agent **every new session in this group** starts.
+    ///
+    /// Twin of ``groupDefaultAccountMenuItem(for:)``, on both context menus for the same reason the
+    /// colour and account pickers are: the setting belongs to the group, but the row is what you
+    /// are pointing at when you decide the whole group needs one.
+    ///
+    /// Only *installed* agents get a row — a picker offering something that cannot run is not a
+    /// choice. A group pointing at an uninstalled agent keeps its own row, checked and disabled,
+    /// exactly the way ``ContextItemID/groupAccountMissing`` does: the group really is still set to
+    /// it, and only the user can decide where to point it instead.
+    private func groupAgentMenuItem(for id: GroupID) -> NSMenuItem {
+        let current = store.state.groups[id]?.agent
+        let installed = installedAdapters()
+        let resolved = current.flatMap { c in installed.first { $0.kind == c } }
+        let name = resolved?.displayName
+            ?? current.map { c in adapterDisplayName(c) + " \u{2014} not installed" }
+            ?? installed.first(where: { $0.kind == .claude })?.displayName
+            ?? installed.first?.displayName
+            ?? "none"
+        let parent = NSMenuItem(title: "Agent: \(name)", action: nil, keyEquivalent: "")
+        parent.identifier = ContextItemID.groupAgent
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+
+        for adapter in installed {
+            let item = NSMenuItem(
+                title: adapter.displayName, action: #selector(contextSetGroupAgent(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = GroupAgentChoice(groupID: id, agent: adapter.kind)
+            item.identifier = ContextItemID.groupAgentRow(adapter.kind)
+            item.state = adapter.kind == current ? .on : .off
+            item.toolTip = adapter.binaryName
+            submenu.addItem(item)
+        }
+        if installed.isEmpty {
+            let empty = NSMenuItem(title: "No agents installed", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            submenu.addItem(empty)
+        }
+        if let current, resolved == nil {
+            let missing = NSMenuItem(
+                title: "\(adapterDisplayName(current)) \u{2014} not installed", action: nil, keyEquivalent: "")
+            missing.isEnabled = false
+            missing.state = .on
+            missing.identifier = ContextItemID.groupAgentMissing
+            submenu.addItem(missing)
+        }
+        parent.submenu = submenu
+        return parent
+    }
+
+    /// The installed adapters in the same stable order the ＋ menu draws them, so the two pickers
+    /// never disagree about what is available or in what order.
+    private func installedAdapters() -> [any AgentAdapter] {
+        newSessionMenu.adapters.filter(newSessionMenu.isAdapterInstalled)
+    }
+
+    /// What to call an agent we may have no adapter for — its own name when we have one, its raw
+    /// value when we do not, which is the honest answer for a kind from a newer build.
+    private func adapterDisplayName(_ agent: AgentKind) -> String {
+        agents?.adapters[agent]?.displayName
+            ?? newSessionMenu.adapters.first { $0.kind == agent }?.displayName
+            ?? agent.rawValue
+    }
+
+    /// Which group, and which agent — the agent twin of ``GroupAccountChoice``.
+    private struct GroupAgentChoice {
+        let groupID: GroupID
+        let agent: AgentKind
+    }
+
+    /// The single writer. Re-``configure``s the ＋ menu for the same load-bearing reason
+    /// ``setGroupDefaultAccount(_:key:)`` does: `NewSessionMenu.group` is a value copy, and a
+    /// change set carrying only `groups` does not re-scope it, so the next `menuNeedsUpdate` would
+    /// rebuild from the stale group and show the old agent.
+    func setGroupAgent(_ id: GroupID, agent: AgentKind?) {
+        store.update { $0.setGroupAgent(id, agent: agent) }
+        newSessionMenu.configure(state: store.state, groupID: id)
+    }
+
+    @objc private func contextSetGroupAgent(_ sender: Any?) {
+        guard let choice = (sender as? NSMenuItem)?.representedObject as? GroupAgentChoice else { return }
+        setGroupAgent(choice.groupID, agent: choice.agent)
+    }
+
     private func accountItem(_ title: String, groupID: GroupID, key: String?) -> NSMenuItem {
         let item = NSMenuItem(
             title: title, action: #selector(contextSetGroupDefaultAccount(_:)), keyEquivalent: "")
@@ -3446,6 +3561,15 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         /// One account row, addressed by `Account.key`.
         public static func groupAccountRow(_ key: String) -> NSUserInterfaceItemIdentifier {
             NSUserInterfaceItemIdentifier("tkzmux.context.groupAccount.row.\(key)")
+        }
+        /// The "Agent" parent item; its `submenu` holds one row per installed agent.
+        public static let groupAgent = NSUserInterfaceItemIdentifier("tkzmux.context.groupAgent")
+        /// The group names an agent with no installed adapter.
+        public static let groupAgentMissing =
+            NSUserInterfaceItemIdentifier("tkzmux.context.groupAgent.missing")
+        /// One agent row, addressed by `AgentKind.rawValue`.
+        public static func groupAgentRow(_ agent: AgentKind) -> NSUserInterfaceItemIdentifier {
+            NSUserInterfaceItemIdentifier("tkzmux.context.groupAgent.row.\(agent.rawValue)")
         }
     }
 

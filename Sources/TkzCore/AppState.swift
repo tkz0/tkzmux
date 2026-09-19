@@ -34,12 +34,14 @@ public struct AppState: Hashable, Sendable {
     /// and never again: declining is an answer, and re-asking every launch would be nagging. The
     /// menu command stays available either way.
     public var statuslineOffered: Bool
-    /// Whether the Codex hooks consent sheet has already been put to the user (TKZ-87). Same
-    /// once-ever plumbing as `statuslineOffered`, deliberately: a single flag for the whole app
-    /// rather than one per account, so declining it — or accepting it — for the first Codex
-    /// account that ever hits `.none` settles the question for good, and the sheet never nags a
-    /// second account into being asked again.
-    public var codexHooksOffered: Bool
+    /// Which agents the user has already been asked about installing hooks for — accepted or
+    /// declined, the question is not re-asked either way.
+    ///
+    /// **A set, not a flag.** It was one global `Bool` while exactly one agent needed hooks
+    /// installed with consent. A second such agent makes that actively wrong: a user who declined
+    /// for the first would never be asked for the second, so a feature would be silently suppressed
+    /// for an agent that was never mentioned.
+    public var hooksOffered: Set<AgentKind>
     /// The release the user closed the sidebar's update card for. That version never
     /// shows the card again; a newer one does. Durable, in `PersistedPreferences`.
     public var dismissedUpdateVersion: String?
@@ -86,7 +88,7 @@ public struct AppState: Hashable, Sendable {
         shortcuts: [String: String] = [:],
         autoResumeOnLaunch: Bool = false,
         statuslineOffered: Bool = false,
-        codexHooksOffered: Bool = false,
+        hooksOffered: Set<AgentKind> = [],
         dismissedUpdateVersion: String? = nil,
         showSessionSpend: Bool = true,
         checkOriginPeriodically: Bool = false,
@@ -106,7 +108,7 @@ public struct AppState: Hashable, Sendable {
         self.shortcuts = shortcuts
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
-        self.codexHooksOffered = codexHooksOffered
+        self.hooksOffered = hooksOffered
         self.dismissedUpdateVersion = dismissedUpdateVersion
         self.showSessionSpend = showSessionSpend
         self.checkOriginPeriodically = checkOriginPeriodically

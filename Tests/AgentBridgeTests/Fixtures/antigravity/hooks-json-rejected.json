@@ -1,0 +1,26 @@
+{
+  "tkzmux-probe": {
+    "PreInvocation": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./probe.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./probe.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

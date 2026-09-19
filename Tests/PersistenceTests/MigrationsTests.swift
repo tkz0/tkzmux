@@ -20,7 +20,49 @@ private func makeMinimalState() -> PersistedState {
     #expect(try Migrations.migrate(object) == object)
 }
 
-/// The v2 → v3 lift: the presets feature's keys leave the file, top level and per session.
+/// `Group.agent` was added without a schema bump, and this is the fact that makes that safe: a v4
+/// file written before the field existed carries no `agent` key on its groups, and decoding reads
+/// that as "never chosen" rather than failing the whole load.
+///
+/// The alternative — a v5 bump — would have been strictly worse. `liftV4ToV5` would be the identity
+/// function, and its only real effect would be to make every older build refuse the file outright
+/// (`MigrationError.futureVersion`, which latches the autosaver off) in order to protect one
+/// forgettable preference per group. The v3 -> v4 bump was earned because a missing `Session.agent`
+/// mislabels every row; a missing `Group.agent` costs one re-pick.
+@Test func aV4GroupWithoutAnAgentKeyLoadsAsUnchosenAndResaves() throws {
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
+    // Strip the key the way a file written before the field existed would not have it at all.
+    object["groups"] = .array(
+        try #require(object["groups"]?.arrayValue).map { value in
+            guard case .object(var fields) = value else { return value }
+            fields["agent"] = nil
+            return .object(fields)
+        })
+
+    // Still v4: no lift runs, and none needs to.
+    let lifted = try Migrations.migrate(object)
+    #expect(lifted["schemaVersion"]?.intValue == 4)
+
+    let document = try StateFile.decode(try JSONEncoder().encode(lifted))
+    var restored = AppState()
+    let warnings = try document.state.apply(to: &restored)
+    #expect(warnings.isEmpty)
+    #expect(restored.groups.count == 1)
+    #expect(restored.groups.values.allSatisfy { $0.agent == nil })
+
+    // And saving it again does not invent a key, so the file does not grow a null on every write.
+    let resaved = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(restored))))
+    let group = try #require(resaved["groups"]?.arrayValue?.first)
+    guard case .object(let fields) = group else {
+        Issue.record("groups[0] is not an object")
+        return
+    }
+    #expect(fields["agent"] == nil)
+}
+
+/// The v2 -> v3 lift: the presets feature's keys leave the file, top level and per session.
 @Test func aV2FileLosesItsPresetsAndPresetIDs() throws {
     var object = try JSONDecoder().decode(
         [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))

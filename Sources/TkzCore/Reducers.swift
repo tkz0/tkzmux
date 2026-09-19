@@ -330,6 +330,20 @@ extension AppState {
         groups[id]?.defaultAccountKey = accountKey
     }
 
+    /// Which agent new sessions in this group start. `nil` clears the choice and lets the ＋ menu
+    /// resolve one again.
+    ///
+    /// Deliberately does **not** touch `defaultAccountKey`. That key names one agent's config dir,
+    /// so after a switch it may well belong to a different agent — but `createSession` already
+    /// ignores a default that does not fit the row's agent (see `groupDefaultFits` above), and that
+    /// rule has to stay regardless, because the ＋ menu's "Other agent" submenu can still launch a
+    /// mismatched agent in this group. Clearing here would be a second mechanism for one rule, and
+    /// it would throw away a key the user chose on an edit they did not make: flip to another agent
+    /// and back, and the account default would be gone.
+    public mutating func setGroupAgent(_ id: GroupID, agent: AgentKind?) {
+        groups[id]?.agent = agent
+    }
+
     /// Collapse state is a group change, never a structural one.
     public mutating func setGroupCollapsed(_ id: GroupID, _ collapsed: Bool) {
         groups[id]?.isCollapsed = collapsed
@@ -466,8 +480,14 @@ extension AppState {
         statuslineOffered = offered
     }
 
-    public mutating func setCodexHooksOffered(_ offered: Bool) {
-        codexHooksOffered = offered
+    /// Records that this agent's hooks offer has been made. Per agent, because declining for one
+    /// must not silence the question for another.
+    public mutating func setHooksOffered(_ agent: AgentKind, _ offered: Bool = true) {
+        if offered {
+            hooksOffered.insert(agent)
+        } else {
+            hooksOffered.remove(agent)
+        }
     }
 
     public mutating func setThemePreset(_ preset: Theme.Preset) {

@@ -28,7 +28,10 @@ private func modificationDate(of url: URL) throws -> Date {
 
 @Test func bundledResourcesLoadUnderSwiftTest() throws {
     let resources = try ShimResources.bundled()
-    #expect(resources.shimScripts.keys.sorted() == ["claude", "codex"])
+    // Keyed by the *binary* each shim shadows, not by the agent's name: Antigravity's binary is
+    // `agy`, so its shim is `agy.sh` and installs as `bin/agy`. A shim under any other name would
+    // sit on disk being called by nothing.
+    #expect(resources.shimScripts.keys.sorted() == ["agy", "claude", "codex"])
     for script in resources.shimScripts.values {
         #expect(script.contains("#!/bin/bash"))
     }

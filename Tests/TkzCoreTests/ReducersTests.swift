@@ -513,6 +513,45 @@ import Testing
         #expect(state.groups.count == 2)
     }
 
+    /// Switching a group's agent leaves its default account alone. The two are separate settings:
+    /// the account key still names a real config dir, and `createSession` already declines to hand
+    /// it to a row of a different agent (`aCodexRowDoesNotInheritAClaudeGroupDefault`). Clearing it
+    /// here would destroy a user-chosen value on an edit they did not make.
+    @Test func setGroupAgentLeavesTheDefaultAccountAlone() {
+        var state = AppState()
+        let a = state.addGroup(name: "A", repoRoot: "/a")
+        state.setGroupDefaultAccount(a.id, accountKey: "claude-work")
+
+        #expect(state.groups[a.id]?.agent == nil)  // never chosen
+        state.setGroupAgent(a.id, agent: .codex)
+        #expect(state.groups[a.id]?.agent == .codex)
+        #expect(state.groups[a.id]?.defaultAccountKey == "claude-work")
+
+        // And back again, without having lost anything on the way.
+        state.setGroupAgent(a.id, agent: .claude)
+        #expect(state.groups[a.id]?.agent == .claude)
+        #expect(state.groups[a.id]?.defaultAccountKey == "claude-work")
+
+        // `nil` clears the choice rather than meaning Claude.
+        state.setGroupAgent(a.id, agent: nil)
+        #expect(state.groups[a.id]?.agent == nil)
+
+        state.setGroupAgent(.generate(), agent: .codex)  // unknown id is a no-op
+        #expect(state.groups.count == 1)
+    }
+
+    /// A group can name an agent this build has never heard of — a state file written by a newer
+    /// build, or one hand-edited. It must survive the round trip rather than collapsing to Claude,
+    /// for the same reason `AgentKind` is a struct and not an enum.
+    @Test func aGroupCanNameAnAgentThisBuildDoesNotKnow() {
+        var state = AppState()
+        let a = state.addGroup(name: "A")
+        let stranger = AgentKind(rawValue: "aider")
+        state.setGroupAgent(a.id, agent: stranger)
+        #expect(state.groups[a.id]?.agent == stranger)
+        #expect(state.groups[a.id]?.agent?.isKnown == false)
+    }
+
     @Test func moveGroupRenumbers() {
         var state = AppState.fixture
         let last = state.orderedGroups.last!

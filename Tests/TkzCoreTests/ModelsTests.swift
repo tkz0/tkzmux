@@ -68,14 +68,33 @@ import Testing
     }
 
     @Test func groupsAndAccountsRoundTrip() throws {
+        // Every field carries a *non-default* value on purpose: a field that round-trips as its own
+        // default proves nothing, because dropping it entirely would look identical.
         let group = Group(name: "Repo", repoRoot: "~/dev/repo", color: RGB(hex: 0x41c6a8, alpha: 0.5),
-                          isCollapsed: true, order: 3, defaultAccountKey: "claude-work")
+                          isCollapsed: true, order: 3, defaultAccountKey: "claude-work",
+                          agent: .codex)
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
         #expect(try decoder.decode(Group.self, from: encoder.encode(group)) == group)
 
         let account = Account(key: "claude", configDir: "~/.claude", label: "Claude", plan: "Max")
         #expect(try decoder.decode(Account.self, from: encoder.encode(account)) == account)
+    }
+
+    /// The reason `Group.agent` needs no migration and no schema bump: a group written before the
+    /// field existed has no key for it, and the synthesised `Codable` reads that as `nil` rather
+    /// than failing. `nil` then means "never chosen", which the plus menu resolves.
+    @Test func aGroupWithNoAgentKeyDecodesAsUnchosen() throws {
+        let id = UUID().uuidString
+        let json = Data("""
+            {"id":"\(id)","name":"Repo","isCollapsed":false,"order":0}
+            """.utf8)
+        let group = try JSONDecoder().decode(Group.self, from: json)
+        #expect(group.agent == nil)
+        // And it does not come back on the way out, so the file does not grow a null key.
+        let reencoded = try JSONSerialization.jsonObject(
+            with: try JSONEncoder().encode(group)) as? [String: Any]
+        #expect(reencoded?["agent"] == nil)
     }
 
     @Test func statusAndWaitReasonHaveStableNames() {

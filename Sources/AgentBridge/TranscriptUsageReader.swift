@@ -148,13 +148,32 @@ public actor TranscriptUsageReader {
         guard let lastNewline = unread.lastIndex(of: 0x0A) else { return cache.sessionUsage }
         let complete = unread[unread.startIndex...lastNewline]
 
-        let strategy: any UsageStrategy = agent == .codex ? CodexUsageExtractor() : ClaudeUsageStrategy()
+        // An agent nobody has measured gets no strategy, and the window is left unread: returning
+        // here *without* advancing `byteOffset` is the point, so a later build that does know the
+        // shape re-reads these bytes instead of having skipped them forever.
+        guard let strategy = Self.strategy(for: agent) else { return cache.sessionUsage }
         strategy.fold(TranscriptReader.lines(of: complete), into: &cache)
 
         cache.byteOffset = startOffset + complete.count
         cache.lastUpdatedAt = Date()
         writeCache(agent: agent, sessionId: sessionId, cache: cache)
         return cache.sessionUsage
+    }
+
+    /// How one agent's transcript folds into running totals, or `nil` when nobody has measured
+    /// how this agent reports usage.
+    ///
+    /// A lookup rather than the ternary this used to be. The two known strategies are not
+    /// interchangeable — Claude reports per-message deltas that sum, Codex reports a running
+    /// thread total that replaces — so falling through to Claude's for a third agent would not be
+    /// a mild default, it would silently multiply the reported spend. `nil` is the honest answer,
+    /// and the spend badge stays hidden rather than showing a number nobody has checked.
+    static func strategy(for agent: AgentKind) -> (any UsageStrategy)? {
+        switch agent {
+        case .claude: return ClaudeUsageStrategy()
+        case .codex: return CodexUsageExtractor()
+        default: return nil
+        }
     }
 
     static func intValue(_ any: Any?) -> Int {

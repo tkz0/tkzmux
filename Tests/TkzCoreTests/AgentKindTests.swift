@@ -17,10 +17,14 @@ import Testing
 
     /// An agent nobody has an adapter for still decodes: the row shows as an unknown agent with
     /// resume disabled, rather than the whole file failing to load.
+    ///
+    /// The stand-in is deliberately an agent tkzmux will never ship an adapter for. It used to be
+    /// `gemini`, which stopped being unknown the moment Gemini became a supported agent — a test
+    /// that asserts "this is unknown" must not name something on the roadmap.
     @Test func anUnknownRawValueDecodesAndReportsUnknown() throws {
-        let data = Data("\"gemini\"".utf8)
+        let data = Data("\"aider\"".utf8)
         let decoded = try JSONDecoder().decode(AgentKind.self, from: data)
-        #expect(decoded.rawValue == "gemini")
+        #expect(decoded.rawValue == "aider")
         #expect(decoded.isKnown == false)
     }
 
@@ -36,6 +40,6 @@ import Testing
     @Test func worktreeMarkerIsNilForAnythingButClaude() {
         #expect(AgentKind.claude.worktreeMarker == "/.claude/worktrees/")
         #expect(AgentKind.codex.worktreeMarker == nil)
-        #expect(AgentKind(rawValue: "gemini").worktreeMarker == nil)
+        #expect(AgentKind(rawValue: "aider").worktreeMarker == nil)
     }
 }

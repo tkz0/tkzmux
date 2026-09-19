@@ -356,6 +356,8 @@ struct NewSessionMenuTests {
                 "tkzmux.newSession.repoRoot|In repo root\(s)claude\(s)~/dev/northwind|true",
                 "tkzmux.newSession.anotherRepo|In another repo\u{2026}\(s)choose a folder \u{2014} it becomes a new group|true",
                 "-||false",
+                "tkzmux.newSession.agent|Agent: Claude|true",
+                "  tkzmux.newSession.agentRow.claude|Claude\(s)claude|true",
                 "tkzmux.newSession.account|Default account: Claude (alt)|true",
                 "  tkzmux.newSession.accountRow.claude|Claude\(s)~/.claude|true",
                 "  tkzmux.newSession.accountRow.claude-work|Claude (alt)\(s)~/.claude-work|true",
@@ -363,8 +365,13 @@ struct NewSessionMenuTests {
                 "  tkzmux.newSession.accountNone|None\(s)inherit \u{2014} CLAUDE_CONFIG_DIR left unset|true",
             ])
 
-        // No section header with one agent: those are what a *second* adapter earns.
+        // No agent section header and no "Other agent" submenu with one installed adapter: both
+        // are what a *second* adapter earns.
         #expect(menu.item(NewSessionMenu.ItemID.agentHeader(.claude)) == nil)
+        #expect(menu.item(NewSessionMenu.ItemID.otherAgent) == nil)
+        // Nothing was substituted, so nothing says it was.
+        #expect(menu.item(NewSessionMenu.ItemID.agentMissing) == nil)
+        #expect(menu.item(NewSessionMenu.ItemID.noAgent) == nil)
 
         // Launching resolves through the adapter rather than a re-typed literal.
         #expect(menu.worktreeLaunch()?.command == "claude -w")
@@ -379,16 +386,57 @@ struct NewSessionMenuTests {
     @Test("An unregistered agent yields no launch rather than a guessed command")
     func anUnregisteredAgentYieldsNoLaunch() {
         let menu = Self.menu(for: Self.northwind)
-        let stranger = AgentKind(rawValue: "gemini")
+        let stranger = AgentKind(rawValue: "aider")
         #expect(menu.worktreeLaunch(agent: stranger) == nil)
         #expect(menu.repoRootLaunch(agent: stranger) == nil)
     }
 
-    /// A second adapter earns its own section, its rows are addressed by agent-namespaced
-    /// identifiers (the plain ones stay Claude's), and an adapter with no worktree capability
-    /// gets no worktree row — the menu must not invent one.
-    @Test("A second installed adapter adds its own section; no worktree capability, no worktree row")
-    func secondAdapterAddsRowsWithoutInventingACapability() throws {
+    /// The group decides what the top-level rows run. This is the whole point of the change: the
+    /// menu used to emit a block of rows per installed adapter, so it grew with the agent count.
+    @Test("The group's own agent leads the menu, whatever else is installed")
+    func theGroupsAgentLeadsTheMenu() throws {
+        let stubKind = AgentKind(rawValue: "stub")
+        let stub = StubAgentAdapter(
+            kind: stubKind, displayName: "Stub Agent", binaryName: "stub",
+            capabilities: [], newCommand: "stub", worktreeCommand: nil)
+
+        var state = Self.state
+        state.setGroupAgent(Self.northwind, agent: stubKind)
+
+        let menu = Self.unscopedMenu()
+        menu.adapters = [Self.claudeStub, stub]
+        menu.isAdapterInstalled = { _ in true }
+        menu.configure(state: state, groupID: Self.northwind)
+
+        #expect(menu.effectiveAgent == stubKind)
+        // The plain identifiers are the top-level rows, and they are the group's agent's — not
+        // Claude's, which is what they used to mean.
+        let root = try #require(menu.item(NewSessionMenu.ItemID.repoRoot))
+        #expect(Self.text(root).contains("stub"))
+        #expect(root.representedObject as? AgentKind == stubKind)
+        // The stub has no worktree capability, so there is no worktree row at all — not a disabled
+        // one. tkzmux does not create worktrees itself, so the entry could never do anything.
+        #expect(menu.item(NewSessionMenu.ItemID.worktree) == nil)
+
+        // Clicking the row launches the group's agent, without the row having to say so.
+        #expect(menu.repoRootLaunch()?.agent == stubKind)
+        #expect(menu.repoRootLaunch()?.command == "stub")
+        // And an agent with no worktree flag yields no worktree launch, rather than a guessed one.
+        #expect(menu.worktreeLaunch() == nil)
+
+        // The picker names the group's agent and checks it.
+        let picker = try #require(menu.item(NewSessionMenu.ItemID.agent))
+        #expect(picker.title == "Agent: Stub Agent")
+        #expect(menu.item(NewSessionMenu.ItemID.agentRow(stubKind))?.state == .on)
+        #expect(menu.item(NewSessionMenu.ItemID.agentRow(.claude))?.state == .off)
+    }
+
+    /// Every other installed agent keeps its rows, one level down, under its own header — the
+    /// one-off escape hatch. The headers are unconditional there, unlike the old top-level rule:
+    /// two rows reading "New worktree" and "In repo root" are otherwise indistinguishable from the
+    /// ones above them.
+    @Test("Other installed agents live under Other agent, with their own headers and namespaced ids")
+    func otherInstalledAgentsLiveUnderOtherAgent() throws {
         let stubKind = AgentKind(rawValue: "stub")
         let stub = StubAgentAdapter(
             kind: stubKind, displayName: "Stub Agent", binaryName: "stub",
@@ -399,21 +447,118 @@ struct NewSessionMenuTests {
         menu.isAdapterInstalled = { _ in true }
         menu.configure(state: Self.state, groupID: Self.northwind)
 
-        // Section headers only appear once a second adapter is on the menu.
-        #expect(menu.item(NewSessionMenu.ItemID.agentHeader(.claude)) != nil)
+        // The group has chosen nothing, so Claude leads and the stub is the "other".
+        #expect(menu.effectiveAgent == .claude)
+        #expect(Self.text(try #require(menu.item(NewSessionMenu.ItemID.repoRoot))).contains("claude"))
+
+        #expect(menu.item(NewSessionMenu.ItemID.otherAgent) != nil)
+        // The header names the agent whose rows follow; the top-level agent gets none.
         #expect(menu.item(NewSessionMenu.ItemID.agentHeader(stubKind)) != nil)
+        #expect(menu.item(NewSessionMenu.ItemID.agentHeader(.claude)) == nil)
 
-        // Claude's rows moved to the namespaced identifiers alongside the stub's.
-        #expect(menu.item(NewSessionMenu.ItemID.worktree) == nil)
-        #expect(menu.item(NewSessionMenu.ItemID.repoRoot) == nil)
-        let claudeWorktree = try #require(menu.item(NewSessionMenu.ItemID.worktree(for: .claude)))
-        #expect(Self.text(claudeWorktree).contains("claude -w"))
-
-        // The stub has no worktree capability: no row, no matter what its own `launchCommand`
-        // would have answered for one.
-        #expect(menu.item(NewSessionMenu.ItemID.worktree(for: stubKind)) == nil)
+        // The stub's own row is namespaced and carries its kind, so clicking it launches the stub
+        // even though the group runs Claude.
         let stubRoot = try #require(menu.item(NewSessionMenu.ItemID.repoRoot(for: stubKind)))
         #expect(Self.text(stubRoot).contains("stub"))
+        #expect(stubRoot.representedObject as? AgentKind == stubKind)
+        #expect(menu.repoRootLaunch(agent: stubKind)?.agent == stubKind)
+        // Still no worktree row for a capability it does not have, submenu or not.
+        #expect(menu.item(NewSessionMenu.ItemID.worktree(for: stubKind)) == nil)
+    }
+
+    /// A group can name an agent nobody has installed — a state file from another machine, or an
+    /// uninstalled CLI. The rows must run something that exists, and must not pretend that is what
+    /// was asked for.
+    @Test("A configured agent that is not installed falls back, and says so")
+    func aConfiguredAgentThatIsNotInstalledSaysSo() throws {
+        let stubKind = AgentKind(rawValue: "stub")
+        let stub = StubAgentAdapter(
+            kind: stubKind, displayName: "Stub Agent", binaryName: "stub",
+            capabilities: [], newCommand: "stub", worktreeCommand: nil)
+
+        var state = Self.state
+        state.setGroupAgent(Self.northwind, agent: stubKind)
+
+        let menu = Self.unscopedMenu()
+        menu.adapters = [Self.claudeStub, stub]
+        // The stub is configured but *not* installed.
+        menu.isAdapterInstalled = { $0.kind == .claude }
+        menu.configure(state: state, groupID: Self.northwind)
+
+        #expect(menu.effectiveAgent == .claude)
+        #expect(menu.configuredAgentMissing == stubKind)
+        let notice = try #require(menu.item(NewSessionMenu.ItemID.agentMissing))
+        #expect(notice.isEnabled == false)
+        #expect(Self.text(notice).contains("Stub Agent"))
+        #expect(Self.text(notice).contains("not installed"))
+        // The hint shows what will really run, so the row and the notice cannot disagree.
+        #expect(Self.text(try #require(menu.item(NewSessionMenu.ItemID.repoRoot))).contains("claude"))
+        // The picker keeps the group's real choice visible and checked, like `accountMissing` does.
+        #expect(menu.item(NewSessionMenu.ItemID.agentRow(stubKind))?.state == .on)
+    }
+
+    /// Nothing installed at all must not leave a menu that is silently two rows long.
+    @Test("With no installed adapter the menu says there is nothing to run")
+    func noInstalledAdapterSaysSo() throws {
+        let menu = Self.unscopedMenu()
+        menu.adapters = [Self.claudeStub]
+        menu.isAdapterInstalled = { _ in false }
+        menu.configure(state: Self.state, groupID: Self.northwind)
+
+        let none = try #require(menu.item(NewSessionMenu.ItemID.noAgent))
+        #expect(none.isEnabled == false)
+        #expect(menu.item(NewSessionMenu.ItemID.repoRoot) == nil)
+        #expect(menu.item(NewSessionMenu.ItemID.worktree) == nil)
+        #expect(menu.item(NewSessionMenu.ItemID.otherAgent) == nil)
+    }
+
+    /// Picking an agent reports the group and the kind; the store update is the assembler's job,
+    /// exactly like the account picker's.
+    @Test("The agent picker writes the group's agent")
+    func theAgentPickerWritesTheGroupsAgent() throws {
+        let stubKind = AgentKind(rawValue: "stub")
+        let stub = StubAgentAdapter(
+            kind: stubKind, displayName: "Stub Agent", binaryName: "stub",
+            capabilities: [], newCommand: "stub", worktreeCommand: nil)
+
+        let menu = Self.unscopedMenu()
+        menu.adapters = [Self.claudeStub, stub]
+        menu.isAdapterInstalled = { _ in true }
+        menu.configure(state: Self.state, groupID: Self.northwind)
+
+        var chosen: [(GroupID, AgentKind?)] = []
+        menu.onSelectAgent = { chosen.append(($0, $1)) }
+        #expect(menu.performItem(NewSessionMenu.ItemID.agentRow(stubKind)))
+        #expect(chosen.count == 1)
+        #expect(chosen.first?.0 == Self.northwind)
+        #expect(chosen.first?.1 == stubKind)
+    }
+
+    /// A group default naming another agent's account is not handed to this agent's launch. The
+    /// rule lives in `AppState.createSession`, but `SessionLauncher.start` passes the menu's key
+    /// explicitly and so bypasses it — which makes this the load-bearing copy.
+    @Test("A default account belonging to another agent is not carried into the launch")
+    func anotherAgentsDefaultAccountIsNotCarried() throws {
+        let stubKind = AgentKind(rawValue: "stub")
+        let stub = StubAgentAdapter(
+            kind: stubKind, displayName: "Stub Agent", binaryName: "stub",
+            capabilities: [], newCommand: "stub", worktreeCommand: nil)
+
+        var state = Self.state
+        state.setGroupAgent(Self.northwind, agent: stubKind)
+
+        let menu = Self.unscopedMenu()
+        menu.adapters = [Self.claudeStub, stub]
+        menu.isAdapterInstalled = { _ in true }
+        menu.configure(state: state, groupID: Self.northwind)
+
+        // The group's default is `claude-work`, a Claude account (see `Self.state`).
+        #expect(menu.accountKey(for: .claude) == "claude-work")
+        #expect(menu.accountKey(for: stubKind) == nil)
+        #expect(menu.effectiveAccountKey == nil)
+        #expect(menu.repoRootLaunch()?.accountKey == nil)
+        // The escape hatch still gets it, because that row really is a Claude launch.
+        #expect(menu.repoRootLaunch(agent: .claude)?.accountKey == "claude-work")
     }
 
     @Test("The account submenu groups by agent once there is more than one installed adapter")

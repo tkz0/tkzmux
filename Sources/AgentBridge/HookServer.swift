@@ -294,6 +294,17 @@ public final class HookServer: Sendable {
 
     // MARK: - Frame parsing
 
+    /// One payload field under either wire spelling.
+    ///
+    /// Claude and Codex both send snake_case; Antigravity sends camelCase, because its payloads are
+    /// protojson-encoded. That is a **spelling** difference, not an agent difference — the field
+    /// means the same thing in all three — so it is resolved here rather than by teaching this
+    /// agent-blind parser which agent it is talking to. snake_case wins when a payload somehow
+    /// carries both, so nothing about the two existing agents can change.
+    static func field(_ payload: [String: Any], _ snake: String, _ camel: String) -> String? {
+        (payload[snake] as? String) ?? (payload[camel] as? String)
+    }
+
     private static func parseHookFrame(_ obj: [String: Any]) -> HookFrame? {
         // The envelope's own `event` is the shim's argv[1]; a real hook payload from either agent
         // prefers its own `hook_event_name` when present (both Claude and Codex spell it that way),
@@ -305,19 +316,20 @@ public final class HookServer: Sendable {
 
         let agentRaw = obj["agent"] as? String
         let agent = agentRaw.map(AgentKind.init(rawValue:)) ?? .claude
-        let eventName = (payload["hook_event_name"] as? String) ?? envelopeEvent
+        let eventName = Self.field(payload, "hook_event_name", "hookEventName") ?? envelopeEvent
 
-        let conversationId = payload["session_id"] as? String
-        let notificationType = payload["notification_type"] as? String
-        let lastAssistantMessageFull = payload["last_assistant_message"] as? String
+        let conversationId = Self.field(payload, "session_id", "conversationId")
+        let notificationType = Self.field(payload, "notification_type", "notificationType")
+        let lastAssistantMessageFull = Self.field(
+            payload, "last_assistant_message", "lastAssistantMessage")
         // `Notification.message` — Claude's own one-liner ("Claude needs your permission to use
         // Bash"), the text the NEEDS YOU banner shows. Capped like the Stop message.
         let message = payload["message"] as? String
         let source = payload["source"] as? String
         let reason = payload["reason"] as? String
         let cwd = payload["cwd"] as? String
-        let transcriptPath = payload["transcript_path"] as? String
-        let toolName = payload["tool_name"] as? String
+        let transcriptPath = Self.field(payload, "transcript_path", "transcriptPath")
+        let toolName = Self.field(payload, "tool_name", "toolName")
 
         let hookPayload = HookPayload(
             agent: agent,

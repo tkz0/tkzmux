@@ -178,7 +178,11 @@ public final class AgentIntegration {
         var accounts = store.state.accounts
         for account in discovered where accounts[account.key] == nil { accounts[account.key] = account }
         for session in store.state.sessions.values where accounts[session.accountKey] == nil {
-            if let dir = Account.configDirectory(forKey: session.accountKey, home: home) {
+            // Through the row's own adapter: the generic `~/.<key>` rule does not hold for
+            // every agent, and this is the path a restored row's resume depends on.
+            if let dir = self.adapters[session.agent]?
+                .configDirectory(forAccountKey: session.accountKey, home: home)
+                ?? Account.configDirectory(forKey: session.accountKey, home: home) {
                 // The row itself says which agent it belongs to, so the account this fabricates
                 // follows `session.agent` rather than assuming Claude — the adapter table is what
                 // makes that honest now that a second agent can exist.
@@ -245,6 +249,11 @@ public final class AgentIntegration {
         var table: [AgentKind: any AgentAdapter] = [.claude: ClaudeAdapter()]
         let codex = CodexAdapter(supportDirectory: supportDirectory)
         if codex.isInstalled(path: path) { table[.codex] = codex }
+        // Gated exactly like Codex's, and for a sharper reason: Antigravity's config dir is
+        // `~/.gemini`, which also survives on machines that last ran the CLI it replaced. Without
+        // the gate, every one of those would grow a phantom account out of a stale directory.
+        let antigravity = AntigravityAdapter(supportDirectory: supportDirectory)
+        if antigravity.isInstalled(path: path) { table[.antigravity] = antigravity }
         return table
     }
 
@@ -681,10 +690,10 @@ public final class AgentIntegration {
             state.updateLive(id) { $0.pid = launch.pid }
             state.setAgentTerminal(id, terminal)
         }
-        // `tkzmux-hook launch` is only ever sent by the `.perInvocation` shim path, which today
-        // means Claude — `LaunchAnnouncement` carries no agent field of its own to route on.
-        let agent = AgentKind.claude
-        learnAccount(configDir: launch.configDir, for: id, agent: agent)
+        // The frame says which agent it came from: `codex.sh` sends `--agent codex`, and
+        // `LaunchAnnouncement.agent` defaults to `.claude` for a frame from a shim old enough not
+        // to send one. Assuming Claude here filed a Codex config dir as a Claude account.
+        learnAccount(configDir: launch.configDir, for: id, agent: launch.agent)
         // The launch/descriptor race-fix below only makes sense for a watcher backed by a file on
         // disk (Claude's descriptor), so it stays scoped to that concrete type rather than growing
         // a new protocol requirement for one caller.
@@ -855,6 +864,8 @@ public final class AgentIntegration {
         // happens to share a key.
         let configDir = store.state.accounts[session.accountKey]
             .flatMap { $0.agent == session.agent ? $0.configDir : nil }
+            ?? adapters[session.agent]?
+                .configDirectory(forAccountKey: session.accountKey, home: home)
             ?? Account.configDirectory(forKey: session.accountKey, home: home)
         guard let configDir else { return nil }
         let located = adapter.transcript.locate(
