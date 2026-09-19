@@ -101,10 +101,13 @@ struct AgentIntegrationTests {
         integration.handle(.removed(pid: key.pid, configDir: key.configDir), from: .claude)
     }
 
-    static func launch(_ id: SessionID, pid: pid_t) -> HookFrame {
+    static func launch(
+        _ id: SessionID, pid: pid_t, agent: AgentKind = .claude, configDir: String? = nil
+    ) -> HookFrame {
         .launch(LaunchAnnouncement(
             sessionID: id, rawSid: id.rawValue, pid: pid, cwd: "/tmp/nowhere",
-            configDir: "/tmp/nowhere/.claude", argv: ["--model", "haiku"]))
+            configDir: configDir ?? "/tmp/nowhere/.claude", argv: ["--model", "haiku"],
+            agent: agent))
     }
 
     /// A `.hook` frame built from Claude's own wire vocabulary, the way `HookServer` would parse
@@ -349,14 +352,29 @@ struct AgentIntegrationTests {
 
     /// A payload from an agent nobody has an adapter for — `adapters` here is the default,
     /// Claude-only table — must be dropped and logged rather than attributed to a row by whatever
+    /// The account a launch frame teaches us belongs to the agent the *frame* names. `bind` used to
+    /// hardcode `.claude` behind a comment claiming `LaunchAnnouncement` carried no agent — it has
+    /// carried one since the shims learned `--agent`, and `codex.sh` sends it. The effect was that
+    /// a Codex config dir was filed as a Claude account, so everything keyed on that account —
+    /// which adapter reads its transcripts, which watcher is pointed at its directory — was wrong.
+    @Test("a launch frame's own agent decides the account it teaches, not a hardcoded Claude")
+    func aLaunchFrameRegistersAnAccountOfItsOwnAgent() {
+        let h = Self.makeHarness()
+        h.integration.handle(Self.launch(
+            h.session, pid: 4242, agent: .codex, configDir: "/tmp/nowhere/.codex-work"))
+        let account = h.store.state.accounts["codex-work"]
+        #expect(account?.agent == .codex)
+        #expect(h.store.state.sessions[h.session]?.accountKey == "codex-work")
+    }
+
     /// mapper happens to be in scope, which would misread a vocabulary it does not speak.
     @Test("a hook payload from an unregistered agent is dropped, not attributed")
     func unmappedAgentIsDropped() {
         let h = Self.makeHarness()
         h.integration.handle(Self.launch(h.session, pid: 4242))
         h.integration.handle(Self.hook(
-            "Stop", agent: AgentKind(rawValue: "gemini"), sessionID: h.session,
-            conversationId: "gemini-sid", lastAssistantMessage: "done", ppid: 4242, fullMessage: "done"))
+            "Stop", agent: AgentKind(rawValue: "aider"), sessionID: h.session,
+            conversationId: "aider-sid", lastAssistantMessage: "done", ppid: 4242, fullMessage: "done"))
         #expect(h.store.state.sessions[h.session]?.live?.lastEvent == nil)
         #expect(h.store.state.sessions[h.session]?.live?.lastStopMessage == nil)
     }

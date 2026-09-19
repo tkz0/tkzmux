@@ -68,7 +68,13 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     /// The Codex hooks consent sheet has been shown once (TKZ-87). Same plumbing as
     /// `statuslineOffered` exactly — absent in a file written before this existed ⇒ `false`, so the
     /// sheet is still offered the first time a Codex account needs it.
-    public var codexHooksOffered: Bool
+    /// Agent raw values the hooks offer has already been made for.
+    ///
+    /// Was `codexHooksOffered: Bool` while one agent needed installed hooks. Widening it needs no
+    /// schema bump — this block is the one whose every field is optional on read with a default
+    /// (see this type's own header) — but it does need the legacy key honoured on the way in, and
+    /// still written on the way out for a release, so downgrading does not re-ask.
+    public var hooksOffered: [String]
     /// The release whose "Update available" card was closed; `nil` = none dismissed.
     public var dismissedUpdateVersion: String?
     /// `Theme.Preset.rawValue`; `nil` = never chosen, so the default preset stands.
@@ -92,7 +98,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     public init(
         autoResumeOnLaunch: Bool = false,
         statuslineOffered: Bool = false,
-        codexHooksOffered: Bool = false,
+        hooksOffered: [String] = [],
         dismissedUpdateVersion: String? = nil,
         themePreset: String? = nil,
         showSessionSpend: Bool = true,
@@ -101,7 +107,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     ) {
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
-        self.codexHooksOffered = codexHooksOffered
+        self.hooksOffered = hooksOffered
         self.dismissedUpdateVersion = dismissedUpdateVersion
         self.themePreset = themePreset
         self.showSessionSpend = showSessionSpend
@@ -110,7 +116,8 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case autoResumeOnLaunch, statuslineOffered, codexHooksOffered, dismissedUpdateVersion, themePreset
+        case autoResumeOnLaunch, statuslineOffered, codexHooksOffered, hooksOffered
+        case dismissedUpdateVersion, themePreset
         case showSessionSpend, checkOriginPeriodically, notifyOnDone
     }
 
@@ -118,12 +125,41 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         autoResumeOnLaunch = try c.decodeIfPresent(Bool.self, forKey: .autoResumeOnLaunch) ?? false
         statuslineOffered = try c.decodeIfPresent(Bool.self, forKey: .statuslineOffered) ?? false
-        codexHooksOffered = try c.decodeIfPresent(Bool.self, forKey: .codexHooksOffered) ?? false
+        // The lift: a file written before this was a set carries the old boolean, and `true`
+        // there meant "the one installable-hooks agent has been asked".
+        if let list = try c.decodeIfPresent([String].self, forKey: .hooksOffered) {
+            hooksOffered = list
+        } else if try c.decodeIfPresent(Bool.self, forKey: .codexHooksOffered) == true {
+            hooksOffered = ["codex"]
+        } else {
+            hooksOffered = []
+        }
         dismissedUpdateVersion = try c.decodeIfPresent(String.self, forKey: .dismissedUpdateVersion)
         themePreset = try c.decodeIfPresent(String.self, forKey: .themePreset)
         showSessionSpend = try c.decodeIfPresent(Bool.self, forKey: .showSessionSpend) ?? true
         checkOriginPeriodically = try c.decodeIfPresent(Bool.self, forKey: .checkOriginPeriodically) ?? false
         notifyOnDone = try c.decodeIfPresent(Bool.self, forKey: .notifyOnDone) ?? true
+    }
+
+    /// Spelled out rather than synthesised, because the file carries one key this type no longer
+    /// has a property for.
+    ///
+    /// `codexHooksOffered` is still **written**, derived from the set, for one release. A build
+    /// that predates `hooksOffered` reads only the boolean, so without this a user who downgrades
+    /// would be asked to install hooks all over again for an agent they had already answered for.
+    /// The reverse direction is handled in `init(from:)`. Drop this — and the key — once no build
+    /// in circulation reads it.
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(autoResumeOnLaunch, forKey: .autoResumeOnLaunch)
+        try c.encode(statuslineOffered, forKey: .statuslineOffered)
+        try c.encode(hooksOffered, forKey: .hooksOffered)
+        try c.encode(hooksOffered.contains("codex"), forKey: .codexHooksOffered)
+        try c.encodeIfPresent(dismissedUpdateVersion, forKey: .dismissedUpdateVersion)
+        try c.encodeIfPresent(themePreset, forKey: .themePreset)
+        try c.encode(showSessionSpend, forKey: .showSessionSpend)
+        try c.encode(checkOriginPeriodically, forKey: .checkOriginPeriodically)
+        try c.encode(notifyOnDone, forKey: .notifyOnDone)
     }
 }
 
@@ -220,7 +256,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
             preferences: PersistedPreferences(
                 autoResumeOnLaunch: state.autoResumeOnLaunch,
                 statuslineOffered: state.statuslineOffered,
-                codexHooksOffered: state.codexHooksOffered,
+                hooksOffered: state.hooksOffered.map(\.rawValue).sorted(),
                 dismissedUpdateVersion: state.dismissedUpdateVersion,
                 themePreset: state.themePreset.rawValue,
                 showSessionSpend: state.showSessionSpend,
@@ -283,7 +319,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
         state.activity = Array(activity.filter { state.sessions[$0.sessionID] != nil }.suffix(AppState.activityCap))
         state.autoResumeOnLaunch = preferences.autoResumeOnLaunch
         state.statuslineOffered = preferences.statuslineOffered
-        state.codexHooksOffered = preferences.codexHooksOffered
+        state.hooksOffered = Set(preferences.hooksOffered.map(AgentKind.init(rawValue:)))
         state.dismissedUpdateVersion = preferences.dismissedUpdateVersion
         state.showSessionSpend = preferences.showSessionSpend
         state.checkOriginPeriodically = preferences.checkOriginPeriodically

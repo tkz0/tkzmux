@@ -186,6 +186,20 @@ import Testing
         #expect(change.structure == false)
     }
 
+    /// Setting the group's agent is a group change like its colour or its default account — the
+    /// row heights and the outline's shape are untouched, so it must not claim `structure` and make
+    /// the sidebar reload.
+    @Test func settingAGroupsAgentIsAGroupChangeOnly() {
+        let probe = Probe()
+        let store = probe.store
+        store.update { $0.setGroupAgent(group0, agent: .codex) }
+        store.flush()
+        let change = probe.last
+        #expect(change.groups == [group0])
+        #expect(change.sessions.isEmpty)
+        #expect(change.structure == false)
+    }
+
     @Test func groupReorderIsStructuralButRenameIsNot() {
         let probe = Probe()
         let store = probe.store

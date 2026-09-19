@@ -30,6 +30,9 @@ private func makeState() -> AppState {
     var beta = state.addGroup(name: "Beta", repoRoot: "/tmp/beta")
     beta.isCollapsed = true
     state.groups[beta.id] = beta
+    // A per-group agent, non-default like every other value here, so a round trip that dropped
+    // `Group.agent` would fail on the `groups ==` assertion rather than pass by coincidence.
+    state.setGroupAgent(beta.id, agent: .codex)
     let one = state.createSession(groupID: alpha.id, cwd: "~/dev/alpha", title: "review")
     let two = state.createSession(
         groupID: beta.id, cwd: "/tmp/beta", repoRoot: "/tmp/beta",
@@ -50,7 +53,7 @@ private func makeState() -> AppState {
     state.setNotifyOnDone(false)
     // Defaults off, like `statuslineOffered` — the non-default value, so a dropped round trip
     // fails loudly (TKZ-87).
-    state.setCodexHooksOffered(true)
+    state.setHooksOffered(.codex)
     // A muted row rides on `Session` itself; the `sessions ==` assertion below covers it.
     state.setNotificationsMuted(two.id, true)
     // A split and a second tab, so every assertion built on this fixture covers the layout too.
@@ -89,6 +92,10 @@ private func makeState() -> AppState {
         // `sessions ==` above already covers these, but the schema v4 fields are new enough
         // (TKZ-79) to earn an assertion of their own rather than ride along silently.
         #expect(restored.sessions.values.allSatisfy { $0.agent == .claude })
+        // `groups ==` above already covers this; spelled out because `Group.agent` is new and,
+        // being optional, would round-trip "successfully" as `nil` on both sides if it were
+        // dropped from the encoder.
+        #expect(restored.groups.values.contains { $0.agent == .codex })
         let resumable = try #require(original.orderedSessions.first { $0.conversationId == "conv-1" })
         #expect(restored.sessions[resumable.id]?.conversationId == "conv-1")
             #expect(restored.selection == original.selection)
@@ -100,7 +107,7 @@ private func makeState() -> AppState {
         #expect(restored.showSessionSpend == original.showSessionSpend)
         #expect(restored.checkOriginPeriodically == original.checkOriginPeriodically)
         #expect(restored.notifyOnDone == original.notifyOnDone)
-        #expect(restored.codexHooksOffered == original.codexHooksOffered)
+        #expect(restored.hooksOffered == original.hooksOffered)
     }
 }
 
@@ -163,16 +170,16 @@ private func makeState() -> AppState {
     #expect(fresh.checkOriginPeriodically == false)
 }
 
-/// `codexHooksOffered` copies `statuslineOffered`'s plumbing exactly (TKZ-87): no schema bump, a
-/// file written before it existed decodes the key as absent, and absent must mean `false` so the
-/// sheet is still offered the first time a Codex account needs it.
-@Test func theCodexHooksOfferedFlagRoundTripsAndDefaultsFalse() throws {
+/// `hooksOffered` copies `statuslineOffered`'s plumbing exactly (TKZ-87): no schema bump, a file
+/// written before it existed decodes the key as absent, and absent must mean "nobody has been
+/// asked" so the sheet is still offered the first time an account needs it.
+@Test func theHooksOfferedSetRoundTripsAndDefaultsEmpty() throws {
     var state = makeState()
-    state.setCodexHooksOffered(true)
+    state.setHooksOffered(.codex)
     let data = try StateFile.encode(StateDocument(state: PersistedState(state)))
     var restored = AppState()
     try StateFile.decode(data).state.apply(to: &restored)
-    #expect(restored.codexHooksOffered == true)
+    #expect(restored.hooksOffered == [.codex])
 
     // A preferences block written before the flag existed has the key missing, not the whole
     // object missing — the same per-field `decodeIfPresent` fallback every other switch in
@@ -180,9 +187,68 @@ private func makeState() -> AppState {
     var object = try JSONDecoder().decode([String: JSONValue].self, from: data)
     object["preferences"] = .object(["autoResumeOnLaunch": .bool(true)])
     var fresh = AppState()
-    fresh.setCodexHooksOffered(true)
+    fresh.setHooksOffered(.codex)
     try StateFile.decode(JSONEncoder().encode(object)).state.apply(to: &fresh)
-    #expect(fresh.codexHooksOffered == false)
+    #expect(fresh.hooksOffered.isEmpty)
+}
+
+/// The lift. A file written while this was a single `codexHooksOffered: Bool` has to keep meaning
+/// what it meant — otherwise upgrading re-asks a question the user already answered.
+@Test func aLegacyCodexHooksOfferedBooleanLiftsIntoTheSet() throws {
+    let data = try StateFile.encode(StateDocument(state: PersistedState(makeState())))
+    var object = try JSONDecoder().decode([String: JSONValue].self, from: data)
+    // Exactly what an older build wrote: the boolean, and no `hooksOffered` key at all.
+    object["preferences"] = .object(["codexHooksOffered": .bool(true)])
+
+    var restored = AppState()
+    try StateFile.decode(JSONEncoder().encode(object)).state.apply(to: &restored)
+    #expect(restored.hooksOffered == [.codex])
+
+    // `false` lifts to empty, not to a set containing something.
+    object["preferences"] = .object(["codexHooksOffered": .bool(false)])
+    var declined = AppState()
+    try StateFile.decode(JSONEncoder().encode(object)).state.apply(to: &declined)
+    #expect(declined.hooksOffered.isEmpty)
+}
+
+/// And the downgrade direction: the legacy key is still written, so a build that predates the set
+/// reads the right answer for the agent it knows about rather than asking again.
+@Test func theLegacyBooleanIsStillWrittenForOneRelease() throws {
+    var state = makeState()
+    state.setHooksOffered(.codex)
+    let data = try StateFile.encode(StateDocument(state: PersistedState(state)))
+    let object = try JSONDecoder().decode([String: JSONValue].self, from: data)
+    guard case .object(let preferences)? = object["preferences"] else {
+        Issue.record("no preferences block")
+        return
+    }
+    #expect(preferences["codexHooksOffered"] == .bool(true))
+    #expect(preferences["hooksOffered"] == .array([.string("codex")]))
+
+    // An agent the old build never heard of must not set the legacy boolean — that would tell it
+    // the user had answered a question about Codex that they never saw. Built from a bare state,
+    // because `makeState()` deliberately answers for Codex.
+    var other = AppState()
+    other.setHooksOffered(.antigravity)
+    let otherData = try StateFile.encode(StateDocument(state: PersistedState(other)))
+    let otherObject = try JSONDecoder().decode([String: JSONValue].self, from: otherData)
+    guard case .object(let otherPreferences)? = otherObject["preferences"] else {
+        Issue.record("no preferences block")
+        return
+    }
+    #expect(otherPreferences["codexHooksOffered"] == .bool(false))
+    #expect(otherPreferences["hooksOffered"] == .array([.string("antigravity")]))
+}
+
+/// The reason the flag became a set: answering for one agent must not answer for another.
+@Test func decliningForOneAgentLeavesAnotherUnasked() throws {
+    var state = makeState()
+    state.setHooksOffered(.codex)
+    var restored = AppState()
+    try StateFile.decode(try StateFile.encode(StateDocument(state: PersistedState(state))))
+        .state.apply(to: &restored)
+    #expect(restored.hooksOffered.contains(.codex))
+    #expect(!restored.hooksOffered.contains(.antigravity), "a second agent is still to be asked")
 }
 
 @Test func aFileWithoutPreferencesLoadsWithTheDefaults() throws {
@@ -204,7 +270,7 @@ private func makeState() -> AppState {
     // every other switch in this block, which defaults off.
     #expect(restored.showSessionSpend == true)
     #expect(restored.notifyOnDone == true)
-    #expect(restored.codexHooksOffered == false)
+    #expect(restored.hooksOffered.isEmpty)
     #expect(restored.sessions.count == state.sessions.count)
 }
 

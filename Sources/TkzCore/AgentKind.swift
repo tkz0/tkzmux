@@ -21,10 +21,12 @@ public struct AgentKind: RawRepresentable, Hashable, Sendable, Codable {
     public static let claude = AgentKind(rawValue: "claude")
     /// OpenAI Codex CLI.
     public static let codex = AgentKind(rawValue: "codex")
+    /// Google Antigravity CLI. The binary is `agy`; this is the kind, not the command.
+    public static let antigravity = AgentKind(rawValue: "antigravity")
 
     /// Every agent tkzmux ships an adapter for. Not every one of these is installed — that is the
     /// adapter registry's question, not this type's.
-    public static let known: [AgentKind] = [.claude, .codex]
+    public static let known: [AgentKind] = [.claude, .codex, .antigravity]
 
     public var isKnown: Bool { Self.known.contains(self) }
 }

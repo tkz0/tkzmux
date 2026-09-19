@@ -3,6 +3,7 @@
 //
 // Same doubles as `MainWindowLaunchTests`: a spy host, a plain focusable view, real directories.
 
+import AgentBridge
 import AppKit
 import Foundation
 import Testing
@@ -159,9 +160,13 @@ struct MainWindowRestoreTests {
         let spendToggle = item(restored, MainWindowController.ContextItemID.toggleSpendTracking)
         #expect(spendToggle?.title == "Hide Spend for This Session")
         #expect(item(restored, MainWindowController.ContextItemID.toggleMute)?.title == "Mute Notifications")
+        #expect(item(restored, MainWindowController.ContextItemID.groupAgent) != nil)
         #expect(
-            restored.items.count == 9,
-            "Resume, Rename, separator, Remove, Hide Spend, Mute, separator, Group color, Default account")
+            restored.items.count == 10,
+            """
+            Resume, Rename, separator, Remove, Hide Spend, Mute, separator, \
+            Group color, Agent, Default account
+            """)
 
         // ids[0]: a live shell, still resumable (no Claude bound).
         let live = try #require(harness.controller.sidebar.contextMenu(forSession: ids[0]))
@@ -437,6 +442,70 @@ struct MainWindowRestoreTests {
         _ = clear.target?.perform(clear.action, with: clear)
         harness.store.flush()
         #expect(harness.store.state.groups[group]?.color == nil)
+    }
+
+    // MARK: Group agent
+
+    /// The submenu that makes the agent a property of the group — twin of the default-account one,
+    /// and driven through the store for the same reason: its whole point is that it persists and
+    /// does not leak into another group.
+    @Test("Agent lists the installed agents, writes the group, and re-scopes the ＋ menu")
+    func groupAgentMenu() throws {
+        let (harness, ids, group) = Self.makeRestoredHarness()
+        defer { harness.tearDown() }
+
+        func submenu(_ menu: NSMenu) throws -> NSMenu {
+            try #require(menu.items.first { $0.identifier == MainWindowController.ContextItemID.groupAgent }?.submenu)
+        }
+
+        // Two installed adapters, so the picker is a real choice.
+        harness.controller.newSessionMenu.adapters = [ClaudeAdapter(), CodexAdapter(supportDirectory: URL(fileURLWithPath: NSTemporaryDirectory()))]
+        harness.controller.newSessionMenu.isAdapterInstalled = { _ in true }
+
+        let opened = try submenu(try #require(harness.controller.sidebar.contextMenu(forGroup: group)))
+        #expect(opened.items.count == 2, "one row per installed agent, and no None row")
+        #expect(opened.items[0].identifier == MainWindowController.ContextItemID.groupAgentRow(.claude))
+        #expect(opened.items[1].identifier == MainWindowController.ContextItemID.groupAgentRow(.codex))
+
+        // Nothing chosen yet: the field is nil, and no row is marked — unlike the account picker,
+        // there is deliberately no "None" row to carry the mark, because a group always resolves to
+        // some agent.
+        #expect(harness.store.state.groups[group]?.agent == nil)
+        #expect(opened.items.allSatisfy { $0.state == .off })
+
+        // Pick one.
+        let pick = try #require(opened.items.first {
+            $0.identifier == MainWindowController.ContextItemID.groupAgentRow(.codex)
+        })
+        _ = pick.target?.perform(pick.action, with: pick)
+        harness.store.flush()
+        #expect(harness.store.state.groups[group]?.agent == .codex)
+        // Re-scoped in the same breath, so the ＋ menu does not keep resolving the old agent — the
+        // menu holds a value copy of the group and a `groups`-only change set does not refresh it.
+        #expect(harness.controller.newSessionMenu.effectiveAgent == .codex)
+
+        // Re-opening marks it, and only it, and names it in the parent row.
+        let reopenedMenu = try #require(harness.controller.sidebar.contextMenu(forGroup: group))
+        #expect(
+            reopenedMenu.items.first { $0.identifier == MainWindowController.ContextItemID.groupAgent }?.title
+                == "Agent: Codex")
+        let marked = try submenu(reopenedMenu).items.filter { $0.state == .on }
+        #expect(marked.count == 1)
+        #expect(marked.first?.identifier == MainWindowController.ContextItemID.groupAgentRow(.codex))
+
+        // New rows in the group run it; rows that were already running are left alone.
+        harness.mutate { _ = $0.createSession(groupID: group, cwd: NSTemporaryDirectory(), agent: .codex) }
+        #expect(harness.store.state.sessions(in: group).last?.agent == .codex)
+        #expect(harness.store.state.sessions[ids[0]]?.agent == .claude)
+
+        // The same submenu hangs off a session row, and acts on that row's group.
+        let fromRow = try submenu(try #require(harness.controller.sidebar.contextMenu(forSession: ids[0])))
+        let back = try #require(fromRow.items.first {
+            $0.identifier == MainWindowController.ContextItemID.groupAgentRow(.claude)
+        })
+        _ = back.target?.perform(back.action, with: back)
+        harness.store.flush()
+        #expect(harness.store.state.groups[group]?.agent == .claude)
     }
 
     // MARK: Group default account

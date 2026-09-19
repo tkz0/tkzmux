@@ -88,7 +88,7 @@ import TkzCore
         launchCodex(f)
 
         #expect(asked == 1)
-        #expect(f.harness.store.state.codexHooksOffered)
+        #expect(f.harness.store.state.hooksOffered.contains(.codex))
         #expect(!FileManager.default.fileExists(atPath: hooksPath))
 
         // Asked once, never again — even for the same account starting a second session.
@@ -104,7 +104,7 @@ import TkzCore
         launchCodex(f)
 
         #expect(f.installer.detect(configDir: f.configDir.path).producer == .tkzmux)
-        #expect(f.harness.store.state.codexHooksOffered)
+        #expect(f.harness.store.state.hooksOffered.contains(.codex))
     }
 
     /// Only `.none` triggers the automatic offer — an account whose hooks are already ours, or
@@ -121,7 +121,7 @@ import TkzCore
         #expect(!asked)
         // Nothing to answer, so the flag is left alone rather than falsely claiming the user was
         // asked — a later `.none` account (a second Codex config dir) must still get its turn.
-        #expect(!f.harness.store.state.codexHooksOffered)
+        #expect(!f.harness.store.state.hooksOffered.contains(.codex))
     }
 
     // MARK: - The copy

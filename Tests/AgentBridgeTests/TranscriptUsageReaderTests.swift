@@ -207,4 +207,49 @@ import TkzCore
         #expect(usage.perModel.first?.costUSD == nil)
         #expect(usage.totalCostUSD == nil)
     }
+
+    // MARK: - An agent nobody has measured
+
+    /// The strategy used to be picked by `agent == .codex ? codex : claude`, so a third agent
+    /// silently inherited Claude's *summing* fold. The two are not interchangeable — Claude reports
+    /// per-message deltas that add up, Codex a running thread total that replaces — so the fallback
+    /// would not have been a mild default, it would have reported a number nobody had checked.
+    @Test("An agent with no measured usage shape yields nil, never Claude's arithmetic")
+    func anUnmeasuredAgentYieldsNoUsage() async throws {
+        let lines = [
+            assistantLine(model: "claude-sonnet-5", input: 10, output: 20, cacheCreate: 5, cacheRead: 100)
+        ]
+        let path = try tempTranscript()
+        try Data((lines.joined(separator: "\n") + "\n").utf8).write(to: path)
+
+        let reader = TranscriptUsageReader(cacheDirectory: try StatuslineTestSupport.tempDirectory("usage-cache").path)
+        let usage = await reader.refresh(
+            sessionId: "s1", transcriptPath: path.path, agent: AgentKind(rawValue: "aider"))
+        #expect(usage == nil)
+    }
+
+    /// And the bytes are left unread rather than skipped: the offset must not advance past a window
+    /// nothing folded, or a later build that *does* know the shape would start after the lines it
+    /// needed. Proven by re-reading the same file under an agent that does have a strategy.
+    @Test("An unmeasured agent does not consume the bytes it could not fold")
+    func anUnmeasuredAgentLeavesTheOffsetAlone() async throws {
+        let lines = [
+            assistantLine(model: "claude-sonnet-5", input: 10, output: 20, cacheCreate: 5, cacheRead: 100)
+        ]
+        let path = try tempTranscript()
+        try Data((lines.joined(separator: "\n") + "\n").utf8).write(to: path)
+
+        let cacheDir = try StatuslineTestSupport.tempDirectory("usage-cache-unmeasured")
+        let reader = TranscriptUsageReader(cacheDirectory: cacheDir.path)
+        let unknown = AgentKind(rawValue: "aider")
+        #expect(await reader.refresh(sessionId: "shared", transcriptPath: path.path, agent: unknown) == nil)
+        // A second pass under the same unknown agent still reads from byte 0 — and a pass under
+        // Claude sees the whole file, which it could not if the first call had eaten it. (The cache
+        // is keyed by agent, so this also relies on that isolation staying true.)
+        #expect(await reader.refresh(sessionId: "shared", transcriptPath: path.path, agent: unknown) == nil)
+        let claude = try #require(
+            await reader.refresh(sessionId: "shared", transcriptPath: path.path, agent: .claude))
+        #expect(claude.perModel.first?.inputTokens == 10)
+        #expect(claude.perModel.first?.outputTokens == 20)
+    }
 }

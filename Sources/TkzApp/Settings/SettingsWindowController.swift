@@ -53,6 +53,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         var hooksInstallRequiredAgents: () -> Set<AgentKind> = { [] }
         var agentDisplayNames: () -> [AgentKind: String] = { [:] }
         var installedShims: () -> [String] = { [] }
+        /// The agents whose binary is on `PATH`, in the ＋ menu's own order. Empty by default, so
+        /// an unwired controller draws no Agents page rather than one listing agents it cannot
+        /// confirm are installed.
+        var installedAgents: () -> [AgentKind] = { [] }
+        /// Writes a group's agent. Wired to `MainWindowController.setGroupAgent`, **not** to
+        /// `store.update` directly: that method also re-scopes the ＋ menu, which holds a value
+        /// copy of the group and would otherwise keep resolving the old agent.
+        var setGroupAgent: (GroupID, AgentKind) -> Void = { _, _ in }
     }
 
     var actions = Actions()
@@ -138,7 +146,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             agentDisplayName: { names[$0] ?? "the agent" },
             capabilities: { capabilities[$0] ?? [] },
             hooksInstallRequired: { hooksRequired.contains($0) },
-            hooksDetection: actions.hooksDetections())
+            hooksDetection: actions.hooksDetections(),
+            installedAgents: actions.installedAgents())
     }
 
     private func toggled(_ id: SettingsRow.ID, _ isOn: Bool) {
@@ -176,10 +185,20 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     private func picked(_ id: SettingsRow.ID, _ index: Int) {
-        guard id == .themePreset else { return }
-        let presets = Theme.Preset.allCases
-        guard presets.indices.contains(index) else { return }
-        store.update { $0.setThemePreset(presets[index]) }
+        switch id {
+        case .themePreset:
+            let presets = Theme.Preset.allCases
+            guard presets.indices.contains(index) else { return }
+            store.update { $0.setThemePreset(presets[index]) }
+        case .groupAgent(let groupID):
+            // Indexes into the same list `SettingsModel.agents` built the popup's titles from, so
+            // the two cannot drift apart.
+            let installed = actions.installedAgents()
+            guard installed.indices.contains(index) else { return }
+            actions.setGroupAgent(groupID, installed[index])
+        default:
+            return
+        }
     }
 
     // MARK: Window

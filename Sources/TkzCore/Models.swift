@@ -121,6 +121,20 @@ public struct Group: Hashable, Sendable, Codable, Identifiable {
     public var order: Int
     /// Which account new sessions in this group default to (`Account.key`).
     public var defaultAccountKey: String?
+    /// Which coding agent new sessions in this group start. Set from the sidebar's "Agent" context
+    /// menu, the ＋ menu's own picker, and Settings → Agents.
+    ///
+    /// `nil` means *never chosen*, not *Claude*: the ＋ menu resolves one (see
+    /// `NewSessionMenu.effectiveAgent`), which is what every group did implicitly before this field
+    /// existed. Keeping it optional is also what lets a group survive uninstalling an agent —
+    /// a non-optional defaulted to `.claude` would need a migration to stamp every existing group,
+    /// and would pin them all to an agent the user may not have.
+    ///
+    /// Optional for the decode story too: an older `state.json` simply has no key here, and the
+    /// synthesised `Codable` reads that as `nil` with no migration and no schema bump. Contrast
+    /// `Session.agent`, whose absence would mislabel every row — which is why *that* one earned the
+    /// v3→v4 lift and this one does not.
+    public var agent: AgentKind?
 
     public init(
         id: GroupID = .generate(),
@@ -129,7 +143,8 @@ public struct Group: Hashable, Sendable, Codable, Identifiable {
         color: RGB? = nil,
         isCollapsed: Bool = false,
         order: Int = 0,
-        defaultAccountKey: String? = nil
+        defaultAccountKey: String? = nil,
+        agent: AgentKind? = nil
     ) {
         self.id = id
         self.name = name
@@ -138,6 +153,7 @@ public struct Group: Hashable, Sendable, Codable, Identifiable {
         self.isCollapsed = isCollapsed
         self.order = order
         self.defaultAccountKey = defaultAccountKey
+        self.agent = agent
     }
 }
 

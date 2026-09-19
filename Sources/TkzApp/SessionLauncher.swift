@@ -59,7 +59,13 @@ public final class SessionLauncher {
     public let home: String
     /// One adapter per agent tkzmux knows about — the same table `AgentIntegration` carries.
     /// Defaults to Claude alone; tests register a stub here to prove the seam is real.
-    public let adapters: [AgentKind: any AgentAdapter]
+    ///
+    /// A `var`, because the real table cannot exist at construction time: it needs the support
+    /// directory, which only `AppDelegate` has, and `AgentIntegration` is built after the window.
+    /// `MainWindowController.agents.didSet` fills it in, beside the New-session menu's own copy.
+    /// Left a `let` it silently stayed Claude-only, and a Codex row got no `CODEX_HOME` and could
+    /// not resume — the one failure this file's header singles out.
+    public var adapters: [AgentKind: any AgentAdapter]
 
     /// The grid a terminal opens at. The window supplies the *pane's* real grid — a split pane
     /// is half the size of the one it came from, and spawning at the whole window's grid would
@@ -123,9 +129,12 @@ public final class SessionLauncher {
         store.update {
             // `cwd` goes in **unexpanded**: the models keep paths as written (`state.json` persists
             // them) and expansion belongs at the `chdir` boundary above.
+            // `spec.agent`, not the default: the row records the agent whose row was actually
+            // clicked. Without it every row is stored as Claude, and resume, transcript reading,
+            // usage accounting and the sidebar glyph all read the wrong agent off it.
             $0.createSession(
                 id: id, groupID: spec.groupID, cwd: spec.cwd,
-                accountKey: spec.accountKey)
+                agent: spec.agent, accountKey: spec.accountKey)
             // `live` is what says the row has a shell; without it the reopen path would fire.
             $0.setLive(
                 LiveSessionState(shellPid: pid, status: .idle, panePids: [terminal: pid]),
@@ -518,9 +527,12 @@ public final class SessionLauncher {
     /// hard-coded to Claude's one variable (TKZ-84).
     public func environment(accountKey: String?, bootCommand: String? = nil) -> [String: String] {
         var env: [String: String] = [:]
-        if let key = accountKey, let dir = configDirectory(forKey: key) {
+        if let key = accountKey {
             let agent = store.state.accounts[key]?.agent ?? .claude
-            if let adapter = adapters[agent] {
+            // Resolved through that agent's own adapter, so an agent whose config dir is not
+            // `~/.<key>` gets the directory it actually uses rather than a derived one that does
+            // not exist.
+            if let dir = configDirectory(forKey: key, agent: agent), let adapter = adapters[agent] {
                 let pairs = adapter.environment(configDir: dir)
                 for (name, value) in pairs {
                     env[name] = value
@@ -539,7 +551,26 @@ public final class SessionLauncher {
     }
 
     /// The store's account when it has one (its `configDir` is authoritative — it may live
-    /// somewhere unusual), else the derived `~/.<key>`.
+    /// somewhere unusual), else **the agent's own** derivation from the key.
+    ///
+    /// The agent matters because the generic `~/.<key>` rule is not universal: Antigravity's config
+    /// dir is `~/.gemini`, named after the CLI it replaced, so its key and its directory share no
+    /// spelling. Asking the adapter is what keeps a restored row — which carries a key and no path,
+    /// because accounts are rediscovered rather than persisted — resuming in the right place.
+    ///
+    /// Falls back to the generic rule when no adapter is registered for that agent: a restored row
+    /// on a machine where that CLI is not installed must still produce the path it was started
+    /// with rather than nothing.
+    public func configDirectory(forKey key: String, agent: AgentKind) -> String? {
+        if let account = store.state.accounts[key] { return account.configDir }
+        if let adapter = adapters[agent] {
+            return adapter.configDirectory(forAccountKey: key, home: home)
+        }
+        return Account.configDirectory(forKey: key, home: home)
+    }
+
+    /// The agent-blind overload, for the callers that genuinely have no row in hand. Prefer
+    /// ``configDirectory(forKey:agent:)`` wherever the agent is known.
     public func configDirectory(forKey key: String) -> String? {
         if let account = store.state.accounts[key] { return account.configDir }
         return Account.configDirectory(forKey: key, home: home)

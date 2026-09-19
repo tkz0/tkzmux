@@ -11,14 +11,22 @@ import AgentBridge
 import TkzCore
 
 /// One page of the nav column.
+/// One page of the nav column.
+///
+/// `allCases` is the **order** the nav column draws in, not its membership: a page with nothing to
+/// say is omitted from `SettingsModel.pages`, and the view iterates the model's pages rather than
+/// this list (see `SettingsView`). `.agents` is the first page to use that — a per-group agent
+/// picker is not a setting on a machine with one agent installed.
 enum SettingsPage: String, CaseIterable, Hashable, Sendable {
     case general
+    case agents
     case shell
     case appearance
 
     var title: String {
         switch self {
         case .general: "General"
+        case .agents: "Agents"
         case .shell: "Shell"
         case .appearance: "Appearance"
         }
@@ -28,6 +36,7 @@ enum SettingsPage: String, CaseIterable, Hashable, Sendable {
     var glyph: String {
         switch self {
         case .general: "\u{2699}"      // ⚙
+        case .agents: "\u{25C8}"       // ◈
         case .shell: "\u{2328}"        // ⌨
         case .appearance: "\u{25D0}"   // ◐
         }
@@ -48,6 +57,9 @@ struct SettingsRow: Hashable, Sendable {
         case shellStatus
         case removeShell
         case themePreset
+        /// One group's agent. `GroupID` is `Hashable` and `Sendable`, so the enum's own
+        /// conformances still synthesise.
+        case groupAgent(groupID: GroupID)
     }
 
     enum Control: Hashable, Sendable {
@@ -113,6 +125,10 @@ struct SettingsModel: Hashable, Sendable {
         /// An account absent here reads as `CodexHooksDetection(producer: .none,
         /// configTomlHasHooks: false, trust: .unknown)` — one nobody has looked at yet.
         var hooksDetection: [String: CodexHooksDetection] = [:]
+    /// The agents whose binary is actually on `PATH`, in the order the ＋ menu draws them, so the
+    /// two pickers never disagree. Empty means nothing has been wired (tests, the dev window), and
+    /// the Agents page is omitted rather than drawn empty.
+    var installedAgents: [AgentKind] = []
 
         init(
             statusline: [String: StatuslineProducer] = [:],
@@ -126,7 +142,8 @@ struct SettingsModel: Hashable, Sendable {
                     : []
             },
             hooksInstallRequired: @escaping @Sendable (AgentKind) -> Bool = { _ in false },
-            hooksDetection: [String: CodexHooksDetection] = [:]
+            hooksDetection: [String: CodexHooksDetection] = [:],
+            installedAgents: [AgentKind] = []
         ) {
             self.statusline = statusline
             self.shellInstalled = shellInstalled
@@ -136,6 +153,7 @@ struct SettingsModel: Hashable, Sendable {
             self.capabilities = capabilities
             self.hooksInstallRequired = hooksInstallRequired
             self.hooksDetection = hooksDetection
+            self.installedAgents = installedAgents
         }
     }
 
@@ -144,11 +162,56 @@ struct SettingsModel: Hashable, Sendable {
     func sections(for page: SettingsPage) -> [SettingsSection] { pages[page] ?? [] }
 
     static func make(state: AppState, environment: Environment = Environment()) -> SettingsModel {
-        SettingsModel(pages: [
+        var pages: [SettingsPage: [SettingsSection]] = [
             .general: general(state: state, environment: environment),
             .shell: shell(environment: environment),
             .appearance: appearance(state: state),
-        ])
+        ]
+        let agents = agents(state: state, environment: environment)
+        if !agents.isEmpty { pages[.agents] = agents }
+        return SettingsModel(pages: pages)
+    }
+
+    // MARK: Agents
+
+    /// One row per group: which agent its new sessions start.
+    ///
+    /// **Omitted entirely** with fewer than two installed agents, or with no groups — a popup with
+    /// one choice is not a setting, and this page's whole content is popups. That is the same rule
+    /// the Hooks section follows, and it is why the nav column is driven by the model's pages
+    /// rather than by `SettingsPage.allCases`.
+    ///
+    /// Row-per-group rather than a group *selector*: a selector would change what the page shows
+    /// rather than change a setting, which is a control semantics `SettingsView` does not have —
+    /// every row here is a title, one sentence and one control. The known limit is that this scales
+    /// badly past a few dozen groups; the context menus are the fast path either way.
+    static func agents(state: AppState, environment: Environment) -> [SettingsSection] {
+        let installed = environment.installedAgents
+        guard installed.count > 1 else { return [] }
+        let groups = state.orderedGroups
+        guard !groups.isEmpty else { return [] }
+
+        let titles = installed.map { environment.agentDisplayName($0) }
+        let rows = groups.map { group -> SettingsRow in
+            // A group that has chosen nothing, or has chosen an agent nobody has installed, shows
+            // the one that will actually run — the same resolution `NewSessionMenu.effectiveAgent`
+            // does, and for the same reason: the UI must name what a launch would really start.
+            let resolved = group.agent.flatMap { installed.contains($0) ? $0 : nil }
+                ?? (installed.contains(.claude) ? .claude : installed[0])
+            let name = environment.agentDisplayName(resolved)
+            var detail = "New sessions here start \(name)."
+            if let chosen = group.agent, chosen != resolved {
+                detail += " \(environment.agentDisplayName(chosen)) is not installed."
+            }
+            detail += " " + (group.repoRoot ?? "No repo \u{2014} only shells.")
+            return SettingsRow(
+                id: .groupAgent(groupID: group.id),
+                title: group.name,
+                detail: detail,
+                control: .popup(
+                    titles: titles, selected: installed.firstIndex(of: resolved) ?? 0))
+        }
+        return [SettingsSection(caption: "Default agent per group", rows: rows)]
     }
 
     // MARK: General

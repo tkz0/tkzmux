@@ -133,6 +133,9 @@ public protocol AgentAdapter: Sendable {
     func discoverAccounts(home: String, fileManager: FileManager) -> [Account]
     /// Human-readable labels for account keys, where the agent offers them.
     func accountLabels(home: String, fileManager: FileManager) -> [String: String]
+    /// The config directory an account key stands for, or `nil` when this agent does not own that
+    /// key. See the default implementation for the rule this exists to let an agent break.
+    func configDirectory(forAccountKey key: String, home: String) -> String?
 
     /// Translate one hook frame into the store's vocabulary. `nil` drops the frame.
     func mapHook(_ payload: HookPayload) -> AgentEvent?
@@ -151,6 +154,21 @@ public protocol AgentAdapter: Sendable {
 }
 
 extension AgentAdapter {
+    /// `~/.<key>` — the rule every agent followed until one did not.
+    ///
+    /// A restored row carries an account *key*, never a path: accounts are rediscovered on launch
+    /// rather than persisted, so between launch and discovery the key is all a resume has to go on.
+    /// For Claude and Codex the key is the config dir's basename minus its dot, so the mapping
+    /// inverts arithmetically and this default is exactly right.
+    ///
+    /// It is a protocol requirement with a default rather than a free function because it is not
+    /// universal: Antigravity's config dir is `~/.gemini`, named after the CLI it replaced, so its
+    /// key and its directory share no spelling at all. An agent in that position overrides this;
+    /// everyone else inherits today's behaviour unchanged.
+    public func configDirectory(forAccountKey key: String, home: String) -> String? {
+        Account.configDirectory(forKey: key, home: home)
+    }
+
     /// Whether this agent's binary is on `PATH`. The menu and account discovery both gate on it, so
     /// an agent nobody has installed contributes nothing to the UI.
     public func isInstalled(path: String? = ProcessInfo.processInfo.environment["PATH"]) -> Bool {

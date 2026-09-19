@@ -57,11 +57,84 @@ struct SettingsWindowTests {
 
     @Test("Only pages with a setting behind them exist, in the artboard's order")
     func pages() {
-        #expect(SettingsPage.allCases.map(\.title) == ["General", "Shell", "Appearance"])
+        // `allCases` is the draw order; membership is the model's, which is why the nav column
+        // iterates `model.pages` rather than this list.
+        #expect(SettingsPage.allCases.map(\.title) == ["General", "Agents", "Shell", "Appearance"])
         let model = SettingsModel.make(state: .fixture)
         #expect(model.sections(for: .general).map(\.caption) == ["On launch", "Git", "Notifications", "Status bar"])
         #expect(model.sections(for: .shell).map(\.caption) == ["Shell integration"])
         #expect(model.sections(for: .appearance).map(\.caption) == ["Theme"])
+        // Nothing wired an installed-agent list, so there is no Agents page at all — a popup with
+        // one choice is not a setting.
+        #expect(model.pages[.agents] == nil)
+    }
+
+    // MARK: - Agents page
+
+    @Test("The Agents page lists one row per group, naming the agent its sessions will start")
+    func agentsPageListsOneRowPerGroup() throws {
+        var state = AppState.fixture
+        let groups = state.orderedGroups
+        state.setGroupAgent(groups[0].id, agent: .codex)
+
+        let model = SettingsModel.make(
+            state: state,
+            environment: .init(
+                agentDisplayName: { $0 == .codex ? "Codex" : "Claude" },
+                installedAgents: [.claude, .codex]))
+
+        let sections = model.sections(for: .agents)
+        #expect(sections.map(\.caption) == ["Default agent per group"])
+        let rows = try #require(sections.first?.rows)
+        #expect(rows.count == groups.count, "one row per group, in sidebar order")
+        #expect(rows.map(\.title) == groups.map(\.name))
+
+        // The group that chose Codex shows Codex selected; the rest resolve to Claude.
+        #expect(rows[0].control == .popup(titles: ["Claude", "Codex"], selected: 1))
+        #expect(rows[0].detail.contains("start Codex"))
+        #expect(rows[1].control == .popup(titles: ["Claude", "Codex"], selected: 0))
+        #expect(rows[1].detail.contains("start Claude"))
+        // Every row names its target the way every other Settings row does.
+        #expect(rows.allSatisfy { !$0.detail.isEmpty })
+    }
+
+    /// A picker with one choice is not a setting, so the page is omitted rather than drawn with a
+    /// popup nobody can move. Same rule the Hooks section follows.
+    @Test("The Agents page is omitted with fewer than two installed agents, or with no groups")
+    func agentsPageIsOmittedWhenItWouldBeAChoiceOfOne() {
+        let oneAgent = SettingsModel.make(
+            state: .fixture, environment: .init(installedAgents: [.claude]))
+        #expect(oneAgent.pages[.agents] == nil)
+
+        let noGroups = SettingsModel.make(
+            state: AppState(), environment: .init(installedAgents: [.claude, .codex]))
+        #expect(noGroups.pages[.agents] == nil)
+    }
+
+    /// A group pinned to an agent this machine does not have shows what will *really* run, and says
+    /// why — the same honesty rule the ＋ menu's `agentMissing` row follows.
+    @Test("A group naming an uninstalled agent shows the fallback and says so")
+    func agentsPageNamesAnUninstalledChoice() throws {
+        var state = AppState.fixture
+        let group = state.orderedGroups[0]
+        state.setGroupAgent(group.id, agent: AgentKind(rawValue: "aider"))
+
+        let model = SettingsModel.make(
+            state: state,
+            environment: .init(
+                agentDisplayName: { kind in
+                    switch kind {
+                    case .codex: "Codex"
+                    case .claude: "Claude"
+                    default: "Aider"
+                    }
+                },
+                installedAgents: [.claude, .codex]))
+
+        let row = try #require(model.sections(for: .agents).first?.rows.first)
+        #expect(row.control == .popup(titles: ["Claude", "Codex"], selected: 0))
+        #expect(row.detail.contains("start Claude"))
+        #expect(row.detail.contains("Aider is not installed"))
     }
 
     @Test("Every switch reads the store, and every row has a sentence")
@@ -313,7 +386,11 @@ struct SettingsWindowTests {
         #expect(recorder.orderedFront.count == 2)
 
         let view = try #require(controller.viewForTesting)
-        #expect(view.navRowsForTesting.count == 3)
+        // Every page has a nav row built once; the ones the model has nothing for are hidden
+        // rather than rebuilt, so the column never reflows when a page appears or goes away.
+        #expect(view.navRowsForTesting.count == 4)
+        #expect(view.navRowsForTesting[.agents]?.isHidden == true, "no Agents page without agents")
+        #expect(view.navRowsForTesting[.general]?.isHidden == false)
         #expect(view.navRowsForTesting[.general]?.isSelected == true)
         #expect(view.captionsForTesting == ["On launch", "Git", "Notifications", "Status bar"])
     }

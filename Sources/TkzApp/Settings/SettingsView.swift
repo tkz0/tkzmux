@@ -67,7 +67,13 @@ final class SettingsView: NSView {
     func render(_ model: SettingsModel, page: SettingsPage) {
         self.model = model
         self.page = page
-        for (navPage, row) in navRows { row.isSelected = navPage == page }
+        // A page the model does not carry is hidden rather than shown empty — `SettingsPage`
+        // `allCases` is the draw *order*, the model decides membership (see its own doc comment).
+        // The rows are built once and hidden, not rebuilt, so the nav column never reflows.
+        for (navPage, row) in navRows {
+            row.isHidden = model.pages[navPage] == nil
+            row.isSelected = navPage == page
+        }
         let sections = model.sections(for: page)
         let ids = sections.flatMap { $0.rows.map(\.id) }
         if renderedPage != page || ids != renderedIDs {
