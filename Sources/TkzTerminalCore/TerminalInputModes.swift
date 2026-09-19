@@ -1,0 +1,65 @@
+// TerminalInputModes.swift — the three modes that say a full-screen program owns the keyboard.
+//
+// A pty carries no "a TUI is running" flag, and the foreground process group does not answer the
+// question either: `claude -w` is the foreground job from its first instruction, long before it
+// has drawn anything. What does answer it is the input protocols a TUI turns on for itself before
+// it can read a key. Measured on 2026-09-19 through `tkzmux-vtdump record`, at each program's
+// first prompt:
+//
+// | mode                   | interactive zsh | Claude Code | Codex CLI |
+// | ---------------------- | --------------- | ----------- | --------- |
+// | kitty keyboard flags   | 0               | 5           | 5         |
+// | focus events (1004)    | reset           | set         | set       |
+// | alternate screen(1049) | reset           | reset       | reset     |
+// | bracketed paste (2004) | **set**         | set         | set       |
+//
+// Bracketed paste is therefore useless here — every line editor sets it, including the shell the
+// boot command was typed into. The other three are not set by a shell at a prompt, and any one of
+// them alone is enough: a TUI that takes the alternate screen without the kitty protocol (`vim`,
+// `less`) still owns the keyboard, and so does one that does the reverse.
+//
+// Neither agent took the alternate screen at startup, which is why it cannot be the only test —
+// the reading that motivated this type in the first place.
+import Foundation
+
+/// The input protocols a terminal currently has switched on, as far as they distinguish a
+/// full-screen program from a shell sitting at its prompt.
+public struct TerminalInputModes: Hashable, Sendable {
+    /// DEC private mode 1049 — the alternate screen.
+    public var alternateScreen: Bool
+    /// DEC private mode 1004 — focus in/out reporting.
+    public var focusReporting: Bool
+    /// The kitty keyboard protocol flags, non-zero once a program has pushed a set of its own.
+    public var kittyKeyboardFlags: UInt8
+
+    public init(alternateScreen: Bool, focusReporting: Bool, kittyKeyboardFlags: UInt8) {
+        self.alternateScreen = alternateScreen
+        self.focusReporting = focusReporting
+        self.kittyKeyboardFlags = kittyKeyboardFlags
+    }
+
+    /// Nothing switched on: what a freshly spawned terminal reads as, before its shell has even
+    /// printed a prompt.
+    ///
+    /// Named `nothingSet` rather than `none` on purpose. `none` on a type that is routinely passed
+    /// as an `Optional` resolves to `Optional.none` at a call site that means this value, silently
+    /// turning an assertion about a quiet terminal into an assertion about no terminal at all.
+    public static let nothingSet = TerminalInputModes(
+        alternateScreen: false, focusReporting: false, kittyKeyboardFlags: 0)
+
+    /// Whether a full-screen program has taken over the keyboard. See this file's header for the
+    /// measurements behind the three terms, and for why bracketed paste is not one of them.
+    public var hasFullScreenProgram: Bool {
+        alternateScreen || focusReporting || kittyKeyboardFlags != 0
+    }
+}
+
+extension TerminalSession {
+    /// The terminal's current input modes. Three reads of live VT state, cheap enough to poll.
+    public var inputModes: TerminalInputModes {
+        TerminalInputModes(
+            alternateScreen: mode(1049),
+            focusReporting: mode(1004),
+            kittyKeyboardFlags: kittyKeyboardFlags)
+    }
+}

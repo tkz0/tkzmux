@@ -1,6 +1,6 @@
 // GhosttyVt+Swift.swift — RAII wrappers over the libghostty-vt C API (vendor/ghostty-vt; pinned commit in COMMIT).
-// Raw C calls are confined to this file plus KeyEncoder / MouseEncoder / SelectionController / ScrollMetrics / FrameBuilder
-// (docs/design.md → Spike checklist). Handles are deliberately *not* Sendable: TerminalSession (M1.3)
+// Raw C calls are confined to this file plus KeyEncoder / MouseEncoder / SelectionController / ScrollMetrics / FrameBuilder.
+// Handles are deliberately *not* Sendable: TerminalSession (M1.3)
 // serialises every access with a lock, and the C objects are not thread-safe.
 import GhosttyVt
 

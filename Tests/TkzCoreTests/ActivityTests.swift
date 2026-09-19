@@ -22,7 +22,7 @@ import Testing
 
     @Test func aStopAppendsAnUnreadEntryNamingTheRowAndItsGroup() throws {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "Done.\n\nTests are green."), to: id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "Done.\n\nTests are green."), to: id, now: now)
         let entry = try #require(state.activity.last)
         #expect(state.activity.count == 1)
         #expect(entry.sessionID == id)
@@ -37,21 +37,21 @@ import Testing
     @Test func aStopMessageIsCappedForStorage() throws {
         var (state, id) = makeState()
         let long = String(repeating: "x", count: ActivityEvent.messageCap + 50)
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: long), to: id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: long), to: id, now: now)
         #expect(state.activity.last?.kind.message?.count == ActivityEvent.messageCap)
     }
 
     @Test func aPermissionPromptAppendsNeedsYouBeforeAnyStop() throws {
         var (state, id) = makeState()
-        state.applyHook(
-            .init(kind: .notification, notificationType: .permissionPrompt, message: "Claude needs your permission to use Bash"),
+        state.applyEvent(
+            .init(kind: .attention(.permission), message: "Claude needs your permission to use Bash"),
             to: id, now: now)
         let entry = try #require(state.activity.last)
         #expect(entry.kind == .needsYou(reason: .permission, message: "Claude needs your permission to use Bash"))
         #expect(entry.unread)
         // The turn then finishes: the Stop lands after it, newest last.
-        state.applyHook(.init(kind: .userPromptSubmit), to: id, now: now.addingTimeInterval(5))
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "ok"), to: id, now: now.addingTimeInterval(9))
+        state.applyEvent(.init(kind: .promptSubmitted), to: id, now: now.addingTimeInterval(5))
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "ok"), to: id, now: now.addingTimeInterval(9))
         #expect(state.activity.map(\.kind) == [
             .needsYou(reason: .permission, message: "Claude needs your permission to use Bash"),
             .stop(message: "ok"),
@@ -65,10 +65,10 @@ import Testing
         #expect(WaitReason.doneUnattended.feedLabel == "unattended")
     }
 
-    @Test func aDescriptorOnlyWaitingAppendsNeedsYouWithoutAnyHook() {
+    @Test func anObservationOnlyWaitingAppendsNeedsYouWithoutAnyEvent() {
         var (state, id) = makeState()
-        let descriptor = ClaudeSessionInfo(configDir: "~/.claude", pid: 7, sessionId: "s", status: .waiting)
-        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
+        let observation = AgentObservation(pid: 7, conversationId: "s", configDir: "~/.claude", activity: .waiting)
+        state.applyObservation(observation, alive: true, to: id, now: now)
         #expect(state.activity.map(\.kind) == [.needsYou(reason: .permission, message: nil)])
         // The tick sees the same state again: nothing new.
         state.rederiveStatuses(now: now.addingTimeInterval(5))
@@ -78,7 +78,7 @@ import Testing
 
     @Test func anUnattendedStopAgesIntoASecondEntryExactlyOnce() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "Finished the refactor."), to: id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "Finished the refactor."), to: id, now: now)
         #expect(state.activity.count == 1)
         for seconds in stride(from: 5.0, through: 120, by: 5) {
             state.rederiveStatuses(now: now.addingTimeInterval(seconds))
@@ -92,7 +92,7 @@ import Testing
 
     @Test func reselectingARowWithAPendingPromptAppendsNothing() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .notification, notificationType: .permissionPrompt), to: id, now: now)
+        state.applyEvent(.init(kind: .attention(.permission)), to: id, now: now)
         #expect(state.activity.count == 1)
         state.select(id, now: now.addingTimeInterval(1))
         state.select(id, now: now.addingTimeInterval(2))
@@ -104,10 +104,10 @@ import Testing
 
     @Test func theReasonChangingWhileAttentionIsUpAppendsAgain() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "done"), to: id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "done"), to: id, now: now)
         state.rederiveStatuses(now: now.addingTimeInterval(61))
         #expect(state.sessions[id]?.status == .waiting(.doneUnattended))
-        state.applyHook(.init(kind: .notification, notificationType: .permissionPrompt), to: id, now: now.addingTimeInterval(70))
+        state.applyEvent(.init(kind: .attention(.permission)), to: id, now: now.addingTimeInterval(70))
         #expect(state.activity.map(\.kind).last == .needsYou(reason: .permission, message: nil))
         #expect(state.activity.count == 3)
     }
@@ -115,11 +115,13 @@ import Testing
     @Test func sessionEndAppendsOnceAndOnlyForARealExit() {
         var (state, id) = makeState()
         for reason in ["clear", "resume"] {
-            state.applyHook(.init(kind: .sessionEnd, reason: reason), to: id, now: now)
+            state.applyEvent(.init(kind: .sessionEnd(exited: false), reason: reason), to: id, now: now)
         }
         #expect(state.activity.isEmpty)
-        state.applyHook(.init(kind: .sessionEnd, reason: "prompt_input_exit"), to: id, now: now)
-        state.applyHook(.init(kind: .sessionEnd, reason: "prompt_input_exit"), to: id, now: now.addingTimeInterval(1))
+        state.applyEvent(.init(kind: .sessionEnd(exited: true), reason: "prompt_input_exit"), to: id, now: now)
+        state.applyEvent(
+            .init(kind: .sessionEnd(exited: true), reason: "prompt_input_exit"), to: id,
+            now: now.addingTimeInterval(1))
         #expect(state.activity.map(\.kind) == [.sessionEnded(reason: "prompt_input_exit")])
         // Context, not a call: born read.
         #expect(state.activity.last?.unread == false)
@@ -129,7 +131,7 @@ import Testing
     @Test func theLogIsCappedOldestFirst() {
         var (state, id) = makeState()
         for n in 0..<(AppState.activityCap + 25) {
-            state.applyHook(.init(kind: .stop, lastAssistantMessage: "turn \(n)"), to: id, now: now.addingTimeInterval(Double(n)))
+            state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "turn \(n)"), to: id, now: now.addingTimeInterval(Double(n)))
         }
         #expect(state.activity.count == AppState.activityCap)
         #expect(state.activity.first?.kind == .stop(message: "turn 25"))
@@ -140,8 +142,8 @@ import Testing
         var (state, id) = makeState()
         let other = state.createSession(groupID: state.orderedGroups[0].id, cwd: "/tmp/other")
         state.setLive(LiveSessionState(status: .idle), for: other.id)
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "a"), to: id, now: now)
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "b"), to: other.id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "a"), to: id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "b"), to: other.id, now: now)
         state.removeSession(id)
         #expect(state.activity.map(\.sessionID) == [other.id])
     }
@@ -160,24 +162,24 @@ import Testing
         var (state, id) = makeState()
         let other = state.createSession(groupID: state.orderedGroups[0].id, cwd: "/tmp/other")
         state.setLive(LiveSessionState(status: .idle), for: other.id)
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "a"), to: id, now: now)
-        state.applyHook(.init(kind: .notification, notificationType: .permissionPrompt), to: other.id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "a"), to: id, now: now)
+        state.applyEvent(.init(kind: .attention(.permission)), to: other.id, now: now)
         state.select(id, now: now.addingTimeInterval(1))
         #expect(state.activity.map(\.unread) == [false, true])
     }
 
     @Test func typingAPromptReadsTheThread() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "a"), to: id, now: now)
-        state.applyHook(.init(kind: .userPromptSubmit), to: id, now: now.addingTimeInterval(1))
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "a"), to: id, now: now)
+        state.applyEvent(.init(kind: .promptSubmitted), to: id, now: now.addingTimeInterval(1))
         #expect(state.activity.map(\.unread) == [false])
     }
 
     @Test func markUnreadRaisesTheWholeThreadButNeverAnExit() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "a"), to: id, now: now)
-        state.applyHook(.init(kind: .notification, notificationType: .permissionPrompt), to: id, now: now.addingTimeInterval(1))
-        state.applyHook(.init(kind: .sessionEnd, reason: "exit"), to: id, now: now.addingTimeInterval(2))
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "a"), to: id, now: now)
+        state.applyEvent(.init(kind: .attention(.permission)), to: id, now: now.addingTimeInterval(1))
+        state.applyEvent(.init(kind: .sessionEnd(exited: true), reason: "exit"), to: id, now: now.addingTimeInterval(2))
         state.select(id, now: now.addingTimeInterval(3))
         #expect(state.activity.map(\.unread) == [false, false, false])
         state.markActivityUnread(id)
@@ -191,7 +193,7 @@ import Testing
 
     @Test func activityDiffsIntoItsOwnBucket() {
         var (old, id) = makeState()
-        old.applyHook(.init(kind: .stop, lastAssistantMessage: "a"), to: id, now: now)
+        old.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "a"), to: id, now: now)
         var new = old
         new.markActivityUnread(id)  // already unread: nothing
         #expect(ChangeSet.diff(from: old, to: new).isEmpty)

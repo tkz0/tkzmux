@@ -1,6 +1,6 @@
 // ThemeAppKit.swift — the AppKit side of the design tokens.
 //
-// `TkzCore` is deliberately AppKit-free (design.md → Theme): `RGB` is a plain sRGB value type and
+// `TkzCore` is deliberately AppKit-free: `RGB` is a plain sRGB value type and
 // conversion belongs to the consumer. This file is that consumer, shared by every view in `TkzApp`
 // so nobody hand-rolls a second conversion with a different colour space.
 //

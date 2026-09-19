@@ -1,6 +1,6 @@
 // CommandPaletteController.swift — ⌘P “Search sessions…” and ⇧⌘P “Command palette” (M2.4).
 //
-// design.md → App architecture → Palette: "⇧⌘P; `NSPanel` + `NSVisualEffectView`: fuzzy over
+// "⇧⌘P; `NSPanel` + `NSVisualEffectView`: fuzzy over
 // sessions (title, branch, cwd, group), groups, commands".
 //
 // Structure: a `.nonactivatingPanel` holding an `NSVisualEffectView`, an `NSSearchField` and a

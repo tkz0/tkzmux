@@ -15,7 +15,7 @@ let package = Package(
         .library(name: "TkzTerminalRender", targets: ["TkzTerminalRender"]),
         .library(name: "TkzTerminalView", targets: ["TkzTerminalView"]),
         .library(name: "TkzCore", targets: ["TkzCore"]),
-        .library(name: "ClaudeBridge", targets: ["ClaudeBridge"]),
+        .library(name: "AgentBridge", targets: ["AgentBridge"]),
         .library(name: "GitStatus", targets: ["GitStatus"]),
         .library(name: "Persistence", targets: ["Persistence"]),
         .library(name: "TkzApp", targets: ["TkzApp"]),
@@ -74,9 +74,9 @@ let package = Package(
             path: "Sources/TkzCore"
         ),
         .target(
-            name: "ClaudeBridge",
+            name: "AgentBridge",
             dependencies: ["TkzCore"],
-            path: "Sources/ClaudeBridge",
+            path: "Sources/AgentBridge",
             resources: [
                 .copy("Resources/shim"), .copy("Resources/zsh"), .copy("Resources/bash"),
                 .copy("Resources/fish"),
@@ -94,7 +94,7 @@ let package = Package(
         ),
         .target(
             name: "TkzApp",
-            dependencies: ["TkzCore", "TkzTerminalCore", "TkzTerminalView", "ClaudeBridge", "GitStatus", "Persistence"],
+            dependencies: ["TkzCore", "TkzTerminalCore", "TkzTerminalView", "AgentBridge", "GitStatus", "Persistence"],
             path: "Sources/TkzApp"
         ),
 
@@ -122,7 +122,7 @@ let package = Package(
         .testTarget(name: "TkzCoreTests", dependencies: ["TkzCore"], path: "Tests/TkzCoreTests"),
         // TkzTerminalCore + GhosttyVt for the shell-integration harness, which spawns each login
         // shell on a real `Pty`, like PersistenceTests does for snapshots.
-        .testTarget(name: "ClaudeBridgeTests", dependencies: ["ClaudeBridge", "TkzTerminalCore", "GhosttyVt"], path: "Tests/ClaudeBridgeTests", resources: [.copy("Fixtures")]),
+        .testTarget(name: "AgentBridgeTests", dependencies: ["AgentBridge", "TkzTerminalCore", "GhosttyVt"], path: "Tests/AgentBridgeTests", resources: [.copy("Fixtures")]),
         .testTarget(name: "GitStatusTests", dependencies: ["GitStatus"], path: "Tests/GitStatusTests"),
         .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzTerminalCore", "GhosttyVt"], path: "Tests/PersistenceTests"),
         .testTarget(name: "TkzAppTests", dependencies: ["TkzApp"], path: "Tests/TkzAppTests"),

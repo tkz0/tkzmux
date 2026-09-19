@@ -4,7 +4,7 @@
 //
 //   * its `groups`/`sessions` are dictionaries keyed by `GroupID`/`SessionID`, and a `Codable`
 //     dictionary with a struct key encodes as a flat `[k, v, k, v]` array — unreadable by hand and
-//     nothing like design.md's `groups[]` / `sessions[]`;
+//     nothing like `groups[]` / `sessions[]`;
 //   * `CGRect` encodes as `[[x, y], [w, h]]`, where the ticket asks for explicit keys;
 //   * `accounts`, `usage` and `update` are not durable at all. Accounts come from config, usage
 //     from `UsageReader` and `update` from the release check; persisting any of them
@@ -12,8 +12,8 @@
 //     version is kept, in `preferences`.
 //
 // `Session.live` needs no handling here: `Session.CodingKeys` already omits it, so a decoded row has
-// `live == nil` and therefore `status == .exited` *by construction* (design.md → *Session flows &
-// persistence*). A restored row is a resumable row, and there is no code path that can make it
+// `live == nil` and therefore `status == .exited` *by construction*. A restored row is a resumable
+// row, and there is no code path that can make it
 // anything else.
 
 import CoreGraphics
@@ -65,6 +65,10 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     public var autoResumeOnLaunch: Bool
     /// The statusline consent sheet has been shown once.
     public var statuslineOffered: Bool
+    /// The Codex hooks consent sheet has been shown once (TKZ-87). Same plumbing as
+    /// `statuslineOffered` exactly — absent in a file written before this existed ⇒ `false`, so the
+    /// sheet is still offered the first time a Codex account needs it.
+    public var codexHooksOffered: Bool
     /// The release whose "Update available" card was closed; `nil` = none dismissed.
     public var dismissedUpdateVersion: String?
     /// `Theme.Preset.rawValue`; `nil` = never chosen, so the default preset stands.
@@ -88,6 +92,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     public init(
         autoResumeOnLaunch: Bool = false,
         statuslineOffered: Bool = false,
+        codexHooksOffered: Bool = false,
         dismissedUpdateVersion: String? = nil,
         themePreset: String? = nil,
         showSessionSpend: Bool = true,
@@ -96,6 +101,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     ) {
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
+        self.codexHooksOffered = codexHooksOffered
         self.dismissedUpdateVersion = dismissedUpdateVersion
         self.themePreset = themePreset
         self.showSessionSpend = showSessionSpend
@@ -104,7 +110,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case autoResumeOnLaunch, statuslineOffered, dismissedUpdateVersion, themePreset
+        case autoResumeOnLaunch, statuslineOffered, codexHooksOffered, dismissedUpdateVersion, themePreset
         case showSessionSpend, checkOriginPeriodically, notifyOnDone
     }
 
@@ -112,6 +118,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         autoResumeOnLaunch = try c.decodeIfPresent(Bool.self, forKey: .autoResumeOnLaunch) ?? false
         statuslineOffered = try c.decodeIfPresent(Bool.self, forKey: .statuslineOffered) ?? false
+        codexHooksOffered = try c.decodeIfPresent(Bool.self, forKey: .codexHooksOffered) ?? false
         dismissedUpdateVersion = try c.decodeIfPresent(String.self, forKey: .dismissedUpdateVersion)
         themePreset = try c.decodeIfPresent(String.self, forKey: .themePreset)
         showSessionSpend = try c.decodeIfPresent(Bool.self, forKey: .showSessionSpend) ?? true
@@ -123,7 +130,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
 /// `state.json`, at `currentSchemaVersion`.
 public struct PersistedState: Hashable, Sendable, Codable {
     /// The version this build writes. Bumping it needs a `Migrations` case.
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public var schemaVersion: Int
     /// Display order, so the file reads top to bottom like the sidebar does.
@@ -213,6 +220,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
             preferences: PersistedPreferences(
                 autoResumeOnLaunch: state.autoResumeOnLaunch,
                 statuslineOffered: state.statuslineOffered,
+                codexHooksOffered: state.codexHooksOffered,
                 dismissedUpdateVersion: state.dismissedUpdateVersion,
                 themePreset: state.themePreset.rawValue,
                 showSessionSpend: state.showSessionSpend,
@@ -275,6 +283,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
         state.activity = Array(activity.filter { state.sessions[$0.sessionID] != nil }.suffix(AppState.activityCap))
         state.autoResumeOnLaunch = preferences.autoResumeOnLaunch
         state.statuslineOffered = preferences.statuslineOffered
+        state.codexHooksOffered = preferences.codexHooksOffered
         state.dismissedUpdateVersion = preferences.dismissedUpdateVersion
         state.showSessionSpend = preferences.showSessionSpend
         state.checkOriginPeriodically = preferences.checkOriginPeriodically

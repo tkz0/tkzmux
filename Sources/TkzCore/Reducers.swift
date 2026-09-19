@@ -8,7 +8,7 @@
 //
 //     store.update { $0.renameSession(id, title: "review") }
 //
-// Flows are in docs/design.md → *Session flows & persistence*. Nothing here talks to the terminal,
+// Nothing here talks to the terminal,
 // git or Claude: creating a `Session` is a model edit, launching its pty is `TerminalHost`'s job.
 
 import Foundation
@@ -31,10 +31,17 @@ extension AppState {
         repoRoot: String? = nil,
         worktreePath: String? = nil,
         isWorktree: Bool = false,
+        agent: AgentKind = .claude,
         accountKey: String? = nil,
         now: Date = Date()
     ) -> Session {
         let group = groups[groupID]
+        // The group's default account only applies to a row of *its own* agent: the key names one
+        // agent's config dir, and handing a Codex row `claude-work` would point `CODEX_HOME` at
+        // Claude's. Any other agent falls back to its own primary. (A per-agent default map would
+        // be a v5 lift; this keeps `Group.defaultAccountKey` a scalar.)
+        let groupDefault = group?.defaultAccountKey
+        let groupDefaultFits = groupDefault.map { accounts[$0]?.agent ?? .claude } == agent
         let session = Session(
             id: id,
             groupID: groupID,
@@ -44,7 +51,10 @@ extension AppState {
             repoRoot: repoRoot ?? group?.repoRoot,
             worktreePath: worktreePath,
             isWorktree: isWorktree,
-            accountKey: accountKey ?? group?.defaultAccountKey ?? Account.defaultKey,
+            agent: agent,
+            accountKey: accountKey
+                ?? (groupDefaultFits ? groupDefault : nil)
+                ?? Account.defaultKey(for: agent),
             createdAt: now,
             lastActiveAt: now
         )
@@ -53,22 +63,22 @@ extension AppState {
         return session
     }
 
-    /// Binds a discovered Claude descriptor to a session: the "adopt" half of
-    /// design.md → *Claude integration → Identity*. Creates `live` if the session had none, and
+    /// Binds a discovered agent observation to a session: the "adopt" half of
+    /// the identity join. Creates `live` if the session had none, and
     /// refreshes `conversationId` (which rotates on `/clear`, resume and fork).
     ///
     /// Does nothing if the session is unknown.
     public mutating func adoptDescriptor(
-        _ descriptor: ClaudeSessionInfo,
+        _ observation: AgentObservation,
         for id: SessionID,
         now: Date = Date()
     ) {
         guard var session = sessions[id] else { return }
         var live = session.live ?? LiveSessionState()
-        live.pid = descriptor.pid
-        live.descriptor = descriptor
+        live.pid = observation.pid
+        live.observation = observation
         session.live = live
-        session.conversationId = descriptor.sessionId
+        session.conversationId = observation.conversationId
         session.lastActiveAt = now
         sessions[id] = session
     }
@@ -456,6 +466,10 @@ extension AppState {
         statuslineOffered = offered
     }
 
+    public mutating func setCodexHooksOffered(_ offered: Bool) {
+        codexHooksOffered = offered
+    }
+
     public mutating func setThemePreset(_ preset: Theme.Preset) {
         themePreset = preset
     }
@@ -524,24 +538,33 @@ extension AppState {
     /// The per-session statusline sidecar (context %, model, PR), joined on Claude's own session id
     /// rather than on ours: the sidecar is written by a statusline that knows nothing about tkzmux
     /// rows. A session that has since been resumed under a new conversation id simply stops matching.
-    public mutating func setSessionSidecar(_ sidecar: SessionSidecar) {
-        guard let id = sessions.values.first(where: { $0.conversationId == sidecar.sessionId })?.id
+    ///
+    /// `agent` narrows the join alongside the id: `conversationId` is an opaque token minted by
+    /// whichever agent produced it, so nothing stops a Codex id and a Claude id from colliding by
+    /// chance. Both agents' rows share this one `Session` table and nothing else, so the id alone is
+    /// not enough to say which row a sidecar belongs to.
+    public mutating func setSessionSidecar(_ sidecar: SessionSidecar, agent: AgentKind = .claude) {
+        guard let id = sessions.values
+            .first(where: { $0.agent == agent && $0.conversationId == sidecar.sessionId })?.id
         else { return }
         updateLive(id) { $0.context = sidecar }
     }
 
-    public mutating func clearSessionSidecar(conversationId: String) {
+    /// See ``setSessionSidecar(_:agent:)`` — same cross-agent id collision risk, so the same filter.
+    public mutating func clearSessionSidecar(conversationId: String, agent: AgentKind = .claude) {
         guard let id = sessions.values
-            .first(where: { $0.live?.context?.sessionId == conversationId })?.id
+            .first(where: { $0.agent == agent && $0.live?.context?.sessionId == conversationId })?.id
         else { return }
         updateLive(id) { $0.context = nil }
     }
 
-    /// What `TranscriptUsageReader` (ClaudeBridge) summed off a session's transcript, joined on
-    /// Claude's own session id — same reasoning as ``setSessionSidecar(_:)``: the reader knows
-    /// nothing about tkzmux rows, only about a Claude session id and its transcript.
-    public mutating func setSessionUsage(_ usage: SessionUsage, conversationId: String) {
-        guard let id = sessions.values.first(where: { $0.conversationId == conversationId })?.id
+    /// What `TranscriptUsageReader` (AgentBridge) summed off a session's transcript, joined on
+    /// Claude's own session id — same reasoning as ``setSessionSidecar(_:agent:)``: the reader knows
+    /// nothing about tkzmux rows, only about a Claude session id and its transcript, and the id is
+    /// opaque per agent so the join needs `agent` too.
+    public mutating func setSessionUsage(_ usage: SessionUsage, conversationId: String, agent: AgentKind = .claude) {
+        guard let id = sessions.values
+            .first(where: { $0.agent == agent && $0.conversationId == conversationId })?.id
         else { return }
         updateLive(id) { $0.usage = usage }
     }
@@ -550,55 +573,44 @@ extension AppState {
 // MARK: - Status: hooks, descriptors, liveness
 
 extension AppState {
-    /// Folds one relayed hook frame into a session's live state, then re-derives its status.
-    /// design.md → *Claude integration → Status derivation* names exactly what each hook kind
-    /// clears/sets; this is that table.
-    public mutating func applyHook(_ event: HookEvent, to id: SessionID, now: Date = Date()) {
+    /// Folds one already-translated agent event into a session's live state, then re-derives its
+    /// status. What each kind clears/sets is exactly the table below; the wire-level decisions
+    /// (which notification types exist, which ending reasons are an exit) belong to the adapter
+    /// that produced the event, not here — see `AgentEvent`.
+    public mutating func applyEvent(_ event: AgentEvent, to id: SessionID, now: Date = Date()) {
         guard let session = sessions[id] else { return }
         let wasEnded = session.live?.ended ?? false
         updateLive(id) { live in
-            live.lastHook = event
+            live.lastEvent = event
             switch event.kind {
             case .sessionStart:
                 live.ended = false
                 live.pendingNotification = nil
-                // Claude is up: whatever launch this row was waiting on has arrived.
-                live.claudeStartup = nil
-            case .sessionEnd:
-                // `clear` and `resume` are not an exit — see the SessionEnd `reason` values in
-                // design.md → *Claude integration*.
-                let reason = event.reason
-                live.ended = !(reason == "clear" || reason == "resume")
+                // The agent is up: whatever launch this row was waiting on has arrived.
+                live.agentStartup = nil
+            case .sessionEnd(let exited):
+                live.ended = exited
                 live.pendingNotification = nil
-            case .userPromptSubmit:
+            case .promptSubmitted:
                 live.lastPromptAt = now
                 live.attendedAt = now
                 live.pendingNotification = nil
-            case .stop:
+            case .turnEnded:
                 live.lastStopAt = now
                 if let message = event.lastAssistantMessage {
                     live.lastStopMessage = message
                 }
                 live.pendingNotification = nil
-            case .notification:
-                if let type = event.notificationType {
-                    switch type {
-                    case .permissionPrompt, .elicitationDialog, .agentNeedsInput:
-                        live.pendingNotification = PendingNotification(type: type, receivedAt: now)
-                        // Claude's own line for the banner ("Claude needs your permission to use
-                        // Bash"). Only the three prompts that become NEEDS YOU keep it.
-                        if let message = event.message, !message.isEmpty {
-                            live.lastNotificationMessage = message
-                        }
-                    case .idlePrompt:
-                        live.pendingNotification = PendingNotification(type: type, receivedAt: now)
-                    case .elicitationComplete:
-                        live.pendingNotification = nil
-                        live.lastNotificationMessage = nil
-                    case .unknown:
-                        break
-                    }
+            case .attention(let kind):
+                live.pendingNotification = PendingNotification(kind: kind, receivedAt: now)
+                // Claude's own line for the banner ("Claude needs your permission to use Bash").
+                // Only the three prompts that become NEEDS YOU keep it.
+                if kind.waitReason != nil, let message = event.message, !message.isEmpty {
+                    live.lastNotificationMessage = message
                 }
+            case .attentionCleared:
+                live.pendingNotification = nil
+                live.lastNotificationMessage = nil
             case .unknown:
                 break
             }
@@ -606,12 +618,12 @@ extension AppState {
         if event.kind == .sessionStart, let conversationId = event.conversationId {
             sessions[id]?.conversationId = conversationId
         }
-        // The feed: a finished turn, an exit (once — `clear`/`resume` are not one, and a second
-        // `SessionEnd` on an already-ended row says nothing new), and typing a prompt as proof the
+        // The feed: a finished turn, an exit (once — a `sessionEnd(exited: false)` is not one, and
+        // a second exit on an already-ended row says nothing new), and typing a prompt as proof the
         // user is looking at the row. NEEDS YOU entries come from `rederiveStatus` below, which
-        // also sees the flips no hook announces.
+        // also sees the flips no event announces.
         switch event.kind {
-        case .stop:
+        case .turnEnded:
             appendActivity(
                 .stop(message: ActivityEvent.storedMessage(event.lastAssistantMessage ?? "")),
                 for: id, now: now)
@@ -619,54 +631,55 @@ extension AppState {
             if !wasEnded, sessions[id]?.live?.ended == true {
                 appendActivity(.sessionEnded(reason: event.reason), for: id, now: now)
             }
-        case .userPromptSubmit:
+        case .promptSubmitted:
             markActivityRead(id)
-        case .sessionStart, .notification, .unknown:
+        case .sessionStart, .attention, .attentionCleared, .unknown:
             break
         }
         rederiveStatus(for: id, now: now)
     }
 
-    /// Binds a discovered descriptor and its liveness together — the M3.4 successor to
-    /// `adoptDescriptor`, which callers that only have the descriptor (no liveness signal yet) may
-    /// keep using.
-    public mutating func applyDescriptor(
-        _ descriptor: ClaudeSessionInfo, alive: Bool, to id: SessionID, now: Date = Date()
+    /// Binds a discovered observation and its liveness together — the M3.4 successor to
+    /// `adoptDescriptor`, which callers that only have the observation (no liveness signal yet)
+    /// may keep using.
+    public mutating func applyObservation(
+        _ observation: AgentObservation, alive: Bool, to id: SessionID, now: Date = Date()
     ) {
         guard var session = sessions[id] else { return }
         var live = session.live ?? LiveSessionState()
-        let rebound = live.descriptor?.sessionId != descriptor.sessionId
-            || live.descriptor?.pid != descriptor.pid
-        live.pid = descriptor.pid
-        live.descriptor = descriptor
+        let rebound = live.observation?.conversationId != observation.conversationId
+            || live.observation?.pid != observation.pid
+        live.pid = observation.pid
+        live.observation = observation
         live.alive = alive
-        // A *live* descriptor bound to this row means Claude is running in it — the launch is
-        // over, whether or not the `SessionStart` hook got here first. A dead one is no such
+        // A *live* observation bound to this row means the agent is running in it — the launch is
+        // over, whether or not a `sessionStart` event got here first. A dead one is no such
         // evidence: a stale `sessions/<pid>.json` from before a crash matches a resumed row by
-        // its conversation id, and must not take the overlay down before the new Claude is up.
+        // its conversation id, and must not take the overlay down before the new agent is up.
         if alive {
-            live.claudeStartup = nil
+            live.agentStartup = nil
         }
         if rebound {
             live.ended = false
         }
-        if descriptor.status == .busy,
-            let statusUpdatedAt = descriptor.statusUpdatedAt,
+        if observation.activity == .busy,
+            let statusUpdatedAt = observation.statusUpdatedAt,
             let pendingAt = live.pendingNotification?.receivedAt,
             statusUpdatedAt > pendingAt
         {
             live.pendingNotification = nil
         }
         session.live = live
-        session.conversationId = descriptor.sessionId
+        session.conversationId = observation.conversationId
         session.lastActiveAt = now
-        // `claude -w` starts Claude *inside* the worktree it just created, so the descriptor's cwd
-        // is the first thing that says where it went (design.md → *Session flows → New worktree*).
-        if let cwd = descriptor.cwd, !cwd.isEmpty {
-            // Where Claude runs is where `--resume` must run, and what the row is named after even
-            // before the next descriptor binds — so it becomes the session's directory of record.
+        // `claude -w` starts Claude *inside* the worktree it just created, so the observation's
+        // cwd is the first thing that says where it went.
+        if let cwd = observation.cwd, !cwd.isEmpty {
+            // Where the agent runs is where `--resume` must run, and what the row is named after
+            // even before the next observation binds — so it becomes the session's directory of
+            // record.
             session.cwd = cwd
-            if let worktree = Session.worktreeRoot(ofPath: cwd) {
+            if let worktree = session.worktreeRoot(ofPath: cwd) {
                 session.worktreePath = worktree
                 session.isWorktree = true
             }
@@ -675,24 +688,24 @@ extension AppState {
         rederiveStatus(for: id, now: now)
     }
 
-    /// The descriptor file is gone (the `claude` process exited, or the discovery watcher lost it),
-    /// but the pty/shell underneath may still be there — `alive` stays `true`.
-    public mutating func descriptorLost(for id: SessionID, now: Date = Date()) {
+    /// The observation is gone (the agent's own process exited, or the discovery watcher lost its
+    /// descriptor file), but the pty/shell underneath may still be there — `alive` stays `true`.
+    public mutating func agentLost(for id: SessionID, now: Date = Date()) {
         guard sessions[id]?.live != nil else { return }
         updateLive(id) { live in
-            live.descriptor = nil
+            live.observation = nil
             live.pid = nil
             live.alive = true
-            live.claudeTerminal = nil
+            live.agentTerminal = nil
         }
         rederiveStatus(for: id, now: now)
     }
 
-    /// Which pane's shell is running the bound `claude` process, from the shim's `launch` frame
+    /// Which pane's shell is running the bound agent process, from the shim's `launch` frame
     /// (`ClaudeIntegration.bind`). `nil` when the frame could not be placed in a pane.
-    public mutating func setClaudeTerminal(_ id: SessionID, _ terminal: TerminalID?) {
+    public mutating func setAgentTerminal(_ id: SessionID, _ terminal: TerminalID?) {
         guard sessions[id]?.live != nil else { return }
-        updateLive(id) { $0.claudeTerminal = terminal }
+        updateLive(id) { $0.agentTerminal = terminal }
     }
 
     /// Sets whether the process behind this session (the `claude` process when bound, else the
@@ -703,24 +716,24 @@ extension AppState {
         rederiveStatus(for: id, now: now)
     }
 
-    // MARK: Claude startup
+    // MARK: Agent startup
 
-    /// A boot command was handed to `terminal`'s shell: the row is now waiting on Claude to come
-    /// up there. `SessionLauncher.start`/`reopen(bootCommand:)` are the callers.
-    public mutating func beginClaudeStartup(
+    /// A boot command was handed to `terminal`'s shell: the row is now waiting on the agent to
+    /// come up there. `SessionLauncher.start`/`reopen(bootCommand:)` are the callers.
+    public mutating func beginAgentStartup(
         _ id: SessionID, terminal: TerminalID, command: String, now: Date = Date()
     ) {
         guard sessions[id]?.live != nil else { return }
         updateLive(id) {
-            $0.claudeStartup = ClaudeStartup(terminal: terminal, command: command, startedAt: now)
+            $0.agentStartup = AgentStartup(terminal: terminal, command: command, startedAt: now)
         }
     }
 
-    /// The launch is over — Claude is up, the command returned, or the edge gave up waiting.
+    /// The launch is over — the agent is up, the command returned, or the edge gave up waiting.
     /// A no-op when nothing was pending, so it never costs a `sessions` delivery.
-    public mutating func endClaudeStartup(_ id: SessionID) {
-        guard sessions[id]?.live?.claudeStartup != nil else { return }
-        updateLive(id) { $0.claudeStartup = nil }
+    public mutating func endAgentStartup(_ id: SessionID) {
+        guard sessions[id]?.live?.agentStartup != nil else { return }
+        updateLive(id) { $0.agentStartup = nil }
     }
 
     /// Re-derives one session's status/attention/isDone from its current live state.

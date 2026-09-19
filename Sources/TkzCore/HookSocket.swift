@@ -2,7 +2,7 @@
 // socket can see.
 //
 // The pty environment (`TkzTerminalCore`, which exports `TKZMUX_SOCKET`) and the listener
-// (`ClaudeBridge.HookServer`) must agree on the path byte for byte, and neither module can import
+// (`AgentBridge.HookServer`) must agree on the path byte for byte, and neither module can import
 // the other, so the naming lives here.
 //
 // **Why one socket per instance and not one per install.** With a single `tkzmux.sock` a second

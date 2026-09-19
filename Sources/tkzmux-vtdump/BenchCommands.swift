@@ -363,7 +363,7 @@ public enum BenchCommands {
         let scrollbackRows = sessions.map(\.scrollbackRows)
         let bytesIn = sessions.map { $0.bytesIn.current }
 
-        // 4. Compression on *live* sessions — the M1.3 re-measurement design.md asked for.
+        // 4. Compression on *live* sessions — the M1.3 re-measurement.
         // `reusable` is the field that matters: Darwin keeps MADV_FREE'd pages in `resident_size`
         // until something needs them, so a reclamation that worked shows up there first.
         let beforeCompress = ProcessMetrics.sample()
@@ -518,8 +518,7 @@ public enum BenchCommands {
     /// `tkzmux-vtdump bench-compress <file.tkzrec> [--repeats N] [--mode incremental|full]`
     ///
     /// Re-measures the M1.3 spike result (`compress(FULL)` reclaimed nothing on *synthetic*
-    /// scrollback) against a **real** recording, which is what design.md asked for before anyone
-    /// wires the idle timer.
+    /// scrollback) against a **real** recording, before anyone wires the idle timer.
     public static func compression(recording: URL, repeats: Int, full: Bool, json: URL?) throws {
         let reader = try RecordingReader(contentsOf: recording)
         var options = TerminalSessionOptions()

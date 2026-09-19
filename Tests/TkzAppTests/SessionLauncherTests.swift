@@ -5,6 +5,7 @@
 // the "first directory that exists" rule is exercised against the file system rather than mocked.
 
 import AppKit
+import AgentBridge
 import Foundation
 import Synchronization
 import Testing
@@ -48,14 +49,97 @@ struct SessionLauncherTests {
         func session(_ id: SessionID) -> Session? { store.state.sessions[id] }
     }
 
-    static func makeHarness() throws -> Harness {
+    static func makeHarness(
+        adapters: [AgentKind: any AgentAdapter] = [.claude: ClaudeAdapter()]
+    ) throws -> Harness {
         let tree = try Tree()
         var state = AppState()
         let group = state.addGroup(name: "repo", repoRoot: tree.repo)
         let store = AppStore(state: state)
         let host = Spy()
-        let launcher = SessionLauncher(store: store, host: host, home: tree.home)
+        let launcher = SessionLauncher(store: store, host: host, home: tree.home, adapters: adapters)
         return Harness(tree: tree, store: store, host: host, launcher: launcher, group: group.id)
+    }
+
+    // MARK: - The adapter seam
+
+    /// Defined only here, never in production code — proves `environment(accountKey:bootCommand:)`
+    /// and `resume(_:)` both go through whichever adapter the row's account names, rather than a
+    /// literal `CLAUDE_CONFIG_DIR` or `claude --resume`.
+    private struct StubTranscriptProvider: TranscriptProvider {
+        func locate(conversationId: String, configDir: String, fileManager: FileManager) -> String? { nil }
+        func summary(path: String) throws -> TranscriptSummary { TranscriptSummary() }
+        func usage(conversationId: String, path: String, reader: TranscriptUsageReader) async -> SessionUsage? { nil }
+        func searchIndex(path: String, existing: TranscriptIndex?) throws -> TranscriptIndex {
+            try TranscriptIndex.build(path: path, existing: existing)
+        }
+    }
+
+    private struct StubAdapter: AgentAdapter {
+        static let kind = AgentKind(rawValue: "stub")
+        var kind: AgentKind { Self.kind }
+        var displayName: String { "Stub" }
+        var binaryName: String { "stub-agent" }
+        var capabilities: AgentCapabilities { [.resume] }
+
+        func launchCommand(_ intent: LaunchIntent) -> String? {
+            switch intent {
+            case .resume(let conversationId): return "stub-agent --resume \(conversationId)"
+            case .new: return "stub-agent"
+            case .worktree, .prompt: return nil
+            }
+        }
+        /// Its own variable name, `STUB_CONFIG_DIR` — proof that `SessionLauncher` no longer
+        /// hard-codes `CLAUDE_CONFIG_DIR` for every account regardless of agent.
+        func environment(configDir: String?) -> [String: String] {
+            guard let configDir else { return [:] }
+            return ["STUB_CONFIG_DIR": configDir]
+        }
+        func discoverAccounts(home: String, fileManager: FileManager) -> [Account] { [] }
+        func accountLabels(home: String, fileManager: FileManager) -> [String: String] { [:] }
+        func mapHook(_ payload: HookPayload) -> AgentEvent? { nil }
+        func mapTerminalNotification(title: String, body: String) -> AgentEvent? { nil }
+        func makeObservationWatcher(
+            configDirs: [String], onEvent: @escaping @Sendable (ObservationEvent) -> Void
+        ) -> (any AgentObservationWatcher)? { nil }
+        var transcript: any TranscriptProvider { StubTranscriptProvider() }
+        var hookInstall: HookInstallStrategy { .perInvocation }
+        var shimScript: ShimResource { ShimResource(binaryName: "stub-agent", resourceName: "stub.sh") }
+    }
+
+    @Test("start: the account's environment comes from its own adapter, not a hard-coded CLAUDE_CONFIG_DIR")
+    func startEnvironmentComesFromTheAdapter() throws {
+        let h = try Self.makeHarness(adapters: [.claude: ClaudeAdapter(), StubAdapter.kind: StubAdapter()])
+        defer { h.tree.tearDown() }
+        h.store.update {
+            $0.setAccount(Account(key: "stub-work", configDir: "/somewhere/stub", label: "Stub", agent: StubAdapter.kind))
+        }
+        let spec = NewSessionMenu.Launch(
+            kind: .repoRoot, command: "", cwd: h.tree.repo, accountKey: "stub-work", groupID: h.group)
+        _ = h.launcher.start(spec)
+        #expect(h.host.opened.first?.env["STUB_CONFIG_DIR"] == "/somewhere/stub")
+        #expect(h.host.opened.first?.env["CLAUDE_CONFIG_DIR"] == nil)
+        // The generic re-export pair rides alongside the adapter's own variable, so the shell
+        // wrapper can win the race against the user's rc files whatever the agent turns out to be.
+        #expect(h.host.opened.first?.env["TKZMUX_ENV_STUB_CONFIG_DIR"] == "/somewhere/stub")
+        #expect(h.host.opened.first?.env["TKZMUX_REEXPORT"] == "STUB_CONFIG_DIR")
+    }
+
+    @Test("resume: the boot command comes from the row's own adapter, not a literal claude --resume")
+    func resumeCommandComesFromTheAdapter() throws {
+        let h = try Self.makeHarness(adapters: [.claude: ClaudeAdapter(), StubAdapter.kind: StubAdapter()])
+        defer { h.tree.tearDown() }
+        let id = SessionID.generate()
+        h.store.update { state in
+            var session = Session(
+                id: id, groupID: h.group, cwd: h.tree.repo, repoRoot: h.tree.repo,
+                agent: StubAdapter.kind, accountKey: "stub-work", conversationId: "conv-1")
+            session.live = nil
+            state.sessions[id] = session
+        }
+        h.store.flush()
+        #expect(h.launcher.resume(id) == .success(.resumed(conversationId: "conv-1")))
+        #expect(h.host.bootCommands == ["stub-agent --resume conv-1"])
     }
 
     /// A restored row: in the store with no live state, as `state.json` hands it over.
@@ -108,10 +192,12 @@ struct SessionLauncherTests {
         _ = h.launcher.start(NewSessionMenu.Launch(kind: .repoRoot, command: "claude", cwd: h.tree.repo, accountKey: "claude", groupID: h.group))
         _ = h.launcher.start(NewSessionMenu.Launch(kind: .repoRoot, command: "claude", cwd: h.tree.repo, accountKey: nil, groupID: h.group))
         #expect(h.host.opened[0].env["CLAUDE_CONFIG_DIR"] == "/somewhere/else")
-        #expect(h.host.opened[0].env["TKZMUX_CLAUDE_CONFIG_DIR"] == "/somewhere/else")
+        #expect(h.host.opened[0].env["TKZMUX_ENV_CLAUDE_CONFIG_DIR"] == "/somewhere/else")
+        #expect(h.host.opened[0].env["TKZMUX_REEXPORT"] == "CLAUDE_CONFIG_DIR")
         #expect(h.host.opened[1].env["CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
         #expect(h.host.opened[2].env["CLAUDE_CONFIG_DIR"] == nil)
-        #expect(h.host.opened[2].env["TKZMUX_CLAUDE_CONFIG_DIR"] == nil)
+        #expect(h.host.opened[2].env["TKZMUX_ENV_CLAUDE_CONFIG_DIR"] == nil)
+        #expect(h.host.opened[2].env["TKZMUX_REEXPORT"] == nil)
     }
 
     @Test("reopen and resume always pin the row's recorded account, the primary included")
@@ -123,7 +209,8 @@ struct SessionLauncherTests {
         // A row that ran on `~/.claude` must resume there even if the user's shell defaults
         // elsewhere — the recorded key is the truth, and the wrapper re-export enforces it.
         #expect(h.host.opened.first?.env["CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
-        #expect(h.host.opened.first?.env["TKZMUX_CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
+        #expect(h.host.opened.first?.env["TKZMUX_ENV_CLAUDE_CONFIG_DIR"] == h.tree.home + "/.claude")
+        #expect(h.host.opened.first?.env["TKZMUX_REEXPORT"] == "CLAUDE_CONFIG_DIR")
     }
 
     @Test("start: a missing directory fails before the host is asked")
@@ -292,8 +379,8 @@ struct SessionLauncherTests {
         ).get()
         h.store.flush()
         #expect(
-            h.session(started)?.live?.claudeStartup
-                == ClaudeStartup(
+            h.session(started)?.live?.agentStartup
+                == AgentStartup(
                     terminal: TerminalID(uuid: started.uuid), command: "claude -w feature",
                     startedAt: now))
 
@@ -302,12 +389,12 @@ struct SessionLauncherTests {
             NewSessionMenu.Launch(kind: .shell, command: "", cwd: h.tree.repo, accountKey: nil, groupID: h.group), now: now
         ).get()
         h.store.flush()
-        #expect(h.session(shell)?.live?.claudeStartup == nil)
+        #expect(h.session(shell)?.live?.agentStartup == nil)
 
         // A split adds a shell, never a launch.
         let split = try h.launcher.addTerminal(to: started, splitting: .horizontal).get()
         h.store.flush()
-        #expect(h.session(started)?.live?.claudeStartup?.terminal == TerminalID(uuid: started.uuid))
+        #expect(h.session(started)?.live?.agentStartup?.terminal == TerminalID(uuid: started.uuid))
         #expect(split != TerminalID(uuid: started.uuid))
 
         // A resume of a restored split row: the focused pane, and only it.
@@ -320,14 +407,14 @@ struct SessionLauncherTests {
         #expect(h.session(restored)?.focusedTerminalID == focused, "a split focuses the new pane")
         #expect(h.launcher.resume(restored) == .success(.resumed(conversationId: "abc-123")))
         h.store.flush()
-        #expect(h.session(restored)?.live?.claudeStartup?.terminal == focused)
-        #expect(h.session(restored)?.live?.claudeStartup?.command == "claude --resume abc-123")
+        #expect(h.session(restored)?.live?.agentStartup?.terminal == focused)
+        #expect(h.session(restored)?.live?.agentStartup?.command == "claude --resume abc-123")
 
         // A plain reopen carries no command, so it records nothing.
         let plain = Self.restoredRow(h, conversationId: nil)
         _ = h.launcher.reopen(plain)
         h.store.flush()
-        #expect(h.session(plain)?.live?.claudeStartup == nil)
+        #expect(h.session(plain)?.live?.agentStartup == nil)
     }
 
     /// The shell under `claude -w` never `cd`s: the command is typed in the main checkout and
@@ -343,9 +430,9 @@ struct SessionLauncherTests {
         let claudePane = TerminalID(uuid: id.uuid)
         h.store.update { state in
             state.updateLive(id) {
-                $0.descriptor = ClaudeSessionInfo(
-                    configDir: h.tree.home + "/.claude", pid: 99, sessionId: "s", cwd: h.tree.worktree)
-                $0.claudeTerminal = claudePane
+                $0.observation = AgentObservation(
+                    pid: 99, conversationId: "s", configDir: h.tree.home + "/.claude", cwd: h.tree.worktree)
+                $0.agentTerminal = claudePane
             }
             // What the shell reported: still the main checkout.
             state.setPaneCwd(claudePane, path: h.tree.repo)
@@ -390,8 +477,8 @@ struct SessionLauncherTests {
         let running = Self.restoredRow(h, conversationId: "abc")
         h.store.update { state in
             state.setLive(LiveSessionState(shellPid: 1), for: running)
-            state.applyDescriptor(
-                ClaudeSessionInfo(configDir: "/x/.claude", pid: 9, sessionId: "abc", status: .busy),
+            state.applyObservation(
+                AgentObservation(pid: 9, conversationId: "abc", configDir: "/x/.claude", activity: .busy),
                 alive: true, to: running)
         }
         #expect(h.launcher.resume(running) == .success(.agentRunning))

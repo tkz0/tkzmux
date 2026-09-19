@@ -1,6 +1,6 @@
 // MainWindowController — the real main window (M2.2).
 //
-// design.md → *App architecture*: an `NSSplitViewController` with the sidebar on the left (300 pt,
+// An `NSSplitViewController` with the sidebar on the left (300 pt,
 // min 240, collapsible), the single terminal surface on the right, the 30 pt status strip along the
 // bottom and the unified 48 pt toolbar in the title bar. This file is the **assembler**: every
 // piece it puts together (sidebar, toolbar, status bar, palette, new-session menu, terminal host)
@@ -26,7 +26,7 @@
 // reports what the window is doing back into the store, and applies what the store says.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import GitStatus
 import Persistence
@@ -257,8 +257,8 @@ final class DetailViewController: NSViewController {
     }
 }
 
-/// "No session selected · ⌘N". Drawn rather than stacked so it rasterises headlessly (design.md →
-/// *Testing without UI*: a windowless `NSView` subtree does not render, a layer does).
+/// "No session selected · ⌘N". Drawn rather than stacked so it rasterises headlessly (a windowless
+/// `NSView` subtree does not render, a layer does).
 final class EmptyStateView: NSView {
     /// Nothing is selected at all.
     static let noSelectionMessage = "No session selected \u{00B7} \u{2318}N"
@@ -322,7 +322,7 @@ final class EmptyStateView: NSView {
 @MainActor
 public final class MainWindowController: NSObject, NSWindowDelegate {
 
-    // MARK: Geometry (design.md → App architecture; artboard 2c is 1240×820)
+    // MARK: Geometry (artboard 2c is 1240×820)
 
     /// The whole window, titlebar included — the artboard is drawn at this size.
     public static let defaultWindowSize = NSSize(width: 1240, height: 820)
@@ -471,7 +471,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// when the model actually differs, so a minute in which nothing changed costs one comparison.
     private var statusTickTimer: DispatchSourceTimer?
     public static let statusTickInterval: TimeInterval = 60
-    /// design.md → *Session flows*: "on a 5-min timer for live sessions".
+    /// "On a 5-min timer for live sessions".
     public static let snapshotInterval: TimeInterval = 300
     /// What the last lazy reopen of the selected row said, for the empty-state caption.
     private var lastReopenFailure: SessionLauncher.Failure?
@@ -552,10 +552,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         // Removing a row must drop its per-session caches too. `fullMessages` in particular holds
         // a whole Stop message — arbitrarily long — and without this the app kept one per session
-        // id it had *ever* seen, for as long as it ran. Wired here rather than in the `claude`/`git`
+        // id it had *ever* seen, for as long as it ran. Wired here rather than in the `agents`/`git`
         // observers so it survives either of them being set, unset, or replaced.
         launcher.onRemoved = { [weak self] id in
-            self?.claude?.forget(id)
+            self?.agents?.forget(id)
             self?.git?.forget(id)
         }
         buildSplitView()
@@ -827,7 +827,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// into that group.
     public func presentAnotherRepoPanel() {
         presentFolderPanel(prompt: "Start here",
-                           message: "Choose a repo. It becomes a group, and claude starts in it.") { [weak self] url in
+                           message: "Choose a repo. It becomes a group, and the agent starts in it.") { [weak self] url in
             guard let self, let groupID = self.createGroup(from: url) else { return }
             self.startClaude(in: groupID)
         }
@@ -845,7 +845,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         guard let group = store.state.groups[id] else { return }
         presentFolderPanel(
             prompt: "Start here",
-            message: "Choose the repo for \u{201C}\(group.name)\u{201D}. It becomes the group\u{2019}s repo, and claude starts in it."
+            message: "Choose the repo for \u{201C}\(group.name)\u{201D}. It becomes the group\u{2019}s repo, and the agent starts in it."
         ) { [weak self] url in
             guard let self else { return }
             let path = url.standardizedFileURL.path
@@ -1093,9 +1093,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Every open session that has a transcript on disk. The group filter is *not* applied here:
     /// narrowing the chip must not throw away an index the next keystroke would rebuild.
     private func transcriptTargets() -> [TranscriptSearchService.Target] {
-        guard let claude else { return [] }
+        guard let agents else { return [] }
         return store.state.orderedSessions.compactMap { session in
-            guard let path = claude.transcriptPath(for: session.id) else { return nil }
+            guard let path = agents.transcriptPath(for: session.id) else { return nil }
             return TranscriptSearchService.Target(
                 sessionID: session.id, title: session.displayTitle, path: path)
         }
@@ -1186,7 +1186,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         var model = RebaseSheetModel(baseRef: base)
         model.behind = gitSummary?.behindBase
         model.shortcut = ShortcutsTable.resolved(state: store.state)[.rebaseOntoBase]?.displayString
-        model.claudeWorking = session.status == .working
+        model.agentWorking = session.status == .working
         let request = git?.rebaseRequest(for: id)
         // No coordinator yet (a test harness): nothing to fetch with, so the count shown is the
         // last refresh's and the sheet is ready at once.
@@ -1216,7 +1216,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         changes.present(for: id, toplevel: toplevel, git: session.live?.git)
     }
 
-    /// The card's data comes from `claude` (set later by `AppDelegate`); only the notice is wired
+    /// The card's data comes from `agents` (set later by `AppDelegate`); only the notice is wired
     /// here. Until the coordinator exists the card shows its empty states.
     private func wirePromptCard() {
         promptCard.onCopied = { [weak self] notice in self?.showNotice(notice, for: .seconds(2)) }
@@ -1520,32 +1520,49 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         return rebuilt
     }
 
-    /// Shows or hides the "Starting Claude…" overlay on the selected row's boot pane, from the
-    /// store's `claudeStartup` and the clock, and arms the timer for the next edge.
+    /// Shows or hides the "Starting the agent…" overlay on the selected row's boot pane, from the
+    /// store's `agentStartup`, the pane's own input modes and the clock, and arms the timer for the
+    /// next edge.
     ///
     /// The fact lives in the store because `panes` is pruned on every tab or row switch; the
-    /// *timing* lives here because the store has no clock. `StartupOverlayPolicy` turns the two
-    /// dates into a phase; this only acts on it. `now` is a parameter so the tests can walk the
-    /// clock by hand instead of sleeping.
+    /// *timing* lives here because the store has no clock. `StartupOverlayPolicy` turns the dates
+    /// and the modes into a phase and a next look; this only acts on them. `now` is a parameter so
+    /// the tests can walk the clock by hand instead of sleeping.
+    ///
+    /// The store fact is deliberately left alone when the pane answers: `agentTerminal(for:in:)`
+    /// reads `agentStartup.terminal` to place an arriving launch frame, and ending the startup the
+    /// moment the agent's UI appears would race that lookup for no gain. Hiding the overlay is the
+    /// whole of the fix; the fact still expires on its own clock.
     func applyStartupOverlay(now: Date = Date()) {
         startupOverlayTimer?.cancel()
         startupOverlayTimer = nil
 
         let selected = store.state.selection.flatMap { store.state.sessions[$0] }
-        let startup = selected?.live?.claudeStartup
+        let startup = selected?.live?.agentStartup
         // Every visible pane but the boot pane: nothing to show. Cheap — `hide()` no-ops.
         for (id, pane) in panes where id != startup?.terminal {
             pane.chrome.setStartup(nil)
         }
         guard let selected, let startup, let pane = panes[startup.terminal] else { return }
 
+        // Asked once per pass, before the phase: a pane already showing the agent's own UI needs
+        // no spinner in any phase, and in the common case the answer arrives before `showDelay`
+        // and the overlay never appears at all.
+        let onScreen = StartupOverlayPolicy.agentIsOnScreen(host.inputModes(startup.terminal))
+
         switch StartupOverlayPolicy.phase(startedAt: startup.startedAt, now: now) {
         case .pending(let showAt):
             pane.chrome.setStartup(nil)
             armStartupOverlayTimer(at: showAt, now: now) { $0.applyStartupOverlay() }
         case .visible(let expiresAt):
-            pane.chrome.setStartup(PaneStartupModel(command: startup.command))
-            armStartupOverlayTimer(at: expiresAt, now: now) { $0.applyStartupOverlay() }
+            // The headline names the row's own agent. Left unset it says "Starting the agent…",
+            // which is honest but is the one string TKZ-82 never reached.
+            pane.chrome.startupOverlay.agentDisplayName =
+                agents?.adapters[selected.agent]?.displayName ?? "the agent"
+            pane.chrome.setStartup(onScreen ? nil : PaneStartupModel(command: startup.command))
+            let next = StartupOverlayPolicy.nextLook(
+                agentIsOnScreen: onScreen, deadline: expiresAt, now: now)
+            armStartupOverlayTimer(at: next, now: now) { $0.applyStartupOverlay() }
         case .expired:
             // Nothing arrived in time. The store write goes through the timer rather than
             // happening inside this delivery: a change set that begets a change set is
@@ -1553,7 +1570,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // to reason about, and the cost is one run-loop turn.
             pane.chrome.setStartup(nil)
             let id = selected.id
-            armStartupOverlayTimer(at: now, now: now) { $0.store.update { $0.endClaudeStartup(id) } }
+            armStartupOverlayTimer(at: now, now: now) { $0.store.update { $0.endAgentStartup(id) } }
         }
     }
 
@@ -1747,9 +1764,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public func windowDidResize(_ notification: Notification) { recordWindowFrame() }
     public func windowDidMove(_ notification: Notification) { recordWindowFrame() }
 
-    /// The user is looking at the selected row again: the `attendedAt` half of the NEEDS YOU rule
-    /// (design.md → *Claude integration → Status derivation*). Selecting a row already marks it
-    /// attended; this covers coming back to the window with a row still selected.
+    /// The user is looking at the selected row again: the `attendedAt` half of the NEEDS YOU rule.
+    /// Selecting a row already marks it attended; this covers coming back to the window with a row
+    /// still selected.
     public func windowDidBecomeKey(_ notification: Notification) {
         guard let id = store.state.selection else { return }
         store.update { $0.markAttended(id) }
@@ -1765,22 +1782,26 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     /// The M3 coordinator, once `AppDelegate` has built it. Setting it routes the last-message
     /// popover at the *full* Stop text rather than the 4 KiB the store keeps.
-    public var claude: ClaudeIntegration? {
+    public var agents: AgentIntegration? {
         didSet {
-            guard let claude else { return }
-            sidebar.lastMessageProvider = { id in claude.lastMessage(for: id) }
-            claude.isSessionAttended = { [weak self] id in self?.isSessionAttended(id) ?? false }
+            guard let agents else { return }
+            // Sorted by `kind.rawValue` rather than left in dictionary order: the New-session
+            // menu's row order must be stable across launches, not whatever `Dictionary` iteration
+            // happens to produce this time.
+            newSessionMenu.adapters = agents.adapters.values.sorted { $0.kind.rawValue < $1.kind.rawValue }
+            sidebar.lastMessageProvider = { id in agents.lastMessage(for: id) }
+            agents.isSessionAttended = { [weak self] id in self?.isSessionAttended(id) ?? false }
             // `claude -w` removes its worktree when the conversation ends, which is before the
-            // shell exits — so the worktree list is re-read on Claude's exit, not only the shell's.
-            claude.onClaudeExited = { [weak self] id in self?.launcher.noteExit(id) }
-            claude.onStop = { [weak self] id in self?.git?.sessionDidStop(id) }
+            // shell exits — so the worktree list is re-read on the agent's exit, not only the shell's.
+            agents.onAgentExited = { [weak self] id in self?.launcher.noteExit(id) }
+            agents.onStop = { [weak self] id in self?.git?.sessionDidStop(id) }
             promptCard.summaryProvider = { id, done in
                 // The last read first, so a reopened card never flashes "Loading…"; the fresh
                 // read follows and only re-renders if something changed.
-                if let cached = claude.cachedTranscriptSummary(for: id) { done(cached) }
-                claude.loadTranscriptSummary(for: id, completion: done)
+                if let cached = agents.cachedTranscriptSummary(for: id) { done(cached) }
+                agents.loadTranscriptSummary(for: id, completion: done)
             }
-            promptCard.transcriptPathProvider = { id in claude.transcriptPath(for: id) }
+            promptCard.transcriptPathProvider = { id in agents.transcriptPath(for: id) }
         }
     }
 
@@ -1794,7 +1815,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             git.onRebaseFinished = { [weak self] id, _ in self?.rebaseSheet.rebaseFinished(for: id) }
             rebaseSheet.useFetchQueue(git.rebaseQueue)
             git.start()
-            claude?.onStop = { [weak git] id in git?.sessionDidStop(id) }
+            agents?.onStop = { [weak git] id in git?.sessionDidStop(id) }
         }
     }
 
@@ -1840,13 +1861,15 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// The whole last Stop message of the selected session, or nil.
     func lastMessageOfSelection() -> String? {
         guard let id = store.state.selection else { return nil }
-        return claude?.lastMessage(for: id) ?? store.state.sessions[id]?.live?.lastStopMessage
+        return agents?.lastMessage(for: id) ?? store.state.sessions[id]?.live?.lastStopMessage
     }
 
     /// ⇧⌘C.
     func copyLastMessage() {
         guard let text = lastMessageOfSelection(), !text.isEmpty else {
-            showNotice("No message from Claude yet", for: .seconds(2))
+            let name = store.state.selectedSession
+                .flatMap { agents?.adapters[$0.agent]?.displayName } ?? "the agent"
+            showNotice("No message from \(name) yet", for: .seconds(2))
             return
         }
         NSPasteboard.general.clearContents()
@@ -1862,6 +1885,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public var confirmInstallStatusline: ((StatuslineInstallPlan) -> Bool)?
     /// Overrides the confirmation for removing the statusline again.
     public var confirmRemoveStatusline: (() -> Bool)?
+
+    /// Overrides the Codex hooks consent sheet (TKZ-87): gets the plan, returns true to install.
+    /// Tests set it, exactly like ``confirmInstallStatusline`` — a sheet needs a key window and a
+    /// run loop, neither of which a test process may create.
+    public var confirmInstallCodexHooks: ((CodexHooksInstallPlan) -> Bool)?
+    /// Overrides the confirmation for removing Codex's hooks again.
+    public var confirmRemoveCodexHooks: (() -> Bool)?
 
     /// Overrides the rename sheet: gets the current title, returns the new one or `nil` for
     /// cancel. Tests set it — a sheet needs a key window and a run loop.
@@ -1901,14 +1931,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     func removeShellIntegration() {
-        guard let claude else { return }
+        guard let agents else { return }
         let confirmed: Bool
         if let confirmRemoveShellIntegration {
             confirmed = confirmRemoveShellIntegration()
         } else {
             let alert = NSAlert()
             alert.messageText = "Remove shell integration?"
-            alert.informativeText = "Deletes the claude shim and the zsh wrappers under Application Support. "
+            alert.informativeText = "Deletes the agent shims and the zsh wrappers under Application Support. "
                 + "New shells will not report to tkzmux until the app is relaunched. Sessions and the sidebar are kept."
             alert.addButton(withTitle: "Remove")
             alert.addButton(withTitle: "Cancel")
@@ -1917,7 +1947,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         guard confirmed else { return }
         do {
-            try claude.removeShellIntegration()
+            try agents.removeShellIntegration()
             showNotice("Shell integration removed")
         } catch {
             logger.error("remove shell integration failed: \(String(describing: error), privacy: .public)")
@@ -1928,11 +1958,15 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     // MARK: Status line integration
 
     /// The account the statusline commands act on: the selected row's, else the primary one.
+    ///
+    /// Status line integration is a Claude Code feature (it edits Claude's own `settings.json`),
+    /// so the fallback is Claude's default account rather than whatever agent the selected row
+    /// (if any) happens to run.
     private var statuslineAccountKey: String {
         if let session = store.state.selectedSession, store.state.accounts[session.accountKey] != nil {
             return session.accountKey
         }
-        return Account.defaultKey
+        return Account.defaultKey(for: .claude)
     }
 
     /// Install or remove for the selected row's account, as one toggle — the form the tests and the
@@ -1940,12 +1974,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// per account directly. Installing edits the user's `settings.json`, which nothing else in
     /// tkzmux does, so it never happens without the sheet below.
     func statusLineIntegration() {
-        guard let claude else { return }
+        guard let agents else { return }
         let key = statuslineAccountKey
         // `.stale` is installed too — a tkzmux statusline naming the wrong hook. The toggle has to
         // read it as on, or the one command that removes the integration would instead offer to
         // install it again.
-        switch claude.statuslineProducer(accountKey: key) {
+        switch agents.statuslineProducer(accountKey: key) {
         case .tkzmux, .stale:
             removeStatusline(accountKey: key)
         case .none, .other:
@@ -1956,10 +1990,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Puts the install to the user. `automatic` is the once-per-install offer made at startup; it
     /// stays silent when there is nothing to offer, whereas the menu command reports why.
     func offerStatusline(accountKey: String, automatic: Bool) {
-        guard let claude else { return }
+        guard let agents else { return }
         let plan: StatuslineInstallPlan?
         do {
-            plan = try claude.statuslinePlan(accountKey: accountKey)
+            plan = try agents.statuslinePlan(accountKey: accountKey)
         } catch {
             logger.error("statusline plan failed: \(String(describing: error), privacy: .public)")
             if !automatic { showNotice("Could not read settings.json for \(accountKey)") }
@@ -2007,12 +2041,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// synchronous test hook share one tail; nothing here runs until the user has actually replied,
     /// so quitting while the sheet is up leaves the offer un-made and it is put again next launch.
     private func finishStatuslineOffer(confirmed: Bool, accountKey: String) {
-        guard let claude else { return }
+        guard let agents else { return }
         // Asked is asked: a decline is an answer, and the menu command stays available.
         store.update { $0.setStatuslineOffered(true) }
         guard confirmed else { return }
         do {
-            try claude.installStatusline(accountKey: accountKey)
+            try agents.installStatusline(accountKey: accountKey)
             showNotice("Status line installed \u{2014} usage appears within a few seconds")
         } catch {
             logger.error("statusline install failed: \(String(describing: error), privacy: .public)")
@@ -2021,7 +2055,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     func removeStatusline(accountKey: String) {
-        guard let claude else { return }
+        guard let agents else { return }
         let confirmed: Bool
         if let confirmRemoveStatusline {
             confirmed = confirmRemoveStatusline()
@@ -2037,7 +2071,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         guard confirmed else { return }
         do {
-            try claude.uninstallStatusline(accountKey: accountKey)
+            try agents.uninstallStatusline(accountKey: accountKey)
             showNotice("Status line removed")
         } catch {
             logger.error("statusline remove failed: \(String(describing: error), privacy: .public)")
@@ -2045,17 +2079,157 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// The one-time offer, made after `ClaudeIntegration.start()` rather than from `init` — a modal
+    /// The one-time offer, made after `AgentIntegration.start()` rather than from `init` — a modal
     /// inside `init` blocks every window test, and the shim has to be installed before the command
     /// we write into settings.json exists on disk.
     func offerStatuslineIfNeeded() {
-        guard let claude, !store.state.statuslineOffered else { return }
+        guard let agents, !store.state.statuslineOffered else { return }
         let key = statuslineAccountKey
-        guard claude.statuslineProducer(accountKey: key) != .tkzmux else {
+        guard agents.statuslineProducer(accountKey: key) != .tkzmux else {
             store.update { $0.setStatuslineOffered(true) }
             return
         }
         offerStatusline(accountKey: key, automatic: true)
+    }
+
+    // MARK: Codex hooks consent (TKZ-87)
+
+    /// Called once a Codex launch has actually succeeded (`launch(_:)`) — a session starting is
+    /// the moment the offer means something, unlike the statusline's once-at-startup check, which
+    /// has no equivalent "an agent just started" event to wait for.
+    ///
+    /// Asked only when `detect` reports `.none` for that account: `.tkzmux`/`.stale` mean there is
+    /// nothing to offer, and `.other` (some other tool's Codex hooks) is left for the Settings
+    /// page rather than sprung on someone mid-launch. `codexHooksOffered` is a single flag for the
+    /// whole app, not one per account (see its doc comment in `AppState`), so once any account has
+    /// been asked — accepted or declined — no later account ever triggers this again.
+    func offerCodexHooksIfNeeded(accountKey: String) {
+        guard let agents, !store.state.codexHooksOffered,
+              let detection = agents.codexHooksDetection(accountKey: accountKey),
+              detection.producer == .none
+        else { return }
+        offerCodexHooks(accountKey: accountKey)
+    }
+
+    /// Puts the Codex hooks install to the user. Mirrors ``offerStatusline(accountKey:automatic:)``
+    /// in shape; the copy is different because Codex's own trust model changes what has to be
+    /// said (see this controller's owning ticket) — installing is not enough on its own, and the
+    /// wording says so rather than implying the toggle alone gets the row reporting status.
+    private func offerCodexHooks(accountKey: String) {
+        guard let agents else { return }
+        let plan: CodexHooksInstallPlan?
+        do {
+            plan = try agents.codexHooksPlan(accountKey: accountKey)
+        } catch {
+            // Silent: this fires from a launch the user did not ask this question of, unlike the
+            // menu command, which has something to report back to.
+            logger.error("codex hooks plan failed: \(String(describing: error), privacy: .public)")
+            return
+        }
+        guard let plan else { return }
+
+        if let confirmInstallCodexHooks {
+            finishCodexHooksOffer(confirmed: confirmInstallCodexHooks(plan), accountKey: accountKey)
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Let tkzmux see Codex's status?"
+        alert.informativeText = Self.codexHooksAlertBody(plan: plan)
+        alert.addButton(withTitle: "Install")
+        alert.addButton(withTitle: "Not Now")
+        // A sheet, never `runModal()` — see `offerStatusline`'s own comment on why: this can fire
+        // from the same early-launch window a modal loop would hang against.
+        alert.beginSheetModal(for: sheetParent) { [weak self] response in
+            self?.finishCodexHooksOffer(
+                confirmed: response == .alertFirstButtonReturn, accountKey: accountKey)
+        }
+    }
+
+    /// The consent sheet's body, exactly what the real alert shows — split out of
+    /// ``offerCodexHooks(accountKey:)`` so its wording can be asserted directly in a test process,
+    /// where `NSAlert.beginSheetModal(for:)` never runs. Pure, over `plan` alone: no window, no
+    /// store, so it renders identically whichever way it is reached.
+    ///
+    /// The two paragraphs after the diff exist for the two facts the ticket's own brief measured
+    /// against a real logged-in codex-cli 0.155.0 and got wrong before that spike:
+    ///
+    ///   * installing `hooks.json` is not enough — Codex only runs a hook once its own `/hooks`
+    ///     review has trusted it, and there is no bypass worth naming here, because the only one
+    ///     that exists (`--dangerously-bypass-hook-trust`) disables trust for every hook of the
+    ///     invocation, including hooks the user wrote themselves;
+    ///   * a `config.toml` hook is not replaced by this install — Codex merges both files, so an
+    ///     existing hook there keeps firing alongside tkzmux's own.
+    static func codexHooksAlertBody(plan: CodexHooksInstallPlan) -> String {
+        var body = "tkzmux needs its own hooks to know when Codex is working, needs you, or has "
+            + "finished a turn.\n\nThis writes \(plan.hooksPath):\n\n"
+        if let before = plan.before {
+            body += "Now:\n\(before)\n\nAfter:\n\(plan.after)\n\n"
+        } else {
+            body += "After:\n\(plan.after)\n\n"
+        }
+        body += "Codex only runs a hook once you\u{2019}ve reviewed and trusted it yourself \u{2014} "
+            + "run /hooks inside Codex and trust tkzmux\u{2019}s entries there. Until you do, this "
+            + "row still updates from the transcript and from Codex\u{2019}s own notifications; it "
+            + "just never shows \u{201C}working\u{201D}.\n\n"
+        if plan.detection.configTomlHasHooks {
+            body += "Your config.toml already has its own Codex hooks \u{2014} Codex runs both, "
+                + "so those keep working alongside tkzmux\u{2019}s.\n\n"
+        }
+        body += "Settings \u{203A} General removes this again."
+        return body
+    }
+
+    /// Records the answer and installs when it was yes — the Codex counterpart to
+    /// `finishStatuslineOffer`. A decline is still an answer, so the flag is set either way.
+    private func finishCodexHooksOffer(confirmed: Bool, accountKey: String) {
+        guard let agents else { return }
+        store.update { $0.setCodexHooksOffered(true) }
+        guard confirmed else { return }
+        do {
+            try agents.installCodexHooks(accountKey: accountKey)
+            showNotice("Codex hooks installed \u{2014} run /hooks in Codex to trust them")
+        } catch {
+            logger.error("codex hooks install failed: \(String(describing: error), privacy: .public)")
+            showNotice("Could not install Codex's hooks: \(error.localizedDescription)")
+        }
+    }
+
+    /// The Settings page's "Configure…" button (`SettingsRow.ID.hooks`) — a deliberate ask, so
+    /// unlike ``offerCodexHooksIfNeeded(accountKey:)`` this ignores `codexHooksOffered` entirely
+    /// and, like `offerStatusline(accountKey:automatic:false)`, only refuses when there is
+    /// genuinely nothing to offer (already ours, or a stale install repaired at launch).
+    func configureCodexHooks(accountKey: String) {
+        guard let agents, let detection = agents.codexHooksDetection(accountKey: accountKey) else { return }
+        switch detection.producer {
+        case .tkzmux, .stale: return
+        case .none, .other: offerCodexHooks(accountKey: accountKey)
+        }
+    }
+
+    /// The Settings page's "Remove…" button once hooks are installed — the Codex counterpart to
+    /// `removeStatusline`.
+    func removeCodexHooks(accountKey: String) {
+        guard let agents else { return }
+        let confirmed: Bool
+        if let confirmRemoveCodexHooks {
+            confirmed = confirmRemoveCodexHooks()
+        } else {
+            let alert = NSAlert()
+            alert.messageText = "Remove the tkzmux Codex hooks?"
+            alert.informativeText = "Puts back the hooks.json you had before, exactly."
+            alert.addButton(withTitle: "Remove")
+            alert.addButton(withTitle: "Cancel")
+            alert.alertStyle = .warning
+            confirmed = alert.runModal() == .alertFirstButtonReturn
+        }
+        guard confirmed else { return }
+        do {
+            try agents.uninstallCodexHooks(accountKey: accountKey)
+            showNotice("Codex hooks removed")
+        } catch {
+            logger.error("codex hooks remove failed: \(String(describing: error), privacy: .public)")
+            showNotice("Could not remove Codex's hooks: \(error.localizedDescription)")
+        }
     }
 
     private func recordWindowFrame() {
@@ -2336,8 +2510,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     /// Shows a message in the status strip for a while, then puts the session's data back.
-    /// `AppDelegate` uses it for the `state.json` recovery notices (M5.1); design.md asks for a
-    /// non-modal notice and the 30 pt strip is the only one the app has.
+    /// `AppDelegate` uses it for the `state.json` recovery notices (M5.1); the notice must be
+    /// non-modal and the 30 pt strip is the only one the app has.
     public func showNotice(_ message: String, for duration: Duration = .seconds(10)) {
         transientNotice = message
         updateStatusBar()
@@ -2391,7 +2565,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         model.baseBranch = git?.baseBranch
         model.behindBase = git?.behindBase
         model.rebaseShortcut = ShortcutsTable.resolved(state: state)[.rebaseOntoBase]?.displayString
-        // Sidecar first, `gh` second — design.md → *Git integration → PR*. `GitStatusService` owns
+        // Sidecar first, `gh` second. `GitStatusService` owns
         // `GitSummary.pr` and has already merged whatever `PRLookup` found, so the sidecar only
         // wins where nothing was looked up.
         model.pullRequest = git?.pr ?? sidecar?.pr
@@ -2570,26 +2744,25 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     /// 2c.6's Actions row: start a session in the named group with the typed text as its first
-    /// prompt. `Launch.command` is a command line, so the prompt is simply `claude`'s argument.
+    /// prompt. `Launch.command` is a command line, so the prompt is simply the agent's argument —
+    /// the account's own agent's, by way of its adapter. No adapter registered for that agent means
+    /// there is nobody to turn a prompt into a command line, so the action does nothing rather than
+    /// guess at one.
     private func perform(_ action: SearchAction) {
         guard let groupID = action.groupID else { return }
         newSessionMenu.configure(state: store.state, groupID: groupID)
         guard var launch = newSessionMenu.repoRootLaunch() ?? newSessionMenu.shellLaunch(
             fallbackDirectory: NSHomeDirectory())
         else { return }
+        let agent = launch.accountKey.flatMap { store.state.accounts[$0]?.agent } ?? .claude
+        guard let command = agents?.adapters[agent]?.launchCommand(.prompt(action.prompt)) else { return }
         launch = NewSessionMenu.Launch(
             kind: launch.kind,
-            command: "claude \(Self.shellQuoted(action.prompt))",
+            command: command,
             cwd: launch.cwd,
             accountKey: launch.accountKey,
             groupID: launch.groupID)
         newSessionMenu.perform(launch)
-    }
-
-    /// Single-quoted for `/bin/sh`, the way the pty will read it: the only character that needs
-    /// care inside single quotes is the single quote itself.
-    static func shellQuoted(_ text: String) -> String {
-        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     // MARK: - Launching
@@ -2599,7 +2772,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     public func launch(_ launch: NewSessionMenu.Launch) {
         switch launcher.start(launch) {
         case .success:
-            break
+            // The Codex hooks offer wants a session that actually started, not just a resolved
+            // launch — a directory that turned out missing must not put the sheet up for nothing.
+            // `launch.accountKey` may be `nil` (the group has no default, so the user's own shell
+            // decides); the primary account is the honest fallback there, exactly the way
+            // `statuslineAccountKey` falls back for Claude.
+            if launch.agent == .codex {
+                offerCodexHooksIfNeeded(accountKey: launch.accountKey ?? Account.defaultKey(for: .codex))
+            }
         case .failure(.missingDirectory(let path)):
             presentLaunchFailure("\(path) is not a directory.")
         case .failure(.spawnFailed(let reason)):
@@ -2679,6 +2859,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     func resumeSession(_ id: SessionID) {
+        let session = store.state.sessions[id]
+        let name = session.flatMap { agents?.adapters[$0.agent]?.displayName } ?? "The agent"
         let outcome = launcher.resume(id)
         // A reopen of the *selected* row replaces its host session, which detaches the surface,
         // and the selection has not changed — so nothing else would re-attach it. Idempotent
@@ -2688,9 +2870,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         case .success(.resumed):
             focusTerminalIfSessionShown()
         case .success(.agentRunning):
-            showNotice("Claude is already running in this session", for: .seconds(3))
+            showNotice("\(name) is already running in this session", for: .seconds(3))
         case .success(.nothingToResume):
-            showNotice("No Claude conversation to resume \u{00B7} the shell is back", for: .seconds(4))
+            showNotice("No \(name) conversation to resume \u{00B7} the shell is back", for: .seconds(4))
         case .failure(let failure):
             showNotice(Self.reopenFailureNotice(failure))
         }
@@ -2743,7 +2925,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// The Settings switch's form of the same: an absolute value rather than a flip.
     func setShowSessionSpend(_ isOn: Bool) {
         store.update { $0.setShowSessionSpend(isOn) }
-        if isOn { claude?.refreshAllUsage() }
+        if isOn { agents?.refreshAllUsage() }
     }
 
     /// The periodic base-branch fetch (2026-09-13). `GitIntegration` reads the flag back through
@@ -2752,7 +2934,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         store.update { $0.setCheckOriginPeriodically(!$0.checkOriginPeriodically) }
     }
 
-    /// The "Claude finished" banner switch. `AttentionNotifier` reads it back through
+    /// The "agent finished" banner switch. `AttentionNotifier` reads it back through
     /// `ChangeSet.chrome`; off takes the finished banners back.
     func toggleDoneNotification() {
         store.update { $0.setNotifyOnDone(!$0.notifyOnDone) }
@@ -2766,7 +2948,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     /// The window shows two facts the store does not hold and runs three flows that end in an
-    /// alert; all of them belong to this controller (the `claude` coordinator, the consent sheets
+    /// alert; all of them belong to this controller (the `agents` coordinator, the consent sheets
     /// and their test hooks), so the Settings window gets them as closures.
     private func wireSettings() {
         settings.actions = SettingsWindowController.Actions(
@@ -2775,17 +2957,55 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             removeStatusline: { [weak self] key in self?.removeStatusline(accountKey: key) },
             removeShellIntegration: { [weak self] in self?.removeShellIntegration() },
             statuslineProducers: { [weak self] in
-                guard let self, let claude = self.claude else { return [:] }
+                guard let self, let agents = self.agents else { return [:] }
                 var producers: [String: StatuslineProducer] = [:]
                 for key in self.store.state.accounts.keys {
-                    producers[key] = claude.statuslineProducer(accountKey: key)
+                    producers[key] = agents.statuslineProducer(accountKey: key)
                 }
                 return producers
             },
-            shellIntegrationInstalled: { [weak self] in self?.claude?.installer?.isInstalled },
+            shellIntegrationInstalled: { [weak self] in self?.agents?.installer?.isInstalled },
             shellIntegrationDirectory: { [weak self] in
-                guard let directory = self?.claude?.installer?.directory else { return nil }
+                guard let directory = self?.agents?.installer?.directory else { return nil }
                 return (directory.path as NSString).abbreviatingWithTildeInPath
+            },
+            offerCodexHooks: { [weak self] key in self?.configureCodexHooks(accountKey: key) },
+            removeCodexHooks: { [weak self] key in self?.removeCodexHooks(accountKey: key) },
+            hooksDetections: { [weak self] in
+                guard let self, let agents = self.agents else { return [:] }
+                var detections: [String: CodexHooksDetection] = [:]
+                for key in self.store.state.accounts.keys {
+                    if let detection = agents.codexHooksDetection(accountKey: key) {
+                        detections[key] = detection
+                    }
+                }
+                return detections
+            },
+            capabilitiesByAgent: { [weak self] in
+                guard let agents = self?.agents else { return [:] }
+                return agents.adapters.mapValues(\.capabilities)
+            },
+            hooksInstallRequiredAgents: { [weak self] in
+                guard let agents = self?.agents else { return [] }
+                // `.installed` is Codex's own strategy (write hooks once, with consent); Claude's
+                // `.perInvocation` shim has nothing to install, so it must never earn a row here.
+                var required: Set<AgentKind> = []
+                for (kind, adapter) in agents.adapters {
+                    if case .installed = adapter.hookInstall { required.insert(kind) }
+                }
+                return required
+            },
+            agentDisplayNames: { [weak self] in
+                guard let agents = self?.agents else { return [:] }
+                return agents.adapters.mapValues(\.displayName)
+            },
+            installedShims: { [weak self] in
+                // `ShimInstaller.ensureInstalled()` writes every bundled shim unconditionally at
+                // startup (see its own header), so the bundled resource names are exactly what is
+                // on disk once the app has actually started — which is always true by the time a
+                // human can have the Settings window open.
+                guard let installer = self?.agents?.installer else { return [] }
+                return installer.resources.shimScripts.keys.sorted()
             })
     }
 
@@ -2882,11 +3102,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         case .idle: busy = false
         }
         if busy {
+            let name = agents?.adapters[session.agent]?.displayName ?? "the agent"
             let confirmed = confirmRemove?(session) ?? runConfirmation(
                 title: "Close \u{201C}\(session.displayTitle)\u{201D}?",
                 message: session.status == .working
-                    ? "Claude is still working in this session. Closing ends the shell and removes the row; the conversation is kept by Claude Code."
-                    : "This session is waiting for you. Closing ends the shell and removes the row; the conversation is kept by Claude Code.",
+                    ? "\(name) is still working in this session. Closing ends the shell and removes the row; the conversation is kept by \(name)."
+                    : "This session is waiting for you. Closing ends the shell and removes the row; the conversation is kept by \(name).",
                 button: "Close")
             guard confirmed else { return }
         }
@@ -2924,7 +3145,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         if busy > 0 {
             text += " \u{2014} \(busy) \(busy == 1 ? "is" : "are") still working or waiting on you"
         }
-        text += ". The conversations are kept by Claude Code, and the worktrees on disk are not"
+        text += ". The conversations are kept by their agents, and the worktrees on disk are not"
         text += " touched."
         return text
     }
@@ -2948,8 +3169,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
+        // `?? true` rather than `== true`: with no coordinator wired yet (a test harness, a window
+        // still assembling) there is no adapter to ask, and the honest default is to offer Resume
+        // rather than hide it on the strength of an absence. Only a *known* adapter that lacks
+        // `.resume` turns it off.
         let resume = contextItem("Resume", action: #selector(contextResume(_:)), id: id.rawValue)
-        resume.isEnabled = session.conversationId != nil && session.live?.descriptor == nil
+        resume.isEnabled = session.conversationId != nil && session.live?.observation == nil
+            && (agents?.adapters[session.agent]?.capabilities.contains(.resume) ?? true)
         resume.identifier = ContextItemID.resume
         menu.addItem(resume)
 
@@ -3018,7 +3244,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         menu.addItem(new)
         let resumeAll = contextItem("Resume all in \(group.name)", action: #selector(contextResumeAll(_:)), id: id.rawValue)
         resumeAll.isEnabled = store.state.sessions(in: id).contains {
-            $0.conversationId != nil && $0.live?.descriptor == nil
+            $0.conversationId != nil && $0.live?.observation == nil
         }
         resumeAll.identifier = ContextItemID.resumeAll
         menu.addItem(resumeAll)
@@ -3258,7 +3484,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let hidden = store.state.sessions[id]?.spendTrackingDisabled == true
         store.update { $0.setSpendTrackingDisabled(id, !hidden) }
         // Turning it back on for this one session: no need to re-scan every session, only this one.
-        if hidden { claude?.refreshUsageNow(for: id) }
+        if hidden { agents?.refreshUsageNow(for: id) }
     }
 
     @objc private func contextToggleMute(_ sender: Any?) {
@@ -3405,7 +3631,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     ///
     /// Only *bucket* changes are written. A steady session would otherwise produce a new value
     /// every minute, and every write is a `ChangeSet.sessions` entry that reloads that row — the
-    /// one thing the sidebar's design exists to avoid (design.md → *Store*).
+    /// one thing the sidebar's design exists to avoid.
     /// Takes the pids on the main thread, the syscalls off it, and the store write back on it.
     ///
     /// The walk is `proc_listchildpids` per node — a scan of the system process table, into a
@@ -3530,7 +3756,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // OSC 7 from the ZDOTDIR wrapper on every `cd`. The pane's directory is what a split
             // starts in; the *row's* also follows it, but only from the focused pane — otherwise a
             // `cd` in a background pane would rename the sidebar row (2026-09-08).
-            if let path = SessionEventHandler.decodePwd(raw) {
+            if let path = PwdDecoder.decode(raw) {
                 store.update { state in
                     state.setPaneCwd(id, path: path)
                     if let session = state.session(owning: id), session.focusedTerminalID == id {
@@ -3543,13 +3769,26 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // — Claude quit, or never started (`claude: command not found`). Either way the
             // launch this pane was waiting on is over. Other progress states stay unread.
             if let session = store.state.session(owning: id),
-                session.live?.claudeStartup?.terminal == id
+                session.live?.agentStartup?.terminal == id
             {
-                store.update { $0.endClaudeStartup(session.id) }
+                store.update { $0.endAgentStartup(session.id) }
+            }
+        case .bell:
+            // BEL is emitted by far too many things — a shell completion ding, `vim`, `htop` — to
+            // mean anything about an agent's state. Only the structured OSC 9 notification below
+            // (TKZ-85) is treated as evidence; a bare bell stays inert.
+            break
+        case .notification(let title, let body):
+            // OSC 9 desktop notification (TKZ-85): evidence only when it lands in the pane that is
+            // actually running the agent. A notification from a plain shell pane, or from a split
+            // the agent is not running in, is not evidence about the agent — it could be `npm`,
+            // `make`, anything else sharing the row.
+            if let session = store.state.session(owning: id), session.paneHostsAgent(id) {
+                agents?.handleTerminalNotification(sessionID: session.id, terminal: id, title: title, body: body)
             }
         default:
             // `.title` deliberately does not land in the store: `Session.title` is the rename slot
-            // (design.md → Session flows) and a shell-set title is not a rename.
+            // and a shell-set title is not a rename.
             break
         }
     }

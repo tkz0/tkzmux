@@ -169,8 +169,8 @@ struct MainWindowRestoreTests {
 
         // Claude running in ids[0] → Resume is off.
         harness.mutate { state in
-            state.applyDescriptor(
-                ClaudeSessionInfo(configDir: "/x/.claude", pid: 5, sessionId: "conv-0", status: .busy),
+            state.applyObservation(
+                AgentObservation(pid: 5, conversationId: "conv-0", configDir: "/x/.claude", activity: .busy),
                 alive: true, to: ids[0])
         }
         let busy = try #require(harness.controller.sidebar.contextMenu(forSession: ids[0]))

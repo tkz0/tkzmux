@@ -1,6 +1,6 @@
 // GitProcess — the one place this module runs a subprocess (M4.1).
 //
-// design.md → *Git integration*: every git call the app makes is a **background** call that runs
+// Every git call the app makes is a **background** call that runs
 // while Claude may be running its own git in the same repo. So all of them go through here, and
 // here sets the four things that make a background call harmless:
 //

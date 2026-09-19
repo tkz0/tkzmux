@@ -4,20 +4,21 @@
 // libghostty, because `TerminalSurface` reads the effective colours back out of the VT on every
 // tick and those win over anything `Theme` says.
 import Foundation
+import Synchronization
 import Testing
 import GhosttyVt
 import TkzCore
 @testable import TkzTerminalCore
 
 /// Collects a session's pty writes, so a query reply or an unsolicited report can be asserted.
-private final class ThemePtySink: @unchecked Sendable {
-    private let lock = NSLock()
-    private var bytes = Data()
+/// `Mutex`, per the house rule — see `PtySink` in `TerminalSessionTests`.
+private final class ThemePtySink: Sendable {
+    private let storage = Mutex(Data())
 
-    func append(_ data: Data) { lock.withLock { bytes.append(data) } }
-    var text: String { lock.withLock { String(decoding: bytes, as: UTF8.self) } }
-    var isEmpty: Bool { lock.withLock { bytes.isEmpty } }
-    func reset() { lock.withLock { bytes.removeAll() } }
+    func append(_ data: Data) { storage.withLock { $0.append(data) } }
+    var text: String { storage.withLock { String(decoding: $0, as: UTF8.self) } }
+    var isEmpty: Bool { storage.withLock { $0.isEmpty } }
+    func reset() { storage.withLock { $0.removeAll() } }
 }
 
 private func makeThemedSession(

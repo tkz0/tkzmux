@@ -7,7 +7,7 @@
 // `ClaudeIntegration` for M3, and for the same reason: the services stay testable without a store
 // and the store stays free of process state that arrives on foreign queues.
 //
-// Cadence, from design.md → *Git integration*:
+// Cadence:
 //
 //   | Fact  | When it is refreshed |
 //   |---|---|
@@ -166,7 +166,7 @@ public final class GitIntegration {
 
     /// A `Stop` hook landed for this row: Claude has just finished doing something to the working
     /// tree, which is the one moment a refresh is certainly worth it — for *any* row, selected or
-    /// not (design.md → *Git integration → Triggers*).
+    /// not.
     public func sessionDidStop(_ id: SessionID) {
         guard started else { return }
         syncTracking()

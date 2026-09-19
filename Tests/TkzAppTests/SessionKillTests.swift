@@ -10,7 +10,7 @@
 // temp directories (shared agent brief, hard rule 8).
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Darwin
 import Foundation
 import Metal

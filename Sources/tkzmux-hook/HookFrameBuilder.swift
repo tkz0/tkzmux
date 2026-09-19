@@ -63,9 +63,16 @@ private func unit(_ payload: [UInt8], _ idx: Int, _ end: Int) -> Int {
     return min(utf8SequenceLength(b), end - idx)
 }
 
-private func assembleHookFrame(event: String, sid: String, ppid: pid_t, ts: Int64, payload: [UInt8]) -> [UInt8] {
-    let prefix = "{\"v\":1,\"type\":\"hook\",\"event\":\"\(jsonEscape(event))\",\"sid\":\"\(jsonEscape(sid))\","
-        + "\"ppid\":\(ppid),\"ts\":\(ts),\"payload\":"
+/// `agent` rides on the envelope, next to `event`/`sid`/`ppid` — never inside `payload`, which stays
+/// exactly what the agent itself sent (or the stdin bytes handed to `notify-argv`). Omitted when
+/// `nil`: an already-installed shim from before this ticket sends no `agent` field at all, and
+/// `HookServer` reads that absence as Claude — the same contract `HookPayload.agent`'s default
+/// documents on the server side.
+private func assembleHookFrame(event: String, sid: String, ppid: pid_t, ts: Int64, agent: String?, payload: [UInt8]) -> [UInt8] {
+    var prefix = "{\"v\":1,\"type\":\"hook\",\"event\":\"\(jsonEscape(event))\",\"sid\":\"\(jsonEscape(sid))\","
+        + "\"ppid\":\(ppid),\"ts\":\(ts),"
+    if let agent { prefix += "\"agent\":\"\(jsonEscape(agent))\"," }
+    prefix += "\"payload\":"
     var bytes = Array(prefix.utf8)
     bytes.append(contentsOf: payload)
     bytes.append(contentsOf: Array("}\n".utf8))
@@ -75,25 +82,34 @@ private func assembleHookFrame(event: String, sid: String, ppid: pid_t, ts: Int6
 /// Builds the `hook` wire frame. `stdinHitCap` means `readStdin` had to stop early — the tail of
 /// the payload was chopped mid-value, so it cannot be valid JSON; skip straight to the
 /// `{"truncated":true}` fallback rather than running the string scanner over unparseable bytes.
-func buildHookFrame(event: String, sid: String, ppid: pid_t, ts: Int64, stdinBytes: [UInt8], stdinHitCap: Bool) -> [UInt8] {
+///
+/// `agent` is `TKZMUX_AGENT` as the caller read it from its own environment — this function does
+/// not know or care where it came from. It reaches every hook-shaped frame this binary sends,
+/// including `notify-argv`'s, because both paths funnel through here.
+func buildHookFrame(event: String, sid: String, ppid: pid_t, ts: Int64, stdinBytes: [UInt8], stdinHitCap: Bool, agent: String?) -> [UInt8] {
     if stdinHitCap {
-        return assembleHookFrame(event: event, sid: sid, ppid: ppid, ts: ts, payload: Array(#"{"truncated":true}"#.utf8))
+        return assembleHookFrame(event: event, sid: sid, ppid: ppid, ts: ts, agent: agent, payload: Array(#"{"truncated":true}"#.utf8))
     }
 
     let rawPayload = stdinBytes.isEmpty ? Array("null".utf8) : replaceNewlines(stdinBytes)
-    var frame = assembleHookFrame(event: event, sid: sid, ppid: ppid, ts: ts, payload: rawPayload)
+    var frame = assembleHookFrame(event: event, sid: sid, ppid: ppid, ts: ts, agent: agent, payload: rawPayload)
     if frame.count <= frameSizeLimit { return frame }
 
     let shrunk = truncateLongStrings(rawPayload)
-    frame = assembleHookFrame(event: event, sid: sid, ppid: ppid, ts: ts, payload: shrunk)
+    frame = assembleHookFrame(event: event, sid: sid, ppid: ppid, ts: ts, agent: agent, payload: shrunk)
     if frame.count <= frameSizeLimit { return frame }
 
-    return assembleHookFrame(event: event, sid: sid, ppid: ppid, ts: ts, payload: Array(#"{"truncated":true}"#.utf8))
+    return assembleHookFrame(event: event, sid: sid, ppid: ppid, ts: ts, agent: agent, payload: Array(#"{"truncated":true}"#.utf8))
 }
 
-func buildLaunchFrame(sid: String, pid: pid_t, cwd: String, configDir: String, argv: [String]) -> [UInt8] {
+/// `agent` is omitted (rather than sent as `null` or `""`) exactly when the caller passes `nil`, so
+/// an old shim that never learned about `--agent` still produces a frame `HookServer` reads as
+/// Claude.
+func buildLaunchFrame(sid: String, pid: pid_t, cwd: String, configDir: String, argv: [String], agent: String?) -> [UInt8] {
     var s = "{\"v\":1,\"type\":\"launch\",\"sid\":\"\(jsonEscape(sid))\",\"pid\":\(pid),"
-    s += "\"cwd\":\"\(jsonEscape(cwd))\",\"config_dir\":\"\(jsonEscape(configDir))\",\"argv\":["
+    s += "\"cwd\":\"\(jsonEscape(cwd))\",\"config_dir\":\"\(jsonEscape(configDir))\","
+    if let agent { s += "\"agent\":\"\(jsonEscape(agent))\"," }
+    s += "\"argv\":["
     s += argv.map { "\"\(jsonEscape($0))\"" }.joined(separator: ",")
     s += "]}\n"
     return Array(s.utf8)

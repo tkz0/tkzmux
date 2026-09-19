@@ -25,7 +25,7 @@
 // wraps — by *segment*, never mid-word — and the row is 59 pt:
 //
 //     ┌────────────────────────────────────────────────────────────┐
-//     │  ●   Claude's summary title                  NEEDS YOU     │  title line,  top 22…6
+//     │  ●   The agent's summary title                NEEDS YOU     │  title line,  top 22…6
 //     │      …/folder                                              │  detail 1,    top 38…25
 //     │      ⎇ feature/a-long-branch-name   WT            [ALT]    │  detail 2,    top 53…40
 //     └────────────────────────────────────────────────────────────┘
@@ -45,7 +45,7 @@ import AppKit
 import TkzCore
 
 public final class SessionRowView: NSTableCellView {
-    // MARK: Metrics (all from the design; see docs/design.md → App architecture → Sidebar)
+    // MARK: Metrics (all from the design)
 
     /// The single-line row height. The outline view returns `height(for:width:)` from
     /// `heightOfRowByItem`, which is this unless the detail line wraps.
@@ -126,6 +126,11 @@ public final class SessionRowView: NSTableCellView {
     private lazy var mutedBadge = SidebarBadgeLayer(font: badgeFont)
     private lazy var needsYouBadge = SidebarBadgeLayer(font: badgeFont)
     private lazy var accountChip = SidebarBadgeLayer(font: badgeFont)
+    /// The one-letter agent badge (`SidebarSessionRowModel.agentGlyph`), just left of the title.
+    /// Hidden whenever the model carries none — every sidebar with one agent kind, i.e. every
+    /// sidebar before TKZ-87 — so its width contributes nothing and the title lands exactly where
+    /// it always has.
+    private lazy var agentGlyphBadge = SidebarBadgeLayer(font: badgeFont)
 
     /// The status dot. Public so the controller can park its pulse; `setOccluded(_:)` below is the
     /// preferred entry point.
@@ -169,6 +174,7 @@ public final class SessionRowView: NSTableCellView {
     private var mutedBadgeWidth: CGFloat = 0
     private var needsYouBadgeWidth: CGFloat = 0
     private var accountChipWidth: CGFloat = 0
+    private var agentGlyphBadgeWidth: CGFloat = 0
     /// What ``refreshAccountTooltip()`` last registered, so it can skip the churn.
     private var registeredTooltipRect: NSRect?
     private var registeredTooltipText: String?
@@ -192,6 +198,7 @@ public final class SessionRowView: NSTableCellView {
         root.addSublayer(mutedBadge)
         root.addSublayer(needsYouBadge)
         root.addSublayer(accountChip)
+        root.addSublayer(agentGlyphBadge)
         root.addSublayer(statusDot)
         root.addSublayer(closeLayer)
         apply()
@@ -256,6 +263,7 @@ public final class SessionRowView: NSTableCellView {
         mutedBadge.isHidden = true
         needsYouBadge.isHidden = true
         accountChip.isHidden = true
+        agentGlyphBadge.isHidden = true
         removeAllToolTips()
         registeredTooltipRect = nil
         registeredTooltipText = nil
@@ -428,6 +436,19 @@ public final class SessionRowView: NSTableCellView {
             accountChipWidth = 0
         }
 
+        if let glyph = model.agentGlyph, !glyph.isEmpty {
+            agentGlyphBadge.isHidden = false
+            let tint = theme.foregroundMuted
+            agentGlyphBadgeWidth = agentGlyphBadge.configure(
+                text: glyph,
+                foreground: tint,
+                background: RGB(r: tint.r, g: tint.g, b: tint.b, a: 0.18)
+            )
+        } else {
+            agentGlyphBadge.isHidden = true
+            agentGlyphBadgeWidth = 0
+        }
+
         statusDot.configure(status: model.status, theme: theme)
     }
 
@@ -446,6 +467,7 @@ public final class SessionRowView: NSTableCellView {
     var needsYouBadgeLayer: CALayer { needsYouBadge }
     var mutedBadgeLayer: CALayer { mutedBadge }
     var accountChipLayer: CALayer { accountChip }
+    var agentGlyphLayer: CALayer { agentGlyphBadge }
     var selectionBackgroundLayer: CALayer { selectionLayer }
     var colourEdgeLayer: CALayer { edgeLayer }
     var titleFontForMeasurement: NSFont { titleFont }
@@ -576,10 +598,23 @@ public final class SessionRowView: NSTableCellView {
             )
             titleRight = x - Self.badgeGap
         }
+        // The agent glyph, when there is one, sits where the title always started, and the title
+        // moves over to make room — hidden, it contributes nothing and the title lands at
+        // `textLeft` exactly as it did before this badge existed.
+        var titleLeft = Self.textLeft
+        if !agentGlyphBadge.isHidden {
+            agentGlyphBadge.frame = CGRect(
+                x: titleLeft,
+                y: titleY + (Self.titleLineHeight - badgeH) / 2,
+                width: agentGlyphBadgeWidth,
+                height: badgeH
+            )
+            titleLeft += agentGlyphBadgeWidth + Self.badgeGap
+        }
         titleLayer.frame = CGRect(
-            x: Self.textLeft,
+            x: titleLeft,
             y: titleY,
-            width: max(Self.minTitleWidth, titleRight - Self.textLeft),
+            width: max(Self.minTitleWidth, titleRight - titleLeft),
             height: Self.titleLineHeight
         )
 

@@ -4,6 +4,16 @@
 // as its last edit. A model id with no entry costs nothing rather than a guessed number — callers
 // show tokens with no `$` figure in that case.
 //
+// **No OpenAI rates were added here for TKZ-86 part 2.** The model id a real Codex capture named
+// (`gpt-5.6-terra`, off `turn_context.payload.model` in `Tests/AgentBridgeTests/Fixtures/codex/
+// rollout-exec.jsonl`) is not a publicly documented id with a published per-token rate as of this
+// writing, so inventing one would be exactly the guessed number the paragraph above rules out. The
+// chain this leaves in place, verified rather than assumed: `cost(modelId:)` returns `nil` for it →
+// `TranscriptUsageReader.Cache.sessionUsage` sees `allSatisfy { $0.costUSD != nil }` fail and sets
+// `totalCostUSD` to `nil` → `SidebarRowAdapter.spendBadge` requires `totalCostUSD` to unwrap before
+// it will show anything, so a Codex row's badge is absent rather than reading `$0.00` for a session
+// that plainly cost something. An absent badge is the honest answer; a wrong one would not be.
+//
 // `cacheWrite` prices the 5-minute ephemeral cache, the common case. A turn that used the 1-hour
 // cache instead (`cache_creation.ephemeral_1h_input_tokens`, priced roughly 2x input rather than
 // ~1.25x) is undercounted by this estimate — `TranscriptUsageReader` does not currently split the

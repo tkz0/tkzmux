@@ -171,7 +171,7 @@ import Testing
         #expect(t.usageMeter.hexString == "#8b93f8")
         #expect(t.accent.hexString == "#8b93f8")
         #expect(t.selection.hexString == "rgba(139,147,248,.22)")
-        #expect(t.diffRemove.hexString == "#f28b8b")   // design.md used to say #f07a7a (that is 2a's)
+        #expect(t.diffRemove.hexString == "#f28b8b")   // this used to be #f07a7a (that is 2a's)
         #expect(t.idle.hexString == "rgba(255,255,255,.30)")
     }
 
@@ -277,7 +277,7 @@ import Testing
         #expect(RGB(hex: 0xffffff, alpha: 0.5).over(.black) == RGB(r: 0.5, g: 0.5, b: 0.5))
     }
 
-    // MARK: design.md table
+    // MARK: Design table
 
     /// Prints the token table from the real structs, one column per preset.
     /// Run with `swift test --filter ThemeTests/printsDesignTable` to eyeball the values.

@@ -5,6 +5,7 @@
 // the WRITE_PTY callback with exactly the bytes a program expects, effects turn into events, and a
 // snapshot round-trip reproduces the screen.
 import Foundation
+import Synchronization
 import Testing
 import GhosttyVt
 @testable import TkzTerminalCore
@@ -19,14 +20,17 @@ private func drain(_ session: TerminalSession) async -> [TerminalEvent] {
 }
 
 /// A session whose pty writes are captured into a buffer.
-private final class PtySink: @unchecked Sendable {
-    private let lock = NSLock()
-    private var bytes = Data()
+///
+/// The write callback is `@Sendable` and runs off whatever thread the session is driving, so this
+/// has to be safe for real. `Mutex`, as everywhere else in the codebase — never
+/// `@unchecked Sendable` (CLAUDE.md), which only silences the compiler rather than satisfying it.
+private final class PtySink: Sendable {
+    private let storage = Mutex(Data())
 
-    func append(_ data: Data) { lock.withLock { bytes.append(data) } }
-    var text: String { lock.withLock { String(decoding: bytes, as: UTF8.self) } }
-    var data: Data { lock.withLock { bytes } }
-    func reset() { lock.withLock { bytes.removeAll() } }
+    func append(_ data: Data) { storage.withLock { $0.append(data) } }
+    var text: String { storage.withLock { String(decoding: $0, as: UTF8.self) } }
+    var data: Data { storage.withLock { $0 } }
+    func reset() { storage.withLock { $0.removeAll() } }
 }
 
 private func makeSession(cols: UInt16 = 80, rows: UInt16 = 24) throws -> (TerminalSession, PtySink) {
@@ -179,11 +183,10 @@ private func makeSession(cols: UInt16 = 80, rows: UInt16 = 24) throws -> (Termin
     #expect(counter.value == 2)
 }
 
-private final class Counter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var count = 0
-    func increment() { lock.withLock { count += 1 } }
-    var value: Int { lock.withLock { count } }
+private final class Counter: Sendable {
+    private let storage = Mutex(0)
+    func increment() { storage.withLock { $0 += 1 } }
+    var value: Int { storage.withLock { $0 } }
 }
 
 // MARK: - Screen content
@@ -271,7 +274,7 @@ private final class Counter: @unchecked Sendable {
 // MARK: - Scrollback configuration
 
 @Test func scrollbackLimitIsAppliedFromOptions() throws {
-    // The library default is only 10 000 bytes; the session must raise it (docs/design.md: 24 MiB).
+    // The library default is only 10 000 bytes; the session must raise it (24 MiB).
     let session = try TerminalSession(options: TerminalSessionOptions(cols: 40, rows: 5))
     for line in 0..<3000 { session.write(ptyText: "line \(line)\r\n") }
     #expect(session.scrollbackRows > 2000)

@@ -103,11 +103,11 @@ extension AppState {
     private func forgetPane(_ terminal: TerminalID, in session: inout Session) {
         session.live?.panePids[terminal] = nil
         session.live?.paneCwds[terminal] = nil
-        if session.live?.claudeStartup?.terminal == terminal {
-            session.live?.claudeStartup = nil
+        if session.live?.agentStartup?.terminal == terminal {
+            session.live?.agentStartup = nil
         }
-        if session.live?.claudeTerminal == terminal {
-            session.live?.claudeTerminal = nil
+        if session.live?.agentTerminal == terminal {
+            session.live?.agentTerminal = nil
         }
     }
 

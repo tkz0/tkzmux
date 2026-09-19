@@ -41,7 +41,7 @@ struct RenameAndDoneTests {
         var state = AppState.startup(homeDirectory: "/tmp")
         let session = state.createSession(groupID: state.orderedGroups[0].id, cwd: "/tmp/app", accountKey: "claude")
         state.setLive(LiveSessionState(shellPid: 1, status: .idle), for: session.id)
-        state.applyHook(HookEvent(kind: .stop, lastAssistantMessage: "ok"), to: session.id, now: Date())
+        state.applyEvent(AgentEvent(kind: .turnEnded, lastAssistantMessage: "ok"), to: session.id, now: Date())
         let row = SidebarRowAdapter.sessionModel(state.sessions[session.id]!, in: state)
         #expect(row.status == .done)
         #expect(row.needsAttention == false)

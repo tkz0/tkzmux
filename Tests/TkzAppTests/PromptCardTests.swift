@@ -6,7 +6,7 @@
 // card has since left is dropped.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import Testing
 import TkzCore
@@ -43,13 +43,24 @@ struct PromptCardTests {
     @Test("The recap's meta line names its source honestly")
     func recapMeta() {
         var summary = Self.summary()
-        #expect(PromptCardView.recapMetaLine(summary, now: Self.now) == "Claude\u{2019}s own summary \u{00B7} 3 min ago")
+        #expect(PromptCardView.recapMetaLine(summary, now: Self.now, agentName: "Claude")
+            == "Claude\u{2019}s own summary \u{00B7} 3 min ago")
         summary.recapSource = .stopMessage
-        #expect(PromptCardView.recapMetaLine(summary, now: Self.now).hasPrefix("Claude\u{2019}s last message"))
+        #expect(PromptCardView.recapMetaLine(summary, now: Self.now, agentName: "Claude")
+            .hasPrefix("Claude\u{2019}s last message"))
         summary.recapSource = .assistantText
-        #expect(PromptCardView.recapMetaLine(summary, now: Self.now).hasPrefix("Claude\u{2019}s last reply"))
+        #expect(PromptCardView.recapMetaLine(summary, now: Self.now, agentName: "Claude")
+            .hasPrefix("Claude\u{2019}s last reply"))
         summary.recapSource = nil
-        #expect(PromptCardView.recapMetaLine(summary, now: Self.now).contains("updates as the session runs"))
+        #expect(PromptCardView.recapMetaLine(summary, now: Self.now, agentName: "Claude")
+            .contains("updates as the session runs"))
+    }
+
+    @Test("The recap names whichever agent the card was told about, not a hard-coded one")
+    func recapMetaNamesTheGivenAgent() {
+        let summary = Self.summary()
+        #expect(PromptCardView.recapMetaLine(summary, now: Self.now, agentName: "Stub Agent")
+            .hasPrefix("Stub Agent\u{2019}s own summary"))
     }
 
     // MARK: View
@@ -249,13 +260,27 @@ struct PromptCardTests {
         controller.transcriptPathProvider = { _ in transcript.path }
         controller.present(for: .generate(), over: nil)
         #expect(reads == 1)
+        // Distinguishes the two ways this test can fail. `TranscriptWatch.init?` returns nil when
+        // it cannot `open` the file, and the controller stores that as "no watch" without
+        // complaining — so a run that is out of file descriptors looks exactly like a watch that
+        // fired late. Assert the watch exists before waiting on it.
+        #expect(controller.isWatchingForTesting, "no watch was opened, so nothing could re-read")
 
         let handle = try FileHandle(forWritingTo: transcript)
         try handle.seekToEnd()
         try handle.write(contentsOf: Data("{\"type\":\"system\"}\n".utf8))
         try handle.close()
 
-        let deadline = ContinuousClock.now + .seconds(2)
+        // Generous because the watch debounces for 150 ms and then hops to the main actor, which
+        // every other `@MainActor` suite in this target is contending for — Swift Testing runs
+        // suites in parallel.
+        //
+        // This test used to fail in a full run and pass in isolation, which read like flakiness and
+        // was not: the watch did its detection *and* its debounce on the main queue, so with the
+        // main thread busy the timer was never serviced and the re-read never happened at all, at
+        // any timeout. `TranscriptWatch` now does both on its own queue. Raising this number does
+        // not paper over that class of bug — it was 20 s while the bug was live and still failed.
+        let deadline = ContinuousClock.now + .seconds(5)
         while reads < 2, ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(20))
         }

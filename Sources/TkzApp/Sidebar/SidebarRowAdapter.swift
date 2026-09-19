@@ -68,8 +68,37 @@ public enum SidebarRowAdapter {
             isSelected: state.selection == session.id,
             groupColor: state.groups[session.groupID]?.color,
             memoryBadge: memoryBadge(for: session),
-            spendBadge: spendBadge(for: session, in: state)
+            spendBadge: spendBadge(for: session, in: state),
+            agentGlyph: agentGlyph(for: session, in: state)
         )
+    }
+
+    /// A one-letter badge naming `session`'s agent, or `nil` when the sidebar has nothing to
+    /// disambiguate — i.e. every session known to `state`, `session` itself included, shares one
+    /// agent. `session` is added to the set explicitly rather than assumed to already be in
+    /// `state.sessions`: several call sites (badge/spend tests, a session mid-launch) hand this a
+    /// `Session` that is not yet, or never was, stored in the state passed alongside it.
+    ///
+    /// Derived from `AgentKind.rawValue` rather than a per-agent display table: naming a table
+    /// entry for every future agent is exactly the kind of thing nobody remembers to do, and this
+    /// only has to say "this row is not that one", not spell out a product name.
+    static func agentGlyph(for session: Session, in state: AppState) -> String? {
+        var agents = Set(state.sessions.values.map(\.agent))
+        agents.insert(session.agent)
+        guard agents.count > 1 else { return nil }
+        return glyphCharacter(for: session.agent)
+    }
+
+    /// The one letter `agentGlyph(for:in:)` draws. `claude` and `codex` share a first letter, so
+    /// the two known kinds get one picked to actually tell them apart; an agent this build does
+    /// not recognise (a `state.json` written by a newer build) falls back to its own first letter,
+    /// which is honest even though it is not checked against every other agent's name.
+    static func glyphCharacter(for agent: AgentKind) -> String {
+        switch agent {
+        case .claude: return "C"
+        case .codex: return "X"
+        default: return agent.rawValue.prefix(1).uppercased()
+        }
     }
 
     /// The `…/dir` subtitle: the folder-derived title, unless that *is* the title. An exact string
@@ -188,16 +217,17 @@ public enum SidebarRowAdapter {
 
     /// Short label for the account chip, or `nil` to hide the chip entirely.
     ///
-    /// **The default account (`~/.claude`) never shows a chip** (decision 2026-09-08): almost
-    /// nobody runs more than one Claude plan, and for the one plan everybody has the chip says
-    /// nothing. A chip appears only on a row that runs on some *other* config dir, and reads as
-    /// "this one is different". The text is derived from the account's *configured* `label` when it
-    /// has one, else from its key — never hardcoded, see CLAUDE.md. See ``shortLabel(_:)`` for the
-    /// rule.
+    /// **The agent's own default account never shows a chip** (decision 2026-09-08): almost
+    /// nobody runs more than one plan for a given agent, and for the one plan everybody has the
+    /// chip says nothing. A chip appears only on a row that runs on some *other* config dir for
+    /// its agent, and reads as "this one is different". The text is derived from the account's
+    /// *configured* `label` when it has one, else from its key — never hardcoded, see CLAUDE.md.
+    /// See ``shortLabel(_:dropping:)`` for the rule.
     public static func accountLabel(for session: Session, in state: AppState) -> String? {
-        guard session.accountKey != Account.defaultKey else { return nil }
+        guard session.accountKey != Account.defaultKey(for: session.agent) else { return nil }
         let source = state.accounts[session.accountKey]?.label ?? session.accountKey
-        return shortLabel(source) ?? shortLabel(session.accountKey)
+        let defaultWord = Account.defaultKey(for: session.agent)
+        return shortLabel(source, dropping: defaultWord) ?? shortLabel(session.accountKey, dropping: defaultWord)
     }
 
     /// The chip's tooltip: the account as a human would name it, and the config dir it stands for.
@@ -205,19 +235,21 @@ public enum SidebarRowAdapter {
     /// The chip has room for five characters, so the full name lives here — an account the state
     /// has never heard of has nothing but its key to offer.
     public static func accountTooltip(for session: Session, in state: AppState) -> String? {
-        guard session.accountKey != Account.defaultKey else { return nil }
+        guard session.accountKey != Account.defaultKey(for: session.agent) else { return nil }
         guard let account = state.accounts[session.accountKey] else { return session.accountKey }
         let name = account.label == account.key ? account.key : "\(account.label) (\(account.key))"
         return "\(name) \u{2014} \(account.configDir)"
     }
 
-    /// **Drop a leading `claude`, then take the first word**, uppercased and cut to
-    /// ``chipMaxLength``.
+    /// **Drop a leading word equal to the agent's own name, then take the first remaining word**,
+    /// uppercased and cut to ``chipMaxLength``.
     ///
-    /// Every account tkzmux discovers is `~/.claude` or `~/.claude-*`
-    /// (`ClaudeIntegration.discoverAccounts`), and a configured name usually leads with the product
-    /// too, so that first word carries no information: dropping it is what turns `CA` into `ALT`,
-    /// `CW` into `WORK`, and "Claude (work)" into `WORK`.
+    /// Every account tkzmux discovers is `~/.claude` or `~/.claude-*` for the Claude agent
+    /// (`AgentAdapter.discoverAccounts`), and a configured name usually leads with the
+    /// agent's own name too, so that first word carries no information: dropping it is what turns
+    /// `CA` into `ALT`, `CW` into `WORK`, and "Claude (work)" into `WORK`. `defaultWord` is the
+    /// word to drop — the caller's agent's own key (`Account.defaultKey(for:)`) — so a future
+    /// agent gets the same treatment for its own name rather than Claude's.
     ///
     /// What is left is *truncated*, not reduced to initials. The identifying part of a real name is
     /// its first word — "Ada Industries" reads far better as `ADA` than as `AI` — and initials were
@@ -226,11 +258,11 @@ public enum SidebarRowAdapter {
     /// (`accountChipColor(forKey:)`) and in the tooltip, which is what the tooltip is for.
     static let chipMaxLength = 5
 
-    static func shortLabel(_ source: String) -> String? {
+    static func shortLabel(_ source: String, dropping defaultWord: String) -> String? {
         var words = source
             .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
             .filter { !$0.isEmpty }
-        if words.count > 1, words[0].lowercased() == Account.defaultKey { words.removeFirst() }
+        if words.count > 1, words[0].lowercased() == defaultWord { words.removeFirst() }
         guard let first = words.first else { return nil }
         return String(first.prefix(chipMaxLength)).uppercased()
     }

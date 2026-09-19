@@ -93,8 +93,8 @@ private func hostEnvironment(home: String, shell: String = "/bin/zsh") -> [Strin
         #expect(env["TERM"] == "xterm-ghostty")
     }
 
-    /// The one CLAUDE_* variable that must survive: design.md → *Accounts are generic* says an
-    /// inherited config dir is left alone so the environment decides the account. Stripping it by
+    /// The one CLAUDE_* variable that must survive: an inherited config dir is left alone so the
+    /// environment decides the account. Stripping it by
     /// an over-broad `CLAUDE_` prefix would silently move sessions to the wrong Claude account.
     @Test func keepsInheritedClaudeConfigDir() throws {
         let home = try tempDir("config-dir")
@@ -122,7 +122,7 @@ private func hostEnvironment(home: String, shell: String = "/bin/zsh") -> [Strin
 
         let env = TerminalEnvironment.make(
             sessionID: "S1",
-            accountConfigDir: "\(home.path)/.claude-chosen",
+            agentEnvironment: ["CLAUDE_CONFIG_DIR": "\(home.path)/.claude-chosen"],
             tkzmuxDir: home.appending(path: "support"),
             baseEnvironment: host,
             home: home.path
@@ -259,13 +259,14 @@ private func hostEnvironment(home: String, shell: String = "/bin/zsh") -> [Strin
         let base = hostEnvironment(home: home.path)
 
         let primary = TerminalEnvironment.make(
-            sessionID: "S1", accountConfigDir: nil, tkzmuxDir: support,
+            sessionID: "S1", tkzmuxDir: support,
             baseEnvironment: base, home: home.path
         )
         #expect(primary["CLAUDE_CONFIG_DIR"] == nil)
 
         let alt = TerminalEnvironment.make(
-            sessionID: "S2", accountConfigDir: "\(home.path)/.claude-work", tkzmuxDir: support,
+            sessionID: "S2", agentEnvironment: ["CLAUDE_CONFIG_DIR": "\(home.path)/.claude-work"],
+            tkzmuxDir: support,
             baseEnvironment: base, home: home.path
         )
         #expect(alt["CLAUDE_CONFIG_DIR"] == "\(home.path)/.claude-work")

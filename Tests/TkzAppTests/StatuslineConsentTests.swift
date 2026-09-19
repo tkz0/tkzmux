@@ -5,7 +5,7 @@
 // exposes `confirmInstallStatusline` / `confirmRemoveStatusline` as the injection points, the same
 // pattern "Remove Shell Integration" already uses.
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import Testing
 import TkzCore
@@ -13,7 +13,7 @@ import TkzCore
 @testable import TkzApp
 
 @Suite @MainActor struct StatuslineConsentTests {
-    /// A window controller wired to a `ClaudeIntegration` whose support directory is a temp dir
+    /// A window controller wired to an `AgentIntegration` whose support directory is a temp dir
     /// with the real `tkzmux-hook` in `bin/`, plus a config dir holding `settings.json`.
     private struct Fixture {
         var harness: MainWindowControllerTests.Harness
@@ -57,16 +57,16 @@ import TkzCore
         try Data(settingsJSON.utf8).write(to: settings)
 
         let harness = MainWindowControllerTests.makeHarness()
-        harness.controller.claude = ClaudeIntegration(
+        harness.controller.agents = AgentIntegration(
             store: harness.store, directory: support, home: home.path)
         // The fixture state already carries a `claude` account pointing at a directory that is not
-        // this test's, and `ClaudeIntegration` deliberately does not overwrite an account the store
+        // this test's, and `AgentIntegration` deliberately does not overwrite an account the store
         // already knows. Point it at the fixture's config dir, and clear the selection so the
         // controller falls back to the primary account rather than the fixture row's.
         harness.store.update { state in
             state.selection = nil
             state.setAccount(
-                Account(key: Account.defaultKey, configDir: configDir.path, label: "claude"))
+                Account(key: Account.defaultKey(for: .claude), configDir: configDir.path, label: "claude"))
         }
         return Fixture(
             harness: harness, support: support, configDir: configDir, settings: settings,
@@ -202,7 +202,7 @@ import TkzCore
 
         var asked = false
         f.harness.controller.confirmInstallStatusline = { _ in asked = true; return true }
-        #expect(f.harness.controller.claude?.repairStaleStatuslines() == ["claude"])
+        #expect(f.harness.controller.agents?.repairStaleStatuslines() == ["claude"])
 
         #expect(!asked)
         #expect(f.installer.detect(configDir: f.configDir.path) == .tkzmux)

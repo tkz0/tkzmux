@@ -29,6 +29,12 @@ public enum TerminalEnvironment {
     /// Any variable with one of these prefixes is stripped too, so a marker introduced by a future
     /// Claude Code version is covered without a code change here.
     ///
+    /// Deliberately hard-coded to Claude rather than driven by `AgentAdapter` (TKZ-82): this is
+    /// hygiene against whatever spawned *us*, not something the row's own chosen agent decides, and
+    /// `make` runs before any agent is chosen at all — a plain ⌘T shell has no agent to ask. It
+    /// would look like an oversight if it stayed unexplained once `agentEnvironment` (below) made
+    /// everything else here generic.
+    ///
     /// Why this matters beyond tidiness (found 2026-09-09, running the notarized build for M6.6):
     /// an inherited `CLAUDE_CODE_CHILD_SESSION` makes Claude Code announce *"Transcript saving is
     /// off — inherited CLAUDE_CODE_CHILD_SESSION marker"* and, believing it is a child of another
@@ -37,8 +43,8 @@ public enum TerminalEnvironment {
     /// Hooks are a separate path and keep working, which is why NEEDS YOU and the done tint looked
     /// fine and only the green pulse was missing — a confusing symptom for an environment leak.
     ///
-    /// `CLAUDE_CONFIG_DIR` deliberately does **not** match: design.md → *Accounts are generic* says
-    /// an inherited config dir is left alone so the environment can choose the account.
+    /// `CLAUDE_CONFIG_DIR` deliberately does **not** match: an inherited config dir is left alone
+    /// so the environment can choose the account.
     public static let strippedKeyPrefixes = ["CLAUDE_CODE_"]
 
     /// The terminfo database shipped with tkzmux (`terminfo/78/xterm-ghostty`, `terminfo/67/ghostty`),
@@ -65,8 +71,10 @@ public enum TerminalEnvironment {
     ///
     /// - Parameters:
     ///   - sessionID: tkzmux's own session id (`TKZMUX_SESSION_ID`).
-    ///   - accountConfigDir: `CLAUDE_CONFIG_DIR` for a *non-primary* Claude account; nil for the
-    ///     primary account, where Claude Code's own default (`~/.claude`) must win.
+    ///   - agentEnvironment: whatever variables the row's chosen agent needs to find its account —
+    ///     `CLAUDE_CONFIG_DIR` from `ClaudeAdapter.environment(configDir:)` for a non-primary Claude
+    ///     account, empty for the primary account (where Claude Code's own default wins) or for a
+    ///     plain shell with no agent at all. Merged in last, so it wins over anything inherited.
     ///   - tkzmuxDir: tkzmux's application-support directory; `zsh/`, `bin/` and this instance's
     ///     hook socket inside it are handed to the shell.
     ///   - instancePID: the running app's pid, which names the hook socket (`HookSocket`): every
@@ -86,7 +94,7 @@ public enum TerminalEnvironment {
     /// no wrapper for (tcsh, dash…) gets the prepend here, as the best that can be done.
     public static func make(
         sessionID: String,
-        accountConfigDir: String? = nil,
+        agentEnvironment: [String: String] = [:],
         tkzmuxDir: URL,
         baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         home: String? = nil,
@@ -132,10 +140,10 @@ public enum TerminalEnvironment {
         env["TKZMUX_SOCKET"] = HookSocket.url(in: tkzmuxDir, pid: instancePID).path
         env["TKZMUX_SESSION_ID"] = sessionID
 
-        // Only non-primary accounts get an explicit config dir; the primary account uses ~/.claude.
-        if let accountConfigDir {
-            env["CLAUDE_CONFIG_DIR"] = accountConfigDir
-        }
+        // Whatever the row's chosen agent needs to find its account, merged in last so it wins over
+        // anything inherited. Empty for the primary account of whichever agent this is (its own
+        // default already wins) and for a plain shell with no agent at all.
+        for (key, value) in agentEnvironment { env[key] = value }
 
         return env
     }
@@ -151,7 +159,7 @@ public enum TerminalEnvironment {
         sessionID: String,
         cwd: String,
         size: TerminalSize,
-        accountConfigDir: String? = nil,
+        agentEnvironment: [String: String] = [:],
         tkzmuxDir: URL,
         baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         home: String? = nil,
@@ -169,7 +177,7 @@ public enum TerminalEnvironment {
             argv: shell.argv(tkzmuxDir: tkzmuxDir, wrapperPresent: wrapperPresent),
             environment: make(
                 sessionID: sessionID,
-                accountConfigDir: accountConfigDir,
+                agentEnvironment: agentEnvironment,
                 tkzmuxDir: tkzmuxDir,
                 baseEnvironment: baseEnvironment,
                 home: home,

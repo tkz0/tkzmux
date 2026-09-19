@@ -6,7 +6,7 @@
 // the chord pins it, and that a pinned card ignores the scroll signals.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Testing
 import TkzCore
 import TkzTerminalCore

@@ -1,4 +1,4 @@
-// tkzmux-vtdump — headless VT tooling. See docs/design.md → *Testing without UI*.
+// tkzmux-vtdump — headless VT tooling.
 //
 //   abi                                   the libghostty-vt ABI manifest (ghostty_type_json)
 //   version                               vendored library version + build options
@@ -12,6 +12,7 @@ import Darwin
 import Dispatch
 import Foundation
 import GhosttyVt
+import Synchronization
 import TkzTerminalCore
 import TkzTerminalRender
 
@@ -166,11 +167,14 @@ func runReplay(_ argv: [String]) throws {
 }
 
 /// Captures whatever the terminal wrote back to the "pty" during a replay.
-final class Replies: @unchecked Sendable {
-    private let lock = NSLock()
-    private var data = Data()
-    func append(_ chunk: Data) { lock.withLock { data.append(chunk) } }
-    var bytes: Data { lock.withLock { data } }
+///
+/// `Mutex`, as everywhere else in this codebase — never `@unchecked Sendable` (CLAUDE.md). The
+/// checked form costs nothing here and means the compiler, not a comment, is what guarantees the
+/// data is only touched under the lock.
+final class Replies: Sendable {
+    private let storage = Mutex(Data())
+    func append(_ chunk: Data) { storage.withLock { $0.append(chunk) } }
+    var bytes: Data { storage.withLock { $0 } }
 }
 
 func printModes(_ session: TerminalSession, reader: RecordingReader, elapsed: Duration, replies: Replies) {
@@ -238,21 +242,29 @@ func escape(_ data: Data) -> String {
 // MARK: - record
 
 /// Streams frames into a `.tkzrec` while a real child runs on a pty.
-final class Recorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private let handle: FileHandle
-    private let writer: RecordingWriter
+final class Recorder: Sendable {
+    /// Everything the IO queue and the main thread both reach, in one place so the compiler can
+    /// check that none of it is touched outside the lock. `Mutex` rather than `@unchecked Sendable`
+    /// around an `NSLock`, per the house rule (CLAUDE.md): the handle and the writer are as much
+    /// shared mutable state as the counters are, and holding them here says so.
+    private struct Storage {
+        var handle: FileHandle
+        var writer: RecordingWriter
+        var frameCount = 0
+        var outputBytes = 0
+        var closed = false
+    }
+
+    private let storage: Mutex<Storage>
     private let start: ContinuousClock.Instant
-    private var frameCount = 0
-    private var outputBytes = 0
-    private var closed = false
 
     init(url: URL, header: RecordingHeader) throws {
-        writer = RecordingWriter(header: header)
+        let writer = RecordingWriter(header: header)
         FileManager.default.createFile(atPath: url.path, contents: nil)
-        handle = try FileHandle(forWritingTo: url)
+        let handle = try FileHandle(forWritingTo: url)
         start = ContinuousClock.now
         try handle.write(contentsOf: writer.headerLine())
+        storage = Mutex(Storage(handle: handle, writer: writer))
     }
 
     private func elapsedNanos() -> UInt64 {
@@ -262,30 +274,33 @@ final class Recorder: @unchecked Sendable {
     }
 
     func append(output data: Data) {
-        lock.withLock {
-            guard !closed else { return }
-            frameCount += 1
-            outputBytes += data.count
-            try? handle.write(contentsOf: writer.encode(.output(elapsedNanos: elapsedNanos(), bytes: data)))
+        storage.withLock { s in
+            guard !s.closed else { return }
+            s.frameCount += 1
+            s.outputBytes += data.count
+            try? s.handle.write(
+                contentsOf: s.writer.encode(.output(elapsedNanos: elapsedNanos(), bytes: data)))
         }
     }
 
     func append(resizeTo cols: UInt16, rows: UInt16) {
-        lock.withLock {
-            guard !closed else { return }
-            frameCount += 1
-            try? handle.write(contentsOf: writer.encode(.resize(elapsedNanos: elapsedNanos(), cols: cols, rows: rows)))
+        storage.withLock { s in
+            guard !s.closed else { return }
+            s.frameCount += 1
+            try? s.handle.write(
+                contentsOf: s.writer.encode(
+                    .resize(elapsedNanos: elapsedNanos(), cols: cols, rows: rows)))
         }
     }
 
     @discardableResult
     func finish() -> (frames: Int, bytes: Int) {
-        lock.withLock {
-            if !closed {
-                closed = true
-                try? handle.close()
+        storage.withLock { s in
+            if !s.closed {
+                s.closed = true
+                try? s.handle.close()
             }
-            return (frameCount, outputBytes)
+            return (s.frameCount, s.outputBytes)
         }
     }
 }
@@ -581,12 +596,11 @@ func runRecord(_ argv: [String]) throws {
     ))
 }
 
-/// A `PtyExit` handed from the IO queue back to the main thread.
-final class ExitBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var status: PtyExit?
-    func set(_ status: PtyExit) { lock.withLock { self.status = status } }
-    var value: PtyExit? { lock.withLock { status } }
+/// A `PtyExit` handed from the IO queue back to the main thread. `Mutex`, per the house rule.
+final class ExitBox: Sendable {
+    private let storage = Mutex<PtyExit?>(nil)
+    func set(_ status: PtyExit) { storage.withLock { $0 = status } }
+    var value: PtyExit? { storage.withLock { $0 } }
 }
 
 // MARK: - Entry point

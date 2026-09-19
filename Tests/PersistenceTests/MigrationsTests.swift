@@ -16,7 +16,7 @@ private func makeMinimalState() -> PersistedState {
 @Test func theCurrentVersionIsANoOp() throws {
     let object = try JSONDecoder().decode(
         [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
-    #expect(object["schemaVersion"]?.intValue == 3)
+    #expect(object["schemaVersion"]?.intValue == 4)
     #expect(try Migrations.migrate(object) == object)
 }
 
@@ -35,8 +35,10 @@ private func makeMinimalState() -> PersistedState {
             return .object(fields)
         })
 
+    // `migrate` chains all the way to the current version, not just to v3, so this checks the
+    // v2 → v3 lift's effect rather than the version number it happens to leave behind.
     let lifted = try Migrations.migrate(object)
-    #expect(lifted["schemaVersion"]?.intValue == 3)
+    #expect(lifted["schemaVersion"]?.intValue == PersistedState.currentSchemaVersion)
     #expect(lifted["presets"] == nil)
     let session = try #require(lifted["sessions"]?.arrayValue?.first)
     guard case .object(let fields) = session else { Issue.record("not an object"); return }
@@ -57,6 +59,98 @@ private func makeMinimalState() -> PersistedState {
     object["presets"] = .array([])
     let once = Migrations.liftV2ToV3(object)
     #expect(Migrations.liftV2ToV3(once) == once)
+}
+
+/// The v3 → v4 lift (TKZ-79): every session gains `agent`, and a `claudeSessionId` becomes
+/// `conversationId`.
+@Test func aV3SessionGainsAnAgentAndItsConversationIdIsRenamed() throws {
+    var state = AppState()
+    let group = state.addGroup(name: "G", repoRoot: "/tmp")
+    let session = state.createSession(groupID: group.id, cwd: "/tmp")
+    state.sessions[session.id]?.conversationId = "conv-1"
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(state))))
+    object["schemaVersion"] = .number(3)
+    object["sessions"] = .array(
+        try #require(object["sessions"]?.arrayValue).map { value in
+            guard case .object(var fields) = value else { return value }
+            fields["agent"] = nil
+            if let conversationId = fields["conversationId"] {
+                fields["claudeSessionId"] = conversationId
+                fields["conversationId"] = nil
+            }
+            return .object(fields)
+        })
+
+    let lifted = Migrations.liftV3ToV4(object)
+    #expect(lifted["schemaVersion"]?.intValue == 4)
+    let row = try #require(lifted["sessions"]?.arrayValue?.first)
+    guard case .object(let fields) = row else { Issue.record("not an object"); return }
+    #expect(fields["agent"]?.stringValue == "claude")
+    #expect(fields["conversationId"]?.stringValue == "conv-1")
+    #expect(fields["claudeSessionId"] == nil)
+}
+
+/// Re-running the lift on its own output must change nothing, or a chained migration would
+/// re-stamp an agent that was already there.
+@Test func theV3LiftIsIdempotent() throws {
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
+    object["schemaVersion"] = .number(3)
+    object["sessions"] = .array(
+        try #require(object["sessions"]?.arrayValue).map { value in
+            guard case .object(var fields) = value else { return value }
+            fields["agent"] = nil
+            return .object(fields)
+        })
+    let once = Migrations.liftV3ToV4(object)
+    #expect(Migrations.liftV3ToV4(once) == once)
+}
+
+/// Three rows in, three agents stamped — the lift is per session, not per file.
+@Test func everyV3SessionGainsAnAgent() throws {
+    var state = AppState()
+    let group = state.addGroup(name: "G", repoRoot: "/tmp")
+    for _ in 0..<3 { _ = state.createSession(groupID: group.id, cwd: "/tmp") }
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(state))))
+    object["schemaVersion"] = .number(3)
+    object["sessions"] = .array(
+        try #require(object["sessions"]?.arrayValue).map { value in
+            guard case .object(var fields) = value else { return value }
+            fields["agent"] = nil
+            return .object(fields)
+        })
+
+    let lifted = Migrations.liftV3ToV4(object)
+    let sessions = try #require(lifted["sessions"]?.arrayValue)
+    #expect(sessions.count == 3)
+    for value in sessions {
+        guard case .object(let fields) = value else { Issue.record("not an object"); return }
+        #expect(fields["agent"]?.stringValue == "claude")
+    }
+}
+
+/// A session with no conversation to resume still gains `agent`, and the lift must not invent a
+/// `conversationId` key where there was never a value to carry across.
+@Test func aV3SessionWithNoConversationIdGainsAnAgentButNoConversationIdKey() throws {
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: makeMinimalState())))
+    object["schemaVersion"] = .number(3)
+    object["sessions"] = .array(
+        try #require(object["sessions"]?.arrayValue).map { value in
+            guard case .object(var fields) = value else { return value }
+            fields["agent"] = nil
+            fields["conversationId"] = nil
+            fields["claudeSessionId"] = nil
+            return .object(fields)
+        })
+
+    let lifted = Migrations.liftV3ToV4(object)
+    let row = try #require(lifted["sessions"]?.arrayValue?.first)
+    guard case .object(let fields) = row else { Issue.record("not an object"); return }
+    #expect(fields["agent"]?.stringValue == "claude")
+    #expect(fields["conversationId"] == nil)
 }
 
 /// A v1 file chains through both lifts: it gains pane trees *and* loses its presets.

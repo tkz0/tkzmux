@@ -320,7 +320,7 @@ public final class StatusBarView: NSView {
         // Ahead/behind has three states, and the middle one is the reason this is not just two
         // optionals: **no upstream** draws `↑– ↓–` dimmed rather than nothing, because nothing
         // reads as "not measured yet" and `↑0 ↓0` reads as "in sync with a remote" that does not
-        // exist. design.md → *Git integration*: "no upstream → ahead/behind nil, shown dimmed".
+        // exist. "No upstream → ahead/behind nil, shown dimmed".
         if model.upstreamMissing, model.ahead == nil, model.behind == nil {
             out.append(StatusItem(
                 .runs([

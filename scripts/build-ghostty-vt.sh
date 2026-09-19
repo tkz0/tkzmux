@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Vendor libghostty-vt as a prebuilt arm64 xcframework at a pinned commit (M1.1).
-# See docs/design.md → Terminal engine → Packaging.
 #
 #   GHOSTTY_COMMIT   full sha to vendor (default: vendor/ghostty-vt/COMMIT)
 #   GHOSTTY_SRC      working checkout (default: $TMPDIR/ghostty-vt-src; zig caches are kept between runs)

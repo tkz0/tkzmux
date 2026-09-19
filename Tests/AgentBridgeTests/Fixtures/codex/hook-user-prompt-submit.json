@@ -1,0 +1,10 @@
+{
+  "session_id": "01a0b549-3f22-7a00-b7ef-57f2d5070342",
+  "turn_id": "01a0b549-3f59-7f30-a03f-17501a3874fb",
+  "transcript_path": "/Users/tester/.codex/sessions/2026/09/18/rollout-2026-09-18T18-11-11-01a0b549-3f22-7a00-b7ef-57f2d5070342.jsonl",
+  "cwd": "/Users/tester/project",
+  "hook_event_name": "UserPromptSubmit",
+  "model": "gpt-5.6-terra",
+  "permission_mode": "bypassPermissions",
+  "prompt": "Reply with exactly the word: pong"
+}

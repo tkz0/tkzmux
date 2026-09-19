@@ -1,5 +1,5 @@
-// TkzCore — the single value that describes the whole app. See docs/design.md → *App architecture
-// → Store*: `AppStore` owns one of these, services post mutations into it, views read it.
+// TkzCore — the single value that describes the whole app. `AppStore` owns one of these, services
+// post mutations into it, views read it.
 //
 // Groups and sessions are stored in dictionaries keyed by id, not arrays. Two reasons:
 //   * the diff in `AppStore` is then O(n) by key and cannot confuse "moved" with "changed";
@@ -34,6 +34,12 @@ public struct AppState: Hashable, Sendable {
     /// and never again: declining is an answer, and re-asking every launch would be nagging. The
     /// menu command stays available either way.
     public var statuslineOffered: Bool
+    /// Whether the Codex hooks consent sheet has already been put to the user (TKZ-87). Same
+    /// once-ever plumbing as `statuslineOffered`, deliberately: a single flag for the whole app
+    /// rather than one per account, so declining it — or accepting it — for the first Codex
+    /// account that ever hits `.none` settles the question for good, and the sheet never nags a
+    /// second account into being asked again.
+    public var codexHooksOffered: Bool
     /// The release the user closed the sidebar's update card for. That version never
     /// shows the card again; a newer one does. Durable, in `PersistedPreferences`.
     public var dismissedUpdateVersion: String?
@@ -61,7 +67,7 @@ public struct AppState: Hashable, Sendable {
     /// persisted — see `UpdateState`.
     public var update: UpdateState
     /// The activity feed's event log (⌘I), oldest first, at most `activityCap` entries. Appended
-    /// by `applyHook`/`rederiveStatus`, read flags cleared by `markAttended`. Durable, its own
+    /// by `applyEvent`/`rederiveStatus`, read flags cleared by `markAttended`. Durable, its own
     /// top-level key in `state.json`; `ChangeSet.activity` is its bucket.
     public var activity: [ActivityEvent]
 
@@ -80,6 +86,7 @@ public struct AppState: Hashable, Sendable {
         shortcuts: [String: String] = [:],
         autoResumeOnLaunch: Bool = false,
         statuslineOffered: Bool = false,
+        codexHooksOffered: Bool = false,
         dismissedUpdateVersion: String? = nil,
         showSessionSpend: Bool = true,
         checkOriginPeriodically: Bool = false,
@@ -99,6 +106,7 @@ public struct AppState: Hashable, Sendable {
         self.shortcuts = shortcuts
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
+        self.codexHooksOffered = codexHooksOffered
         self.dismissedUpdateVersion = dismissedUpdateVersion
         self.showSessionSpend = showSessionSpend
         self.checkOriginPeriodically = checkOriginPeriodically

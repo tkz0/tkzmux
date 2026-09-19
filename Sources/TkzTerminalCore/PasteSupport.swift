@@ -3,7 +3,7 @@
 // One of the files allowed to call the C API directly. Headless: the view layer reads
 // `NSPasteboard` and hands us a `String`; nothing here knows about AppKit.
 //
-// ## `GhosttyMimeReader` contract (spike result, docs/design.md → Spike checklist)
+// ## `GhosttyMimeReader` contract (spike result)
 //
 // `GhosttyPaste.reader` is `{ read: GhosttyMimeReaderFn, userdata: void* }`, both required
 // whenever `mimes_len > 0`. Exactly one callback, `read`; there is no free/finish callback.

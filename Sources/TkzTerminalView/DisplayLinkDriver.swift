@@ -1,5 +1,4 @@
 // DisplayLinkDriver — the parked-unless-there-is-work frame clock (M1.6).
-// See docs/design.md → Terminal engine → View & input.
 //
 // The whole point of tkzmux's renderer is that an idle terminal costs nothing: the renderer's skip
 // path returns *before* `nextDrawable()`, so as long as the display link itself is paused when

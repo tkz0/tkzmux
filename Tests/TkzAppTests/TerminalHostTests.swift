@@ -23,7 +23,7 @@
 // directory into a temporary directory, and hands the child a minimal environment whose `ZDOTDIR`
 // does not exist — so zsh sources no user rc file and a test can never read or write real state.
 
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import Metal
 import Persistence

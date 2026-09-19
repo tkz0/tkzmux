@@ -1,6 +1,6 @@
 // StatusDotView / StatusDotLayer — the session status dot and its pulse (M2.3).
 //
-// The pulse is the one animation in the sidebar, and design.md is explicit about how it must be
+// The pulse is the one animation in the sidebar, and it must be
 // done: *"one `CABasicAnimation` on a layer (GPU-side, zero app CPU), only on visible `working`
 // rows, paused when occluded"*. So:
 //
@@ -27,8 +27,7 @@ import TkzCore
 /// colour token of its own.
 ///
 /// **`.idle` draws no dot at all** (decision 2026-09-09), so a dot in the sidebar always means
-/// something is happening. `Theme.idle` is kept as a token nothing reads. Which states collapse
-/// to idle, and why the grey dot said nothing, is design.md → *Status derivation*.
+/// something is happening. `Theme.idle` is kept as a token nothing reads.
 public final class StatusDotLayer: CALayer {
     /// Key the pulse is registered under. Exposed so the row view and the tests can assert presence
     /// without duplicating the string.

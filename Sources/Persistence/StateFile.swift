@@ -1,6 +1,6 @@
 // `~/Library/Application Support/tkzmux/state.json` — everything the user arranged.
 //
-// design.md → *Session flows & persistence*: "500 ms debounced atomic write + `.bak`; corrupt →
+// "500 ms debounced atomic write + `.bak`; corrupt →
 // `.bak` + notice". The debounce is `StateAutosaver`; the atomicity is here, and it is the whole
 // point of the type, so the write sequence deserves to be spelled out.
 //

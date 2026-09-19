@@ -10,7 +10,7 @@
 // without a window.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import TkzCore
 
 @MainActor
@@ -59,6 +59,13 @@ final class PromptCardView: NSView {
 
     var maxTextHeight: CGFloat = Metrics.defaultMaxTextHeight {
         didSet { if maxTextHeight != oldValue { relayoutText() } }
+    }
+
+    /// What the recap line calls the agent behind this conversation — `AgentAdapter.displayName`,
+    /// set by the controller from the session's own adapter. Defaults to a name that admits it
+    /// does not know rather than asserting a product name nobody told this view.
+    var agentDisplayName: String = "the agent" {
+        didSet { if agentDisplayName != oldValue { render() } }
     }
 
     private var theme: Theme
@@ -134,14 +141,14 @@ final class PromptCardView: NSView {
         return "\(hit.sessionTitle) \u{00B7} \(Self.age(from: at, to: now))"
     }
 
-    /// The recap's provenance, so a hook fallback is never passed off as Claude's own summary.
-    static func recapMetaLine(_ summary: TranscriptSummary, now: Date) -> String {
+    /// The recap's provenance, so a hook fallback is never passed off as the agent's own summary.
+    static func recapMetaLine(_ summary: TranscriptSummary, now: Date, agentName: String) -> String {
         let source: String
         switch summary.recapSource {
-        case .awaySummary: source = "Claude\u{2019}s own summary"
-        case .stopMessage: source = "Claude\u{2019}s last message"
-        case .assistantText: source = "Claude\u{2019}s last reply"
-        case nil: return "Claude\u{2019}s own summary \u{00B7} updates as the session runs"
+        case .awaySummary: source = "\(agentName)\u{2019}s own summary"
+        case .stopMessage: source = "\(agentName)\u{2019}s last message"
+        case .assistantText: source = "\(agentName)\u{2019}s last reply"
+        case nil: return "\(agentName)\u{2019}s own summary \u{00B7} updates as the session runs"
         }
         guard let at = summary.recapAt else { return source }
         return "\(source) \u{00B7} \(Self.age(from: at, to: now))"
@@ -321,7 +328,7 @@ final class PromptCardView: NSView {
 
     private func render(now: Date = Date()) {
         let summary = summary ?? TranscriptSummary()
-        recapMeta.stringValue = Self.recapMetaLine(summary, now: now)
+        recapMeta.stringValue = Self.recapMetaLine(summary, now: now, agentName: agentDisplayName)
 
         let promptPlaceholder = isLoading ? "Loading\u{2026}" : "No prompt yet"
         let recapPlaceholder = isLoading ? "Loading\u{2026}" : "No recap yet"

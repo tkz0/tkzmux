@@ -1,9 +1,50 @@
 import AppKit
+import AgentBridge
 import Foundation
 import Testing
 import TkzCore
 
 @testable import TkzApp
+
+/// A minimal `AgentAdapter` for the menu tests — a real adapter needs a shim, an environment, a
+/// transcript reader and a hook mapper, none of which the menu ever calls. Only `launchCommand`
+/// and `capabilities` matter here; everything else is inert.
+fileprivate struct StubAgentAdapter: AgentAdapter {
+    let kind: AgentKind
+    let displayName: String
+    let binaryName: String
+    let capabilities: AgentCapabilities
+    var newCommand: String?
+    var worktreeCommand: String?
+
+    func launchCommand(_ intent: LaunchIntent) -> String? {
+        switch intent {
+        case .new: newCommand
+        case .worktree: worktreeCommand
+        case .resume, .prompt: nil
+        }
+    }
+    func environment(configDir: String?) -> [String: String] { [:] }
+    func discoverAccounts(home: String, fileManager: FileManager) -> [Account] { [] }
+    func accountLabels(home: String, fileManager: FileManager) -> [String: String] { [:] }
+    func mapHook(_ payload: HookPayload) -> AgentEvent? { nil }
+    func mapTerminalNotification(title: String, body: String) -> AgentEvent? { nil }
+    func makeObservationWatcher(
+        configDirs: [String], onEvent: @escaping @Sendable (ObservationEvent) -> Void
+    ) -> (any AgentObservationWatcher)? { nil }
+    var transcript: any TranscriptProvider { StubTranscriptProvider() }
+    var hookInstall: HookInstallStrategy { .perInvocation }
+    var shimScript: ShimResource { ShimResource(binaryName: binaryName, resourceName: "\(binaryName).sh") }
+}
+
+fileprivate struct StubTranscriptProvider: TranscriptProvider {
+    func locate(conversationId: String, configDir: String, fileManager: FileManager) -> String? { nil }
+    func summary(path: String) throws -> TranscriptSummary { TranscriptSummary() }
+    func usage(conversationId: String, path: String, reader: TranscriptUsageReader) async -> SessionUsage? { nil }
+    func searchIndex(path: String, existing: TranscriptIndex?) throws -> TranscriptIndex {
+        fatalError("not used by NewSessionMenuTests")
+    }
+}
 
 /// The “＋ New session…” menu and the shortcut table (M2.4).
 ///
@@ -18,10 +59,40 @@ struct NewSessionMenuTests {
     static let scheduled = Fixture.groupID(2)     // Scheduled — a bucket with no repo, claude
     static let toolbox = Fixture.groupID(3)          // Toolbox, ~/dev/toolbox, claude
 
-    static func menu(for groupID: GroupID) -> NewSessionMenu {
+    /// An unconfigured menu carrying its default registry (Claude alone), treated as installed.
+    ///
+    /// Every test builds through this rather than `NewSessionMenu()` directly: the real
+    /// `isAdapterInstalled` probes `PATH`, and a suite whose result depends on whether the machine
+    /// running it happens to have `claude` installed is a suite that passes here and fails in CI.
+    static func unscopedMenu() -> NewSessionMenu {
         let menu = NewSessionMenu()
+        menu.isAdapterInstalled = { _ in true }
+        return menu
+    }
+
+    /// The same menu, scoped to a group — what the app shows when that group is selected.
+    static func menu(for groupID: GroupID) -> NewSessionMenu {
+        let menu = unscopedMenu()
         menu.configure(state: state, groupID: groupID)
         return menu
+    }
+
+    /// The real adapter, so these tests exercise the commands the app will actually run rather
+    /// than a stub that agrees with them by construction.
+    fileprivate static let claudeStub = ClaudeAdapter()
+
+    /// A comparable snapshot of a menu's visible rows — identifier, rendered text and enabled
+    /// state, top level and one level of submenu — for asserting two menus render identically
+    /// without pixel-comparing anything.
+    static func snapshot(_ menu: NewSessionMenu) -> [String] {
+        var lines: [String] = []
+        for item in menu.menu.items {
+            lines.append("\(item.identifier?.rawValue ?? "-")|\(text(item))|\(item.isEnabled)")
+            for sub in item.submenu?.items ?? [] {
+                lines.append("  \(sub.identifier?.rawValue ?? "-")|\(text(sub))|\(sub.isEnabled)")
+            }
+        }
+        return lines
     }
 
     static func titles(_ menu: NewSessionMenu) -> [String] {
@@ -58,7 +129,7 @@ struct NewSessionMenuTests {
         #expect(another.isEnabled)
         #expect(Self.text(another).contains("new group"))
 
-        // The command hints are in the mono face (design.md: JetBrains Mono for command text).
+        // The command hints are in the mono face (JetBrains Mono for command text).
         let hintFont = worktree.attributedTitle?.attribute(
             .font, at: Self.text(worktree).distance(
                 from: Self.text(worktree).startIndex,
@@ -98,7 +169,7 @@ struct NewSessionMenuTests {
     /// per-menu override that then won in *every* other group.
     @Test func theAccountPickedInOneGroupDoesNotFollowTheUserIntoAnother() throws {
         var state = AppState.fixture
-        let menu = NewSessionMenu()
+        let menu = Self.unscopedMenu()
         // Stand in for `MainWindowController.setGroupDefaultAccount`: write the group, re-scope.
         menu.onSelectAccount = { groupID, key in
             state.setGroupDefaultAccount(groupID, accountKey: key)
@@ -149,7 +220,7 @@ struct NewSessionMenuTests {
     @Test func aDefaultAccountThatNoLongerExistsStaysVisible() throws {
         var state = AppState.fixture
         state.setGroupDefaultAccount(Self.toolbox, accountKey: "claude-gone")
-        let menu = NewSessionMenu()
+        let menu = Self.unscopedMenu()
         menu.configure(state: state, groupID: Self.toolbox)
 
         let parent = try #require(Self.item(menu, NewSessionMenu.ItemID.account))
@@ -165,7 +236,7 @@ struct NewSessionMenuTests {
     }
 
     @Test func contentFollowsTheSelectedGroup() throws {
-        let menu = NewSessionMenu()
+        let menu = Self.unscopedMenu()
         menu.configure(state: Self.state, groupID: Self.northwind)
         #expect(Self.text(menu.item(NewSessionMenu.ItemID.header)!) == "New session in Northwind Trading")
         #expect(menu.worktreeLaunch()?.cwd == "~/dev/northwind")
@@ -262,9 +333,120 @@ struct NewSessionMenuTests {
 
         #expect(NewSessionMenu().shellLaunch() == nil, "no group selected, no launch")
     }
+
+    // MARK: - Built from adapters (TKZ-82)
+
+    /// The acceptance criterion this ticket exists for: with one agent installed the menu must be
+    /// what tkzmux has always drawn.
+    ///
+    /// The expectation is spelled out here rather than compared against a second run of the same
+    /// code. An earlier draft of this test built the menu twice and asserted the two matched, which
+    /// passes no matter what the rows say — the only thing it can catch is nondeterminism. Pinning
+    /// the literal rows means a hint, a title, an identifier or the order changing has to be
+    /// changed here too, deliberately.
+    @Test("With only Claude installed, the menu is the one it has always been")
+    func singleAdapterMenuIsTheMenuItHasAlwaysBeen() throws {
+        let menu = Self.menu(for: Self.northwind)
+
+        let s = "   "  // the three spaces `attributed(title:hint:detail:)` puts before each part
+        #expect(
+            Self.snapshot(menu) == [
+                "tkzmux.newSession.header|New session in Northwind Trading|false",
+                "tkzmux.newSession.worktree|New worktree\(s)claude -w\(s)~/dev/northwind|true",
+                "tkzmux.newSession.repoRoot|In repo root\(s)claude\(s)~/dev/northwind|true",
+                "tkzmux.newSession.anotherRepo|In another repo\u{2026}\(s)choose a folder \u{2014} it becomes a new group|true",
+                "-||false",
+                "tkzmux.newSession.account|Default account: Claude (alt)|true",
+                "  tkzmux.newSession.accountRow.claude|Claude\(s)~/.claude|true",
+                "  tkzmux.newSession.accountRow.claude-work|Claude (alt)\(s)~/.claude-work|true",
+                "  -||false",
+                "  tkzmux.newSession.accountNone|None\(s)inherit \u{2014} CLAUDE_CONFIG_DIR left unset|true",
+            ])
+
+        // No section header with one agent: those are what a *second* adapter earns.
+        #expect(menu.item(NewSessionMenu.ItemID.agentHeader(.claude)) == nil)
+
+        // Launching resolves through the adapter rather than a re-typed literal.
+        #expect(menu.worktreeLaunch()?.command == "claude -w")
+        #expect(menu.worktreeLaunch(name: "review")?.command == "claude -w review")
+        #expect(menu.repoRootLaunch()?.command == "claude")
+        #expect(menu.worktreeLaunch()?.agent == .claude)
+    }
+
+    /// An agent with no adapter registered gets no command invented for it. Guessing a command
+    /// line for an unknown agent is how you run the wrong binary with the wrong flags, so both
+    /// builders return `nil` instead.
+    @Test("An unregistered agent yields no launch rather than a guessed command")
+    func anUnregisteredAgentYieldsNoLaunch() {
+        let menu = Self.menu(for: Self.northwind)
+        let stranger = AgentKind(rawValue: "gemini")
+        #expect(menu.worktreeLaunch(agent: stranger) == nil)
+        #expect(menu.repoRootLaunch(agent: stranger) == nil)
+    }
+
+    /// A second adapter earns its own section, its rows are addressed by agent-namespaced
+    /// identifiers (the plain ones stay Claude's), and an adapter with no worktree capability
+    /// gets no worktree row — the menu must not invent one.
+    @Test("A second installed adapter adds its own section; no worktree capability, no worktree row")
+    func secondAdapterAddsRowsWithoutInventingACapability() throws {
+        let stubKind = AgentKind(rawValue: "stub")
+        let stub = StubAgentAdapter(
+            kind: stubKind, displayName: "Stub Agent", binaryName: "stub",
+            capabilities: [], newCommand: "stub", worktreeCommand: nil)
+
+        let menu = Self.unscopedMenu()
+        menu.adapters = [Self.claudeStub, stub]
+        menu.isAdapterInstalled = { _ in true }
+        menu.configure(state: Self.state, groupID: Self.northwind)
+
+        // Section headers only appear once a second adapter is on the menu.
+        #expect(menu.item(NewSessionMenu.ItemID.agentHeader(.claude)) != nil)
+        #expect(menu.item(NewSessionMenu.ItemID.agentHeader(stubKind)) != nil)
+
+        // Claude's rows moved to the namespaced identifiers alongside the stub's.
+        #expect(menu.item(NewSessionMenu.ItemID.worktree) == nil)
+        #expect(menu.item(NewSessionMenu.ItemID.repoRoot) == nil)
+        let claudeWorktree = try #require(menu.item(NewSessionMenu.ItemID.worktree(for: .claude)))
+        #expect(Self.text(claudeWorktree).contains("claude -w"))
+
+        // The stub has no worktree capability: no row, no matter what its own `launchCommand`
+        // would have answered for one.
+        #expect(menu.item(NewSessionMenu.ItemID.worktree(for: stubKind)) == nil)
+        let stubRoot = try #require(menu.item(NewSessionMenu.ItemID.repoRoot(for: stubKind)))
+        #expect(Self.text(stubRoot).contains("stub"))
+    }
+
+    @Test("The account submenu groups by agent once there is more than one installed adapter")
+    func accountSubmenuGroupsByAgentWithTwoAdapters() throws {
+        let stubKind = AgentKind(rawValue: "stub")
+        var state = AppState.fixture
+        state.setAccount(Account(key: "stub-default", configDir: "/h/.stub", label: "Stub", agent: stubKind))
+        let stub = StubAgentAdapter(
+            kind: stubKind, displayName: "Stub Agent", binaryName: "stub",
+            capabilities: [], newCommand: "stub")
+
+        let menu = Self.unscopedMenu()
+        menu.adapters = [Self.claudeStub, stub]
+        menu.isAdapterInstalled = { _ in true }
+        menu.configure(state: state, groupID: Self.northwind)
+
+        let account = try #require(menu.item(NewSessionMenu.ItemID.account))
+        let rows = try #require(account.submenu?.items)
+        #expect(rows.contains { $0.identifier == NewSessionMenu.ItemID.accountSectionHeader(.claude) })
+        #expect(rows.contains { $0.identifier == NewSessionMenu.ItemID.accountSectionHeader(stubKind) })
+        #expect(rows.contains { $0.representedObject as? String == "stub-default" })
+
+        // One adapter, and the submenu is exactly the flat list it always was — no headers.
+        let single = Self.unscopedMenu()
+        single.adapters = [Self.claudeStub]
+        single.isAdapterInstalled = { _ in true }
+        single.configure(state: Self.state, groupID: Self.northwind)
+        let singleRows = try #require(single.item(NewSessionMenu.ItemID.account)?.submenu?.items)
+        #expect(!singleRows.contains { $0.identifier?.rawValue.contains("accountSectionHeader") == true })
+    }
 }
 
-/// design.md → Decisions → Shortcuts. The table is data; wave 3 builds the menu from it.
+/// The table is data; wave 3 builds the menu from it.
 @MainActor
 struct ShortcutsTableTests {
 

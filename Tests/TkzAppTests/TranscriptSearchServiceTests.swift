@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import TkzCore
 
-@testable import ClaudeBridge
+@testable import AgentBridge
 @testable import TkzApp
 
 /// The Transcripts section's engine: indexes per open session, and the caps that keep them from

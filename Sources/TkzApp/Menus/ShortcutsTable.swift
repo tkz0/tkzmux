@@ -1,6 +1,6 @@
 // ShortcutsTable.swift — the app's key bindings as data (M2.4).
 //
-// design.md → Decisions → Shortcuts: the cmux bindings, workspace → session and tab → terminal:
+// The cmux bindings, workspace → session and tab → terminal:
 //   ⌘N new session (picker), ⌘F search sessions (cmux: ⌘P), ⇧⌘P command palette, ⌘B sidebar, ⇧⌘R rename session,
 //   ⌘W close terminal / ⇧⌘W close session, ⌘1-9 select session, ⇧⌘U jump to needs-you,
 //   ⌘I notifications, ⌘, settings, ⌘O open folder, ⇧⌘, reload config; ⌘T/⌘D reserved. User-editable.

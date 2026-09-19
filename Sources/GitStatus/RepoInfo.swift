@@ -1,6 +1,6 @@
 // RepoInfo — "which repo is this directory in?", answered in one git call (M4.1).
 //
-// design.md → *Git integration*: `git -C <cwd> rev-parse --show-toplevel --git-dir --git-common-dir`,
+// `git -C <cwd> rev-parse --show-toplevel --git-dir --git-common-dir`,
 // `repoRoot = parent(common-dir)`, `isWorktree = realpath(git-dir) != realpath(git-common-dir)`.
 // One call rather than three because detection happens on every session retarget and each `git`
 // launch costs more than the work it does.

@@ -1,4 +1,4 @@
-// GitStatusService — M4.1. See docs/design.md → *Git integration*.
+// GitStatusService — M4.1.
 //
 // Owns the whole answer to "what does this session's repo look like right now?": repo detection per
 // directory, an `FSEventStream` per repo root, a debounce/coalesce policy, the two git calls, and
@@ -153,7 +153,7 @@ public final class GitStatusService: Sendable {
     // MARK: - Init
 
     /// - Parameters:
-    ///   - debounce: trailing debounce after a filesystem event. design.md's 300 ms.
+    ///   - debounce: trailing debounce after a filesystem event. 300 ms.
     ///   - minimumInterval: the floor between two refreshes of one session during a burst. 2 s.
     ///   - baseRetryInterval: how long an *unresolved* base branch is left alone before the next
     ///     refresh tries `BaseBranch.resolve` again. 60 s.

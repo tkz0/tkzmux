@@ -1,6 +1,6 @@
 // PRLookup — `gh pr view`, gated so it never runs against a non-GitHub origin (M4.2).
 //
-// design.md → *Git integration*: git calls are background calls that must never contend with the
+// Git calls are background calls that must never contend with the
 // user's own git or hang on a prompt (see GitProcess). PRLookup adds one more constraint on top:
 // the user's main work repo has an Azure DevOps origin, and `gh` must never be invoked there — not
 // once, not to fail. The origin's host is checked and cached *per directory* before `gh` is ever

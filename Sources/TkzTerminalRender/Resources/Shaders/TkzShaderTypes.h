@@ -45,7 +45,7 @@
 // - Atlas space = texels, origin top-left. Both atlases are sampled with `coord::pixel`, so the
 //   atlas dimensions in `TkzUniforms` are informational only and a regrow cannot desync UVs.
 //
-// See docs/design.md → Terminal engine → Metal renderer. M1.5.
+// M1.5.
 
 #ifndef TKZ_SHADER_TYPES_H
 #define TKZ_SHADER_TYPES_H

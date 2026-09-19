@@ -1,5 +1,5 @@
 // TerminalInputController — NSEvent → `KeyPress` → pty bytes (M1.7).
-// See docs/design.md → Terminal engine → *View & input* → **Keyboard**, and docs/keys.md.
+// See docs/keys.md.
 //
 // This is the single `TerminalViewInputDelegate`: it owns the keyboard and IME, and forwards every
 // mouse/scroll event to a `TerminalMouseHandling` without interpreting it.
@@ -10,7 +10,7 @@
 // hands it to `TerminalSession.encodeKey(_:optionAsAlt:)` on the view's visible session, which is
 // where the libghostty call happens, under the session lock. (The `encodeKey` property overrides
 // that for tests and for a host with no `TerminalSession`.) That keeps every C call inside the
-// files docs/design.md lists, and makes the whole `NSEvent` → `KeyPress` translation — the part that
+// allowed files, and makes the whole `NSEvent` → `KeyPress` translation — the part that
 // is actually subtle — unit-testable with a synthesized `NSEvent` and no window, no pty and no
 // terminal.
 //
@@ -22,7 +22,7 @@
 // is pure: it takes an enum and a buffer, touches no terminal and needs no lock, so keeping it here
 // costs nothing and avoids a seam through Core for two bytes.
 //
-// ## The option-as-alt trap (verified M1.7, see docs/design.md)
+// ## The option-as-alt trap (verified M1.7)
 //
 // libghostty computes `effectiveMods = mods − consumedMods` whenever `text` is non-empty. Building
 // the press the obvious way — take `event.characters` (`∫`) and report Option as consumed — encodes

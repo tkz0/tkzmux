@@ -1,8 +1,8 @@
 // SidebarViewControllerTests — M2.3, the binding half.
 //
 // `SidebarRowViewTests` proves the rows *draw* correctly from a literal model. This suite proves the
-// controller *drives* them from the store, and it exists almost entirely for one sentence in
-// docs/design.md → *Store*: a Claude status flip on one session must cost one
+// controller *drives* them from the store, and it exists almost entirely for one rule: a Claude
+// status flip on one session must cost one
 // `reloadData(forRowIndexes:)`, not forty row re-renders.
 //
 // That claim cannot be checked by looking at the screen, so `SidebarOutlineView` counts every
@@ -156,7 +156,7 @@ struct SidebarViewControllerTests {
     func heightsAreRenotedOnlyWhenTheyChange() throws {
         let harness = Self.makeHarness()
         harness.outline.resetCounters()
-        // Session 3: no rename, a live descriptor with a `.derived` name, so its title is the
+        // Session 3: no rename, a live observation with a derived name, so its title is the
         // folder and it carries no subtitle yet.
         let target = Fixture.sessionID(3)
         let before = try #require(harness.store.state.sessions[target])
@@ -175,10 +175,10 @@ struct SidebarViewControllerTests {
         harness.outline.resetCounters()
         harness.mutate { state in
             state.updateLive(target) { $0.git = GitSummary(branch: "feature/reporting-scheduler-rewrite") }
-            var descriptor = state.sessions[target]!.live!.descriptor!
-            descriptor.name = "Move reporting onto the new scheduler"
-            descriptor.nameSource = .auto
-            state.adoptDescriptor(descriptor, for: target)
+            var observation = state.sessions[target]!.live!.observation!
+            observation.name = "Move reporting onto the new scheduler"
+            observation.nameIsDerived = false
+            state.adoptDescriptor(observation, for: target)
         }
         let after = try #require(harness.store.state.sessions[target])
         let model = SidebarRowAdapter.sessionModel(after, in: harness.store.state)
@@ -999,13 +999,13 @@ struct SidebarViewControllerTests {
 
         // What is left is truncated, not reduced to initials: a configured "Ada Industries" has to
         // read as ADA, not as AI.
-        #expect(SidebarRowAdapter.shortLabel("Ada Industries") == "ADA")
-        #expect(SidebarRowAdapter.shortLabel("claude-work-personal") == "WORK")
+        #expect(SidebarRowAdapter.shortLabel("Ada Industries", dropping: "claude") == "ADA")
+        #expect(SidebarRowAdapter.shortLabel("claude-work-personal", dropping: "claude") == "WORK")
         // …and a name with no `claude` in it at all is left alone.
-        #expect(SidebarRowAdapter.shortLabel("work") == "WORK")
+        #expect(SidebarRowAdapter.shortLabel("work", dropping: "claude") == "WORK")
         // The bare product name is all there is to go on when that is the whole name.
-        #expect(SidebarRowAdapter.shortLabel("claude") == "CLAUD")
-        #expect(SidebarRowAdapter.shortLabel("   ") == nil)
+        #expect(SidebarRowAdapter.shortLabel("claude", dropping: "claude") == "CLAUD")
+        #expect(SidebarRowAdapter.shortLabel("   ", dropping: "claude") == nil)
 
         // The tooltip is where the full name and the config dir live, since the chip holds five
         // characters.
@@ -1019,6 +1019,25 @@ struct SidebarViewControllerTests {
         #expect(
             SidebarRowAdapter.sessionModel(main, in: state).accountColor
                 == SidebarSessionRowModel.accountChipColor(forKey: "claude"))
+    }
+
+    @Test("The chip is hidden for the agent's own default account, whichever agent that is")
+    func accountChipHidingFollowsTheRowsOwnAgent() {
+        // A Codex row on `codex` — that agent's own default key — must hide its chip exactly like
+        // a Claude row on `claude` does, even though `codex` is not Claude's default key.
+        var state = AppState()
+        let group = state.addGroup(name: "g", repoRoot: "/repo")
+        var codexDefault = Session(groupID: group.id, cwd: "/repo", agent: .codex, accountKey: "codex")
+        state.sessions[codexDefault.id] = codexDefault
+        #expect(SidebarRowAdapter.accountLabel(for: codexDefault, in: state) == nil)
+        #expect(SidebarRowAdapter.accountTooltip(for: codexDefault, in: state) == nil)
+
+        // A second Codex account is not that agent's default, so it gets a chip — the same rule
+        // that makes `claude-work` show one for Claude.
+        codexDefault.accountKey = "codex-work"
+        state.setAccount(Account(key: "codex-work", configDir: "/h/.codex-work", label: "codex-work", agent: .codex))
+        state.sessions[codexDefault.id] = codexDefault
+        #expect(SidebarRowAdapter.accountLabel(for: codexDefault, in: state) == "WORK")
     }
 
     @Test("The summary model counts badges, not waiting dots")

@@ -3,8 +3,8 @@
 //
 // `DevWindowController` (M1.6 / M1.10) stays reachable behind **`TKZMUX_DEV_WINDOW=1`**: it carries
 // the M1.10 performance harness (`TKZMUX_DEV_SPAWN`, `TKZMUX_DEV_SWITCH_BENCH`, the snapshot
-// sweeps, the heartbeat) that `docs/perf.md` and `docs/manual-checks.md` document command lines
-// for. Losing it would invalidate the documented acceptance runs, so it is one env var away:
+// sweeps, the heartbeat) that `docs/perf.md` documents command lines for. Losing it would
+// invalidate the documented acceptance runs, so it is one env var away:
 //
 //   TKZMUX_DEV_WINDOW=1 TKZMUX_DEV_SPAWN=30 … swift run tkzmux    → the M1 dev window
 //   swift run tkzmux                                              → the main window
@@ -13,7 +13,7 @@
 // so either window can be smoke-tested headlessly.
 
 import AppKit
-import ClaudeBridge
+import AgentBridge
 import Foundation
 import Persistence
 import TkzCore
@@ -30,7 +30,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var fallbackWindow: NSWindow?
     private var store: AppStore?
     private var autosaver: StateAutosaver?
-    private var claude: ClaudeIntegration?
+    private var agents: AgentIntegration?
     private var git: GitIntegration?
     private var attention: AttentionNotifier?
     private var update: UpdateIntegration?
@@ -101,16 +101,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                         host.snapshots,
                         keeping: Set(
                             store.state.sessions.values.flatMap(\.terminalIDs).map(\.rawValue)))
-                    let integration = ClaudeIntegration(
+                    let integration = AgentIntegration(
                         store: store, directory: host.tkzmuxDirectory,
                         installer: Self.makeShimInstaller(directory: host.tkzmuxDirectory))
-                    controller.claude = integration
+                    controller.agents = integration
                     integration.start()
-                    claude = integration
+                    agents = integration
                     // A dead hook server used to be a log line only, and an app with no hooks
-                    // looks exactly like one whose Claude never does anything. Say so.
+                    // looks exactly like one whose agent never does anything. Say so.
                     if !integration.hookServer.isRunning {
-                        controller.showNotice("Claude hooks unavailable: the hook socket could not be opened")
+                        controller.showNotice("Agent hooks unavailable: the hook socket could not be opened")
                     }
                 }
                 // M4: git status, PR lookup and port scanning for the rows the window shows.
@@ -130,7 +130,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                     controller.update = updateIntegration
                     update = updateIntegration
                 }
-                // After the integration: every `claude --resume` must run through the shim the
+                // After the integration: every resume must run through the shim the
                 // installer just wrote, so the launch frame binds its pid.
                 if restored.loaded != nil { controller.autoResumeIfEnabled() }
                 // The one-time statusline offer. Async so the launch is never blocked on a
@@ -142,7 +142,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 // install over, and the sooner it is corrected the fewer sessions write their
                 // sidecars somewhere this app never reads.
                 DispatchQueue.main.async { [weak self] in
-                    self?.claude?.repairStaleStatuslines()
+                    self?.agents?.repairStaleStatuslines()
                     controller.offerStatuslineIfNeeded()
                 }
             }
@@ -159,7 +159,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
-        claude?.stop()
+        agents?.stop()
         git?.stop()
         update?.stop()
         devWindow?.shutdown()

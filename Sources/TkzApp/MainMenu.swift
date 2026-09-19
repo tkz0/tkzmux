@@ -16,7 +16,7 @@
 // view, in the same change; `MainMenuTests` guards the invariant meanwhile.
 //
 // The same collision is why "Close Window" carries no key equivalent: `closeTerminal` owns ⌘W
-// (design.md → Decisions → Shortcuts, the cmux binding), and two items with the same equivalent
+// (the cmux binding), and two items with the same equivalent
 // are resolved by menu order, not by which one is enabled.
 //
 // Every binding comes from `ShortcutsTable.resolved(state:)` — the menu is a *view* of that table

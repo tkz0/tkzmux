@@ -28,17 +28,17 @@ import TkzCore
         let gamma = state.createSession(groupID: toolbox.id, cwd: "/tmp/gamma", title: "docs").id
         for id in [alpha, beta, gamma] { state.setLive(LiveSessionState(status: .idle), for: id) }
 
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "First pass done.\nSee the diff."), to: alpha, now: now)
-        state.applyHook(.init(kind: .userPromptSubmit), to: alpha, now: now.addingTimeInterval(60))
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "Refactored the websocket reconnect.\n\nTests are green.\nShip it."), to: alpha, now: now.addingTimeInterval(120))
-        state.applyHook(.init(kind: .sessionEnd, reason: "prompt_input_exit"), to: alpha, now: now.addingTimeInterval(180))
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "First pass done.\nSee the diff."), to: alpha, now: now)
+        state.applyEvent(.init(kind: .promptSubmitted), to: alpha, now: now.addingTimeInterval(60))
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "Refactored the websocket reconnect.\n\nTests are green.\nShip it."), to: alpha, now: now.addingTimeInterval(120))
+        state.applyEvent(.init(kind: .sessionEnd(exited: true), reason: "prompt_input_exit"), to: alpha, now: now.addingTimeInterval(180))
 
-        state.applyHook(
-            .init(kind: .notification, notificationType: .permissionPrompt, message: "Claude needs your permission to use Bash"),
+        state.applyEvent(
+            .init(kind: .attention(.permission), message: "Claude needs your permission to use Bash"),
             to: beta, now: now.addingTimeInterval(30))
 
-        state.applyDescriptor(
-            ClaudeSessionInfo(configDir: "~/.claude", pid: 9, sessionId: "g", status: .busy,
+        state.applyObservation(
+            AgentObservation(pid: 9, conversationId: "g", configDir: "~/.claude", activity: .busy,
                               statusUpdatedAt: now.addingTimeInterval(-63 * 60)),
             alive: true, to: gamma, now: now)
         return World(state: state, alpha: alpha, beta: beta, gamma: gamma)
@@ -87,7 +87,7 @@ import TkzCore
         var world = makeWorld()
         let delta = world.state.createSession(groupID: world.state.orderedGroups[0].id, cwd: "/tmp/delta").id
         world.state.setLive(LiveSessionState(status: .idle), for: delta)
-        world.state.applyHook(.init(kind: .sessionEnd, reason: "other"), to: delta, now: now.addingTimeInterval(500))
+        world.state.applyEvent(.init(kind: .sessionEnd(exited: true), reason: "other"), to: delta, now: now.addingTimeInterval(500))
         let thread = try #require(rows(world).compactMap { row -> ActivityFeedModel.ThreadRow? in
             if case .thread(let t) = row, t.sessionID == delta { return t }
             return nil

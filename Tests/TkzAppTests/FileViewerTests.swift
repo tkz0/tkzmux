@@ -52,6 +52,25 @@ struct FileViewerTests {
         #expect(Set(bases).count == bases.count)
     }
 
+    // TKZ-79: `Session.worktreeRoot(ofPath:)` now delegates to `agent.worktreeMarker`, which is
+    // `nil` for every agent but Claude. `bases(for:in:)` calls it on the pane's own directory, so
+    // a Codex row whose pane happens to sit under a path that looks like `/.claude/worktrees/…`
+    // (e.g. a Claude worktree Codex was pointed at by hand) must not have that path added as an
+    // extra base — Codex has no worktree convention of its own to detect.
+    @Test func paneDirectoryWorktreeDetectionOnlyAppliesToAgentsWithAMarker() {
+        let claudeSession = Session(
+            groupID: GroupID.generate(), cwd: "/repo/.claude/worktrees/w/sub", repoRoot: "/repo",
+            agent: .claude, accountKey: "claude")
+        let claudeBases = FilePathResolver.bases(for: claudeSession.focusedTerminalID, in: claudeSession)
+        #expect(claudeBases.contains("/repo/.claude/worktrees/w"))
+
+        let codexSession = Session(
+            groupID: GroupID.generate(), cwd: "/repo/.claude/worktrees/w/sub", repoRoot: "/repo",
+            agent: .codex, accountKey: "codex")
+        let codexBases = FilePathResolver.bases(for: codexSession.focusedTerminalID, in: codexSession)
+        #expect(!codexBases.contains("/repo/.claude/worktrees/w"))
+    }
+
     // MARK: Tabs
 
     @Test func openingTheSameFileTwiceSelectsItsTab() {

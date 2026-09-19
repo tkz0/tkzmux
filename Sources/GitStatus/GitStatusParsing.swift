@@ -1,6 +1,6 @@
 // GitStatusParsing — the text half of M4.1. Pure functions, no processes.
 //
-// design.md → *Git integration*: a refresh is two git calls, `status --porcelain=v2 --branch -z`
+// A refresh is two git calls, `status --porcelain=v2 --branch -z`
 // and `diff HEAD --shortstat`. Everything that can go wrong in reading them is a parsing bug, so
 // the parsing lives here as free functions over `String` and is tested against literal fixtures —
 // `GitStatusService` only supplies the text.

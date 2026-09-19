@@ -14,7 +14,7 @@ enum ActivityFeedModel {
         var sessionID: SessionID
         var title: String
         var groupName: String
-        /// `1h 3m` since Claude went busy; empty when the start is unknown.
+        /// `1h 3m` since the agent went busy; empty when the start is unknown.
         var elapsed: String
         var titleRanges: [Range<String.Index>]
     }
@@ -192,10 +192,10 @@ enum ActivityFeedModel {
 
     // MARK: Elapsed
 
-    /// `1h 3m` since the descriptor last flipped to busy — Claude's own clock for the status —
+    /// `1h 3m` since the observation last flipped to busy — the agent's own clock for the status —
     /// else since the prompt that started the turn. Empty when neither is known.
     static func elapsed(of session: Session, now: Date) -> String {
-        guard let since = session.live?.descriptor?.statusUpdatedAt ?? session.live?.lastPromptAt else { return "" }
+        guard let since = session.live?.observation?.statusUpdatedAt ?? session.live?.lastPromptAt else { return "" }
         let seconds = max(0, now.timeIntervalSince(since))
         return StatusBarModel.formatResetsIn(.seconds(seconds))
     }

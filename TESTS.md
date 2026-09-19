@@ -12,7 +12,7 @@ One test target per Swift library module, under `Tests/<Module>Tests`, written w
 |---|---|
 | `TkzCoreTests` | models, `AppStore`, status derivation, theme tokens |
 | `PersistenceTests` | `state.json`, migrations, snapshots |
-| `ClaudeBridgeTests` | session watcher, hook server, transcript search |
+| `AgentBridgeTests` | session watcher, hook server, transcript search |
 | `GitStatusTests` | git status, diffs, FSEvents, PR lookup |
 | `TkzTerminalCoreTests` | pty, VT bridge, key encoding |
 | `TkzTerminalRenderTests` | fonts, glyph atlas, frame building |

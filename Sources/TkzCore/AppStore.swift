@@ -1,4 +1,4 @@
-// TkzCore — the store. See docs/design.md → *App architecture → Store*.
+// TkzCore — the store.
 //
 // The reason this type exists instead of `@Observable`: the sidebar must learn *which* session
 // changed, so that a Claude status flip on one session costs one `reloadData(forRowIndexes:)`
@@ -180,6 +180,7 @@ public struct ChangeSet: Hashable, Sendable {
             || old.checkOriginPeriodically != new.checkOriginPeriodically
             || old.notifyOnDone != new.notifyOnDone
             || old.statuslineOffered != new.statuslineOffered
+            || old.codexHooksOffered != new.codexHooksOffered
             || old.dismissedUpdateVersion != new.dismissedUpdateVersion
             || old.update != new.update
         {
@@ -208,7 +209,7 @@ public struct ChangeSet: Hashable, Sendable {
 /// store.removeObserver(token)
 /// ```
 ///
-/// Services (`ClaudeBridge`, `GitStatus`) run on their own queues and hop to the main actor to call
+/// Services (`AgentBridge`, `GitStatus`) run on their own queues and hop to the main actor to call
 /// `update`; they never touch views.
 @MainActor
 public final class AppStore {

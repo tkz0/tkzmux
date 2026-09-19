@@ -1,6 +1,6 @@
 // MouseEncoder.swift — mouse events → terminal reports (libghostty-vt `mouse/encoder.h`).
 //
-// One of the files allowed to call the C API directly (docs/design.md → Spike checklist).
+// One of the files allowed to call the C API directly.
 // Deliberately lives in TkzTerminalCore, not TkzTerminalView, so it unit-tests without AppKit:
 // the view layer translates `NSEvent` into the plain-data `MousePress` below and nothing else.
 //

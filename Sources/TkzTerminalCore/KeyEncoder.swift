@@ -1,6 +1,6 @@
 // KeyEncoder.swift — key press → pty bytes, via libghostty-vt's key encoder.
 //
-// One of the files allowed to call the C API directly (docs/design.md → Spike checklist).
+// One of the files allowed to call the C API directly.
 // Deliberately in TkzTerminalCore rather than TkzTerminalView: `KeyPress` is plain data with no
 // AppKit types, so the whole encoding path is unit-testable headlessly. The AppKit layer
 // (`TerminalMetalView`, M1.7 second half) builds a `KeyPress` from an `NSEvent` and calls

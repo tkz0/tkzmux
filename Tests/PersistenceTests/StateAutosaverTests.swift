@@ -41,7 +41,7 @@ private func withSaver(
 @MainActor
 ///
 /// 10 s rather than 2 s: the whole suite runs in parallel in one process, and since M3 added the
-/// process-spawning ClaudeBridge suites the main actor was measured to be starved for more than
+/// process-spawning AgentBridge suites the main actor was measured to be starved for more than
 /// 2 s while these tests waited (they pass alone and in pairs with every other suite). The saver's
 /// own debounce is 20–60 ms here, so a real regression still fails fast.
 private func settle(until condition: @MainActor () -> Bool, timeout: Duration = .seconds(10)) async {
@@ -142,7 +142,7 @@ private func settle(until condition: @MainActor () -> Bool, timeout: Duration = 
         // `AppStore` coalesces deliveries to one per run-loop turn, so at ⌘Q there is normally a
         // mutation no observer has seen. `flush` must re-project from the store, not wait for it.
         // The id is read *outside* the closure: reading `store.state` inside `update` is the
-        // exclusivity trap design.md warns about.
+        // exclusivity trap.
         let id = try #require(store.state.orderedSessions.first?.id)
         store.update { $0.renameSession(id, title: "last words") }
         saver.flush()

@@ -34,13 +34,21 @@ case "statusline":
     // Never returns: it exits with the wrapped command's status, or 0. Outside the < 20 ms budget.
     runStatusline()
 
+case "notify-argv":
+    runNotifyArgv(Array(args.dropFirst(2)))
+    exit(0)
+
 default:
     let event = args[1]
     let (stdinBytes, hitCap) = readStdin()
     let sid = envString("TKZMUX_SESSION_ID") ?? ""
     let ppid = getppid()
     let ts = currentTimeMillis()
-    let frame = buildHookFrame(event: event, sid: sid, ppid: ppid, ts: ts, stdinBytes: stdinBytes, stdinHitCap: hitCap)
+    // No flag carries this on the relay path: the shim exports `TKZMUX_AGENT` before `exec`ing the
+    // agent, the agent inherits it, and the hook process the agent spawns for each event inherits
+    // it in turn. Unset (an older shim, or an agent this ticket doesn't know about) reads as Claude.
+    let agent = envString("TKZMUX_AGENT")
+    let frame = buildHookFrame(event: event, sid: sid, ppid: ppid, ts: ts, stdinBytes: stdinBytes, stdinHitCap: hitCap, agent: agent)
     sendFrame(frame)
     exit(0)
 }

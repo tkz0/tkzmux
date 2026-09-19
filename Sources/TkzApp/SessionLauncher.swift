@@ -1,11 +1,11 @@
 // SessionLauncher — every way a shell gets behind a sidebar row (M5.2).
 //
-// design.md → *Session flows & persistence*. The window controller used to own `launch(_:)`
+// The window controller used to own `launch(_:)`
 // directly (M2.5); this type takes that over and adds the rest of the lifecycle:
 //
 //   * `start(_:)`   — a *new* row: `Session` in the store → `TerminalHost.open` in the launch
 //                     directory with the account's `CLAUDE_CONFIG_DIR` → the command typed once
-//                     the shell is ready → the shim's `launch` frame binds the pid (ClaudeIntegration).
+//                     the shell is ready → the shim's `launch` frame binds the pid (AgentIntegration).
 //   * `reopen(_:)`  — a row with **no shell behind it** (restored from `state.json`, or hung up
 //                     with ⌘W): its `.ghsnap` — the live grid if the host still holds it, else the
 //                     file on disk — is restored under a fresh shell, so the user sees the old
@@ -25,7 +25,7 @@
 // **The account follows the session, not the store's account table.** Accounts are discovered,
 // never persisted, and today nothing discovers a second one — so after a relaunch every row's
 // `accountKey` names an account the store has never heard of. The env is therefore derived from
-// the key (`~/.<key>`, the inverse of design.md's account-key rule) whenever the table has no
+// the key (`~/.<key>`, the inverse of the account-key rule) whenever the table has no
 // entry, and only the primary key means "leave `CLAUDE_CONFIG_DIR` unset". A resume on the wrong
 // account is the one failure the ticket singles out.
 //
@@ -33,6 +33,7 @@
 // and cannot report a failure, so a missing directory would start the shell somewhere else and the
 // resume would land in the wrong project. Every path is validated before `open`/`restore`.
 
+import AgentBridge
 import Darwin
 import Foundation
 import GitStatus
@@ -56,6 +57,9 @@ public final class SessionLauncher {
     public let host: any TerminalHost
     /// The user's home: tilde expansion and the derived `~/.<key>` config dirs.
     public let home: String
+    /// One adapter per agent tkzmux knows about — the same table `AgentIntegration` carries.
+    /// Defaults to Claude alone; tests register a stub here to prove the seam is real.
+    public let adapters: [AgentKind: any AgentAdapter]
 
     /// The grid a terminal opens at. The window supplies the *pane's* real grid — a split pane
     /// is half the size of the one it came from, and spawning at the whole window's grid would
@@ -80,11 +84,13 @@ public final class SessionLauncher {
         store: AppStore,
         host: any TerminalHost,
         home: String = NSHomeDirectory(),
+        adapters: [AgentKind: any AgentAdapter] = [.claude: ClaudeAdapter()],
         fileManager: FileManager = .default
     ) {
         self.store = store
         self.host = host
         self.home = home
+        self.adapters = adapters
         self.fileManager = fileManager
     }
 
@@ -124,11 +130,11 @@ public final class SessionLauncher {
             $0.setLive(
                 LiveSessionState(shellPid: pid, status: .idle, panePids: [terminal: pid]),
                 for: id)
-            // A command means Claude is on its way: the pane shows "Starting Claude…" until a
-            // descriptor or `SessionStart` says it arrived (`.shell` carries none, and shows
+            // A command means Claude is on its way: the pane shows "Starting Claude…" until an
+            // observation or `SessionStart` says it arrived (`.shell` carries none, and shows
             // nothing).
             if !spec.command.isEmpty {
-                $0.beginClaudeStartup(id, terminal: terminal, command: spec.command, now: now)
+                $0.beginAgentStartup(id, terminal: terminal, command: spec.command, now: now)
             }
             $0.select(id)
         }
@@ -218,7 +224,7 @@ public final class SessionLauncher {
                 LiveSessionState(shellPid: shellPid, status: .idle, panePids: pids), for: id)
             // The boot command went to the focused pane, so that is where Claude is starting.
             if let bootCommand, !bootCommand.isEmpty, pids[focused] != nil {
-                $0.beginClaudeStartup(id, terminal: focused, command: bootCommand, now: now)
+                $0.beginAgentStartup(id, terminal: focused, command: bootCommand, now: now)
             }
         }
         logLaunch(kind: "reopen", id: id, cwd: cwd, env: env, command: "")
@@ -297,8 +303,8 @@ public final class SessionLauncher {
         guard let session = store.state.sessions[id] else { return .failure(.unknownSession) }
         let source = session.focusedTerminalID
 
-        let claudeCwd = session.paneHostsClaude(source)
-            ? session.live?.descriptor?.cwd.flatMap { $0.isEmpty ? nil : $0 } : nil
+        let claudeCwd = session.paneHostsAgent(source)
+            ? session.live?.observation?.cwd.flatMap { $0.isEmpty ? nil : $0 } : nil
         let cwd = Paths.expandingTilde(
             claudeCwd
                 ?? store.state.paneCwd(source)
@@ -353,7 +359,7 @@ public final class SessionLauncher {
 
     /// What `resume` did.
     public enum ResumeOutcome: Equatable, Sendable {
-        /// The agent is already running in this row (a descriptor is bound); nothing typed.
+        /// The agent is already running in this row (an observation is bound); nothing typed.
         case agentRunning
         /// The row has no `conversationId` to resume; the shell was (re)opened and that is all.
         case nothingToResume
@@ -365,13 +371,16 @@ public final class SessionLauncher {
     @discardableResult
     public func resume(_ id: SessionID, select: Bool = true) -> Result<ResumeOutcome, Failure> {
         guard let before = store.state.sessions[id] else { return .failure(.unknownSession) }
-        if before.live?.descriptor != nil { return .success(.agentRunning) }
+        if before.live?.observation != nil { return .success(.agentRunning) }
 
         let hadShell = before.live != nil
         // Worked out before the shell is opened: a shell this call spawns is handed the command as
-        // `TKZMUX_BOOT_COMMAND` rather than having it typed in afterwards.
+        // `TKZMUX_BOOT_COMMAND` rather than having it typed in afterwards. `nil` when the row's own
+        // agent has no adapter, or that adapter cannot resume — treated the same as no conversation.
         let conversationId = before.conversationId.flatMap { $0.isEmpty ? nil : $0 }
-        let command = conversationId.map { "claude --resume \($0)" }
+        let command = conversationId.flatMap {
+            adapters[before.agent]?.launchCommand(.resume(conversationId: $0))
+        }
         if !hadShell {
             if case .failure(let failure) = reopen(id, bootCommand: command) {
                 return .failure(failure)
@@ -406,7 +415,7 @@ public final class SessionLauncher {
         var failed: [(SessionID, Failure)] = []
         for id in ids {
             guard let session = store.state.sessions[id],
-                  session.conversationId != nil, session.live?.descriptor == nil
+                  session.conversationId != nil, session.live?.observation == nil
             else { continue }
             switch resume(id, select: false) {
             case .success(.resumed): resumed.append(id)
@@ -495,19 +504,32 @@ public final class SessionLauncher {
 
     // MARK: - Environment
 
-    /// `CLAUDE_CONFIG_DIR` for the account named by `accountKey` — the primary included.
-    /// `nil` means "no account was chosen": the variable is left
-    /// alone, the user's environment decides, and the shim's `launch` frame reports what that was
-    /// (`ClaudeIntegration.learnAccount`).
+    /// The agent-specific config-dir variables for the account named by `accountKey` — the primary
+    /// included — from that account's own adapter (`CLAUDE_CONFIG_DIR` for Claude today, something
+    /// else for a future agent). `nil` means "no account was chosen": the variables are left alone,
+    /// the user's environment decides, and the shim's `launch` frame reports what that was
+    /// (`AgentIntegration.learnAccount`).
     ///
-    /// The same value goes out as `TKZMUX_CLAUDE_CONFIG_DIR`: the ZDOTDIR wrapper re-exports it
-    /// after the user's own rc files have run, so an `export CLAUDE_CONFIG_DIR=…` in a `.zshrc`
-    /// cannot override an account the user picked in the app.
+    /// Every pair the adapter returns is also re-exported generically: `TKZMUX_ENV_<NAME>` carries
+    /// each value and `TKZMUX_REEXPORT` names them, space separated. The shell wrappers
+    /// (`Resources/{zsh,bash,fish}/…`) loop over that list *after* the user's own rc files have
+    /// run, so `export CLAUDE_CONFIG_DIR=…` in a `.zshrc` cannot override an account the user
+    /// picked in the app — this is what makes the mechanism generic across agents rather than
+    /// hard-coded to Claude's one variable (TKZ-84).
     public func environment(accountKey: String?, bootCommand: String? = nil) -> [String: String] {
         var env: [String: String] = [:]
         if let key = accountKey, let dir = configDirectory(forKey: key) {
-            env["CLAUDE_CONFIG_DIR"] = dir
-            env["TKZMUX_CLAUDE_CONFIG_DIR"] = dir
+            let agent = store.state.accounts[key]?.agent ?? .claude
+            if let adapter = adapters[agent] {
+                let pairs = adapter.environment(configDir: dir)
+                for (name, value) in pairs {
+                    env[name] = value
+                    env["TKZMUX_ENV_\(name)"] = value
+                }
+                if !pairs.isEmpty {
+                    env["TKZMUX_REEXPORT"] = pairs.keys.sorted().joined(separator: " ")
+                }
+            }
         }
         // Read and `unset` by the ZDOTDIR `.zlogin` before it runs the command, so nothing the
         // command starts inherits it and runs it a second time. Not in `strippedKeys`: the strip
@@ -556,10 +578,18 @@ public final class SessionLauncher {
 
     /// One line per launch in the unified log, category `launch`, everything public: this is the
     /// "no wrong-account launches" audit the ticket asks for (docs/perf.md → *Launch audit*).
+    ///
+    /// Logged generically rather than as `CLAUDE_CONFIG_DIR` by name: whichever `_CONFIG_DIR`
+    /// variable the account's adapter actually produced (`CLAUDE_CONFIG_DIR` today, something else
+    /// for a future agent) is what is worth an audit line, not a name this call happens to know.
+    /// The `TKZMUX_`-prefixed re-export is excluded so a Codex launch is not mislabelled as
+    /// `CLAUDE_CONFIG_DIR=default` by picking up tkzmux's own copy instead.
     private func logLaunch(kind: String, id: SessionID, cwd: String, env: [String: String], command: String) {
-        let account = env["CLAUDE_CONFIG_DIR"] ?? "default"
-        let extras = env.keys.filter { $0 != "CLAUDE_CONFIG_DIR" }.sorted()
+        let configVar = env.keys.first { $0.hasSuffix("_CONFIG_DIR") && !$0.hasPrefix("TKZMUX_") }
+        let label = configVar ?? "CONFIG_DIR"
+        let account = configVar.flatMap { env[$0] } ?? "default"
+        let extras = env.keys.filter { $0 != configVar }.sorted()
             .map { "\($0)=\(env[$0] ?? "")" }.joined(separator: " ")
-        logger.info("launch kind=\(kind, privacy: .public) session=\(id.rawValue, privacy: .public) cwd=\(cwd, privacy: .public) CLAUDE_CONFIG_DIR=\(account, privacy: .public) env=[\(extras, privacy: .public)] cmd=\(command, privacy: .public)")
+        logger.info("launch kind=\(kind, privacy: .public) session=\(id.rawValue, privacy: .public) cwd=\(cwd, privacy: .public) \(label, privacy: .public)=\(account, privacy: .public) env=[\(extras, privacy: .public)] cmd=\(command, privacy: .public)")
     }
 }

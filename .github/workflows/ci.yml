@@ -44,7 +44,7 @@ jobs:
       #
       # --no-parallel is required, not a preference. Several tests assert timing behaviour -- the
       # autosaver's debounce, and that a background session's output never wakes the display link --
-      # and they wait on the main actor. Run in parallel, the process-spawning ClaudeBridge suites
+      # and they wait on the main actor. Run in parallel, the process-spawning AgentBridge suites
       # starve it; `StateAutosaverTests.settle` already carries a 10 s timeout and a comment about
       # this, and on a 3-core runner even 10 s is not enough (observed: writeCount still 0 after the
       # full timeout, the test failing after 14 s). Raising those timeouts further would only make a

@@ -119,8 +119,8 @@ public final class RebaseSheetController: NSObject, NSWindowDelegate {
 
     /// The row's Claude status moved; the button follows.
     public func setClaudeWorking(_ working: Bool) {
-        guard var model, model.claudeWorking != working else { return }
-        model.claudeWorking = working
+        guard var model, model.agentWorking != working else { return }
+        model.agentWorking = working
         update(model)
     }
 

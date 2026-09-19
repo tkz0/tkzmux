@@ -1,5 +1,4 @@
 // TerminalSurface — the per-visible-session render state (M1.5).
-// See docs/design.md → Terminal engine → Metal renderer, and the Spike results (M1.1–M1.3) table.
 //
 // Exactly one session is visible at a time, and only the visible session has a `TerminalSurface`.
 // The surface owns everything that is expensive and per-session:

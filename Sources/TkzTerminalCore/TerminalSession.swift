@@ -1,4 +1,4 @@
-// TerminalSession.swift — the VT bridge. See docs/design.md → *Terminal engine → VT bridge*.
+// TerminalSession.swift — the VT bridge.
 //
 // One `TerminalSession` owns one libghostty-vt terminal: it feeds it pty bytes, answers the
 // terminal's "effects" (queries, OSC), publishes `TerminalEvent`s, and hands the render layer a
@@ -335,7 +335,7 @@ private func cbClipboardRead(
     _ read: UnsafePointer<GhosttyClipboardRead>?
 ) {
     guard let read else { return }
-    // Programs never get to read the user's clipboard (docs/design.md → VT bridge: DENIED).
+    // Programs never get to read the user's clipboard.
     var reply = GhosttyClipboardReadReply()
     reply.size = MemoryLayout<GhosttyClipboardReadReply>.stride
     reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_DENIED
@@ -924,7 +924,7 @@ public final class TerminalSession: Sendable {
         }
     }
 
-    /// Compress eligible scrollback (idle-timer work; see docs/design.md → Threading).
+    /// Compress eligible scrollback (idle-timer work).
     /// Not thread-safe against anything else, hence the lock.
     /// Returns `true` when more incremental work remains (`PENDING`), i.e. the idle timer should
     /// call again; `false` on `COMPLETE`, `UNSUPPORTED`, or an error.

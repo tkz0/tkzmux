@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"/Users/tester/Library/Application Support/tkzmux/bin/tkzmux-hook\" Stop" }
+        ]
+      }
+    ]
+  }
+}

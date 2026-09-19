@@ -5,8 +5,7 @@
 //
 // The 50×SIGKILL crash acceptance cannot live in a test bundle — it needs a process to kill — and
 // follows the `SnapshotsTests` precedent of running in the harness instead:
-// `tkzmux-vtdump state-churn` driven by `scripts/state-crash-test.sh`, recorded in
-// docs/manual-checks.md.
+// `tkzmux-vtdump state-churn` driven by `scripts/state-crash-test.sh`.
 
 import Foundation
 import Testing
@@ -49,6 +48,9 @@ private func makeState() -> AppState {
     state.setCheckOriginPeriodically(true)
     // Defaults on, so off is the value a dropped round trip would fail on.
     state.setNotifyOnDone(false)
+    // Defaults off, like `statuslineOffered` — the non-default value, so a dropped round trip
+    // fails loudly (TKZ-87).
+    state.setCodexHooksOffered(true)
     // A muted row rides on `Session` itself; the `sessions ==` assertion below covers it.
     state.setNotificationsMuted(two.id, true)
     // A split and a second tab, so every assertion built on this fixture covers the layout too.
@@ -84,6 +86,11 @@ private func makeState() -> AppState {
 
         #expect(restored.groups == original.groups)
         #expect(restored.sessions == original.sessions)
+        // `sessions ==` above already covers these, but the schema v4 fields are new enough
+        // (TKZ-79) to earn an assertion of their own rather than ride along silently.
+        #expect(restored.sessions.values.allSatisfy { $0.agent == .claude })
+        let resumable = try #require(original.orderedSessions.first { $0.conversationId == "conv-1" })
+        #expect(restored.sessions[resumable.id]?.conversationId == "conv-1")
             #expect(restored.selection == original.selection)
         #expect(restored.sidebarVisible == original.sidebarVisible)
         #expect(restored.sidebarWidth == original.sidebarWidth)
@@ -93,13 +100,14 @@ private func makeState() -> AppState {
         #expect(restored.showSessionSpend == original.showSessionSpend)
         #expect(restored.checkOriginPeriodically == original.checkOriginPeriodically)
         #expect(restored.notifyOnDone == original.notifyOnDone)
+        #expect(restored.codexHooksOffered == original.codexHooksOffered)
     }
 }
 
-/// `Session.conversationId` is still written as `claudeSessionId`: schema v3 predates the Swift
-/// rename, and the key only moves with the v4 lift (TKZ-79). Until then a `state.json` from the
-/// current release must load unchanged, and one this build writes must load in that release.
-@Test func conversationIdIsStoredUnderTheV3Key() throws {
+/// `Session.conversationId` is written under its own name now: schema v4 (TKZ-79) renamed the
+/// on-disk key from `claudeSessionId`, and `Migrations.liftV3ToV4` is what moves an existing v3
+/// file's value across, not an alias on `Session.CodingKeys`.
+@Test func conversationIdIsStoredUnderTheV4Key() throws {
     let original = makeState()
     let one = try #require(original.orderedSessions.first { $0.conversationId == "conv-1" })
     let data = try StateFile.encode(StateDocument(state: PersistedState(original)))
@@ -108,11 +116,11 @@ private func makeState() -> AppState {
     guard case .array(var sessions)? = object["sessions"] else { Issue.record("no sessions"); return }
     let index = try #require(sessions.firstIndex { $0.objectValue?["id"]?.stringValue == one.id.rawValue })
     var row = try #require(sessions[index].objectValue)
-    #expect(row["claudeSessionId"]?.stringValue == "conv-1")
-    #expect(row["conversationId"] == nil)
+    #expect(row["conversationId"]?.stringValue == "conv-1")
+    #expect(row["claudeSessionId"] == nil)
 
-    // And the other direction: the v3 key, as the current release writes it, lands in the field.
-    row["claudeSessionId"] = .string("conv-from-disk")
+    // And the other direction: the v4 key, as the current release writes it, lands in the field.
+    row["conversationId"] = .string("conv-from-disk")
     sessions[index] = .object(row)
     object["sessions"] = .array(sessions)
     var restored = AppState()
@@ -155,6 +163,28 @@ private func makeState() -> AppState {
     #expect(fresh.checkOriginPeriodically == false)
 }
 
+/// `codexHooksOffered` copies `statuslineOffered`'s plumbing exactly (TKZ-87): no schema bump, a
+/// file written before it existed decodes the key as absent, and absent must mean `false` so the
+/// sheet is still offered the first time a Codex account needs it.
+@Test func theCodexHooksOfferedFlagRoundTripsAndDefaultsFalse() throws {
+    var state = makeState()
+    state.setCodexHooksOffered(true)
+    let data = try StateFile.encode(StateDocument(state: PersistedState(state)))
+    var restored = AppState()
+    try StateFile.decode(data).state.apply(to: &restored)
+    #expect(restored.codexHooksOffered == true)
+
+    // A preferences block written before the flag existed has the key missing, not the whole
+    // object missing — the same per-field `decodeIfPresent` fallback every other switch in
+    // `PersistedPreferences.init(from:)` uses.
+    var object = try JSONDecoder().decode([String: JSONValue].self, from: data)
+    object["preferences"] = .object(["autoResumeOnLaunch": .bool(true)])
+    var fresh = AppState()
+    fresh.setCodexHooksOffered(true)
+    try StateFile.decode(JSONEncoder().encode(object)).state.apply(to: &fresh)
+    #expect(fresh.codexHooksOffered == false)
+}
+
 @Test func aFileWithoutPreferencesLoadsWithTheDefaults() throws {
     // Every state.json written before M5.2 has no `preferences` key; it must still load, and a
     // missing switch means off.
@@ -174,6 +204,7 @@ private func makeState() -> AppState {
     // every other switch in this block, which defaults off.
     #expect(restored.showSessionSpend == true)
     #expect(restored.notifyOnDone == true)
+    #expect(restored.codexHooksOffered == false)
     #expect(restored.sessions.count == state.sessions.count)
 }
 
@@ -251,7 +282,7 @@ private func makeState() -> AppState {
     #expect(groups.first?.objectValue?["name"]?.stringValue == "Alpha")
     guard case .array(let sessions)? = object["sessions"] else { Issue.record("no sessions"); return }
     #expect(sessions.count == 2)
-    #expect(object["schemaVersion"]?.intValue == 3)
+    #expect(object["schemaVersion"]?.intValue == 4)
     // Explicit keys, not CGRect's `[[x,y],[w,h]]`.
     #expect(object["windowFrame"]?.objectValue?["width"] != nil)
 }

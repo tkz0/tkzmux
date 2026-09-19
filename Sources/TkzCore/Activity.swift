@@ -2,7 +2,7 @@
 //
 // One entry per thing worth catching up on — a finished turn, a row that started needing the
 // user, a Claude that exited — appended by the reducers that already know the moment it happens
-// (`applyHook`, `rederiveStatus`) and read back by the feed panel in TkzApp. Kept on `AppState`
+// (`applyEvent`, `rederiveStatus`) and read back by the feed panel in TkzApp. Kept on `AppState`
 // rather than on `Session.live`, because `live` is never persisted and an entry's *unread* flag
 // has to survive a relaunch: coming back to the app is exactly when the list is wanted.
 
@@ -16,7 +16,8 @@ public struct ActivityEvent: Hashable, Sendable, Codable, Identifiable {
         /// The row flipped into NEEDS YOU; `message` is Claude's own line for the prompt, or the
         /// last reply for an unattended Stop that aged into NEEDS YOU.
         case needsYou(reason: WaitReason, message: String?)
-        /// Claude exited (`SessionEnd` with a reason other than `clear`/`resume`).
+        /// The agent exited for real — an ending its own adapter judged to be one, rather than a
+        /// clear or a resume that leaves the row alive. `reason` is the agent's own word for it.
         case sessionEnded(reason: String?)
 
         /// Whether an entry of this kind is something to act on. An exit is context, not a call:

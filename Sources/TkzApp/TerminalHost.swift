@@ -1,12 +1,12 @@
 // TerminalHost — the seam between the terminal engine and the app (M1.10).
-// See docs/design.md → *TerminalHost — the seam between halves*, and docs/perf.md → *GUI half*.
+// See docs/perf.md → *GUI half*.
 //
 // This file holds two things. (`SessionID` used to live here as a stopgap; M2.1 moved it to
 // `TkzCore/Models.swift` as a UUID wrapper, which is stricter than the old rule — anything that
 // could be a `.ghsnap` basename — but loses nothing, because every id ever written came from
 // `generate()` as an uppercase UUID.)
 //
-//   1. `TerminalHost` — the protocol design.md specifies, verbatim apart from `@MainActor`
+//   1. `TerminalHost` — the protocol, verbatim apart from `@MainActor`
 //      (see the DESIGN.MD DELTA in the ticket: an implementation over `NSView` cannot be
 //      nonisolated under Swift 6 strict concurrency).
 //   2. `TerminalViewHost` — its implementation over `TerminalMetalView` + `Pty` +
@@ -36,7 +36,7 @@
 // The host is keyed by `TerminalID` — one pty, one VT, one `.ghsnap`. A `SessionID` is a *row*,
 // and a row owns one or more terminals. `open` and `restore` therefore take both: the terminal
 // they are creating, and the row it belongs to, because the row's id is what goes into the child's
-// `TKZMUX_SESSION_ID` and so what the shim, the hook relay and ClaudeBridge correlate on. Every
+// `TKZMUX_SESSION_ID` and so what the shim, the hook relay and AgentBridge correlate on. Every
 // pane of a row is one row to them, by design.
 //
 // ## Snapshot/compress ordering
@@ -88,7 +88,7 @@ extension TerminalMetalView: TerminalPaneSurface {}
 /// What the app half may ask of the terminal half. Nothing above this line knows about libghostty,
 /// ptys or Metal; nothing below it knows about the sidebar.
 ///
-/// `@MainActor` is not in design.md's listing but is required: the implementation owns an `NSView`.
+/// `@MainActor` is required: the implementation owns an `NSView`.
 @MainActor
 public protocol TerminalHost: AnyObject {
     /// Spawns a login shell for the terminal `id` and returns its pid.
@@ -131,6 +131,10 @@ public protocol TerminalHost: AnyObject {
     /// **Remove**: forgets the terminal entirely — hangs it up if alive, drops its grid, deletes
     /// its snapshot on disk. The one call that makes a terminal unresumable.
     func discard(_ id: TerminalID)
+    /// The input protocols `id`'s terminal currently has switched on, or `nil` when the host
+    /// holds no terminal under that id. The startup overlay polls this to find out whether the
+    /// agent's own UI is already on screen; see `TerminalInputModes`.
+    func inputModes(_ id: TerminalID) -> TerminalInputModes?
     /// Does the host hold a terminal under `id`? The lazy-restore paths ask before spawning, so
     /// it has to be reachable through the existential, not only on `TerminalViewHost`.
     func contains(_ id: TerminalID) -> Bool
@@ -276,6 +280,8 @@ public final class TerminalViewHost: TerminalHost {
     public var sessionIDs: [TerminalID] { order }
     public func contains(_ id: TerminalID) -> Bool { sessions[id] != nil }
     public func isAlive(_ id: TerminalID) -> Bool { sessions[id]?.isAlive ?? false }
+    public func inputModes(_ id: TerminalID) -> TerminalInputModes? { sessions[id]?.session.inputModes }
+
     public func pid(of id: TerminalID) -> pid_t? { sessions[id]?.pty.pid }
     public func title(of id: TerminalID) -> String? { sessions[id]?.title }
     public func wasRestored(_ id: TerminalID) -> Bool { sessions[id]?.wasRestored ?? false }
@@ -404,7 +410,7 @@ public final class TerminalViewHost: TerminalHost {
         size: TerminalSize
     ) throws -> Pty {
         // The **row's** id, not the terminal's: every pane of a row must look like one row to the
-        // shim, the hook relay and ClaudeBridge.
+        // shim, the hook relay and AgentBridge.
         let spawn = TerminalEnvironment.loginShellSpawn(
             sessionID: sessionID.rawValue,
             cwd: cwd,
@@ -627,8 +633,8 @@ public final class TerminalViewHost: TerminalHost {
     ///
     /// The snapshot is deleted **whether or not the host holds the session**: a row restored from
     /// `state.json` that was never selected has a `.ghsnap` and no `HostSession`, and Remove on it
-    /// must still take the file with it (M5.2). Part of the protocol since M5.2; design.md's
-    /// `close` keeps the row resumable, so this is the only way to make one go away.
+    /// must still take the file with it (M5.2). Part of the protocol since M5.2; `close`
+    /// keeps the row resumable, so this is the only way to make one go away.
     /// It does **not** put something else on screen in place of a discarded visible terminal.
     /// It used to, when there was one surface and one visible session; with a store-driven window
     /// that is wrong — `MainWindowController.applySelection` decides what is visible, and quietly
@@ -668,8 +674,7 @@ public final class TerminalViewHost: TerminalHost {
     }
 
     /// Rebuilds `id`'s content from `data` and spawns a **fresh** shell under it: the user sees the
-    /// old scrollback with a new prompt below it, which is what design.md → *Session flows &
-    /// persistence* asks for ("restore content and spawn a fresh shell").
+    /// old scrollback with a new prompt below it ("restore content and spawn a fresh shell").
     ///
     /// The size is not a parameter of the protocol, and it does not need to be: `restore(from:)`
     /// adopts the snapshot's own cols/rows, so the pty is spawned at exactly the size the terminal

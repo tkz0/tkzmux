@@ -1,5 +1,4 @@
 // GlyphAtlas + GlyphCache — one app-wide pair of Metal glyph atlases (M1.4).
-// See docs/design.md → Terminal engine → Metal renderer.
 //
 // `.grayscale` is `r8Unorm` 2048², `.color` is `bgra8Unorm` 1024² growing to 2048². Packing is a
 // shelf packer over a CPU staging buffer; the staging copy is what makes regrow cheap (re-upload,

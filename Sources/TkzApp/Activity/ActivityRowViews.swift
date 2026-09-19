@@ -121,7 +121,7 @@ final class ActivityWorkingRowView: NSTableCellView {
 
 /// ```
 /// review   Northwind · 12m · ended                          [NEEDS YOU · permission]
-/// Claude needs your permission to use Bash
+/// The agent needs your permission to use Bash
 /// (second line of the preview)                                          +2 older
 /// ```
 final class ActivityThreadRowView: NSTableCellView {
@@ -204,14 +204,18 @@ final class ActivityThreadRowView: NSTableCellView {
             color: row.unread ? theme.foreground.nsColor : theme.foregroundMuted.nsColor, theme: theme)
     }
 
-    /// A NEEDS YOU without Claude's own line, or an exit: one plain sentence.
+    /// A NEEDS YOU without the agent's own line, or an exit: one plain sentence.
+    ///
+    /// `ActivityEvent` (`TkzCore`) carries no agent name of its own — nothing here can say which
+    /// adapter produced the row without reaching back into the store, which the view layer does
+    /// not hold — so this says "the agent" rather than guessing at a product name.
     static func fallbackPreview(_ kind: ActivityEvent.Kind) -> String {
         switch kind {
-        case .needsYou(.permission, _): "Claude is waiting for permission"
-        case .needsYou(.elicitation, _), .needsYou(.agentInput, _): "Claude is asking you a question"
-        case .needsYou(.doneUnattended, _): "Claude finished and nobody looked"
-        case .stop: "Claude finished"
-        case .sessionEnded: "Claude exited"
+        case .needsYou(.permission, _): "The agent is waiting for permission"
+        case .needsYou(.elicitation, _), .needsYou(.agentInput, _): "The agent is asking you a question"
+        case .needsYou(.doneUnattended, _): "The agent finished and nobody looked"
+        case .stop: "The agent finished"
+        case .sessionEnded: "The agent exited"
         }
     }
 

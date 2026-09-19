@@ -1,5 +1,4 @@
 // The reducers, exercised without a store — they are plain `mutating` methods on `AppState`.
-// Flows: docs/design.md → *Session flows & persistence*.
 
 import Foundation
 import Testing
@@ -38,23 +37,23 @@ import Testing
         var state = AppState()
         let g = state.addGroup(name: "Bucket")
         let session = state.createSession(groupID: g.id, cwd: "/tmp")
-        #expect(session.accountKey == Account.defaultKey)
+        #expect(session.accountKey == Account.defaultKey(for: .claude))
     }
 
-    @Test func adoptBindsTheDescriptorAndRecordsTheResumeID() {
+    @Test func adoptBindsTheObservationAndRecordsTheResumeID() {
         var state = AppState.fixture
         let id = Fixture.sessionID(4)  // a restored fixture row (no live state)
         #expect(state.sessions[id]?.live == nil)
-        let descriptor = ClaudeSessionInfo(
-            configDir: "~/.claude-work", pid: 900, sessionId: "new-session-id",
-            kind: .interactive, name: "adopted", nameSource: .auto, status: .busy)
-        state.adoptDescriptor(descriptor, for: id)
+        let observation = AgentObservation(
+            pid: 900, conversationId: "new-session-id", configDir: "~/.claude-work",
+            activity: .busy, name: "adopted", nameIsDerived: false)
+        state.adoptDescriptor(observation, for: id)
         #expect(state.sessions[id]?.live?.pid == 900)
         #expect(state.sessions[id]?.conversationId == "new-session-id")
-        #expect(state.sessions[id]?.live?.descriptor?.name == "adopted")
+        #expect(state.sessions[id]?.live?.observation?.name == "adopted")
         // Adopting an unknown session is a no-op, not a crash.
         let count = state.sessions.count
-        state.adoptDescriptor(descriptor, for: .generate())
+        state.adoptDescriptor(observation, for: .generate())
         #expect(state.sessions.count == count)
     }
 
@@ -85,19 +84,19 @@ import Testing
         session.isWorktree = true
         #expect(session.displayTitle == "pricing")  // worktree name
         session.live = LiveSessionState(
-            descriptor: ClaudeSessionInfo(configDir: "~/.claude", pid: 1, sessionId: "s",
-                                          name: "from claude", nameSource: .auto))
-        #expect(session.displayTitle == "from claude")  // descriptor name
-        session.live?.descriptor?.nameSource = .derived
+            observation: AgentObservation(pid: 1, conversationId: "s", configDir: "~/.claude",
+                                          name: "from claude", nameIsDerived: false))
+        #expect(session.displayTitle == "from claude")  // the agent's own name
+        session.live?.observation?.nameIsDerived = true
         #expect(session.displayTitle == "pricing")  // a derived name loses to the worktree
         session.title = "user rename"
         #expect(session.displayTitle == "user rename")  // the rename always wins
 
-        // Claude's own cwd beats the shell's starting directory once a descriptor is bound.
+        // Claude's own cwd beats the shell's starting directory once an observation is bound.
         var moved = Session(groupID: GroupID.generate(), cwd: "/Users/x", accountKey: "claude")
-        moved.live = LiveSessionState(descriptor: ClaudeSessionInfo(
-            configDir: "/Users/x/.claude", pid: 1, sessionId: "s", cwd: "/Users/x/dev/app",
-            name: "app-3f", nameSource: .derived))
+        moved.live = LiveSessionState(observation: AgentObservation(
+            pid: 1, conversationId: "s", configDir: "/Users/x/.claude", cwd: "/Users/x/dev/app",
+            name: "app-3f", nameIsDerived: true))
         #expect(moved.displayTitle == "app")
     }
 
@@ -109,11 +108,11 @@ import Testing
 
         // Claude's name, a derived name, a rename: the folder stays the folder.
         session.live = LiveSessionState(
-            descriptor: ClaudeSessionInfo(configDir: "~/.claude", pid: 1, sessionId: "s",
-                                          name: "from claude", nameSource: .auto))
+            observation: AgentObservation(pid: 1, conversationId: "s", configDir: "~/.claude",
+                                          name: "from claude", nameIsDerived: false))
         #expect(session.displayTitle == "from claude")
         #expect(session.directoryTitle == "app")
-        session.live?.descriptor?.nameSource = .derived
+        session.live?.observation?.nameIsDerived = true
         #expect(session.directoryTitle == "app")
         session.title = "user rename"
         #expect(session.directoryTitle == "app")
@@ -125,9 +124,9 @@ import Testing
 
         // And Claude's own cwd beats the start dir, exactly as for the title.
         var moved = Session(groupID: GroupID.generate(), cwd: "/Users/x", accountKey: "claude")
-        moved.live = LiveSessionState(descriptor: ClaudeSessionInfo(
-            configDir: "/Users/x/.claude", pid: 1, sessionId: "s", cwd: "/Users/x/dev/app",
-            name: "Track updated fields", nameSource: .auto))
+        moved.live = LiveSessionState(observation: AgentObservation(
+            pid: 1, conversationId: "s", configDir: "/Users/x/.claude", cwd: "/Users/x/dev/app",
+            name: "Track updated fields", nameIsDerived: false))
         #expect(moved.directoryTitle == "app")
         #expect(moved.displayTitle == "Track updated fields")
     }
@@ -252,16 +251,16 @@ import Testing
         #expect(state.sessions[session.id]?.showsWorktreeBadge == true)
         #expect(state.sessions[session.id]?.isWorktree == false)
 
-        // Claude's own cwd wins while a descriptor is bound, and becomes the directory of record.
-        state.applyDescriptor(
-            ClaudeSessionInfo(configDir: "/Users/x/.claude", pid: 9, sessionId: "s", cwd: "/Users/x/dev/repo"),
+        // Claude's own cwd wins while an observation is bound, and becomes the directory of record.
+        state.applyObservation(
+            AgentObservation(pid: 9, conversationId: "s", configDir: "/Users/x/.claude", cwd: "/Users/x/dev/repo"),
             alive: true, to: session.id)
         #expect(state.sessions[session.id]?.displayTitle == "repo")
         #expect(state.sessions[session.id]?.cwd == "/Users/x/dev/repo")
         #expect(state.sessions[session.id]?.showsWorktreeBadge == false)
 
         // Claude gone: back to the shell's cwd.
-        state.descriptorLost(for: session.id)
+        state.agentLost(for: session.id)
         #expect(state.sessions[session.id]?.displayTitle == "hello")
 
         state.setShellCwd(session.id, path: "")
@@ -269,15 +268,35 @@ import Testing
     }
 
     @Test func worktreeRootOfPath() {
-        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees/review") == "/repo/.claude/worktrees/review")
-        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees/review/src/deep") == "/repo/.claude/worktrees/review")
-        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees/") == nil)
-        #expect(Session.worktreeRoot(ofPath: "/repo/.claude/worktrees") == nil)
-        #expect(Session.worktreeRoot(ofPath: "/repo/src") == nil)
-        #expect(Session.worktreeRoot(ofPath: "~/dev/x/.claude/worktrees/a") == "~/dev/x/.claude/worktrees/a")
+        var state = AppState()
+        let group = state.addGroup(name: "repo", repoRoot: "/repo")
+        let claudeSession = state.createSession(groupID: group.id, cwd: "/repo", accountKey: "claude")
+        #expect(claudeSession.worktreeRoot(ofPath: "/repo/.claude/worktrees/review") == "/repo/.claude/worktrees/review")
+        #expect(claudeSession.worktreeRoot(ofPath: "/repo/.claude/worktrees/review/src/deep") == "/repo/.claude/worktrees/review")
+        #expect(claudeSession.worktreeRoot(ofPath: "/repo/.claude/worktrees/") == nil)
+        #expect(claudeSession.worktreeRoot(ofPath: "/repo/.claude/worktrees") == nil)
+        #expect(claudeSession.worktreeRoot(ofPath: "/repo/src") == nil)
+        #expect(claudeSession.worktreeRoot(ofPath: "~/dev/x/.claude/worktrees/a") == "~/dev/x/.claude/worktrees/a")
+
+        // The whole point of TKZ-79: Codex has no worktree marker, so the same paths that resolve
+        // for a Claude session must resolve to nothing at all for a Codex one.
+        let codexSession = state.createSession(groupID: group.id, cwd: "/repo", agent: .codex, accountKey: "codex")
+        #expect(codexSession.worktreeRoot(ofPath: "/repo/.claude/worktrees/review") == nil)
+        #expect(codexSession.worktreeRoot(ofPath: "~/dev/x/.claude/worktrees/a") == nil)
     }
 
-    @Test func descriptorInsideAWorktreeSetsTheBadge() {
+    /// A Codex row sitting inside a `.claude/worktrees/…` directory (e.g. a Codex session started
+    /// inside a Claude worktree) must not claim the `WT` badge — that badge is Claude's marker, and
+    /// Codex knows nothing about the directory it happens to be standing in.
+    @Test func aCodexSessionInsideAClaudeWorktreeDoesNotShowTheBadge() {
+        var state = AppState()
+        let group = state.addGroup(name: "repo", repoRoot: "/repo")
+        let session = state.createSession(
+            groupID: group.id, cwd: "/repo/.claude/worktrees/x", agent: .codex, accountKey: "codex")
+        #expect(state.sessions[session.id]?.showsWorktreeBadge == false)
+    }
+
+    @Test func observationInsideAWorktreeSetsTheBadge() {
         var state = AppState()
         let group = state.addGroup(name: "repo", repoRoot: "/repo")
         let session = state.createSession(groupID: group.id, cwd: "/repo", accountKey: "claude")
@@ -285,20 +304,20 @@ import Testing
         #expect(state.sessions[session.id]?.isWorktree == false)
 
         // `claude -w` reports the worktree it created as its cwd.
-        let descriptor = ClaudeSessionInfo(
-            configDir: "/home/.claude", pid: 99, sessionId: "sid-1",
-            cwd: "/repo/.claude/worktrees/tkz-30", status: .idle)
-        state.applyDescriptor(descriptor, alive: true, to: session.id)
+        let observation = AgentObservation(
+            pid: 99, conversationId: "sid-1", configDir: "/home/.claude",
+            cwd: "/repo/.claude/worktrees/tkz-30", activity: .idle)
+        state.applyObservation(observation, alive: true, to: session.id)
         #expect(state.sessions[session.id]?.isWorktree == true)
         #expect(state.sessions[session.id]?.worktreePath == "/repo/.claude/worktrees/tkz-30")
         #expect(state.sessions[session.id]?.displayTitle == "tkz-30")
 
-        // A plain repo-root descriptor leaves a non-worktree row alone.
+        // A plain repo-root observation leaves a non-worktree row alone.
         var plain = AppState()
         let g2 = plain.addGroup(name: "repo", repoRoot: "/repo")
         let s2 = plain.createSession(groupID: g2.id, cwd: "/repo", accountKey: "claude")
-        plain.applyDescriptor(
-            ClaudeSessionInfo(configDir: "/home/.claude", pid: 7, sessionId: "sid-2", cwd: "/repo"),
+        plain.applyObservation(
+            AgentObservation(pid: 7, conversationId: "sid-2", configDir: "/home/.claude", cwd: "/repo"),
             alive: true, to: s2.id)
         #expect(plain.sessions[s2.id]?.isWorktree == false)
         #expect(plain.sessions[s2.id]?.worktreePath == nil)
@@ -367,7 +386,7 @@ import Testing
     }
 
     @Test func disablingShowSessionSpendDoesNotFabricateLiveStateForADormantSession() {
-        // A restored-but-never-shown row has `live == nil` (design.md → *Session flows*): flipping
+        // A restored-but-never-shown row has `live == nil`: flipping
         // the global switch off must not wake one into existence just to clear a figure it never
         // had. `updateLive` would otherwise do exactly that.
         var state = AppState()
@@ -536,7 +555,25 @@ import Testing
 
         // No default at all falls through to `~/.claude`.
         state.setGroupDefaultAccount(group, accountKey: nil)
-        #expect(state.createSession(groupID: group, cwd: "~/dev/northwind").accountKey == Account.defaultKey)
+        #expect(state.createSession(groupID: group, cwd: "~/dev/northwind").accountKey == Account.defaultKey(for: .claude))
+    }
+
+    /// The rule `createSession` adds for TKZ-79: a group default only applies to a row of *its own*
+    /// agent. A Codex row in a group whose default names a Claude account must not inherit that
+    /// account — it would point `CODEX_HOME` at Claude's config dir — so it falls back to Codex's
+    /// own primary instead. The existing Claude-inherits-the-group-default behaviour must still hold
+    /// alongside it.
+    @Test func aCodexRowDoesNotInheritAClaudeGroupDefault() {
+        var state = AppState.fixture
+        let group = Fixture.groupID(0)
+        #expect(state.accounts["claude-work"]?.agent == .claude)
+        state.setGroupDefaultAccount(group, accountKey: "claude-work")
+
+        let codexRow = state.createSession(groupID: group, cwd: "~/dev/northwind", agent: .codex)
+        #expect(codexRow.accountKey == Account.defaultKey(for: .codex))
+
+        let claudeRow = state.createSession(groupID: group, cwd: "~/dev/northwind")
+        #expect(claudeRow.accountKey == "claude-work")
     }
 
     /// `setUsage` takes the plan, and the usage file's name only for an account nobody has named:
@@ -611,26 +648,24 @@ import Testing
 
     @Test func sessionStartClearsEndedAndPendingAndAdoptsTheClaudeID() {
         var (state, id) = makeState()
-        state.updateLive(id) { $0.ended = true; $0.pendingNotification = PendingNotification(type: .permissionPrompt, receivedAt: now) }
-        state.applyHook(.init(kind: .sessionStart, conversationId: "new-id", source: "startup"), to: id, now: now)
+        state.updateLive(id) { $0.ended = true; $0.pendingNotification = PendingNotification(kind: .permission, receivedAt: now) }
+        state.applyEvent(.init(kind: .sessionStart, conversationId: "new-id", source: "startup"), to: id, now: now)
         #expect(state.sessions[id]?.live?.ended == false)
         #expect(state.sessions[id]?.live?.pendingNotification == nil)
         #expect(state.sessions[id]?.conversationId == "new-id")
     }
 
-    @Test func sessionEndTreatsClearAndResumeAsNotExited() {
-        for reason in ["clear", "resume"] {
-            var (state, id) = makeState()
-            state.applyHook(.init(kind: .sessionEnd, reason: reason), to: id, now: now)
-            #expect(state.sessions[id]?.live?.ended == false, "reason \(reason)")
-            #expect(state.sessions[id]?.status == .idle, "reason \(reason)")
-        }
+    @Test func sessionEndNotExitedLeavesTheRowAlive() {
+        var (state, id) = makeState()
+        state.applyEvent(.init(kind: .sessionEnd(exited: false), reason: "clear"), to: id, now: now)
+        #expect(state.sessions[id]?.live?.ended == false)
+        #expect(state.sessions[id]?.status == .idle)
     }
 
-    @Test func sessionEndTreatsOtherReasonsAsClaudeGone_theShellStaysIdle() {
+    @Test func sessionEndExitedLeavesTheShellAliveButClaudeGone() {
         for reason in ["logout", "prompt_input_exit", "other", nil] {
             var (state, id) = makeState()
-            state.applyHook(.init(kind: .sessionEnd, reason: reason), to: id, now: now)
+            state.applyEvent(.init(kind: .sessionEnd(exited: true), reason: reason), to: id, now: now)
             #expect(state.sessions[id]?.live?.ended == true, "reason \(String(describing: reason))")
             // The terminal is still there (`alive`), so never `exited` — that would dim a live shell.
             #expect(state.sessions[id]?.status == .idle, "reason \(String(describing: reason))")
@@ -640,8 +675,8 @@ import Testing
 
     @Test func userPromptSubmitMarksAttendedAndClearsPending() {
         var (state, id) = makeState()
-        state.updateLive(id) { $0.pendingNotification = PendingNotification(type: .agentNeedsInput, receivedAt: now) }
-        state.applyHook(.init(kind: .userPromptSubmit), to: id, now: now)
+        state.updateLive(id) { $0.pendingNotification = PendingNotification(kind: .agentInput, receivedAt: now) }
+        state.applyEvent(.init(kind: .promptSubmitted), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastPromptAt == now)
         #expect(state.sessions[id]?.live?.attendedAt == now)
         #expect(state.sessions[id]?.live?.pendingNotification == nil)
@@ -649,32 +684,32 @@ import Testing
 
     @Test func stopRecordsTheMessageAndKeepsThePreviousOneWhenAbsent() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "done"), to: id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "done"), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastStopAt == now)
         #expect(state.sessions[id]?.live?.lastStopMessage == "done")
 
         let later = now.addingTimeInterval(30)
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: nil), to: id, now: later)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: nil), to: id, now: later)
         #expect(state.sessions[id]?.live?.lastStopAt == later)
         #expect(state.sessions[id]?.live?.lastStopMessage == "done")  // kept
     }
 
-    @Test func notificationSetsPendingByType() {
-        let cases: [(HookEvent.NotificationType, WaitReason)] = [
-            (.permissionPrompt, .permission), (.elicitationDialog, .elicitation), (.agentNeedsInput, .agentInput),
+    @Test func attentionSetsPendingByKind() {
+        let cases: [(AttentionKind, WaitReason)] = [
+            (.permission, .permission), (.question, .elicitation), (.agentInput, .agentInput),
         ]
-        for (type, reason) in cases {
+        for (kind, reason) in cases {
             var (state, id) = makeState()
-            state.applyHook(.init(kind: .notification, notificationType: type), to: id, now: now)
-            #expect(state.sessions[id]?.live?.pendingNotification?.type == type)
+            state.applyEvent(.init(kind: .attention(kind)), to: id, now: now)
+            #expect(state.sessions[id]?.live?.pendingNotification?.kind == kind)
             #expect(state.sessions[id]?.status == .waiting(reason))
         }
     }
 
-    @Test func elicitationCompleteClearsPending() {
+    @Test func attentionClearedClearsPending() {
         var (state, id) = makeState()
-        state.updateLive(id) { $0.pendingNotification = PendingNotification(type: .elicitationDialog, receivedAt: now) }
-        state.applyHook(.init(kind: .notification, notificationType: .elicitationComplete), to: id, now: now)
+        state.updateLive(id) { $0.pendingNotification = PendingNotification(kind: .question, receivedAt: now) }
+        state.applyEvent(.init(kind: .attentionCleared), to: id, now: now)
         #expect(state.sessions[id]?.live?.pendingNotification == nil)
     }
 
@@ -682,91 +717,92 @@ import Testing
     /// NEEDS YOU, and gone once the prompt is answered or the row attended.
     @Test func notificationKeepsClaudesMessageForBlockedPromptsOnly() {
         var (state, id) = makeState()
-        state.applyHook(
-            .init(kind: .notification, notificationType: .permissionPrompt, message: "Claude needs your permission to use Bash"),
+        state.applyEvent(
+            .init(kind: .attention(.permission), message: "Claude needs your permission to use Bash"),
             to: id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == "Claude needs your permission to use Bash")
 
         // A prompt without a message keeps the previous line rather than blanking it.
-        state.applyHook(.init(kind: .notification, notificationType: .elicitationDialog, message: ""), to: id, now: now)
+        state.applyEvent(.init(kind: .attention(.question), message: ""), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == "Claude needs your permission to use Bash")
 
-        state.applyHook(.init(kind: .notification, notificationType: .elicitationComplete), to: id, now: now)
+        state.applyEvent(.init(kind: .attentionCleared), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == nil)
 
-        // An idle prompt is not a blocked prompt: its message is not the banner's.
-        state.applyHook(.init(kind: .notification, notificationType: .idlePrompt, message: "Claude is waiting for your input"), to: id, now: now)
+        // An idle nudge is not a blocked prompt: its message is not the banner's.
+        state.applyEvent(.init(kind: .attention(.idleNudge), message: "Claude is waiting for your input"), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == nil)
 
-        state.applyHook(.init(kind: .notification, notificationType: .agentNeedsInput, message: "Agent needs input"), to: id, now: now)
+        state.applyEvent(.init(kind: .attention(.agentInput), message: "Agent needs input"), to: id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == "Agent needs input")
         state.markAttended(id, now: now)
         #expect(state.sessions[id]?.live?.lastNotificationMessage == nil)
     }
 
-    @Test func unknownNotificationIsIgnored() {
+    @Test func unknownEventIsIgnored() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .notification, notificationType: .unknown("mystery")), to: id, now: now)
+        state.applyEvent(.init(kind: .unknown("mystery")), to: id, now: now)
         #expect(state.sessions[id]?.live?.pendingNotification == nil)
     }
 
-    @Test func busyDescriptorNewerThanPendingClearsIt() {
+    @Test func busyObservationNewerThanPendingClearsIt() {
         var (state, id) = makeState()
         state.updateLive(id) {
-            $0.pendingNotification = PendingNotification(type: .permissionPrompt, receivedAt: now)
+            $0.pendingNotification = PendingNotification(kind: .permission, receivedAt: now)
         }
-        let descriptor = ClaudeSessionInfo(
-            configDir: "~/.claude", pid: 1, sessionId: "s", status: .busy,
+        let observation = AgentObservation(
+            pid: 1, conversationId: "s", configDir: "~/.claude", activity: .busy,
             statusUpdatedAt: now.addingTimeInterval(5))
-        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
+        state.applyObservation(observation, alive: true, to: id, now: now)
         #expect(state.sessions[id]?.live?.pendingNotification == nil)
         #expect(state.sessions[id]?.status == .working)
     }
 
-    @Test func busyDescriptorOlderThanPendingDoesNotClearIt() {
+    @Test func busyObservationOlderThanPendingDoesNotClearIt() {
         var (state, id) = makeState()
         state.updateLive(id) {
-            $0.pendingNotification = PendingNotification(type: .permissionPrompt, receivedAt: now)
+            $0.pendingNotification = PendingNotification(kind: .permission, receivedAt: now)
         }
-        let descriptor = ClaudeSessionInfo(
-            configDir: "~/.claude", pid: 1, sessionId: "s", status: .busy,
+        let observation = AgentObservation(
+            pid: 1, conversationId: "s", configDir: "~/.claude", activity: .busy,
             statusUpdatedAt: now.addingTimeInterval(-5))
-        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
+        state.applyObservation(observation, alive: true, to: id, now: now)
         #expect(state.sessions[id]?.live?.pendingNotification != nil)
         #expect(state.sessions[id]?.status == .waiting(.permission))
     }
 
-    @Test func applyDescriptorReboundClearsEnded() {
+    @Test func applyObservationReboundClearsEnded() {
         var (state, id) = makeState()
         state.updateLive(id) {
             $0.ended = true
-            $0.descriptor = ClaudeSessionInfo(configDir: "~/.claude", pid: 1, sessionId: "old")
+            $0.observation = AgentObservation(pid: 1, conversationId: "old", configDir: "~/.claude")
         }
-        let descriptor = ClaudeSessionInfo(configDir: "~/.claude", pid: 2, sessionId: "new")
-        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
+        let observation = AgentObservation(pid: 2, conversationId: "new", configDir: "~/.claude")
+        state.applyObservation(observation, alive: true, to: id, now: now)
         #expect(state.sessions[id]?.live?.ended == false)
     }
 
-    @Test func applyDescriptorSetsAliveAndClaudeSessionID() {
+    @Test func applyObservationSetsAliveAndConversationID() {
         var (state, id) = makeState()
-        let descriptor = ClaudeSessionInfo(configDir: "~/.claude", pid: 42, sessionId: "abc", status: .busy)
-        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
+        let observation = AgentObservation(
+            pid: 42, conversationId: "abc", configDir: "~/.claude", activity: .busy)
+        state.applyObservation(observation, alive: true, to: id, now: now)
         #expect(state.sessions[id]?.live?.alive == true)
         #expect(state.sessions[id]?.live?.pid == 42)
         #expect(state.sessions[id]?.conversationId == "abc")
         #expect(state.sessions[id]?.status == .working)
     }
 
-    @Test func applyDescriptorChangesDisplayTitleAndDiffsAsSessionsOnly() throws {
+    @Test func applyObservationChangesDisplayTitleAndDiffsAsSessionsOnly() throws {
         var state = AppState()
         let group = state.addGroup(name: "g")
         let session = state.createSession(groupID: group.id, cwd: "/repo/app")
         let store = AppStore(state: state)
         var delivered: ChangeSet?
         _ = store.addObserver { delivered = $0 }
-        let descriptor = ClaudeSessionInfo(
-            configDir: "~/.claude", pid: 1, sessionId: "abc", name: "from claude", nameSource: .auto)
-        store.update { $0.applyDescriptor(descriptor, alive: true, to: session.id, now: now) }
+        let observation = AgentObservation(
+            pid: 1, conversationId: "abc", configDir: "~/.claude", name: "from claude", nameIsDerived: false)
+        store.update { $0.applyObservation(observation, alive: true, to: session.id, now: now) }
         store.flush()
         #expect(store.state.sessions[session.id]?.displayTitle == "from claude")
         let change = try #require(delivered)
@@ -774,12 +810,12 @@ import Testing
         #expect(change.structure == false)
     }
 
-    @Test func descriptorLostClearsTheDescriptorButKeepsAlive() {
+    @Test func agentLostClearsTheObservationButKeepsAlive() {
         var (state, id) = makeState()
-        let descriptor = ClaudeSessionInfo(configDir: "~/.claude", pid: 1, sessionId: "s", status: .busy)
-        state.applyDescriptor(descriptor, alive: true, to: id, now: now)
-        state.descriptorLost(for: id, now: now)
-        #expect(state.sessions[id]?.live?.descriptor == nil)
+        let observation = AgentObservation(pid: 1, conversationId: "s", configDir: "~/.claude", activity: .busy)
+        state.applyObservation(observation, alive: true, to: id, now: now)
+        state.agentLost(for: id, now: now)
+        #expect(state.sessions[id]?.live?.observation == nil)
         #expect(state.sessions[id]?.live?.pid == nil)
         #expect(state.sessions[id]?.live?.alive == true)
         #expect(state.sessions[id]?.status == .idle)
@@ -798,7 +834,7 @@ import Testing
 
     @Test func rederiveStatusesAgesAnUnattendedStopIntoDoneUnattended() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "done"), to: id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "done"), to: id, now: now)
         #expect(state.sessions[id]?.status == .idle)  // fresh, <60s
         #expect(state.sessions[id]?.live?.isDone == true)
 
@@ -815,7 +851,7 @@ import Testing
         state.setLive(LiveSessionState(status: .idle, lastStopAt: now.addingTimeInterval(-70)), for: a.id)
         state.setLive(
             LiveSessionState(
-                descriptor: ClaudeSessionInfo(configDir: "~/.claude", pid: 1, sessionId: "s", status: .busy),
+                observation: AgentObservation(pid: 1, conversationId: "s", configDir: "~/.claude", activity: .busy),
                 status: .working),
             for: b.id)
 
@@ -828,7 +864,7 @@ import Testing
 
     @Test func markAttendedClearsDoneUnattended() {
         var (state, id) = makeState()
-        state.applyHook(.init(kind: .stop, lastAssistantMessage: "done"), to: id, now: now)
+        state.applyEvent(.init(kind: .turnEnded, lastAssistantMessage: "done"), to: id, now: now)
         state.rederiveStatuses(now: now.addingTimeInterval(61))
         #expect(state.sessions[id]?.status == .waiting(.doneUnattended))
 
@@ -843,8 +879,8 @@ import Testing
         let store = AppStore(state: state)
         var delivered: ChangeSet?
         _ = store.addObserver { delivered = $0 }
-        // idle → waiting(.permission), driven by `applyHook` itself.
-        store.update { $0.applyHook(.init(kind: .notification, notificationType: .permissionPrompt), to: id, now: now) }
+        // idle → waiting(.permission), driven by `applyEvent` itself.
+        store.update { $0.applyEvent(.init(kind: .attention(.permission)), to: id, now: now) }
         store.flush()
         let change = try #require(delivered)
         #expect(change.sessions == [id])
@@ -855,14 +891,14 @@ import Testing
     @Test func summaryCountsNeedsYouFollowsAttention() {
         let (state, id) = makeState()
         let store = AppStore(state: state)
-        store.update { $0.applyHook(.init(kind: .notification, notificationType: .permissionPrompt), to: id, now: now) }
+        store.update { $0.applyEvent(.init(kind: .attention(.permission)), to: id, now: now) }
         store.flush()
         #expect(store.state.summaryCounts.needsYou == 1)
         store.update { $0.markAttended(id, now: now.addingTimeInterval(1)) }
         store.flush()
         // A permission prompt is still pending, so attendance alone does not clear it.
         #expect(store.state.summaryCounts.needsYou == 1)
-        store.update { $0.applyHook(.init(kind: .userPromptSubmit), to: id, now: now.addingTimeInterval(2)) }
+        store.update { $0.applyEvent(.init(kind: .promptSubmitted), to: id, now: now.addingTimeInterval(2)) }
         store.flush()
         #expect(store.state.summaryCounts.needsYou == 0)
     }
@@ -880,15 +916,15 @@ import Testing
         let session = state.createSession(groupID: group.id, cwd: "/tmp")
         let terminal = TerminalID(uuid: session.id.uuid)
         state.setLive(LiveSessionState(shellPid: 1, panePids: [terminal: 1]), for: session.id)
-        state.beginClaudeStartup(session.id, terminal: terminal, command: "claude -w x", now: now)
+        state.beginAgentStartup(session.id, terminal: terminal, command: "claude -w x", now: now)
         return (state, session.id, terminal)
     }
 
     @Test func beginRecordsThePaneTheCommandAndTheTime() {
         let (state, id, terminal) = makeState()
         #expect(
-            state.sessions[id]?.live?.claudeStartup
-                == ClaudeStartup(terminal: terminal, command: "claude -w x", startedAt: now))
+            state.sessions[id]?.live?.agentStartup
+                == AgentStartup(terminal: terminal, command: "claude -w x", startedAt: now))
         // No status of its own: the row is a plain idle shell until Claude says otherwise.
         #expect(state.sessions[id]?.status == .idle)
     }
@@ -898,40 +934,43 @@ import Testing
         let group = state.addGroup(name: "g")
         let session = state.createSession(groupID: group.id, cwd: "/tmp")
         state.sessions[session.id]?.live = nil
-        state.beginClaudeStartup(
+        state.beginAgentStartup(
             session.id, terminal: TerminalID(uuid: session.id.uuid), command: "claude", now: now)
         #expect(state.sessions[session.id]?.live == nil)
     }
 
     @Test func sessionStartEndsIt() {
         var (state, id, _) = makeState()
-        state.applyHook(.init(kind: .sessionStart, conversationId: "new"), to: id, now: now)
-        #expect(state.sessions[id]?.live?.claudeStartup == nil)
+        state.applyEvent(.init(kind: .sessionStart, conversationId: "new"), to: id, now: now)
+        #expect(state.sessions[id]?.live?.agentStartup == nil)
     }
 
-    @Test func aLiveDescriptorEndsIt() {
+    @Test func aLiveObservationEndsIt() {
         var (state, id, _) = makeState()
-        state.applyDescriptor(
-            ClaudeSessionInfo(configDir: "/x/.claude", pid: 9, sessionId: "abc", status: .idle),
+        state.applyObservation(
+            AgentObservation(pid: 9, conversationId: "abc", configDir: "/x/.claude", activity: .idle),
             alive: true, to: id, now: now)
-        #expect(state.sessions[id]?.live?.claudeStartup == nil)
+        #expect(state.sessions[id]?.live?.agentStartup == nil)
     }
 
-    /// A stale descriptor from before a crash, matched to a resumed row by its conversation id,
+    /// A stale observation from before a crash, matched to a resumed row by its conversation id,
     /// says nothing about the Claude that is starting now.
-    @Test func aDeadDescriptorDoesNotEndIt() {
+    @Test func aDeadObservationDoesNotEndIt() {
         var (state, id, _) = makeState()
-        state.applyDescriptor(
-            ClaudeSessionInfo(configDir: "/x/.claude", pid: 9, sessionId: "abc", status: .idle),
+        state.applyObservation(
+            AgentObservation(pid: 9, conversationId: "abc", configDir: "/x/.claude", activity: .idle),
             alive: false, to: id, now: now)
-        #expect(state.sessions[id]?.live?.claudeStartup != nil)
+        #expect(state.sessions[id]?.live?.agentStartup != nil)
     }
 
-    @Test func otherHooksLeaveItAlone() {
-        for kind in [HookEvent.Kind.userPromptSubmit, .stop, .notification, .sessionEnd] {
+    @Test func otherEventsLeaveItAlone() {
+        let kinds: [AgentEvent.Kind] = [
+            .promptSubmitted, .turnEnded, .attention(.permission), .sessionEnd(exited: true),
+        ]
+        for kind in kinds {
             var (state, id, _) = makeState()
-            state.applyHook(.init(kind: kind), to: id, now: now)
-            #expect(state.sessions[id]?.live?.claudeStartup != nil, "\(kind)")
+            state.applyEvent(.init(kind: kind), to: id, now: now)
+            #expect(state.sessions[id]?.live?.agentStartup != nil, "\(kind)")
         }
     }
 
@@ -941,21 +980,21 @@ import Testing
         let other = try #require(split)
         let closedOther = state.closePane(other)
         #expect(closedOther)
-        #expect(state.sessions[id]?.live?.claudeStartup?.terminal == terminal)
+        #expect(state.sessions[id]?.live?.agentStartup?.terminal == terminal)
 
         let splitAgain = state.splitPane(terminal, axis: .horizontal)
         let another = try #require(splitAgain)
         let closedBoot = state.closePane(terminal)
         #expect(closedBoot)
-        #expect(state.sessions[id]?.live?.claudeStartup == nil)
+        #expect(state.sessions[id]?.live?.agentStartup == nil)
         #expect(state.sessions[id]?.terminalIDs == [another])
     }
 
     @Test func endIsANoOpWhenNothingIsPending() {
         var (state, id, _) = makeState()
-        state.endClaudeStartup(id)
+        state.endAgentStartup(id)
         let before = state
-        state.endClaudeStartup(id)
+        state.endAgentStartup(id)
         #expect(state == before)
     }
 }
@@ -1033,38 +1072,38 @@ import Testing
 
     @Test func setRecordsThePaneAndNeedsALiveRow() {
         var (state, id, terminal) = makeState()
-        state.setClaudeTerminal(id, terminal)
-        #expect(state.sessions[id]?.live?.claudeTerminal == terminal)
+        state.setAgentTerminal(id, terminal)
+        #expect(state.sessions[id]?.live?.agentTerminal == terminal)
 
         state.sessions[id]?.live = nil
-        state.setClaudeTerminal(id, terminal)
+        state.setAgentTerminal(id, terminal)
         #expect(state.sessions[id]?.live == nil)
     }
 
-    @Test func losingTheDescriptorClearsIt() {
+    @Test func losingTheObservationClearsIt() {
         var (state, id, terminal) = makeState()
-        state.applyDescriptor(
-            ClaudeSessionInfo(configDir: "/x/.claude", pid: 9, sessionId: "abc", status: .idle),
+        state.applyObservation(
+            AgentObservation(pid: 9, conversationId: "abc", configDir: "/x/.claude", activity: .idle),
             alive: true, to: id, now: now)
-        state.setClaudeTerminal(id, terminal)
-        state.descriptorLost(for: id, now: now)
-        #expect(state.sessions[id]?.live?.claudeTerminal == nil)
+        state.setAgentTerminal(id, terminal)
+        state.agentLost(for: id, now: now)
+        #expect(state.sessions[id]?.live?.agentTerminal == nil)
     }
 
     @Test func closingTheClaudePaneClearsItAndClosingAnotherDoesNot() throws {
         var (state, id, terminal) = makeState()
-        state.setClaudeTerminal(id, terminal)
+        state.setAgentTerminal(id, terminal)
         let split = state.splitPane(terminal, axis: .horizontal)
         let other = try #require(split)
         let closedOther = state.closePane(other)
         #expect(closedOther)
-        #expect(state.sessions[id]?.live?.claudeTerminal == terminal)
+        #expect(state.sessions[id]?.live?.agentTerminal == terminal)
 
         let splitAgain = state.splitPane(terminal, axis: .horizontal)
         let another = try #require(splitAgain)
         let closedClaude = state.closePane(terminal)
         #expect(closedClaude)
-        #expect(state.sessions[id]?.live?.claudeTerminal == nil)
+        #expect(state.sessions[id]?.live?.agentTerminal == nil)
         #expect(state.sessions[id]?.terminalIDs == [another])
     }
 }

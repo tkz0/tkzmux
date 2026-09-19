@@ -1,6 +1,6 @@
 // FrameBuilderTests — the CPU half of M1.5: no Metal device is needed for any of these.
 //
-// Each test here pins one *measured* spike finding from docs/design.md → Spike results (M1.1–M1.3)
+// Each test here pins one *measured* spike finding (M1.1–M1.3)
 // into executable form, so a libghostty upgrade that changes the behaviour fails here rather than
 // silently painting the wrong pixels:
 //

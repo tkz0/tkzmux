@@ -1,5 +1,4 @@
 // The store's contract: granular diffs, and one delivery per run-loop turn.
-// See docs/design.md → *App architecture → Store*.
 
 import Foundation
 import Testing
@@ -47,12 +46,12 @@ import Testing
 
     /// The "Starting Claude…" fact is live state like any other: it names the row, never the
     /// tree — the overlay is a pane *tint*, not a pane.
-    @Test func aClaudeStartupIsLiveStateAndNeverLayout() {
+    @Test func anAgentStartupIsLiveStateAndNeverLayout() {
         let probe = Probe()
         let store = probe.store
         let terminal = TerminalID(uuid: sessionA.uuid)
         store.update { state in
-            state.beginClaudeStartup(sessionA, terminal: terminal, command: "claude", now: Fixture.now)
+            state.beginAgentStartup(sessionA, terminal: terminal, command: "claude", now: Fixture.now)
         }
         store.flush()
         #expect(probe.last.sessions == [sessionA])
@@ -60,12 +59,12 @@ import Testing
         #expect(probe.last.structure == false)
 
         let deliveries = store.deliveryCount
-        store.update { $0.endClaudeStartup(sessionA) }
+        store.update { $0.endAgentStartup(sessionA) }
         store.flush()
         #expect(probe.last.sessions == [sessionA])
         #expect(store.deliveryCount == deliveries + 1)
         // Ending what is not pending delivers nothing.
-        store.update { $0.endClaudeStartup(sessionA) }
+        store.update { $0.endAgentStartup(sessionA) }
         store.flush()
         #expect(store.deliveryCount == deliveries + 1)
     }

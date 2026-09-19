@@ -154,14 +154,14 @@ struct MainWindowLaunchTests {
         var state = AppState()
         let group = state.addGroup(name: "Scratch", repoRoot: NSTemporaryDirectory())
         state.setAccount(Account(key: "claude-work", configDir: "/tmp/alt", label: "Alt"))
-        state.setAccount(Account(key: Account.defaultKey, configDir: "/tmp/primary", label: "Main"))
+        state.setAccount(Account(key: Account.defaultKey(for: .claude), configDir: "/tmp/primary", label: "Main"))
         let harness = MainWindowControllerTests.makeHarness(state)
         defer { harness.tearDown() }
 
         harness.controller.launch(
             Self.launch(cwd: NSTemporaryDirectory(), accountKey: "claude-work", group: group.id))
         harness.controller.launch(
-            Self.launch(cwd: NSTemporaryDirectory(), accountKey: Account.defaultKey, group: group.id))
+            Self.launch(cwd: NSTemporaryDirectory(), accountKey: Account.defaultKey(for: .claude), group: group.id))
         harness.controller.launch(
             Self.launch(cwd: NSTemporaryDirectory(), accountKey: nil, group: group.id))
         harness.store.flush()
@@ -169,8 +169,10 @@ struct MainWindowLaunchTests {
         #expect(harness.host.opened.count == 3)
         // The key is a basename; the child needs the directory.
         #expect(harness.host.opened[0].env["CLAUDE_CONFIG_DIR"] == "/tmp/alt")
-        // The wrapper re-exports this one after the user's rc files, so a rc cannot override it.
-        #expect(harness.host.opened[0].env["TKZMUX_CLAUDE_CONFIG_DIR"] == "/tmp/alt")
+        // The wrapper re-exports this one after the user's rc files, so a rc cannot override it
+        // (TKZ-84 generalized the single hard-coded variable into this name/value pair).
+        #expect(harness.host.opened[0].env["TKZMUX_ENV_CLAUDE_CONFIG_DIR"] == "/tmp/alt")
+        #expect(harness.host.opened[0].env["TKZMUX_REEXPORT"] == "CLAUDE_CONFIG_DIR")
         // An explicitly chosen primary account is pinned too (M5.2 GUI pass: the user's
         // environment may default to another account).
         #expect(harness.host.opened[1].env["CLAUDE_CONFIG_DIR"] == "/tmp/primary")
@@ -238,7 +240,7 @@ struct MainWindowLaunchTests {
         harness.layout()
         let id = try #require(harness.host.opened.first?.id)
         let terminal = TerminalID(uuid: id.uuid)
-        let startedAt = try #require(harness.store.state.sessions[id]?.live?.claudeStartup?.startedAt)
+        let startedAt = try #require(harness.store.state.sessions[id]?.live?.agentStartup?.startedAt)
         let pane = try #require(harness.controller.panes[terminal])
 
         // Right after the launch: pending, nothing on screen.
@@ -253,10 +255,105 @@ struct MainWindowLaunchTests {
         #expect(pane.chrome.startupOverlay.isSpinning)
 
         // Claude is up: the delivery that carries it hides the overlay.
-        harness.mutate { $0.applyHook(.init(kind: .sessionStart, conversationId: "s"), to: id) }
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup == nil)
+        harness.mutate { $0.applyEvent(.init(kind: .sessionStart, conversationId: "s"), to: id) }
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup == nil)
         #expect(!pane.chrome.isShowingStartup)
         #expect(!pane.chrome.startupOverlay.isSpinning)
+    }
+
+    /// The reported bug, from the pane's side. Codex can report through none of the three
+    /// store-side signals that clear `agentStartup` — no descriptor file, no hook until the user
+    /// has trusted it in Codex, and a boot command that never returns — so before this the spinner
+    /// sat for the full two minutes on top of Codex's own interactive startup prompt.
+    ///
+    /// The pane answers instead: the moment the terminal reports the input modes a full-screen
+    /// program switches on, the overlay goes away even though the store still knows nothing.
+    @Test("A pane showing the agent's own UI hides the overlay, with no store signal at all")
+    func theAgentsOwnUIEndsTheOverlayWithoutAStoreSignal() throws {
+        let (harness, group) = Self.makeHarness()
+        defer { harness.tearDown() }
+        harness.controller.launch(
+            Self.launch(command: "codex", cwd: NSTemporaryDirectory(), group: group))
+        harness.store.flush()
+        harness.layout()
+        let id = try #require(harness.host.opened.first?.id)
+        let terminal = TerminalID(uuid: id.uuid)
+        let startedAt = try #require(harness.store.state.sessions[id]?.live?.agentStartup?.startedAt)
+        let pane = try #require(harness.controller.panes[terminal])
+
+        // A shell at its prompt is not the agent: past the delay, the spinner is up.
+        harness.host.inputModesByTerminal[terminal] = .nothingSet
+        harness.controller.applyStartupOverlay(now: startedAt.addingTimeInterval(2))
+        #expect(pane.chrome.isShowingStartup)
+
+        // Codex's TUI initialises: focus reporting on, kitty keyboard flags pushed.
+        harness.host.inputModesByTerminal[terminal] = TerminalInputModes(
+            alternateScreen: false, focusReporting: true, kittyKeyboardFlags: 5)
+        harness.controller.applyStartupOverlay(now: startedAt.addingTimeInterval(3))
+        #expect(!pane.chrome.isShowingStartup, "the spinner covered Codex's own startup prompt")
+        #expect(!pane.chrome.startupOverlay.isSpinning)
+
+        // The store fact is deliberately untouched: it is what places an arriving launch frame.
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup != nil)
+
+        // And it never comes back while the agent is on screen, however long the launch sits.
+        harness.controller.applyStartupOverlay(now: startedAt.addingTimeInterval(60))
+        #expect(!pane.chrome.isShowingStartup)
+    }
+
+    @Test("An agent already up before the delay never flashes the spinner at all")
+    func anAgentUpBeforeTheDelayNeverShowsTheOverlay() throws {
+        let (harness, group) = Self.makeHarness()
+        defer { harness.tearDown() }
+        harness.controller.launch(
+            Self.launch(command: "codex", cwd: NSTemporaryDirectory(), group: group))
+        harness.store.flush()
+        harness.layout()
+        let id = try #require(harness.host.opened.first?.id)
+        let terminal = TerminalID(uuid: id.uuid)
+        let startedAt = try #require(harness.store.state.sessions[id]?.live?.agentStartup?.startedAt)
+        let pane = try #require(harness.controller.panes[terminal])
+
+        // Both agents reach this within milliseconds, well inside the two-second delay.
+        harness.host.inputModesByTerminal[terminal] = TerminalInputModes(
+            alternateScreen: false, focusReporting: true, kittyKeyboardFlags: 5)
+        for offset in [0.0, 1.0, 2.0, 5.0] {
+            harness.controller.applyStartupOverlay(now: startedAt.addingTimeInterval(offset))
+            #expect(!pane.chrome.isShowingStartup, "flashed a spinner at +\(offset)s")
+        }
+    }
+
+    /// The counterweight: a pane that has not entered a full-screen mode still gets the spinner,
+    /// which is what a launch doing slow work before its UI appears looks like.
+    @Test("A pane still at a shell prompt keeps the overlay until the give-up")
+    func aShellPromptKeepsTheOverlay() throws {
+        let (harness, group) = Self.makeHarness()
+        defer { harness.tearDown() }
+        // A real registry, over a directory of this test's own, so the headline's adapter lookup
+        // is exercised rather than falling through to "the agent" the way an unwired harness does.
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        harness.controller.agents = AgentIntegration(
+            store: harness.store, directory: root, home: root.path)
+        harness.controller.launch(
+            Self.launch(.worktree, command: "claude -w feature", cwd: NSTemporaryDirectory(), group: group))
+        harness.store.flush()
+        harness.layout()
+        let id = try #require(harness.host.opened.first?.id)
+        let terminal = TerminalID(uuid: id.uuid)
+        let startedAt = try #require(harness.store.state.sessions[id]?.live?.agentStartup?.startedAt)
+        let pane = try #require(harness.controller.panes[terminal])
+
+        harness.host.inputModesByTerminal[terminal] = .nothingSet
+        harness.controller.applyStartupOverlay(now: startedAt.addingTimeInterval(2))
+        #expect(pane.chrome.isShowingStartup)
+        harness.controller.applyStartupOverlay(now: startedAt.addingTimeInterval(90))
+        #expect(pane.chrome.isShowingStartup)
+        #expect(pane.chrome.startupOverlay.captionText == "claude -w feature")
+        // And it names the row's own agent rather than falling back to "the agent".
+        #expect(pane.chrome.startupOverlay.titleText == "Starting Claude\u{2026}")
     }
 
     @Test("A shell launch never shows the overlay, however long it sits")
@@ -268,7 +365,7 @@ struct MainWindowLaunchTests {
         harness.store.flush()
         harness.layout()
         let id = try #require(harness.host.opened.first?.id)
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup == nil)
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup == nil)
         let pane = try #require(harness.controller.panes[TerminalID(uuid: id.uuid)])
         harness.controller.applyStartupOverlay(now: Date().addingTimeInterval(3600))
         #expect(!pane.chrome.isShowingStartup)
@@ -293,22 +390,22 @@ struct MainWindowLaunchTests {
         harness.host.emit(.progress(state: .remove, value: nil), forTerminal: other)
         try await Task.sleep(for: .milliseconds(50))
         harness.store.flush()
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup?.terminal == boot)
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup?.terminal == boot)
 
         // Neither is the "indeterminate" that opens the bracket.
         harness.host.emit(.progress(state: .indeterminate, value: nil), forTerminal: boot)
         try await Task.sleep(for: .milliseconds(50))
         harness.store.flush()
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup?.terminal == boot)
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup?.terminal == boot)
 
         harness.host.emit(.progress(state: .remove, value: nil), forTerminal: boot)
         let deadline = ContinuousClock.now + .seconds(5)
         while ContinuousClock.now < deadline {
             harness.store.flush()
-            if harness.store.state.sessions[id]?.live?.claudeStartup == nil { break }
+            if harness.store.state.sessions[id]?.live?.agentStartup == nil { break }
             try await Task.sleep(for: .milliseconds(10))
         }
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup == nil)
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup == nil)
     }
 
     @Test("Once the give-up passes, the launch is forgotten")
@@ -320,7 +417,7 @@ struct MainWindowLaunchTests {
         harness.store.flush()
         harness.layout()
         let id = try #require(harness.host.opened.first?.id)
-        let startedAt = try #require(harness.store.state.sessions[id]?.live?.claudeStartup?.startedAt)
+        let startedAt = try #require(harness.store.state.sessions[id]?.live?.agentStartup?.startedAt)
 
         harness.controller.applyStartupOverlay(
             now: startedAt.addingTimeInterval(StartupOverlayPolicy.giveUp))
@@ -328,10 +425,10 @@ struct MainWindowLaunchTests {
         let deadline = ContinuousClock.now + .seconds(5)
         while ContinuousClock.now < deadline {
             harness.store.flush()
-            if harness.store.state.sessions[id]?.live?.claudeStartup == nil { break }
+            if harness.store.state.sessions[id]?.live?.agentStartup == nil { break }
             try await Task.sleep(for: .milliseconds(10))
         }
-        #expect(harness.store.state.sessions[id]?.live?.claudeStartup == nil)
+        #expect(harness.store.state.sessions[id]?.live?.agentStartup == nil)
         let pane = try #require(harness.controller.panes[TerminalID(uuid: id.uuid)])
         #expect(!pane.chrome.isShowingStartup)
     }

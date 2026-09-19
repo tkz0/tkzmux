@@ -26,9 +26,12 @@ struct RebaseSheetModel: Equatable, Sendable {
     /// `⌥⌘R`, already formatted, or `nil` when the chord is unbound.
     var shortcut: String?
     var phase: Phase = .fetching
-    /// The row's Claude is mid-turn and may be editing files under the rebase: the button is off
+    /// The row's agent is mid-turn and may be editing files under the rebase: the button is off
     /// until it is idle (decision 2026-09-13, in place of the artboard's "session pauses" line).
-    var claudeWorking = false
+    var agentWorking = false
+    /// What the tooltip calls the row's agent — `AgentAdapter.displayName`. Defaults to a name
+    /// that admits it does not know rather than asserting a product name nobody told this model.
+    var agentDisplayName = "the agent"
 
     var baseLabel: String { StatusBarView.baseLabel(baseRef) }
     var title: String { "Rebase onto \(baseLabel)" }
@@ -51,7 +54,7 @@ struct RebaseSheetModel: Equatable, Sendable {
 
     /// The Rebase button.
     var canRebase: Bool {
-        phase == .ready && (behind ?? 0) > 0 && !claudeWorking
+        phase == .ready && (behind ?? 0) > 0 && !agentWorking
     }
 
     /// Why the button is off, for its tooltip; `nil` when it is on.
@@ -61,7 +64,7 @@ struct RebaseSheetModel: Equatable, Sendable {
         case .rebasing: return "Rebase in progress"
         case .fetchFailed: return "Fix the fetch first"
         case .ready:
-            if claudeWorking { return "Wait for Claude to be idle \u{2014} it may be editing files" }
+            if agentWorking { return "Wait for \(agentDisplayName) to be idle \u{2014} it may be editing files" }
             guard let behind else { return "Could not count the commits on \(baseRef)" }
             if behind == 0 { return "Nothing to rebase" }
             return nil

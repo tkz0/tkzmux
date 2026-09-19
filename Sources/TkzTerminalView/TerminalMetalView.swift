@@ -1,5 +1,4 @@
 // TerminalMetalView — the NSView that a terminal session is drawn into (M1.6).
-// See docs/design.md → Terminal engine → *View & input*.
 //
 // Responsibilities, and nothing else:
 //
