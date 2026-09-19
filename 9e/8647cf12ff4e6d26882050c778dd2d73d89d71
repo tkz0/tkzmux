@@ -1,0 +1,33 @@
+Sources/AgentBridge/Antigravity/AntigravityAdapter.swift
+  s_2e38fe916c9a29::t_9094a4122a5939 32-40,42,116
+Sources/AgentBridge/Codex/CodexAdapter.swift
+  s_2e38fe916c9a29::t_b1d6f1a7392e3c 18-27,29,86
+Sources/AgentBridge/UserPath.swift
+  s_2e38fe916c9a29::t_bd689d0d57f671 1-170
+Sources/TkzApp/AgentIntegration.swift
+  s_2e38fe916c9a29::t_14ba29348b0f1b 146-151,158,166-170,178,262-265,270
+Sources/TkzApp/AppDelegate.swift
+  s_2e38fe916c9a29::t_54d3e75238e25c 104-111,114-115
+Sources/TkzApp/MainWindowController.swift
+  s_2e38fe916c9a29::t_92d8e5538d0bae 1792-1796
+Tests/AgentBridgeTests/UserPathTests.swift
+  s_2e38fe916c9a29::t_d97385e5c91e45 1-148
+Tests/TkzAppTests/AgentIntegrationTests.swift
+  s_2e38fe916c9a29::t_d40f34ce122b78 847-902
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9e8647cf12ff4e6d26882050c778dd2d73d89d71",
+  "prompts": {},
+  "sessions": {
+    "s_2e38fe916c9a29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6303c328-dac2-4d2e-99d5-e13e9e43c04b",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
