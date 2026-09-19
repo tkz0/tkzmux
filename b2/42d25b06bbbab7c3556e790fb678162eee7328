@@ -1,0 +1,19 @@
+README.md
+  s_2e38fe916c9a29::t_c7d39641ed8ec6 3-9,12-13,23-43,47-49,95-97,99-101,110-113,119-121,136-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b242d25b06bbbab7c3556e790fb678162eee7328",
+  "prompts": {},
+  "sessions": {
+    "s_2e38fe916c9a29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6303c328-dac2-4d2e-99d5-e13e9e43c04b",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
