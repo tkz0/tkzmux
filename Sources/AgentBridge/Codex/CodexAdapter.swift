@@ -15,8 +15,18 @@ public struct CodexAdapter: AgentAdapter, Sendable {
     /// `StatuslineInstaller` its own.
     private let supportDirectory: URL
 
-    public init(supportDirectory: URL) {
+    /// The `PATH` this adapter's own gates are answered against — `isInstalled` below, and the
+    /// `discoverAccounts` gate. The app resolves the user's login shell's once per launch and
+    /// hands it in (`UserPath`); the process's own is the right default for a test and the wrong
+    /// one for a Finder-launched `.app`, which inherits launchd's and would find no `codex`.
+    private let searchPath: String?
+
+    public init(
+        supportDirectory: URL,
+        searchPath: String? = ProcessInfo.processInfo.environment["PATH"]
+    ) {
         self.supportDirectory = supportDirectory
+        self.searchPath = searchPath
     }
 
     public let kind: AgentKind = .codex
@@ -73,8 +83,7 @@ public struct CodexAdapter: AgentAdapter, Sendable {
     /// — a protocol witness cannot itself carry an extra parameter, even a defaulted one, so the
     /// testable gate lives one level down.
     public func discoverAccounts(home: String, fileManager: FileManager = .default) -> [Account] {
-        discoverAccounts(
-            home: home, fileManager: fileManager, searchPath: ProcessInfo.processInfo.environment["PATH"])
+        discoverAccounts(home: home, fileManager: fileManager, searchPath: searchPath)
     }
 
     /// `searchPath` is an extra parameter beyond the protocol requirement, exactly like

@@ -1789,6 +1789,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // menu's row order must be stable across launches, not whatever `Dictionary` iteration
             // happens to produce this time.
             newSessionMenu.adapters = agents.adapters.values.sorted { $0.kind.rawValue < $1.kind.rawValue }
+            // Against the *same* `PATH` the table above was gated on, never the default (this
+            // process's own). Under a Finder launch those two differ completely, and a menu that
+            // disagrees with the table says "No agents installed" about agents that are installed.
+            let searchPath = agents.searchPath
+            newSessionMenu.isAdapterInstalled = { $0.isInstalled(path: searchPath) }
             // The launcher's own copy. It cannot be handed one at construction (`:508`) — the real
             // table needs the support directory, which only `AppDelegate` has — so this is the one
             // place it can be filled. Without it the launcher keeps its Claude-only default and a

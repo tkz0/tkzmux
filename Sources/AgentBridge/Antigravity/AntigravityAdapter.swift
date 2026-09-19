@@ -29,8 +29,17 @@ public struct AntigravityAdapter: AgentAdapter, Sendable {
     /// adapter hands it its own.
     private let supportDirectory: URL
 
-    public init(supportDirectory: URL) {
+    /// The `PATH` this adapter's own gates are answered against — the twin of the other gated
+    /// adapter's, and for the same reason: under a Finder launch the process's own `PATH` is
+    /// launchd's and holds no `agy`, so the app hands in the user's login shell's (`UserPath`).
+    private let searchPath: String?
+
+    public init(
+        supportDirectory: URL,
+        searchPath: String? = ProcessInfo.processInfo.environment["PATH"]
+    ) {
         self.supportDirectory = supportDirectory
+        self.searchPath = searchPath
     }
 
     public let kind: AgentKind = .antigravity
@@ -104,9 +113,7 @@ public struct AntigravityAdapter: AgentAdapter, Sendable {
     /// a leftover directory. Satisfies the protocol requirement by deferring to the overload below
     /// with the real `PATH`, exactly as the other gated adapter does.
     public func discoverAccounts(home: String, fileManager: FileManager = .default) -> [Account] {
-        discoverAccounts(
-            home: home, fileManager: fileManager,
-            searchPath: ProcessInfo.processInfo.environment["PATH"])
+        discoverAccounts(home: home, fileManager: fileManager, searchPath: searchPath)
     }
 
     /// `searchPath` is an extra parameter beyond the protocol requirement, so a test can construct

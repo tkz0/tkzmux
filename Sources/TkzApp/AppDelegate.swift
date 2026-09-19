@@ -101,9 +101,18 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                         host.snapshots,
                         keeping: Set(
                             store.state.sessions.values.flatMap(\.terminalIDs).map(\.rawValue)))
+                    // The user's own `PATH`, asked of their login shell. A Finder-launched `.app`
+                    // inherits launchd's four system directories, where no agent anyone has ever
+                    // installed lives, and every adapter's `isInstalled` would answer "no" — an
+                    // empty ＋ menu and no Codex or Antigravity in the table. Resolved once, here,
+                    // and shared with the menus so the two can never disagree; ~0.5 s, after the
+                    // window is already on screen, and `UserPath` falls back to this process's own
+                    // `PATH` if the shell cannot be asked.
+                    let searchPath = UserPath.resolve()
                     let integration = AgentIntegration(
                         store: store, directory: host.tkzmuxDirectory,
-                        installer: Self.makeShimInstaller(directory: host.tkzmuxDirectory))
+                        installer: Self.makeShimInstaller(directory: host.tkzmuxDirectory),
+                        searchPath: searchPath)
                     controller.agents = integration
                     integration.start()
                     agents = integration

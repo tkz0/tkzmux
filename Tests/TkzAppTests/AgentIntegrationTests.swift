@@ -844,6 +844,62 @@ struct AgentIntegrationTests {
         #expect(Set(table.keys) == [.claude, .codex])
     }
 
+    /// The launchd `PATH` a Finder-launched `.app` inherits, verbatim. No agent installs into any
+    /// of these four, which is the whole reason `UserPath` exists.
+    static let launchdPath = "/usr/bin:/bin:/usr/sbin:/sbin"
+
+    /// The regression: a `searchPath` resolved from the user's shell has to reach the *account
+    /// discovery* too, not only the table gate. Before, `CodexAdapter.discoverAccounts` defaulted
+    /// to the process's own `PATH` internally, so under a Finder launch the adapter could be in the
+    /// table and still report no accounts — the agent would be "installed" and unusable.
+    @Test("a resolved PATH reaches account discovery, not only the adapter table")
+    func searchPathReachesAccountDiscovery() throws {
+        let bin = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentIntegrationTests-path-bin-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: bin) }
+        let binary = (bin as NSString).appendingPathComponent("codex")
+        FileManager.default.createFile(atPath: binary, contents: Data("#!/bin/sh\n".utf8))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary)
+
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentIntegrationTests-path-home-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: home.appendingPathComponent(".codex"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let store = AppStore(state: AppState())
+        let integration = AgentIntegration(
+            store: store, directory: home, home: home.path, installer: nil,
+            // The shell's answer plus what a Finder launch would have had on its own: exactly the
+            // union `UserPath.resolve` produces.
+            searchPath: "\(bin):\(Self.launchdPath)")
+
+        #expect(integration.adapters[.codex] != nil)
+        let codexAccounts = store.state.accounts.values.filter { $0.agent == .codex }
+        #expect(!codexAccounts.isEmpty, "a discovered Codex account must be registered")
+        #expect(codexAccounts.contains { $0.configDir == home.appendingPathComponent(".codex").path })
+    }
+
+    /// The other half, and the shape of the reported bug: with only launchd's `PATH` — no probe,
+    /// no union — nothing but Claude survives, in the table or in the accounts.
+    @Test("launchd's own PATH finds no agent but Claude")
+    func launchdPathFindsNothing() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentIntegrationTests-launchd-home-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: home.appendingPathComponent(".codex"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let store = AppStore(state: AppState())
+        let integration = AgentIntegration(
+            store: store, directory: home, home: home.path, installer: nil,
+            searchPath: Self.launchdPath)
+
+        #expect(Set(integration.adapters.keys) == [.claude])
+        #expect(!store.state.accounts.values.contains { $0.agent == .codex })
+    }
+
     enum TestFailure: Error { case mkdtemp, binaryNotFound }
 
     /// The built `tkzmux-hook` next to the test bundle (the products directory). Under

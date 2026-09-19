@@ -143,12 +143,19 @@ public final class AgentIntegration {
     /// same way `ancestry` is, so a test can report a bound pid dead without a real process.
     let liveness: any ProcessLiveness
 
+    /// The `PATH` this app answers "is this agent installed?" against, for the adapter table above
+    /// and for every picker that has to agree with it. The user's login shell's, resolved once per
+    /// launch by `UserPath` — **not** the app process's, which under a Finder launch is launchd's
+    /// four system directories and holds no agent anyone has ever installed.
+    public let searchPath: String?
+
     public init(
         store: AppStore,
         directory: URL,
         home: String = NSHomeDirectory(),
         adapters: [AgentKind: any AgentAdapter]? = nil,
         installer: ShimInstaller? = nil,
+        searchPath: String? = nil,
         instancePID: pid_t = getpid(),
         ancestry: any ProcessAncestry = SystemProcessAncestry(),
         liveness: any ProcessLiveness = SystemProcessLiveness()
@@ -156,6 +163,11 @@ public final class AgentIntegration {
         self.store = store
         self.directory = directory
         self.home = home
+        // Resolved by the caller (`AppDelegate`) so the one probe of the user's shell is shared
+        // with the menus, which must agree with this table about what is installed. `nil` keeps
+        // the process `PATH`, which is right for a test and wrong for a Finder launch — see
+        // `UserPath`.
+        self.searchPath = searchPath ?? ProcessInfo.processInfo.environment["PATH"]
         // `nil` (the default) builds Claude-plus-Codex-if-installed; a test registers its own
         // table instead, which is the whole seam this type is built around (see the file header).
         // The default can't simply be `[.claude: ClaudeAdapter(), .codex: CodexAdapter(...)]` the
@@ -163,7 +175,7 @@ public final class AgentIntegration {
         // `directory` (its hook installer's own support directory) and on `codex` actually being
         // on `PATH`, neither of which a default *argument* expression can see — only the
         // initializer's body can.
-        self.adapters = adapters ?? Self.defaultAdapters(supportDirectory: directory)
+        self.adapters = adapters ?? Self.defaultAdapters(supportDirectory: directory, path: self.searchPath)
         self.installer = installer
         self.instancePID = instancePID
         self.ancestry = ancestry
@@ -247,12 +259,15 @@ public final class AgentIntegration {
         supportDirectory: URL, path: String? = ProcessInfo.processInfo.environment["PATH"]
     ) -> [AgentKind: any AgentAdapter] {
         var table: [AgentKind: any AgentAdapter] = [.claude: ClaudeAdapter()]
-        let codex = CodexAdapter(supportDirectory: supportDirectory)
+        // `path` goes into the adapter as well as into the gate: its own `discoverAccounts` gates
+        // on the same `PATH` a second time, and an adapter left to default to the process's own
+        // would pass the gate here and then find no accounts under a Finder launch.
+        let codex = CodexAdapter(supportDirectory: supportDirectory, searchPath: path)
         if codex.isInstalled(path: path) { table[.codex] = codex }
         // Gated exactly like Codex's, and for a sharper reason: Antigravity's config dir is
         // `~/.gemini`, which also survives on machines that last ran the CLI it replaced. Without
         // the gate, every one of those would grow a phantom account out of a stale directory.
-        let antigravity = AntigravityAdapter(supportDirectory: supportDirectory)
+        let antigravity = AntigravityAdapter(supportDirectory: supportDirectory, searchPath: path)
         if antigravity.isInstalled(path: path) { table[.antigravity] = antigravity }
         return table
     }
