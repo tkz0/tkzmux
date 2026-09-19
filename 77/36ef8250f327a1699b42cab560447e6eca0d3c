@@ -1,0 +1,33 @@
+Sources/TkzApp/MainWindowController.swift
+  s_7583955c8e28c2::t_0fcd858242480f 1523-1525,1528-1535,1548-1552,1558-1565
+Sources/TkzApp/Panes/StartupOverlayPolicy.swift
+  s_7583955c8e28c2::t_d1fc41c60b0075 1,4-18,20,25-26,28-34,56-69
+Sources/TkzApp/TerminalHost.swift
+  s_7583955c8e28c2::t_a5326bb65d6b85 134-137,283-284
+Sources/TkzTerminalCore/TerminalInputModes.swift
+  s_7583955c8e28c2::t_7a6fc8fb87038e 1-65
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_7583955c8e28c2::t_53aac28ef297ee 101-104
+Tests/TkzAppTests/MainWindowLaunchTests.swift
+  s_7583955c8e28c2::t_3d59be2aff01b1 264-358
+Tests/TkzAppTests/PerSessionCacheEvictionTests.swift
+  s_7583955c8e28c2::t_1f16476767c4df 160
+Tests/TkzAppTests/StartupOverlayTests.swift
+  s_7583955c8e28c2::t_eb77dd3be9a270 1-2,5-6,11,69-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7736ef8250f327a1699b42cab560447e6eca0d3c",
+  "prompts": {},
+  "sessions": {
+    "s_7583955c8e28c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78c694c2-5423-4e54-be95-757945b8e04d",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
