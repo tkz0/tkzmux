@@ -1,13 +1,14 @@
-// StartupOverlayTests — the "Starting Claude…" overlay: its timing policy, its view, and the
-// chrome that hosts it.
+// StartupOverlayTests — the "Starting the agent…" overlay: its timing policy, the pane check that
+// can end the wait before the clock does, its view, and the chrome that hosts it.
 //
 // `StartupOverlayPolicy` carries no clock, so nothing here sleeps: phases are asked for with two
-// dates. The view is asserted structurally — hidden flags, layer strings, the animation key —
-// with no window, the `PaneHeaderViewTests` way.
+// dates and the pane check with a plain value. The view is asserted structurally — hidden flags,
+// layer strings, the animation key — with no window, the `PaneHeaderViewTests` way.
 
 import AppKit
 import Testing
 import TkzCore
+import TkzTerminalCore
 
 @testable import TkzApp
 
@@ -63,6 +64,58 @@ struct StartupOverlayTests {
     func theDelayIsTwoSeconds() {
         #expect(StartupOverlayPolicy.showDelay == 2)
         #expect(StartupOverlayPolicy.giveUp > StartupOverlayPolicy.showDelay)
+    }
+
+    // MARK: The pane check (pure)
+
+    /// The measurements this rule is built on, as a test rather than only as a comment: the three
+    /// modes were read off real recordings of an interactive shell and of both agents at their
+    /// first prompt. Bracketed paste is set in the shell's column too, which is exactly why it is
+    /// not one of the terms.
+    @Test("A shell at its prompt is not an agent; either agent's first prompt is")
+    func theMeasuredModesSeparateAShellFromAnAgent() {
+        let shell = TerminalInputModes(
+            alternateScreen: false, focusReporting: false, kittyKeyboardFlags: 0)
+        // Claude Code and Codex CLI both read exactly this at their first prompt.
+        let agent = TerminalInputModes(
+            alternateScreen: false, focusReporting: true, kittyKeyboardFlags: 5)
+        #expect(!StartupOverlayPolicy.agentIsOnScreen(shell))
+        #expect(StartupOverlayPolicy.agentIsOnScreen(agent))
+        #expect(!StartupOverlayPolicy.agentIsOnScreen(TerminalInputModes.nothingSet))
+    }
+
+    @Test("Any one of the three modes is enough; a pane with no terminal is not evidence")
+    func anySingleModeCounts() {
+        #expect(
+            StartupOverlayPolicy.agentIsOnScreen(
+                TerminalInputModes(
+                    alternateScreen: true, focusReporting: false, kittyKeyboardFlags: 0)))
+        #expect(
+            StartupOverlayPolicy.agentIsOnScreen(
+                TerminalInputModes(
+                    alternateScreen: false, focusReporting: true, kittyKeyboardFlags: 0)))
+        #expect(
+            StartupOverlayPolicy.agentIsOnScreen(
+                TerminalInputModes(
+                    alternateScreen: false, focusReporting: false, kittyKeyboardFlags: 1)))
+        #expect(!StartupOverlayPolicy.agentIsOnScreen(nil), "no terminal: let the clock decide")
+    }
+
+    @Test("While waiting the pane is polled; once the agent is up only the give-up is left")
+    func nextLookPollsUntilTheAgentAppears() {
+        let now = Self.startedAt
+        let deadline = now.addingTimeInterval(StartupOverlayPolicy.giveUp)
+        #expect(
+            StartupOverlayPolicy.nextLook(agentIsOnScreen: false, deadline: deadline, now: now)
+                == now.addingTimeInterval(StartupOverlayPolicy.recheck))
+        #expect(
+            StartupOverlayPolicy.nextLook(agentIsOnScreen: true, deadline: deadline, now: now)
+                == deadline)
+        // A poll must never be armed past the deadline it is polling towards.
+        let nearly = deadline.addingTimeInterval(-0.01)
+        #expect(
+            StartupOverlayPolicy.nextLook(agentIsOnScreen: false, deadline: deadline, now: nearly)
+                == deadline)
     }
 
     // MARK: View (structural)

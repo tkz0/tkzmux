@@ -157,6 +157,7 @@ struct PerSessionCacheEvictionTests {
         func savedSnapshot(_ id: TerminalID) -> Data? { nil }
         func discard(_ id: TerminalID) { discarded.append(id) }
         func contains(_ id: TerminalID) -> Bool { false }
+        func inputModes(_ id: TerminalID) -> TerminalInputModes? { nil }
         var events: AsyncStream<(TerminalID, TerminalEvent)> { AsyncStream { $0.finish() } }
     }
 }

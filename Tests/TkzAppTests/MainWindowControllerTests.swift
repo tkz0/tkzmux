@@ -98,6 +98,10 @@ struct MainWindowControllerTests {
         func writeInput(_ id: TerminalID, _ data: Data) { wrote.append((id, data)) }
         private(set) var wrote: [(id: TerminalID, data: Data)] = []
         func contains(_ id: TerminalID) -> Bool { heldTerminals.contains(id) }
+        /// What each pane's VT would report. Empty means "a shell at its prompt", which is what
+        /// every test that does not set it is asserting against.
+        var inputModesByTerminal: [TerminalID: TerminalInputModes] = [:]
+        func inputModes(_ id: TerminalID) -> TerminalInputModes? { inputModesByTerminal[id] }
         func show(_ attachments: [TerminalID: any TerminalPaneSurface]) {
             // The real host attaches nothing for a terminal it has never opened, which is what a
             // row restored from `state.json` looks like. The spy has to model that, or the

@@ -131,6 +131,10 @@ public protocol TerminalHost: AnyObject {
     /// **Remove**: forgets the terminal entirely — hangs it up if alive, drops its grid, deletes
     /// its snapshot on disk. The one call that makes a terminal unresumable.
     func discard(_ id: TerminalID)
+    /// The input protocols `id`'s terminal currently has switched on, or `nil` when the host
+    /// holds no terminal under that id. The startup overlay polls this to find out whether the
+    /// agent's own UI is already on screen; see `TerminalInputModes`.
+    func inputModes(_ id: TerminalID) -> TerminalInputModes?
     /// Does the host hold a terminal under `id`? The lazy-restore paths ask before spawning, so
     /// it has to be reachable through the existential, not only on `TerminalViewHost`.
     func contains(_ id: TerminalID) -> Bool
@@ -276,6 +280,8 @@ public final class TerminalViewHost: TerminalHost {
     public var sessionIDs: [TerminalID] { order }
     public func contains(_ id: TerminalID) -> Bool { sessions[id] != nil }
     public func isAlive(_ id: TerminalID) -> Bool { sessions[id]?.isAlive ?? false }
+    public func inputModes(_ id: TerminalID) -> TerminalInputModes? { sessions[id]?.session.inputModes }
+
     public func pid(of id: TerminalID) -> pid_t? { sessions[id]?.pty.pid }
     public func title(of id: TerminalID) -> String? { sessions[id]?.title }
     public func wasRestored(_ id: TerminalID) -> Bool { sessions[id]?.wasRestored ?? false }

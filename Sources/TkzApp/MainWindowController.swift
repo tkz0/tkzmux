@@ -1520,13 +1520,19 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         return rebuilt
     }
 
-    /// Shows or hides the "Starting Claude…" overlay on the selected row's boot pane, from the
-    /// store's `agentStartup` and the clock, and arms the timer for the next edge.
+    /// Shows or hides the "Starting the agent…" overlay on the selected row's boot pane, from the
+    /// store's `agentStartup`, the pane's own input modes and the clock, and arms the timer for the
+    /// next edge.
     ///
     /// The fact lives in the store because `panes` is pruned on every tab or row switch; the
-    /// *timing* lives here because the store has no clock. `StartupOverlayPolicy` turns the two
-    /// dates into a phase; this only acts on it. `now` is a parameter so the tests can walk the
-    /// clock by hand instead of sleeping.
+    /// *timing* lives here because the store has no clock. `StartupOverlayPolicy` turns the dates
+    /// and the modes into a phase and a next look; this only acts on them. `now` is a parameter so
+    /// the tests can walk the clock by hand instead of sleeping.
+    ///
+    /// The store fact is deliberately left alone when the pane answers: `agentTerminal(for:in:)`
+    /// reads `agentStartup.terminal` to place an arriving launch frame, and ending the startup the
+    /// moment the agent's UI appears would race that lookup for no gain. Hiding the overlay is the
+    /// whole of the fix; the fact still expires on its own clock.
     func applyStartupOverlay(now: Date = Date()) {
         startupOverlayTimer?.cancel()
         startupOverlayTimer = nil
@@ -1539,13 +1545,24 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         guard let selected, let startup, let pane = panes[startup.terminal] else { return }
 
+        // Asked once per pass, before the phase: a pane already showing the agent's own UI needs
+        // no spinner in any phase, and in the common case the answer arrives before `showDelay`
+        // and the overlay never appears at all.
+        let onScreen = StartupOverlayPolicy.agentIsOnScreen(host.inputModes(startup.terminal))
+
         switch StartupOverlayPolicy.phase(startedAt: startup.startedAt, now: now) {
         case .pending(let showAt):
             pane.chrome.setStartup(nil)
             armStartupOverlayTimer(at: showAt, now: now) { $0.applyStartupOverlay() }
         case .visible(let expiresAt):
-            pane.chrome.setStartup(PaneStartupModel(command: startup.command))
-            armStartupOverlayTimer(at: expiresAt, now: now) { $0.applyStartupOverlay() }
+            // The headline names the row's own agent. Left unset it says "Starting the agent…",
+            // which is honest but is the one string TKZ-82 never reached.
+            pane.chrome.startupOverlay.agentDisplayName =
+                agents?.adapters[selected.agent]?.displayName ?? "the agent"
+            pane.chrome.setStartup(onScreen ? nil : PaneStartupModel(command: startup.command))
+            let next = StartupOverlayPolicy.nextLook(
+                agentIsOnScreen: onScreen, deadline: expiresAt, now: now)
+            armStartupOverlayTimer(at: next, now: now) { $0.applyStartupOverlay() }
         case .expired:
             // Nothing arrived in time. The store write goes through the timer rather than
             // happening inside this delivery: a change set that begets a change set is
