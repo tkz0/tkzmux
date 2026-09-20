@@ -1,0 +1,77 @@
+Sources/GitStatus/GitRebase.swift
+  s_97e60297d7a92c::t_f4914957671c72 3-5,7
+Sources/GitStatus/GitStatus.swift
+  s_97e60297d7a92c::t_2c56fb9f12518d 5-6
+Sources/GitStatus/WorktreeList.swift
+  s_97e60297d7a92c::t_2e14163f3a0e46 8-17,24-25,37-59,65-68,71-80,82-84,88,90-91,93,102-114
+Sources/GitStatus/WorktreeRemoval.swift
+  s_97e60297d7a92c::t_41852e4dbc9b05 1-595
+Sources/TkzApp/GitIntegration.swift
+  s_97e60297d7a92c::t_5e0f33b8d5106f 75-101,128-133,141-142,550-799
+Sources/TkzApp/MainWindowController.swift
+  s_97e60297d7a92c::t_4b4e5fde6a565a 366-370,531-532,1160-1169,1220-1372,1927-1928,1999-2014,2458-2459,2466-2475,3289-3290,3320-3407,3411-3415,3423-3434,3436-3465,3467-3483,3506-3509,3564-3588,3658-3674,3930,3938,3997-4006
+Sources/TkzApp/Rebase/RebaseSheetController.swift
+  s_97e60297d7a92c::t_ddcd7e81abb342 191-195,220,234-235,237
+Sources/TkzApp/Rebase/RebaseSheetView.swift
+  s_97e60297d7a92c::t_62cfb5c10edaa0 12-13,15-20
+Sources/TkzApp/SessionLauncher.swift
+  s_97e60297d7a92c::t_4dc1497cdd7293 441-443,458-459
+Sources/TkzApp/Sheets/GlassSheet.swift
+  s_97e60297d7a92c::t_445cd137c1f20b 1-108
+Sources/TkzApp/Sidebar/SessionRowView.swift
+  s_97e60297d7a92c::t_5324464a3615dd 19,95-97,118,200,389-395,477,520-525,678-683,692-699
+Sources/TkzApp/Sidebar/SidebarRowAdapter.swift
+  s_97e60297d7a92c::t_f879e9ab0c3f3e 62,77-94
+Sources/TkzApp/Sidebar/SidebarRowModels.swift
+  s_97e60297d7a92c::t_32a8c15531adfe 64-72,140,157
+Sources/TkzApp/Worktree/DeleteMergedWorktreesSheetController.swift
+  s_97e60297d7a92c::t_dfe54fcddcfd3f 1-255
+Sources/TkzApp/Worktree/DeleteMergedWorktreesSheetModel.swift
+  s_97e60297d7a92c::t_09e36c9b1185a7 1-92
+Sources/TkzApp/Worktree/DeleteMergedWorktreesSheetView.swift
+  s_97e60297d7a92c::t_91b440faaf0c80 1-229
+Sources/TkzApp/Worktree/DeleteWorktreeSheetController.swift
+  s_97e60297d7a92c::t_557ee5af93610f 1-260
+Sources/TkzApp/Worktree/DeleteWorktreeSheetModel.swift
+  s_97e60297d7a92c::t_aca66cecb1657b 1-169
+Sources/TkzApp/Worktree/DeleteWorktreeSheetView.swift
+  s_97e60297d7a92c::t_86bb1bc16c919f 1-236
+Sources/TkzCore/AgentKind.swift
+  s_97e60297d7a92c::t_b960d634c4974c 55-59
+Sources/TkzCore/Reducers.swift
+  s_97e60297d7a92c::t_a012ffa98aab6a 202-203
+Tests/GitStatusTests/WorktreeRemovalTests.swift
+  s_97e60297d7a92c::t_c3e13b5be2d74c 1-679
+Tests/TkzAppTests/DeleteWorktreeTests.swift
+  s_97e60297d7a92c::t_1ce3d68acf5588 1-840
+Tests/TkzAppTests/MainWindowControllerTests.swift
+  s_97e60297d7a92c::t_256d9f2384d722 264-266,269-270
+Tests/TkzAppTests/RebaseSheetTests.swift
+  s_97e60297d7a92c::t_adfc5c524f9432 154-156,164,167
+Tests/TkzAppTests/SheetTestSupport.swift
+  s_97e60297d7a92c::t_6f822fcd720b4d 1-41
+Tests/TkzAppTests/SidebarRowViewTests.swift
+  s_97e60297d7a92c::t_8155dd87991001 1051-1105
+Tests/TkzAppTests/SidebarViewControllerTests.swift
+  s_97e60297d7a92c::t_f68dfc85c478ce 155-186
+docs/privacy.md
+  s_97e60297d7a92c::t_c2ef3be4a8876f 41,56-61,67-68
+docs/shortcuts.md
+  s_97e60297d7a92c::t_0d0d31b6262db2 22,33-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9ffc003ae8c5d2fa44d39aabb73aa8f8d6e6e641",
+  "prompts": {},
+  "sessions": {
+    "s_97e60297d7a92c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6813db8e-e463-4ef9-b117-49b8297b85e1",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
