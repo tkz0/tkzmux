@@ -514,7 +514,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
         self.sidebar = SidebarViewController(store: store, theme: theme)
         self.toolbarController = MainToolbarController(theme: theme)
-        toolbarController.searchShortcut = ShortcutsTable.resolved(state: store.state)[.searchSessions]
         self.statusBar = StatusBarView(theme: theme, model: .empty)
         self.palette = CommandPaletteController(state: store.state, mode: .all, theme: theme)
         self.newSessionMenu = NewSessionMenu(theme: theme)
@@ -948,7 +947,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         newSessionMenu.onSelectAccount = { [weak self] groupID, key in
             self?.setGroupDefaultAccount(groupID, key: key)
         }
-        toolbarController.newSessionMenu = newSessionMenu.menu
         // `>_` is "new terminal" in the design: a bare shell in the selected group's directory,
         // not another way to open the `＋` menu.
         toolbarController.onNewTerminal = { [weak self] in
@@ -967,51 +965,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         toolbarController.onToggleTheme = { [weak self] in
             self?.toggleTheme()
-        }
-        // Design 2c.6: typing in the toolbar field opens the results overlay under the
-        // window's top-right corner and keeps the caret where it is. Emptying the field closes it
-        // again — the field is the only state, so there is nothing left filtered or floating.
-        toolbarController.onSearchChanged = { [weak self] query in
-            guard let self else { return }
-            // Backspacing to empty closes the overlay but leaves the caret in the field: the user
-            // is mid-edit, and moving focus to the terminal here means the next characters they
-            // type go into the shell (GUI pass 2026-09-11).
-            guard !query.isEmpty else { return closeSearchOverlay() }
-            palette.present(anchoredTo: window, state: store.state, mode: .sessions)
-            palette.updateQuery(query)
-            // Sessions are ranked synchronously and are already on screen; transcripts and changed
-            // files read files, so they arrive when they arrive.
-            scheduleSlowSearch(for: query)
-        }
-        toolbarController.onSearchMove = { [weak self] offset in
-            self?.palette.moveSelection(by: offset)
-        }
-        toolbarController.onSearchSubmit = { [weak self] _ in
-            guard let self, palette.isPresented else { return }
-            palette.activateSelection()
-            endSearch()
-        }
-        toolbarController.onSearchCommandSubmit = { [weak self] _ in
-            guard let self, palette.isPresented else { return }
-            guard palette.activateActionRow() else { return }
-            endSearch()
-        }
-        toolbarController.onSearchCycleScope = { [weak self] offset in
-            guard let self, palette.isPresented else { return false }
-            palette.cycleScope(by: offset)
-            return true
-        }
-        toolbarController.onSearchCancel = { [weak self] in
-            self?.endSearch()
-        }
-        // Clicking a row makes the overlay key, which ends the field's editing session — so this
-        // fires *before* the click is delivered. Deferring one turn lets the click land, and the
-        // overlay only closes when focus really went somewhere else.
-        toolbarController.onSearchEndEditing = { [weak self] in
-            DispatchQueue.main.async {
-                guard let self, !self.palette.ownsKeyWindow else { return }
-                self.palette.dismiss()
-            }
         }
     }
 
@@ -1117,13 +1070,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         palette.dismiss()
     }
 
-    /// Ends the search outright: overlay down, field empty, keyboard back to the terminal. Esc and
-    /// an activated row end here; an emptied field does not (see ``closeSearchOverlay()``).
+    /// Ends the search outright: overlay down, keyboard back to the terminal. Esc and an activated
+    /// row end here.
     func endSearch() {
         closeSearchOverlay()
-        if let field = toolbarController.searchField, !field.stringValue.isEmpty {
-            field.stringValue = ""
-        }
         focusTerminalIfSessionShown()
     }
 
@@ -1132,9 +1082,23 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             guard let self else { return }
             let wasAnchored = palette.presentation == .anchored
             activate(result)
-            // A click on a row of the toolbar overlay activates without ever going through the
-            // field, so the field has to be emptied here too.
+            // ⌘F's overlay hands the keyboard back to the terminal on the way out; ⇧⌘P's panel just
+            // closes, because it is not covering the thing the user was typing into.
             if wasAnchored { endSearch() } else { palette.dismiss() }
+        }
+        // The sections that have to read something (transcripts, changed files) are filled from
+        // here: the palette ranks what is already in memory synchronously, and these arrive when
+        // they arrive.
+        palette.onQueryChanged = { [weak self] query in
+            guard let self, palette.presentation == .anchored else { return }
+            guard !query.isEmpty else {
+                searchTask?.cancel()
+                searchTask = nil
+                palette.setTranscriptRows([])
+                palette.setFileRows([])
+                return
+            }
+            scheduleSlowSearch(for: query)
         }
     }
 
@@ -2906,15 +2870,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         newSessionMenu.menu.popUp(positioning: nil, at: point, in: contentView)
     }
 
-    /// ⌘F — the toolbar's search field if it is on screen, else the palette in session mode.
+    /// ⌘F — the search overlay (design 2c.6), hung from the window's top-right corner. Since the
+    /// 2026-09-20 GUI pass this is the only way in: the toolbar no longer carries a field, and the
+    /// overlay owns the caret itself.
     public func beginSearch() {
-        if let item = window.toolbar?.items.first(where: { $0.itemIdentifier == .tkzSearch })
-            as? NSSearchToolbarItem
-        {
-            item.beginSearchInteraction()
-            return
-        }
-        presentPalette(mode: .sessions)
+        palette.presentSearch(over: window, state: store.state)
     }
 
     /// ⇧⌘P (and ⌘P's fallback).
@@ -4493,8 +4453,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// sheet without a relaunch even though the installed menu bar is only built at launch.
     func buildMainMenu(appName: String = "tkzmux") -> NSMenu {
         let shortcuts = ShortcutsTable.resolved(state: store.state)
-        // Same table as the menu, so the field's printed chord never disagrees with the key.
-        toolbarController.searchShortcut = shortcuts[.searchSessions]
         return MainMenu.build(appName: appName, shortcuts: shortcuts, dispatcher: dispatcher)
     }
 

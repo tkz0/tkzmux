@@ -22,7 +22,7 @@ struct SearchOverlayTests {
             contentRect: NSRect(x: 0, y: 0, width: 1240, height: 820),
             styleMask: [.borderless], backing: .buffered, defer: true)
         let controller = CommandPaletteController(state: state, mode: .sessions)
-        controller.present(anchoredTo: window, state: state)
+        controller.presentSearch(over: window, state: state)
         controller.updateQuery(query)
         return controller
     }

@@ -12,8 +12,8 @@ this table; nothing hard-codes a key equivalent.
 
 | Action id | Keys | What it does |
 |---|---|---|
-| `newSession` | ⌘N | Opens the group-scoped “＋ New session…” menu |
-| `searchSessions` | ⌘F | Puts the caret in the toolbar's “Search sessions…” field, whose placeholder prints the bound chord (an override shows its own); typing opens the results overlay (see below). With no toolbar (the field hidden), falls back to the centred palette in sessions mode |
+| `newSession` | ⌘N | Opens the group-scoped “＋ New session…” menu — from the selected group's sidebar row, or from under the title bar when the sidebar is hidden |
+| `searchSessions` | ⌘F | Opens the search overlay at the window's top-right and puts the caret in it (see below). Sessions, transcripts and changed files, in one list |
 | `commandPalette` | ⇧⌘P | Palette, everything (sessions, groups, commands) |
 | `toggleSidebar` | ⌘B | Show/hide the sidebar |
 | `toggleTheme` | — | Flip between the dark theme and its light twin. Also the ☀/☾ button at the right of the toolbar; the choice is remembered across launches |
@@ -68,9 +68,9 @@ commands. An old override for one of those ids still parses and is simply never 
 
 ## Inside the search overlay (⌘F, design 2c.6)
 
-The overlay is a child window that never takes the keyboard: the toolbar field keeps the caret and
-relays these keys to it (`MainToolbarController` → `MainWindowController` → `CommandPaletteController`).
-They are **not** in the shortcuts table — they exist only while the field is being edited.
+The overlay is a child window hung from the main window's top-right corner, with its own search
+field, the scope chips above the list and the key hints below it. It owns the keyboard while it is
+up. These keys are **not** in the shortcuts table — they exist only while it is on screen.
 
 | Keys | What it does |
 |---|---|
@@ -78,16 +78,28 @@ They are **not** in the shortcuts table — they exist only while the field is b
 | ↵ | Open the selected row. A transcript hit selects its session and shows that turn in the 2c.5 card |
 | ⌘↵ | Run the Actions row — a new session in the named group, started with what you typed |
 | ⇥ / ⇧⇥, → / ← | Cycle the scope chips: `All → Sessions → Transcripts → Files changed`, wrapping |
-| esc | Close the overlay, empty the field, and hand the keyboard back to the terminal |
+| esc | Close the overlay and hand the keyboard back to the terminal |
+| ⌘F again | Puts the caret back in the field without throwing the query away |
 
-→ and ← only take the chips while the overlay is up; with it down they move the caret as usual.
 ⌥→ / ⌥← and Home/End always move the caret, so a typo mid-query is still reachable. ⇥ is consumed
-either way — letting it through walks the responder chain out of the field.
+either way — letting it through walks the responder chain out of the field. In ⇧⌘P, which draws no
+chips, → and ← are the field editor's and move the caret.
 
-Emptying the field closes the overlay too — the field is the only state, so nothing is left
-filtered or floating. Transcript search covers the sessions currently in the sidebar; a query
-shorter than two characters searches neither transcripts nor changed files, because a single
-character matches almost every line and every path.
+Clicking back into the window behind the overlay closes it, as does switching app. Emptying the
+field leaves the overlay up with the caret where it is — the next character has to land in the box,
+not in the shell — but drops the transcript and changed-file hits the old query had found.
+Transcript search covers the sessions currently in the sidebar; a query shorter than two characters
+searches neither transcripts nor changed files, because a single character matches almost every line
+and every path.
+
+### Why the title bar has neither
+
+“＋ New session…” and a “Search sessions…” field used to sit in the 48 pt bar. The field was a wide,
+permanently-empty box — it cost the centred title its room and spent most of its life showing a
+placeholder — so the 2026-09-20 GUI pass took both out and gave the search its own field inside the
+overlay it was opening anyway. Neither command lost a way in: ⌘N and ⌘F still run them, the File
+menu lists both, ⇧⌘P finds them by name, the ⌘-hold cheat sheet prints their chords, and a group's
+sidebar row keeps its own ＋. Rebind either in `state.json` (*Overrides*, below).
 
 ## Overrides
 

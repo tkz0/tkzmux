@@ -41,6 +41,29 @@ Each sidebar group remembers its own agent, so the New-session rows in the menu 
 the other installed agents live under *Other agent* for a one-off launch. tkzmux only ever offers
 the agents it finds on your `PATH`.
 
+## Keyboard
+
+The title bar carries the session name and four buttons (new shell, the two splits, the theme
+toggle) and nothing else — no “＋ New session…” button, no permanently-empty search box. Those two
+live on the keyboard instead, which is where they were always faster:
+
+| Keys | |
+|---|---|
+| ⌘N | New session, in the selected group. A group's sidebar row has its own ＋ if you would rather click |
+| ⌘F | Search — sessions, transcripts and changed files, in one overlay. ⇥ narrows it to one of those; ↵ opens the hit; ⌘↵ starts a new session with what you typed as the prompt |
+| ⇧⌘P | Command palette: every command, session and group by name |
+| ⌘B | Show/hide the sidebar |
+| ⌘T / ⌘D / ⇧⌘D | New terminal in this session / split side by side / split stacked |
+| ⌘1…⌘9 | Select the n-th session |
+| ⌘I | Activity feed — what every session has been doing, newest first |
+| ⌘, | Settings |
+
+**Hold ⌘ alone** for two seconds at any time and a cheat sheet of every binding appears, read off the live
+menu — so it always agrees with what is actually bound.
+
+The full table, the keys that work *inside* the search overlay, and how to rebind anything through
+`state.json` are in [docs/shortcuts.md](docs/shortcuts.md).
+
 ## Requirements
 
 - macOS 26 (Tahoe) or later, Apple Silicon only.

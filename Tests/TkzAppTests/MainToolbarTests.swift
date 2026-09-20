@@ -19,7 +19,7 @@ struct MainToolbarTests {
 
     @Test func vendsEveryExpectedItemIdentifier() {
         let controller = MainToolbarController()
-        let expected: [NSToolbarItem.Identifier] = [.tkzNewSession, .tkzTitle, .tkzSearch, .tkzViewCluster]
+        let expected: [NSToolbarItem.Identifier] = [.tkzTitle, .tkzViewCluster]
 
         let defaults = controller.toolbarDefaultItemIdentifiers(controller.toolbar)
         for id in expected {
@@ -33,10 +33,23 @@ struct MainToolbarTests {
 
     @Test func identifiersAreStableStrings() {
         // Wave 2 references these by name when assembling the window.
-        #expect(NSToolbarItem.Identifier.tkzNewSession.rawValue == "tkzmux.newSession")
         #expect(NSToolbarItem.Identifier.tkzTitle.rawValue == "tkzmux.title")
-        #expect(NSToolbarItem.Identifier.tkzSearch.rawValue == "tkzmux.search")
         #expect(NSToolbarItem.Identifier.tkzViewCluster.rawValue == "tkzmux.viewCluster")
+    }
+
+    /// The 2026-09-20 GUI pass took “＋ New session…” and the search field out of the bar. Both
+    /// commands keep a chord, a palette row and a menu item; the bar keeps the title and the
+    /// cluster and nothing else.
+    @Test func barCarriesNeitherNewSessionNorSearch() {
+        let controller = MainToolbarController()
+        let defaults = controller.toolbarDefaultItemIdentifiers(controller.toolbar)
+        for gone in ["tkzmux.newSession", "tkzmux.search"] {
+            let id = NSToolbarItem.Identifier(gone)
+            #expect(!defaults.contains(id))
+            #expect(!controller.toolbarAllowedItemIdentifiers(controller.toolbar).contains(id))
+            #expect(Self.item(controller, id) == nil)
+        }
+        #expect(defaults.filter { $0 != .flexibleSpace }.count == 2)
     }
 
     @Test func titleItemUsesSessionAndGroup() {
@@ -80,49 +93,6 @@ struct MainToolbarTests {
             .attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
         #expect(dark != light)
         #expect(light == Theme.light.foreground.nsColor)
-    }
-
-    @Test func newSessionItemIsAMenuItemWithAStubMenu() throws {
-        let controller = MainToolbarController()
-        let item = try #require(Self.item(controller, .tkzNewSession) as? NSMenuToolbarItem)
-        #expect(item.title == "\u{FF0B} New session\u{2026}")
-        #expect(item.showsIndicator)
-        // Stub for this wave: present, but nothing actionable until M2.4 replaces it.
-        #expect(item.menu.items.count == 1)
-        // AppKit rewrites the action to its own `_popUpItemAction:`; what matters is that the
-        // placeholder is disabled, so the stub menu cannot do anything until M2.4 replaces it.
-        #expect(!item.menu.items[0].isEnabled)
-        #expect(item.menu.items[0].title == "New session\u{2026}")
-
-        let real = NSMenu()
-        real.addItem(NSMenuItem(title: "New worktree (claude -w)", action: nil, keyEquivalent: ""))
-        controller.newSessionMenu = real
-        #expect(item.menu === real)
-    }
-
-    @Test func searchItemIsASearchFieldWithThePlaceholder() throws {
-        let controller = MainToolbarController()
-        let item = try #require(Self.item(controller, .tkzSearch) as? NSSearchToolbarItem)
-        #expect(item.searchField.placeholderString == "Search sessions\u{2026}  \u{2318}F")
-        #expect(item.toolTip == "Search sessions (\u{2318}F)")
-        #expect(controller.searchField === item.searchField)
-
-        var seen: [String] = []
-        controller.onSearchChanged = { seen.append($0) }
-        item.searchField.stringValue = "tkz"
-        _ = item.searchField.target?.perform(item.searchField.action, with: item.searchField)
-        #expect(seen == ["tkz"])
-    }
-
-    /// The printed chord follows the binding: an override shows its own keys, unbound shows none.
-    @Test func searchPlaceholderFollowsTheBinding() throws {
-        let controller = MainToolbarController()
-        let item = try #require(Self.item(controller, .tkzSearch) as? NSSearchToolbarItem)
-        controller.searchShortcut = Shortcut("k", [.shift, .command])
-        #expect(item.searchField.placeholderString == "Search sessions\u{2026}  \u{21E7}\u{2318}K")
-        controller.searchShortcut = nil
-        #expect(item.searchField.placeholderString == "Search sessions\u{2026}")
-        #expect(item.toolTip == "Search sessions")
     }
 
     @Test func everyClusterButtonIsEnabled() throws {
