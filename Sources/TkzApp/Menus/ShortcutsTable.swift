@@ -27,6 +27,10 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     public var description: String { rawValue }
 
     public static let newSession = ShortcutAction("newSession")
+    /// ⇧⌘N — the "＋ New group" prompt at the foot of the sidebar, as a chord. A group is a
+    /// bucket until *Set Repo…* gives it one, so this needs nothing selected and works with the
+    /// sidebar hidden.
+    public static let newGroup = ShortcutAction("newGroup")
     public static let searchSessions = ShortcutAction("searchSessions")
     public static let commandPalette = ShortcutAction("commandPalette")
     public static let toggleSidebar = ShortcutAction("toggleSidebar")
@@ -170,7 +174,7 @@ public enum ShortcutsTable {
     /// named ones.
     public static let allActions: [ShortcutAction] =
         [
-            .newSession, .searchSessions, .commandPalette, .toggleSidebar, .renameSession,
+            .newSession, .newGroup, .searchSessions, .commandPalette, .toggleSidebar, .renameSession,
             .closeTerminal, .closeSession, .jumpToNeedsYou, .notifications, .settings,
             .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
             .showFirstPrompt, .showChanges, .rebaseOntoBase,
@@ -187,6 +191,7 @@ public enum ShortcutsTable {
     public static let defaults: [ShortcutAction: Shortcut] = {
         var table: [ShortcutAction: Shortcut] = [
             .newSession: Shortcut("n", .command),
+            .newGroup: Shortcut("n", [.shift, .command]),
             .searchSessions: Shortcut("f", .command),
             .commandPalette: Shortcut("p", [.shift, .command]),
             .toggleSidebar: Shortcut("b", .command),
@@ -223,6 +228,7 @@ public enum ShortcutsTable {
     public static func title(for action: ShortcutAction) -> String {
         switch action {
         case .newSession: "New Session\u{2026}"
+        case .newGroup: "New Group\u{2026}"
         case .searchSessions: "Search Sessions\u{2026}"
         case .commandPalette: "Command Palette\u{2026}"
         case .toggleSidebar: "Toggle Sidebar"
