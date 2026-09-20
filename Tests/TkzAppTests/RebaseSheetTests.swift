@@ -151,17 +151,9 @@ struct RebaseSheetModelTests {
 // MARK: - Sheet controller
 
 // Serialized, and **no panel ever reaches the screen**: `orderFront` is stubbed on every
-// controller, like the main-window harness does for its own windows.
-//
-// Until 2026-09-16 the panels were ordered front for real and a `performClick` on one of their
-// buttons ended the whole test run as "passed" mid-way: `NSButtonCell.performClick`
-// spins `nextEventMatchingMask:` to show the pressed state of a *visible* button, that first
-// request for events starts HIToolbox's event-pulling thread, and from then on every incoming
-// event wakes the main thread with `CFRunLoopStop(main)`. Harmless under `NSApplication.run`,
-// but the test process's main run loop is `CFRunLoopRun()` inside Swift's async-main drain, which
-// calls `exit(0)` the moment that loop stops — no summary line, and every test scheduled after
-// that point silently never runs. Off screen there is nothing to spin, and `click` below sends
-// the action directly anyway.
+// controller, like the main-window harness does for its own windows. See
+// `SheetTestSupport.swift` for why that and `click` (rather than `performClick`) are not
+// optional — getting either wrong ends the whole run as "passed" mid-way.
 @MainActor
 @Suite(.serialized) struct RebaseSheetControllerTests {
 
@@ -169,17 +161,10 @@ struct RebaseSheetModelTests {
         GitRebase.Request(toplevel: "/tmp/x", gitDir: "/tmp/x/.git", base: BaseBranch(remote: "origin", name: "main"))
     }
 
-    /// The button's action, without the event-loop spin `performClick` does for a visible window.
-    static func click(_ button: NSButton) {
-        _ = NSApp.sendAction(button.action!, to: button.target, from: button)
-    }
+    static func click(_ button: NSButton) { SheetTestSupport.click(button) }
 
     static func settle(_ predicate: () -> Bool) async {
-        let deadline = ContinuousClock.now + .seconds(2)
-        while ContinuousClock.now < deadline {
-            if predicate() { return }
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await SheetTestSupport.settle(.seconds(2), predicate)
     }
 
     @Test func opensFetchingThenShowsTheCount() async throws {

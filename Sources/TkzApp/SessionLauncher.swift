@@ -438,7 +438,9 @@ public final class SessionLauncher {
     // MARK: - Close / remove
 
     /// Remove (⌘W, the row's `×`, a shell that ended): the row, its shell and its snapshot go
-    /// away. Never touches the worktree on disk.
+    /// away. Does **not** itself touch the worktree on disk; *Delete worktree…* removes it
+    /// separately and *after* this has run (TKZ-70, `GitIntegration.deleteWorktree`) — that
+    /// ordering is deliberate, so the pty is gone before git unlinks the directory under it.
     public func remove(_ id: SessionID) {
         // Read the leaves *before* the store mutation: afterwards the row is gone and with it any
         // way to find the `.ghsnap` files its panes owned.
@@ -453,7 +455,8 @@ public final class SessionLauncher {
     /// Remove a whole group: every member's shell and snapshot go the way `remove(_:)` sends one,
     /// then the group and its rows leave in a single change set — one sidebar diff, one selection
     /// pass, rather than N of each. The reducer's own `removeGroup` never touches `host`, which is
-    /// the whole reason this lives here. Never touches a worktree on disk.
+    /// the whole reason this lives here. Never touches a worktree on disk: removing a group is
+    /// not *Delete merged worktrees…*, which is a separate item on the same menu (TKZ-70).
     public func removeGroup(_ id: GroupID) {
         let members = store.state.sessions(in: id).map(\.id)
         for member in members {

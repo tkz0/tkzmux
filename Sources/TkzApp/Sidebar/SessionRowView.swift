@@ -16,7 +16,7 @@
 //
 //     ┌────────────────────────────────────────────────────────────┐
 //     │  ●   Session title…                          NEEDS YOU     │  title line,  top 22…6
-//     │      …/folder · ⎇ branch   WT                     [ALT]    │  detail line, top 38…25
+//     │      …/folder · ⎇ branch   WT  merged             [ALT]    │  detail line, top 38…25
 //     └────────────────────────────────────────────────────────────┘
 //        ↑14                                                    12↑
 //
@@ -92,6 +92,9 @@ public final class SessionRowView: NSTableCellView {
     private static func directoryText(_ directory: String) -> String { "\u{2026}/\(directory)" }
     /// The `·` between the folder and the branch, drawn at half opacity.
     private static let separatorText = "\u{00B7}"
+    /// The quiet word a merged worktree row carries after its `WT` badge (TKZ-70). Lower case
+    /// and unpilled on purpose: it is a fact about the branch, not a badge competing with one.
+    static let mergedText = "merged"
 
     // MARK: Layers & subviews
 
@@ -112,6 +115,7 @@ public final class SessionRowView: NSTableCellView {
     }()
     private lazy var branchLayer = SidebarLayers.text(branchFont, color: NSColor.clear.cgColor)
     private lazy var wtBadge = SidebarBadgeLayer(font: badgeFont)
+    private lazy var mergedLayer = SidebarLayers.text(branchFont, color: NSColor.clear.cgColor)
     /// The "this session's processes are holding N GB" badge. Reuses the amber NEEDS YOU tokens
     /// rather than introducing its own: both are warnings, and the two never appear on the same
     /// line (NEEDS YOU sits on the title line, this on the detail line).
@@ -193,6 +197,7 @@ public final class SessionRowView: NSTableCellView {
         root.addSublayer(separatorLayer)
         root.addSublayer(branchLayer)
         root.addSublayer(wtBadge)
+        root.addSublayer(mergedLayer)
         root.addSublayer(memoryBadge)
         root.addSublayer(spendBadge)
         root.addSublayer(mutedBadge)
@@ -381,6 +386,13 @@ public final class SessionRowView: NSTableCellView {
             wtBadgeWidth = 0
         }
 
+        // `theme.prMerged` is the token `StatusBarView` already paints a merged `#418` chip with,
+        // so the strip and the sidebar say "merged" in one colour. Not `foregroundMuted` (which
+        // would read as nothing at all) and not `needsYouText` (amber means "you are blocked").
+        mergedLayer.isHidden = !model.isMerged
+        mergedLayer.string = model.isMerged ? Self.mergedText : nil
+        mergedLayer.foregroundColor = theme.prMerged.cgColor
+
         if let size = model.memoryBadge, !size.isEmpty {
             memoryBadge.isHidden = false
             memoryBadgeWidth = memoryBadge.configure(
@@ -462,6 +474,7 @@ public final class SessionRowView: NSTableCellView {
     var separatorTextLayer: CATextLayer { separatorLayer }
     var branchTextLayer: CATextLayer { branchLayer }
     var worktreeBadgeLayer: CALayer { wtBadge }
+    var mergedTextLayer: CATextLayer { mergedLayer }
     var memoryBadgeLayer: CALayer { memoryBadge }
     var spendBadgeLayer: CALayer { spendBadge }
     var needsYouBadgeLayer: CALayer { needsYouBadge }
@@ -503,6 +516,12 @@ public final class SessionRowView: NSTableCellView {
         needed += badgeGap + SidebarLayers.width(of: branchText(branch), font: branchFont) + 1
         if model.isWorktree {
             needed += badgeGap + SidebarBadgeLayer.width(for: "WT", font: badgeFont)
+        }
+        // A row can wrap to 59 pt purely because the PR turned merged. That is correct, and it is
+        // already handled: the PR state rides `ChangeSet.sessions`, which is what makes
+        // `SidebarViewController.noteChangedRowHeights` drop this row's cached width.
+        if model.isMerged {
+            needed += badgeGap + SidebarLayers.width(of: mergedText, font: branchFont) + 1
         }
         if let size = model.memoryBadge, !size.isEmpty {
             needed += badgeGap + SidebarBadgeLayer.width(for: size, font: badgeFont)
@@ -656,7 +675,12 @@ public final class SessionRowView: NSTableCellView {
         }
         if !branchLayer.isHidden {
             let natural = SidebarLayers.width(of: (branchLayer.string as? String) ?? "", font: branchFont) + 1
-            let available = max(0, detailRight - detailLeft - (wtBadge.isHidden ? 0 : wtBadgeWidth + Self.badgeGap))
+            var reserved: CGFloat = 0
+            if !wtBadge.isHidden { reserved += wtBadgeWidth + Self.badgeGap }
+            if !mergedLayer.isHidden {
+                reserved += SidebarLayers.width(of: Self.mergedText, font: branchFont) + 1 + Self.badgeGap
+            }
+            let available = max(0, detailRight - detailLeft - reserved)
             let width = min(natural, available)
             branchLayer.frame = CGRect(x: detailLeft, y: branchLineY, width: width, height: badgeH)
             detailLeft += width + Self.badgeGap
@@ -665,6 +689,14 @@ public final class SessionRowView: NSTableCellView {
             // Clamp so the badge never escapes the row when the branch name eats the whole line.
             let x = min(detailLeft, max(Self.textLeft, detailRight - wtBadgeWidth))
             wtBadge.frame = CGRect(x: x, y: branchLineY, width: wtBadgeWidth, height: badgeH)
+            detailLeft = x + wtBadgeWidth + Self.badgeGap
+        }
+        if !mergedLayer.isHidden {
+            // Same clamp as the badge: reading order is `⎇ branch  WT  merged`, and the word gives
+            // up its place rather than the row's edge when the branch name eats the line.
+            let width = SidebarLayers.width(of: Self.mergedText, font: branchFont) + 1
+            let x = min(detailLeft, max(Self.textLeft, detailRight - width))
+            mergedLayer.frame = CGRect(x: x, y: branchLineY, width: width, height: badgeH)
         }
 
         refreshAccountTooltip()

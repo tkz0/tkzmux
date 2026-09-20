@@ -199,7 +199,8 @@ extension AppState {
     }
 
     /// **Remove** — the only way a row leaves the sidebar (⌘W, the row's ×, a shell that ended;
-    /// decision 2026-09-08: there is no "closed but kept" state). Never touches a worktree on disk.
+    /// decision 2026-09-08: there is no "closed but kept" state). Never touches a worktree on
+    /// disk; the app-side delete (TKZ-70) runs git separately, after this.
     /// If the removed session was selected, selection moves to the next row in sidebar order (or
     /// the previous one at the end).
     public mutating func removeSession(_ id: SessionID) {

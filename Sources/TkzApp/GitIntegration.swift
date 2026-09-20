@@ -72,6 +72,33 @@ public final class GitIntegration {
     let fetchBase: @Sendable (GitRebase.Request) -> GitRebase.Outcome?
     private let now: () -> Date
 
+    // MARK: Worktree removal (TKZ-70)
+
+    /// A removal finished or was refused: the window controller puts this in the status strip.
+    public var onDeleteWorktreeNotice: ((String) -> Void)?
+    /// `isDeletingWorktree` changed for some row.
+    public var onDeleteWorktreeStateChange: (() -> Void)?
+    /// One removal is over, however it went.
+    ///
+    /// The `SessionID?` is `nil` on the normal path: the row is closed *before* git runs (see
+    /// `deleteWorktree`), so by the time this fires there is no row to attribute it to. `repoRoot`
+    /// is therefore a parameter of its own — it is what `SessionLauncher.refreshWorktrees` needs,
+    /// and there is nothing left to look it up from.
+    public var onDeleteWorktreeFinished: ((SessionID?, String, WorktreeRemoval.Outcome) -> Void)?
+    /// A whole group's batch is over: every outcome, and the repo roots that need re-listing.
+    public var onDeleteWorktreesFinished: (([WorktreeRemoval.Outcome], Set<String>) -> Void)?
+
+    /// Keyed by worktree path, not session — the same rule and the same reason as
+    /// `rebasingToplevels`: two rows can sit on one worktree, and closing the first leaves the
+    /// second open on it.
+    private var deletingToplevels: Set<String> = []
+
+    /// Injected so a test can drive every outcome without a repo. One argument each, like
+    /// `runRebase`: the user's two choices live on the `Request`.
+    let runDelete: @Sendable (WorktreeRemoval.Request) -> WorktreeRemoval.Outcome
+    let surveyWorktree:
+        @Sendable (WorktreeRemoval.Request, PRInfo?) -> Result<WorktreeRemoval.Survey, WorktreeRemoval.SurveyFailure>
+
     /// How often the selected row's ports are re-scanned. A scan of a 30-process tree is
     /// microseconds, so the interval is about not waking the process, not about cost.
     public static let portInterval: TimeInterval = 10
@@ -98,6 +125,12 @@ public final class GitIntegration {
         scanPorts: @escaping @Sendable (pid_t) -> [ListeningPort] = { PortScanner.scan(rootPid: $0) },
         runRebase: @escaping @Sendable (GitRebase.Request) -> GitRebase.Outcome = { GitRebase.run($0) },
         fetchBase: @escaping @Sendable (GitRebase.Request) -> GitRebase.Outcome? = { GitRebase.fetch($0) },
+        runDelete: @escaping @Sendable (WorktreeRemoval.Request) -> WorktreeRemoval.Outcome = {
+            WorktreeRemoval.run($0)
+        },
+        surveyWorktree: @escaping @Sendable (WorktreeRemoval.Request, PRInfo?) -> Result<
+            WorktreeRemoval.Survey, WorktreeRemoval.SurveyFailure
+        > = { WorktreeRemoval.survey($0, pr: $1) },
         now: @escaping () -> Date = Date.init
     ) {
         self.store = store
@@ -105,6 +138,8 @@ public final class GitIntegration {
         self.scanPorts = scanPorts
         self.runRebase = runRebase
         self.fetchBase = fetchBase
+        self.runDelete = runDelete
+        self.surveyWorktree = surveyWorktree
         self.now = now
 
         let box = WeakBox()
@@ -511,6 +546,256 @@ public final class GitIntegration {
         case .mergeInProgress: "Rebase skipped: a merge is in progress"
         }
     }
+
+    // MARK: Worktree removal (TKZ-70)
+
+    /// Whether a removal is running on `id`'s worktree — started from this row or another row of
+    /// the same checkout.
+    public func isDeletingWorktree(_ id: SessionID) -> Bool {
+        guard let toplevel = service.repoInfo(for: id)?.toplevel else { return false }
+        return deletingToplevels.contains(toplevel)
+    }
+
+    /// The single source of truth for *both* the menu item's enablement and its tooltip, so the
+    /// two can never disagree. `nil` = go ahead.
+    ///
+    /// The two safety rules the ticket states live here: the path must be under that agent's own
+    /// worktree marker, and the row must be one the user opened as a `WT` row. Both are re-checked
+    /// inside `WorktreeRemoval.run`, so a menu left open while the row changed cannot get past.
+    public func deleteWorktreeRefusal(for id: SessionID) -> WorktreeRemoval.Refusal? {
+        guard let session = store.state.sessions[id] else { return .notAWorktreePath }
+        // Checked before the repo is even looked up: "the agent is working" is the more useful
+        // thing to say, and it is true whether or not the git status has landed yet.
+        if session.status == .working { return .agentWorking }
+        // The pure half only — `worktrees`/`locked` need a git launch and this is called at
+        // menu-building altitude. `run` does the full preflight on the background queue.
+        guard let info = service.repoInfo(for: id) else { return .notAWorktreePath }
+        if rebasingToplevels.contains(info.toplevel) { return .rebaseInProgress }
+        if deletingToplevels.contains(info.toplevel) { return .deleteInProgress }
+        guard session.showsWorktreeBadge, info.isWorktree,
+            let marker = session.agent.worktreeMarker,
+            let markerRoot = AgentKind.worktreeRoot(ofPath: info.toplevel, marker: marker),
+            markerRoot == info.toplevel
+        else { return .notAWorktreePath }
+        if info.toplevel == info.repoRoot { return .mainCheckout }
+        return nil
+    }
+
+    public func canDeleteWorktree(_ id: SessionID) -> Bool { deleteWorktreeRefusal(for: id) == nil }
+
+    /// Why the menu item is off, for its tooltip; `nil` when it is on.
+    ///
+    /// `agentName` is the caller's because this coordinator has no adapter registry — the window
+    /// controller does. It defaults to the same honest placeholder `RebaseSheetModel` uses rather
+    /// than asserting a product name nobody told it.
+    public func deleteWorktreeReason(for id: SessionID, agentName: String = "the agent") -> String? {
+        guard let refusal = deleteWorktreeRefusal(for: id) else { return nil }
+        let name = service.repoInfo(for: id).map { ($0.toplevel as NSString).lastPathComponent }
+        return Self.notice(for: refusal, name: name, agent: agentName)
+    }
+
+    /// Everything the runner needs for `id`, read while the row still exists. `nil` before the
+    /// repo is known. The caller fills in `force` and `branchDelete` from the sheet.
+    public func deleteWorktreeRequest(for id: SessionID) -> WorktreeRemoval.Request? {
+        guard let session = store.state.sessions[id], let info = service.repoInfo(for: id) else {
+            return nil
+        }
+        let branch = session.live?.git?.branch
+        return WorktreeRemoval.Request(
+            worktreePath: info.toplevel,
+            repoRoot: info.repoRoot,
+            gitDir: info.gitDir,
+            branch: branch,
+            base: service.baseBranch(for: id),
+            marker: session.agent.worktreeMarker ?? "",
+            expectedBranch: branch)
+    }
+
+    /// Remove the worktree named by `request`, off the main actor; the outcome comes back as a
+    /// notice.
+    ///
+    /// **Takes a `Request`, not a `SessionID`, on purpose.** The row is closed *before* this is
+    /// called (`MainWindowController.performWorktreeDelete`) so the pty is not left with its cwd
+    /// inside a directory git is about to unlink — which means the row, its `RepoInfo` and its
+    /// `GitSummary` are gone by now. The request is a value captured while they still existed, and
+    /// nothing downstream looks anything up by session.
+    ///
+    /// `attributedTo` is only used to close a sheet still on screen, and is `nil` on that path.
+    @discardableResult
+    public func deleteWorktree(
+        _ request: WorktreeRemoval.Request, attributedTo id: SessionID? = nil
+    ) -> Bool {
+        guard deletingToplevels.insert(request.worktreePath).inserted else {
+            onDeleteWorktreeNotice?(
+                Self.notice(for: .deleteInProgress, name: request.worktreeName, agent: "the agent"))
+            return false
+        }
+        onDeleteWorktreeStateChange?()
+
+        let run = runDelete
+        let box = WeakBox()
+        box.value = self
+        // The rebase queue, deliberately, not one of its own: a `worktree remove` must never run
+        // concurrently with a `fetch` or a `rebase` on the same repository lock.
+        rebaseQueue.async {
+            let outcome = run(request)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    box.value?.finishDelete(request, id: id, outcome: outcome)
+                }
+            }
+        }
+        return true
+    }
+
+    private func finishDelete(
+        _ request: WorktreeRemoval.Request, id: SessionID?, outcome: WorktreeRemoval.Outcome
+    ) {
+        deletingToplevels.remove(request.worktreePath)
+        onDeleteWorktreeStateChange?()
+        onDeleteWorktreeFinished?(id, request.repoRoot, outcome)
+        onDeleteWorktreeNotice?(
+            Self.notice(for: outcome, path: request.worktreePath, branch: request.branch,
+                        base: request.base?.ref))
+    }
+
+    /// A whole group's worth, claimed up front and then run **serially in one queue hop** — N
+    /// removals cost one trip back to the main actor and produce one notice, not N of each.
+    /// Returns how many were actually started.
+    @discardableResult
+    public func deleteWorktrees(_ requests: [WorktreeRemoval.Request]) -> Int {
+        let accepted = requests.filter { deletingToplevels.insert($0.worktreePath).inserted }
+        guard !accepted.isEmpty else { return 0 }
+        onDeleteWorktreeStateChange?()
+
+        let run = runDelete
+        let box = WeakBox()
+        box.value = self
+        rebaseQueue.async {
+            let outcomes = accepted.map { run($0) }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    box.value?.finishDeletes(accepted, outcomes: outcomes)
+                }
+            }
+        }
+        return accepted.count
+    }
+
+    private func finishDeletes(
+        _ requests: [WorktreeRemoval.Request], outcomes: [WorktreeRemoval.Outcome]
+    ) {
+        for request in requests { deletingToplevels.remove(request.worktreePath) }
+        onDeleteWorktreeStateChange?()
+        let roots = Set(requests.map(\.repoRoot))
+        onDeleteWorktreesFinished?(outcomes, roots)
+
+        let firstFailure = zip(requests, outcomes).first { !Self.succeeded($0.1) }
+            .map { (name: $0.0.worktreeName, message: Self.failureMessage($0.1)) }
+        onDeleteWorktreeNotice?(Self.notice(forBatch: outcomes, firstFailure: firstFailure))
+    }
+
+    /// Whether the worktree actually went. A kept branch is a success; a refused *branch* delete
+    /// is too, as far as the batch line is concerned — the directory is gone either way, and the
+    /// per-row notice is where that nuance belongs.
+    static func succeeded(_ outcome: WorktreeRemoval.Outcome) -> Bool {
+        switch outcome {
+        case .removed, .removedWithBranch, .removedBranchNotMerged, .removedBranchFailed: true
+        case .dirty, .locked, .removalFailed, .timedOut, .refused: false
+        }
+    }
+
+    static func failureMessage(_ outcome: WorktreeRemoval.Outcome) -> String {
+        switch outcome {
+        case .dirty: "uncommitted changes"
+        case .locked: "locked"
+        case .removalFailed(let message): message
+        case .timedOut(let step): "timed out during \(step)"
+        case .refused(let refusal): Self.notice(for: refusal, name: nil, agent: "the agent")
+        case .removed, .removedWithBranch, .removedBranchNotMerged, .removedBranchFailed: ""
+        }
+    }
+
+    /// The status-strip line for each way a removal can end. The **name**, never the full path:
+    /// the strip is one line and truncates.
+    static func notice(
+        for outcome: WorktreeRemoval.Outcome, path: String, branch: String?, base: String?
+    ) -> String {
+        let name = (path as NSString).lastPathComponent
+        let branchName = branch ?? "the branch"
+        switch outcome {
+        case .removed:
+            return "Deleted worktree \(name) \u{2014} branch \(branchName) kept"
+        case .removedWithBranch(let deleted):
+            return "Deleted worktree \(name) and branch \(deleted)"
+        case .removedBranchNotMerged(let kept):
+            return "Deleted worktree \(name); branch \(kept) has commits \(base ?? "the base branch") does not \u{2014} delete it with git branch -D"
+        case .removedBranchFailed(let kept, let message):
+            return "Deleted worktree \(name); branch \(kept) kept: \(message)"
+        case .dirty:
+            return "Worktree \(name) has uncommitted changes \u{2014} not deleted"
+        case .locked:
+            return "Worktree \(name) is locked \u{2014} not deleted"
+        case .removalFailed(let message):
+            return "Could not delete worktree \(name): \(message)"
+        case .timedOut(let step):
+            return "Deleting worktree \(name) timed out during \(step)"
+        case .refused(let refusal):
+            return Self.notice(for: refusal, name: name, agent: "the agent")
+        }
+    }
+
+    static func notice(for refusal: WorktreeRemoval.Refusal, name: String?, agent: String) -> String {
+        let what = name.map { "Worktree \($0)" } ?? "This worktree"
+        switch refusal {
+        case .notAWorktreePath:
+            return "Only worktrees under .claude/worktrees that tkzmux opened can be deleted here"
+        case .notThisRepositorysWorktree:
+            return "\(what) is not a worktree of this repository"
+        case .mainCheckout:
+            return "That is the repository itself, not a worktree"
+        case .containsRepoRoot:
+            return "The repository lives inside that directory \u{2014} not deleted"
+        case .missing:
+            return "The worktree directory is already gone"
+        case .locked:
+            return "\(what) is locked"
+        case .detachedHead:
+            return "Its HEAD is detached \u{2014} there is no branch to delete"
+        case .branchIsBase:
+            return "That is the base branch"
+        case .dirtyTree:
+            return "\(what) has uncommitted changes"
+        case .headMoved:
+            return "Its branch changed since you asked"
+        case .agentWorking:
+            return "Wait for \(agent) to be idle \u{2014} it may be editing files"
+        case .rebaseInProgress:
+            return "Delete skipped: a rebase is in progress on this worktree"
+        case .deleteInProgress:
+            return "A delete is already running on this worktree"
+        }
+    }
+
+    /// One line for a whole group's batch. Only the *first* failure is named, with the count:
+    /// the strip truncates, and a per-row breakdown belongs in a log rather than a notice.
+    static func notice(
+        forBatch outcomes: [WorktreeRemoval.Outcome], firstFailure: (name: String, message: String)?
+    ) -> String {
+        let total = outcomes.count
+        let ok = outcomes.filter(Self.succeeded).count
+        let plural = total == 1 ? "" : "s"
+        guard let firstFailure else {
+            return "Deleted \(total) worktree\(plural)"
+        }
+        if ok == 0 {
+            return "Could not delete \(total) worktree\(plural): \(firstFailure.message)"
+        }
+        return "Deleted \(ok) of \(total) worktrees; \(firstFailure.name) failed: \(firstFailure.message)"
+    }
+
+    /// Test access.
+    var deletingWorktreePaths: Set<String> { deletingToplevels }
 
     // MARK: Origin check (opt-in, off by default)
 

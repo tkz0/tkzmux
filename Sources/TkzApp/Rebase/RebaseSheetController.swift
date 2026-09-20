@@ -188,37 +188,11 @@ public final class RebaseSheetController: NSObject, NSWindowDelegate {
     private func makePanelIfNeeded() -> PromptCardPanel {
         if let panel { return panel }
 
-        let panel = PromptCardPanel(
-            contentRect: NSRect(x: 0, y: 0, width: RebaseSheetView.Metrics.width, height: 120),
-            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
-            backing: .buffered,
-            defer: true)
-        panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
-        panel.isMovableByWindowBackground = true
-        panel.isFloatingPanel = true
-        panel.level = .floating
-        panel.hidesOnDeactivate = true
-        panel.becomesKeyOnlyIfNeeded = false
-        panel.isReleasedWhenClosed = false
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.standardWindowButton(.closeButton)?.isHidden = true
-        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        panel.standardWindowButton(.zoomButton)?.isHidden = true
-        panel.delegate = self
-        panel.onCancel = { [weak self] in self?.dismiss() }
-
-        let effect = NSVisualEffectView()
-        effect.material = .hudWindow
-        effect.blendingMode = .behindWindow
-        effect.state = .active
-        effect.wantsLayer = true
-        effect.layer?.cornerRadius = RebaseSheetView.Metrics.cornerRadius
-        effect.layer?.borderWidth = 1
-        effect.layer?.masksToBounds = true
-        effect.translatesAutoresizingMaskIntoConstraints = false
+        // The panel, the material, the radius and the border are the whole family's — see
+        // `Sheets/GlassSheet.swift`. Only the contents below are this sheet's.
+        let (panel, effect) = GlassSheetPanel.make(
+            width: RebaseSheetView.Metrics.width, delegate: self,
+            onCancel: { [weak self] in self?.dismiss() })
         effectView = effect
 
         let sheet = RebaseSheetView(theme: theme)
@@ -230,7 +204,6 @@ public final class RebaseSheetController: NSObject, NSWindowDelegate {
         sheetView = sheet
 
         effect.addSubview(sheet)
-        panel.contentView = effect
         NSLayoutConstraint.activate([
             sheet.topAnchor.constraint(equalTo: effect.topAnchor),
             sheet.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
@@ -244,9 +217,7 @@ public final class RebaseSheetController: NSObject, NSWindowDelegate {
     }
 
     private func applyTheme() {
-        effectView?.appearance = NSAppearance(named: theme.isDark ? .darkAqua : .aqua)
-        let accent = theme.accent
-        effectView?.layer?.borderColor = RGB(r: accent.r, g: accent.g, b: accent.b, a: 0.30).cgColor
+        if let effectView { GlassSheetPanel.applyTheme(theme, to: effectView) }
         sheetView?.setTheme(theme)
     }
 
@@ -260,19 +231,10 @@ public final class RebaseSheetController: NSObject, NSWindowDelegate {
         panel.setFrame(Self.frame(for: size, over: anchorFrame), display: true)
     }
 
+    /// Kept as a forwarder: the placement is the family's (`GlassSheetPanel.frame`), and this
+    /// sheet's tests name it here.
     static func frame(for size: NSSize, over anchor: NSRect?) -> NSRect {
-        let inset: CGFloat = 14
-        if let anchor {
-            return NSRect(
-                x: (anchor.maxX - inset - size.width).rounded(),
-                y: (anchor.minY + inset).rounded(),
-                width: size.width, height: size.height)
-        }
-        let host = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        return NSRect(
-            x: (host.maxX - inset * 4 - size.width).rounded(),
-            y: (host.minY + inset * 4).rounded(),
-            width: size.width, height: size.height)
+        GlassSheetPanel.frame(for: size, over: anchor)
     }
 
     // MARK: NSWindowDelegate

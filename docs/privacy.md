@@ -38,7 +38,7 @@ Plus these, in the background, on repos backing your sessions:
 | `git status --porcelain=v2 --branch -z`, `git diff HEAD --shortstat` | branch, ahead/behind and diff counts (`GitStatusService.swift`) |
 | `git symbolic-ref -q refs/remotes/origin/HEAD`, `git for-each-ref …` | find the repo's base branch (`origin/main`), once per repo and again every 60 s while it is unresolved (`BaseBranch.swift`) |
 | `git rev-list --left-right --count <base>...HEAD` | how far the branch is behind its base — the `⤿ 7 behind main` chip — against whatever `BaseBranch.resolve` found locally: `origin/HEAD`/`origin/main`/`origin/master` when the repo has one, else a local `main`/`master`. For a remote base that count is only as fresh as the last fetch; a local-only base has nothing to go stale (`GitStatusService.swift`) |
-| `git worktree list --porcelain` | notice when a worktree behind a row is removed (`WorktreeList.swift`) |
+| `git worktree list --porcelain` | notice when a worktree behind a row is removed — including one tkzmux itself deleted, so any other row pointing at it loses its `WT` badge (`WorktreeList.swift`) |
 | `git remote get-url origin` | decide whether the PR lookup may run at all (`PRLookup.swift`) |
 | `gh pr view --json …` | the PR badge — **GitHub origins only**; ≤ 1 per 5 min per session with an open PR, plus one per Claude turn (`PRLookup.swift`) |
 
@@ -53,14 +53,19 @@ off by default):
 | `git fetch --quiet origin <base>` | at once when you turn the preference on, then every 5 minutes per repo with a session, and on wake/activation when the last check is older than that, so the `⤿ 7 behind main` chip reflects the remote. Under your own git credentials; a missing credential fails at once rather than prompting (`GitRebase.swift`, `GitIntegration.swift`) |
 
 And these, **only when you invoke** — the rebase sheet (⌥⌘R, the Session menu, or the `⤿ 7 behind main`
-chip) or the update card — never on their own. The rebase ones, plus the opt-in `git fetch` above,
-are **the only commands in the app that write to a repository**; that opt-in `fetch` only updates
-remote-tracking refs and repository metadata, never your working tree or history:
+chip), the *Delete worktree…* sheet (a `WT` row's context menu, *Close and delete worktree* on
+⇧⌘W, or *Delete merged worktrees…* on a group), or the update card — never on their own. The
+rebase and worktree-delete ones, plus the opt-in `git fetch` above, are **the only commands in the
+app that write to a repository**; that opt-in `fetch` only updates remote-tracking refs and
+repository metadata, never your working tree or history, while the worktree delete removes a
+directory and a branch:
 
 | Command | Why |
 |---|---|
 | `git fetch --quiet origin <base>`, `git rev-list --left-right --count …` | opening the rebase sheet (⌥⌘R or the `⤿ 7 behind main` chip): fetch the base branch, then count what "Pulls in N commits" says. Skipped when the repo was fetched within the last minute (`GitRebase.swift`) |
 | `git status --porcelain=v2 -z`, `git rebase --autostash <base>`, and on a rebase conflict `git diff --name-only --diff-filter=U` then `git rebase --abort` | the sheet's *Rebase* button. Uncommitted tracked changes are stashed and put back; a rebase conflict counts the conflicted files, aborts and leaves the tree as it was. A timeout or a failure to launch git aborts without counting the conflicts. If the rebase itself goes through but reapplying the stash conflicts, the rebase stands instead: the tree keeps those conflict markers and the change stays in `git stash` rather than being aborted. Refused on a detached HEAD or while a rebase or merge is already in progress, and the button is off while the row's Claude is mid-turn (`GitRebase.swift`, `GitIntegration.swift`) |
+| `git worktree list --porcelain`, `git status --porcelain=v2 -z`, `git merge-base --is-ancestor <branch> <base>`, `git rev-list --count <base>..<branch>` | opening *Delete worktree…* or *Delete merged worktrees…*: whether the tree is dirty, whether the branch is fully merged into the base, and how many commits are not on it. Read-only, and **no fetch** — the base is only as fresh as your last one, and a stale base can only overstate the unmerged commits, which only makes the sheet more cautious (`WorktreeRemoval.swift`) |
+| `git worktree remove <path>` — `--force` only when you tick *Discard them and delete anyway* — then `git branch -d <branch>`, or `-D` only from the red *Delete branch too* button | the sheet's Delete button, *Close and delete worktree* on ⇧⌘W, or *Delete merged worktrees…* on a group. Both run in the repo's **main checkout**. Only for a directory that is exactly `<repo>/.claude/worktrees/<name>`, that `git worktree list` reports as a worktree of that repo, and that tkzmux itself opened as a `WT` row — never the main checkout, never a locked worktree, never the base branch, and never while the row's agent is working or a rebase is running on that worktree. If the branch delete is refused the worktree stays removed: nothing is rolled back, and nothing is pruned repo-wide (`WorktreeRemoval.swift`, `GitIntegration.swift`) |
 | `brew update`, then `brew upgrade --cask tkz0/tap/tkzmux` | "Update via Homebrew" — offered only when the running app is the cask's `/Applications/tkzmux.app` and `brew` is installed; everything brew prints goes to `~/Library/Logs/tkzmux/update.log` (`Sources/TkzApp/Update/UpgradeRunner.swift`) |
 | `/bin/sh -c 'while kill -0 <pid> …; do sleep 0.2; done; exec /usr/bin/open <app>'` | "Restart to update" — waits for tkzmux to quit, then reopens it (`UpdateRelaunch.swift`). Restarting closes every session's shell; the rows are kept and ⌘R resumes Claude |
 

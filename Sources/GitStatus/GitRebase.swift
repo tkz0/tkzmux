@@ -1,9 +1,10 @@
 // GitRebase — "rebase this branch onto main" (design 5a/5b, 2026-09-13).
 //
-// The one place in the app that runs git commands which *write* to a repo: a fetch of the base
-// branch and a `rebase --autostash` onto it. Everything else in this module is read-only by
+// One of the **two** places in the app that run git commands which *write* to a repo: a fetch of
+// the base branch and a `rebase --autostash` onto it. The other is `WorktreeRemoval` (TKZ-70),
+// which deliberately mirrors this file's shape. Everything else in this module is read-only by
 // construction (`GitProcess.git` even passes `--no-optional-locks`), and `docs/privacy.md` lists
-// these commands separately for that reason.
+// both sets of commands separately for that reason.
 //
 // Stateless and synchronous — `run` blocks for as long as git does (a fetch can take a while on a
 // slow link, hence its own timeout) — so it must be called off the main actor. `GitIntegration`

@@ -152,6 +152,38 @@ struct SidebarViewControllerTests {
         #expect(harness.outline.frame.height == expectedTotal)
     }
 
+    /// TKZ-70. The word exists to say "this worktree can go", so it is gated on the `WT` badge
+    /// and not on the PR alone — and on `showsWorktreeBadge`, which is what actually draws that
+    /// badge, so the two can never disagree on one line.
+    @Test("The merged word follows the PR state *and* the WT badge, case-insensitively")
+    func mergedWordTruthTable() throws {
+        let harness = Self.makeHarness()
+        let target = Fixture.sessionID(3)
+
+        // Session 3 sits in `…/.claude/worktrees/reporting`; session 0 is in the main checkout.
+        let mainCheckoutRow = Fixture.sessionID(0)
+
+        func model(_ id: SessionID, pr: PRInfo?) throws -> SidebarSessionRowModel {
+            harness.mutate { state in
+                state.updateLive(id) { $0.git = GitSummary(branch: "feature", pr: pr) }
+            }
+            let session = try #require(harness.store.state.sessions[id])
+            return SidebarRowAdapter.sessionModel(session, in: harness.store.state)
+        }
+
+        #expect(try model(target, pr: PRInfo(number: 12, state: "MERGED")).isMerged)
+        #expect(try !model(target, pr: PRInfo(number: 12, state: "OPEN")).isMerged)
+        #expect(try !model(target, pr: PRInfo(number: 12, state: nil)).isMerged)
+        #expect(try !model(target, pr: nil).isMerged)
+        // `gh` reports upper case; the statusline sidecar is written by another program.
+        #expect(try model(target, pr: PRInfo(number: 12, state: "merged")).isMerged)
+
+        // A merged PR on the main checkout is not an offer to delete anything.
+        let main = try model(mainCheckoutRow, pr: PRInfo(number: 12, state: "MERGED"))
+        #expect(!main.isWorktree)
+        #expect(!main.isMerged)
+    }
+
     @Test("A status flip notes no row heights; Claude naming a session notes exactly that row")
     func heightsAreRenotedOnlyWhenTheyChange() throws {
         let harness = Self.makeHarness()
