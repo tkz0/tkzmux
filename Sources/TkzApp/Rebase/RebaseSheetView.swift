@@ -9,13 +9,15 @@ import TkzCore
 @MainActor
 final class RebaseSheetView: NSView {
 
+    /// Aliases onto the family's geometry (`Sheets/GlassSheet.swift`), kept under this name so
+    /// the controller and the tests read the same as before.
     enum Metrics {
-        static let width: CGFloat = 318
-        static let padding: CGFloat = 14
-        static let topPadding: CGFloat = 13
-        static let bottomPadding: CGFloat = 12
-        static let cornerRadius: CGFloat = 11
-        static let buttonHeight: CGFloat = 27
+        static let width = GlassSheetMetrics.width
+        static let padding = GlassSheetMetrics.padding
+        static let topPadding = GlassSheetMetrics.topPadding
+        static let bottomPadding = GlassSheetMetrics.bottomPadding
+        static let cornerRadius = GlassSheetMetrics.cornerRadius
+        static let buttonHeight = GlassSheetMetrics.buttonHeight
     }
 
     private(set) var model: RebaseSheetModel?

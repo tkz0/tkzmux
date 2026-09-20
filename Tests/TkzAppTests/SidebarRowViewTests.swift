@@ -1048,6 +1048,61 @@ struct SidebarRowViewTests {
         #expect(header.nameTextLayer.frame.maxX <= header.addButton.frame.minX)
         #expect(header.layer?.sublayers?.count == 4, "edge, chevron, name, ＋ — nothing else")
     }
+
+    // MARK: The `merged` word (TKZ-70)
+
+    @Test("The merged word appears only when the model says so, after the WT badge")
+    func mergedWordIsConditionalAndSitsAfterTheBadge() {
+        var model = Self.sample
+        model.isMerged = false
+        let without = Self.sessionRow(model)
+        #expect(without.mergedTextLayer.isHidden)
+
+        model.isMerged = true
+        let row = Self.sessionRow(model)
+        #expect(!row.mergedTextLayer.isHidden)
+        #expect(row.mergedTextLayer.string as? String == "merged")
+        // Reading order: `⎇ branch  WT  merged`, all on one line.
+        #expect(row.mergedTextLayer.frame.minX >= row.worktreeBadgeLayer.frame.maxX)
+        #expect(row.mergedTextLayer.frame.minY == row.branchTextLayer.frame.minY)
+        #expect(row.mergedTextLayer.frame.maxX <= row.bounds.width)
+    }
+
+    /// The same token the status bar paints a merged `#418` chip with, in both presets — so the
+    /// strip and the sidebar say "merged" in one colour, and neither is a hardcoded hex.
+    @Test("The merged word uses the theme's merged-PR colour in every preset")
+    func mergedWordIsThemeDriven() {
+        var model = Self.sample
+        model.isMerged = true
+        for theme in Theme.allPresets {
+            let row = Self.sessionRow(model, theme: theme)
+            #expect(row.mergedTextLayer.foregroundColor == theme.prMerged.cgColor)
+        }
+        #expect(Theme.midnightIndigo.prMerged != Theme.light.prMerged)
+    }
+
+    @Test("A row can wrap to 59 pt purely because its PR turned merged")
+    func theMergedWordCountsTowardsTheWrap() {
+        var model = Self.sample
+        model.directory = "tkzmux"
+        model.isMerged = false
+        let width = SidebarMetrics.sidebarMinWidth
+        let without = SessionRowView.neededDetailWidth(for: model)
+        model.isMerged = true
+        let with = SessionRowView.neededDetailWidth(for: model)
+        #expect((with ?? 0) > (without ?? 0))
+
+        // And a row sitting just inside the limit without the word is pushed over it by the word.
+        var borderline = model
+        borderline.branch = String(repeating: "a", count: 18)
+        borderline.isMerged = false
+        if !SessionRowView.detailWraps(for: borderline, width: width) {
+            borderline.isMerged = true
+            if SessionRowView.detailWraps(for: borderline, width: width) {
+                #expect(SessionRowView.height(for: borderline, width: width) == 59)
+            }
+        }
+    }
 }
 
 

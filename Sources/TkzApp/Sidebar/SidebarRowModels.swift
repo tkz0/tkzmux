@@ -61,6 +61,15 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
     /// Drives the `WT` badge on the detail line.
     public var isWorktree: Bool
 
+    /// `true` when this row's pull request is merged **and** the row shows the `WT` badge: the
+    /// detail line then carries a quiet `merged` word after the badge (TKZ-70).
+    ///
+    /// Text, not a `SidebarBadgeLayer` — it is a fact about the branch, not a counter, and the
+    /// detail line already carries three badges. Gated on the badge because a merged PR on the
+    /// main checkout is not an offer to delete anything, and because the word and the badge must
+    /// never disagree on one line. See `SidebarRowAdapter.isMerged(_:)`.
+    public var isMerged: Bool
+
     /// Colour and pulse of the status dot. See `SidebarStatus`.
     public var status: SidebarStatus
 
@@ -128,6 +137,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         branch: String? = nil,
         directory: String? = nil,
         isWorktree: Bool = false,
+        isMerged: Bool = false,
         status: SidebarStatus = .idle,
         accountLabel: String? = nil,
         accountTooltip: String? = nil,
@@ -144,6 +154,7 @@ public struct SidebarSessionRowModel: Hashable, Sendable {
         self.branch = branch
         self.directory = directory
         self.isWorktree = isWorktree
+        self.isMerged = isMerged
         self.status = status
         self.accountLabel = accountLabel
         self.accountTooltip = accountTooltip

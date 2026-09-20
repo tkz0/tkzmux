@@ -59,6 +59,7 @@ public enum SidebarRowAdapter {
             branch: session.live?.git?.branch,
             directory: directory(for: session),
             isWorktree: session.showsWorktreeBadge,
+            isMerged: isMerged(session),
             status: status(of: session),
             accountLabel: accountLabel(for: session, in: state),
             accountTooltip: accountTooltip(for: session, in: state),
@@ -71,6 +72,24 @@ public enum SidebarRowAdapter {
             spendBadge: spendBadge(for: session, in: state),
             agentGlyph: agentGlyph(for: session, in: state)
         )
+    }
+
+    /// Whether the row's detail line carries the quiet `merged` word (TKZ-70): a worktree row
+    /// whose pull request `gh` last reported as merged.
+    ///
+    /// `showsWorktreeBadge`, not `isWorktree`: that derived property is what actually draws the
+    /// `WT` badge, so gating on it is what makes "the word and the badge always agree" true rather
+    /// than nearly true. A merged PR on a main-checkout row gets no word — the word exists to say
+    /// "this worktree can go", and there is nothing to delete there.
+    ///
+    /// The state is compared case-insensitively, as `GitIntegration.rowsNeedingPRRefresh` does:
+    /// `gh` reports upper case and the statusline sidecar is written by another program.
+    ///
+    /// Deliberately **PR only**, not "branch fully merged into the base": that fact needs a
+    /// `merge-base` call (`WorktreeRemoval.survey`) that a pure row model has no way to make, and
+    /// the ticket ties the word to the PR badge turning merged.
+    static func isMerged(_ session: Session) -> Bool {
+        session.showsWorktreeBadge && session.live?.git?.pr?.state?.uppercased() == "MERGED"
     }
 
     /// A one-letter badge naming `session`'s agent, or `nil` when the sidebar has nothing to
