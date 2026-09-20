@@ -338,7 +338,7 @@ struct SearchOverlayTests {
         row.layoutSubtreeIfNeeded()
 
         let allotted = CommandPaletteController.height(
-            of: .transcript(hit), presentation: .anchored)
+            of: .transcript(hit), presentation: .search)
         for label in row.subviews.compactMap({ $0 as? NSTextField }) {
             #expect(label.frame.height <= allotted, "a label taller than its row overdraws the next")
         }

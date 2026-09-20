@@ -1080,17 +1080,17 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     private func wirePalette() {
         palette.onActivate = { [weak self] result in
             guard let self else { return }
-            let wasAnchored = palette.presentation == .anchored
+            let wasSearch = palette.presentation == .search
             activate(result)
             // ⌘F's overlay hands the keyboard back to the terminal on the way out; ⇧⌘P's panel just
             // closes, because it is not covering the thing the user was typing into.
-            if wasAnchored { endSearch() } else { palette.dismiss() }
+            if wasSearch { endSearch() } else { palette.dismiss() }
         }
         // The sections that have to read something (transcripts, changed files) are filled from
         // here: the palette ranks what is already in memory synchronously, and these arrive when
         // they arrive.
         palette.onQueryChanged = { [weak self] query in
-            guard let self, palette.presentation == .anchored else { return }
+            guard let self, palette.presentation == .search else { return }
             guard !query.isEmpty else {
                 searchTask?.cancel()
                 searchTask = nil
@@ -4289,6 +4289,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Still unimplemented: `.reloadConfig`. Its id and chord stay in `ShortcutsTable`.
     private func registerMenuHandlers() {
         dispatcher.setHandler(.newSession) { [weak self] in self?.presentNewSessionMenu() }
+        // ⇧⌘N — the sidebar's dashed "＋ New group" button as a chord, so a group can be made
+        // with the sidebar hidden.
+        dispatcher.setHandler(.newGroup) { [weak self] in self?.presentNewGroupPanel() }
         // ⌘I — the activity feed. Registering this is what put Notifications back in the menu,
         // the palette and the cheat sheet.
         dispatcher.setHandler(.notifications) { [weak self] in self?.toggleActivityFeed() }

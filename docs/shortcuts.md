@@ -13,7 +13,8 @@ this table; nothing hard-codes a key equivalent.
 | Action id | Keys | What it does |
 |---|---|---|
 | `newSession` | ⌘N | Opens the group-scoped “＋ New session…” menu — from the selected group's sidebar row, or from under the title bar when the sidebar is hidden |
-| `searchSessions` | ⌘F | Opens the search overlay at the window's top-right and puts the caret in it (see below). Sessions, transcripts and changed files, in one list |
+| `newGroup` | ⇧⌘N | Asks for a name and makes a group. It starts as a bucket — *Set Repo…* on its context menu, or its first *New session in…*, attaches a repo. The same prompt as the dashed ＋ at the foot of the sidebar, but it does not need the sidebar shown |
+| `searchSessions` | ⌘F | Opens the search overlay in the middle of the window and puts the caret in it (see below). Sessions, transcripts and changed files, in one list |
 | `commandPalette` | ⇧⌘P | Palette, everything (sessions, groups, commands) |
 | `toggleSidebar` | ⌘B | Show/hide the sidebar |
 | `toggleTheme` | — | Flip between the dark theme and its light twin. Also the ☀/☾ button at the right of the toolbar; the choice is remembered across launches |
@@ -68,9 +69,11 @@ commands. An old override for one of those ids still parses and is simply never 
 
 ## Inside the search overlay (⌘F, design 2c.6)
 
-The overlay is a child window hung from the main window's top-right corner, with its own search
-field, the scope chips above the list and the key hints below it. It owns the keyboard while it is
-up. These keys are **not** in the shortcuts table — they exist only while it is on screen.
+The overlay is a child window centred over the main window — the same place the ⌘-hold cheat sheet
+puts its card — with its own search field, the scope chips above the list and the key hints below
+it. It is 560 pt wide and as tall as its rows want, between 120 and 560 pt. It owns the keyboard
+while it is up. These keys are **not** in the shortcuts table — they exist only while it is on
+screen.
 
 | Keys | What it does |
 |---|---|
@@ -97,9 +100,12 @@ and every path.
 “＋ New session…” and a “Search sessions…” field used to sit in the 48 pt bar. The field was a wide,
 permanently-empty box — it cost the centred title its room and spent most of its life showing a
 placeholder — so the 2026-09-20 GUI pass took both out and gave the search its own field inside the
-overlay it was opening anyway. Neither command lost a way in: ⌘N and ⌘F still run them, the File
-menu lists both, ⇧⌘P finds them by name, the ⌘-hold cheat sheet prints their chords, and a group's
-sidebar row keeps its own ＋. Rebind either in `state.json` (*Overrides*, below).
+overlay it was opening anyway. The overlay was centred in the same pass: hanging it from the
+top-right corner only ever made sense as a dropdown under the field that opened it.
+
+Neither command lost a way in: ⌘N and ⌘F still run them, *New Session…* is in the File menu and
+*Search Sessions…* in View, ⇧⌘P finds them by name, the ⌘-hold cheat sheet prints their chords,
+and a group's sidebar row keeps its own ＋. Rebind either in `state.json` (*Overrides*, below).
 
 ## Overrides
 

@@ -15,9 +15,9 @@
 // Keyboard: the search field keeps first responder, so ↑/↓/Return/Escape arrive as
 // `doCommandBy:` selectors on the field editor and are forwarded here.
 //
-// Two placements (``Presentation``), because the two entry points want different shapes. ⇧⌘P
-// centres a plain list over the window. ⌘F (design 2c.6) hangs the same panel from the window's
-// top-right as a child window with the chip bar, the four sections and the key-hint footer. Both
+// Two shapes (``Presentation``), because the two entry points want different content. ⇧⌘P is a
+// plain flat list. ⌘F (design 2c.6) adds the chip bar, the four sections and the key-hint footer.
+// Both are centred over the window — the same place the ⌘-hold cheat sheet puts its card — and both
 // own the keyboard through the panel's own field: the toolbar no longer carries a search box, so
 // there is nothing left to relay keys from (GUI pass 2026-09-20).
 
@@ -78,21 +78,24 @@ public final class CommandPaletteController: NSObject {
 
     /// Where the panel sits, and therefore who owns the keyboard.
     ///
-    /// * ``centred`` — ⇧⌘P. A plain, flat list over the middle of the window.
-    /// * ``anchored`` — ⌘F (design 2c.6). The panel hangs from the window's top-right as a child
-    ///   window, bracketed by the scope chips and the key-hint footer.
+    /// * ``centred`` — ⇧⌘P. A plain, flat list of sessions, groups and commands.
+    /// * ``search`` — ⌘F (design 2c.6). The same panel with the scope chips above the list and the
+    ///   key-hint footer below it, and the transcript and changed-file sections in it.
     ///
-    /// Either way the panel is key and its own `NSSearchField` is first responder.
+    /// Both sit in the middle of the window and both are key, with the panel's own `NSSearchField`
+    /// first responder. `search` used to hang from the window's top-right corner instead; it was
+    /// centred on 2026-09-20 to match the ⌘-hold cheat sheet, which is the only other thing the app
+    /// throws over the terminal.
     public enum Presentation: Sendable {
         case centred
-        case anchored
+        case search
     }
 
-    /// 2c.6 geometry: the overlay is 560 pt wide and hangs 14 pt from the window's right edge,
-    /// 44 pt below its top — i.e. just under the 48 pt toolbar, overlapping it by 4 pt.
-    public static let anchoredWidth: CGFloat = 560
-    public static let anchoredInsetRight: CGFloat = 14
-    public static let anchoredInsetTop: CGFloat = 44
+    /// 2c.6 geometry: the overlay is 560 pt wide, and as tall as its rows want between these two
+    /// bounds. It is a child of the window it searches, so it is centred on *that*, not the screen.
+    public static let searchWidth: CGFloat = 560
+    public static let searchMinHeight: CGFloat = 120
+    public static let searchMaxHeight: CGFloat = 560
 
     public var theme: Theme { didSet { if theme != oldValue { applyTheme() } } }
     public private(set) var mode: PaletteDataSource.Mode
@@ -100,7 +103,7 @@ public final class CommandPaletteController: NSObject {
     /// The state the sections are assembled from — the Actions row needs group names, which the
     /// pre-folded `PaletteDataSource` items no longer carry.
     public private(set) var state: AppState
-    /// Which chip is lit (design 2c.6). Only the anchored overlay draws the chips; ⇧⌘P ignores it.
+    /// Which chip is lit (design 2c.6). Only ⌘F's overlay draws the chips; ⇧⌘P ignores it.
     public private(set) var scope: SearchScope = .all
     public private(set) var groupFilter: SearchGroupFilter = .allGroups
     /// Sections the user expanded with "Show N more…", cleared whenever the query changes.
@@ -130,7 +133,7 @@ public final class CommandPaletteController: NSObject {
     private var scrollView: NSScrollView?
     private var chipBar: SearchChipBarView?
     private var footer: SearchFooterView?
-    /// Swapped when the chip bar slots in between the field and the list (``Presentation/anchored``).
+    /// Swapped when the chip bar slots in between the field and the list (``Presentation/search``).
     private var scrollTopToField: NSLayoutConstraint?
     private var scrollTopToChips: NSLayoutConstraint?
     /// The chip bar sits under the field when it is shown, and is parked at the top edge — behind
@@ -140,10 +143,10 @@ public final class CommandPaletteController: NSObject {
     private var scrollBottomToEffect: NSLayoutConstraint?
     private var scrollBottomToFooter: NSLayoutConstraint?
     private(set) var presentation: Presentation = .centred
-    /// The window the anchored panel is a child of, so it can be detached on dismiss.
+    /// The window the overlay is a child of, so it can be detached on dismiss.
     private weak var anchorWindow: NSWindow?
     private var anchorObservers: [NSObjectProtocol] = []
-    /// Closes the anchored overlay when focus goes back to the window behind it.
+    /// Closes the search overlay when focus goes back to the window behind it.
     private var resignKeyObserver: NSObjectProtocol?
 
     /// The actions the command section may list — `MainWindowController` sets it from
@@ -223,7 +226,7 @@ public final class CommandPaletteController: NSObject {
 
     private func rebuildRows(preservingSelection: Bool = false) {
         let previous = preservingSelection ? selectedIndex.map { rows[$0].identity } : nil
-        rows = presentation == .anchored ? anchoredRows() : centredRows()
+        rows = presentation == .search ? searchRows() : centredRows()
 
         if let previous, let index = rows.firstIndex(where: { $0.identity == previous }) {
             selectedIndex = index
@@ -232,7 +235,7 @@ public final class CommandPaletteController: NSObject {
         }
         chipBar?.update(scope: scope, filterTitle: groupFilter.title(in: state), theme: theme)
         reloadTable()
-        layoutAnchoredIfNeeded()
+        layoutSearchPanelIfNeeded()
     }
 
     /// ⇧⌘P: one flat run of sections, headers only when there is more than one to tell apart.
@@ -247,9 +250,9 @@ public final class CommandPaletteController: NSObject {
         return rows
     }
 
-    /// The toolbar overlay (2c.6): up to four sections, each headed and each truncated to a preview
+    /// ⌘F's overlay (2c.6): up to four sections, each headed and each truncated to a preview
     /// with a `Show N more…` tail while the `All` chip is lit.
-    private func anchoredRows() -> [Row] {
+    private func searchRows() -> [Row] {
         var rows: [Row] = []
 
         if scope.includesSessions {
@@ -425,15 +428,15 @@ public final class CommandPaletteController: NSObject {
         if let searchField { panel.makeFirstResponder(searchField) }
     }
 
-    /// ⌘F — the search overlay (design 2c.6): the same panel hung from `parent`'s top-right
-    /// corner as a child window, with the scope chips, the four sections and the key-hint footer.
+    /// ⌘F — the search overlay (design 2c.6): the same panel centred over `parent` as a child
+    /// window, with the scope chips, the four sections and the key-hint footer.
     ///
     /// Idempotent while it is up: the chord pressed again puts the caret back in the field rather
     /// than throwing the query away. `update` re-folds every session's searchable text (see
     /// `PaletteDataSource`), so it only runs when the overlay is actually being opened.
     public func presentSearch(over parent: NSWindow, state: AppState) {
-        let alreadyUp = presentation == .anchored && panel?.isVisible == true
-        presentation = .anchored
+        let alreadyUp = presentation == .search && panel?.isVisible == true
+        presentation = .search
         if !alreadyUp {
             update(state: state, mode: .sessions)
             query = ""
@@ -447,7 +450,7 @@ public final class CommandPaletteController: NSObject {
             searchField?.placeholderString = Self.searchPlaceholder
         }
         attach(to: parent)
-        layoutAnchored()
+        layoutSearchPanel()
         // Ordered in first, made key second. `hidesOnDeactivate` panels are ordered *out* by a
         // `makeKeyAndOrderFront` that arrives while the app is not active, which is exactly the
         // state a headless test process is in.
@@ -460,22 +463,25 @@ public final class CommandPaletteController: NSObject {
     /// toolbar field gone this text is the only place the overlay says what it searches.
     static let searchPlaceholder = "Search sessions, transcripts and changed files\u{2026}"
 
-    /// 2c.6: 560 pt wide, pinned 14 pt from the host's right edge and 44 pt below its top. Pure
-    /// geometry on rects so it is testable with no window.
-    static func anchoredFrame(host: NSRect, contentHeight: CGFloat) -> NSRect {
-        let width = anchoredWidth
-        let height = min(max(contentHeight, 120), 560)
+    /// 560 pt wide, as tall as its rows want, centred on `host`. Pure geometry on rects so it is
+    /// testable with no window.
+    ///
+    /// Rounded to whole points: a panel on a half-pixel draws its 1 pt accent hairline blurred, and
+    /// an odd host width is enough to land it there.
+    static func searchFrame(host: NSRect, contentHeight: CGFloat) -> NSRect {
+        let width = searchWidth
+        let height = min(max(contentHeight, searchMinHeight), searchMaxHeight)
         return NSRect(
-            x: host.maxX - anchoredInsetRight - width,
-            y: host.maxY - anchoredInsetTop - height,
+            x: (host.midX - width / 2).rounded(),
+            y: (host.midY - height / 2).rounded(),
             width: width,
             height: height)
     }
 
     /// The height the current rows want, including the list's own padding.
-    var anchoredContentHeight: CGFloat {
+    var searchContentHeight: CGFloat {
         let rowsHeight = rows.reduce(CGFloat(0)) { total, row in
-            total + Self.height(of: row, presentation: .anchored) + 2
+            total + Self.height(of: row, presentation: .search) + 2
         }
         // The field, the chip bar and the footer hint bar bracket the list (2c.6).
         return rowsHeight + 16 + fieldBlockHeight + SearchChipBarView.height + SearchFooterView.height
@@ -488,34 +494,34 @@ public final class CommandPaletteController: NSObject {
         (searchField?.intrinsicContentSize.height ?? 24) + 22
     }
 
-    private func layoutAnchored() {
-        guard presentation == .anchored, let panel, let host = anchorWindow?.frame else { return }
-        panel.setFrame(Self.anchoredFrame(host: host, contentHeight: anchoredContentHeight), display: true)
+    private func layoutSearchPanel() {
+        guard presentation == .search, let panel, let host = anchorWindow?.frame else { return }
+        panel.setFrame(Self.searchFrame(host: host, contentHeight: searchContentHeight), display: true)
     }
 
-    private func layoutAnchoredIfNeeded() {
-        guard presentation == .anchored, panel?.isVisible == true else { return }
-        layoutAnchored()
+    private func layoutSearchPanelIfNeeded() {
+        guard presentation == .search, panel?.isVisible == true else { return }
+        layoutSearchPanel()
     }
 
     /// Swaps the panel between ⇧⌘P's shape (own field, no chrome) and 2c.6's (chip bar, key hints,
     /// accent border) without rebuilding anything.
     private func applyPresentation() {
-        let anchored = presentation == .anchored
-        chipBar?.isHidden = !anchored
-        footer?.isHidden = !anchored
+        let isSearch = presentation == .search
+        chipBar?.isHidden = !isSearch
+        footer?.isHidden = !isSearch
         // Every pair is torn down before the replacements go up. Doing it the other way round
         // leaves both halves of a pair active for an instant, which is an unsatisfiable layout and
         // gets one of them broken and logged.
-        let (on, off): ([NSLayoutConstraint?], [NSLayoutConstraint?]) = anchored
+        let (on, off): ([NSLayoutConstraint?], [NSLayoutConstraint?]) = isSearch
             ? ([chipsTopToField, scrollTopToChips, scrollBottomToFooter],
                [chipsTopToEffect, scrollTopToField, scrollBottomToEffect])
             : ([chipsTopToEffect, scrollTopToField, scrollBottomToEffect],
                [chipsTopToField, scrollTopToChips, scrollBottomToFooter])
         NSLayoutConstraint.deactivate(off.compactMap { $0 })
         NSLayoutConstraint.activate(on.compactMap { $0 })
-        effectView?.layer?.cornerRadius = anchored ? 12 : 10
-        effectView?.layer?.borderWidth = anchored ? 1 : 0
+        effectView?.layer?.cornerRadius = isSearch ? 12 : 10
+        effectView?.layer?.borderWidth = isSearch ? 1 : 0
         applyTheme()
     }
 
@@ -530,7 +536,7 @@ public final class CommandPaletteController: NSObject {
         let centre = NotificationCenter.default
         for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
             let token = centre.addObserver(forName: name, object: parent, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.layoutAnchoredIfNeeded() }
+                MainActor.assumeIsolated { self?.layoutSearchPanelIfNeeded() }
             }
             anchorObservers.append(token)
         }
@@ -638,7 +644,7 @@ public final class CommandPaletteController: NSObject {
         effect.addSubview(scroll)
         effect.addSubview(hints)
         panel.contentView = effect
-        // The field is always at the top. The chip bar slots in under it in the anchored overlay,
+        // The field is always at the top. The chip bar slots in under it in ⌘F's overlay,
         // and is parked behind it (hidden) otherwise, so the list hangs off whichever of the two is
         // the last visible thing above it (``applyPresentation``).
         let scrollTopToField = scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 10)
@@ -677,7 +683,7 @@ public final class CommandPaletteController: NSObject {
             forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.presentation == .anchored, panel.isVisible else { return }
+                guard let self, self.presentation == .search, panel.isVisible else { return }
                 self.dismiss()
             }
         }
@@ -753,7 +759,7 @@ extension CommandPaletteController: NSSearchFieldDelegate {
         textView: NSTextView,
         doCommandBy commandSelector: Selector
     ) -> Bool {
-        let anchored = presentation == .anchored
+        let isSearch = presentation == .search
         switch commandSelector {
         case #selector(NSResponder.moveDown(_:)):
             moveSelection(by: 1)
@@ -764,7 +770,7 @@ extension CommandPaletteController: NSSearchFieldDelegate {
         case #selector(NSResponder.insertNewline(_:)):
             // Cocoa sends the same editor command for ↵ and ⌘↵; the live event is what tells them
             // apart, and 2c.6 gives them different jobs.
-            if anchored, NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+            if isSearch, NSApp.currentEvent?.modifierFlags.contains(.command) == true {
                 activateActionRow()
             } else {
                 activateSelection()
@@ -773,19 +779,19 @@ extension CommandPaletteController: NSSearchFieldDelegate {
         case #selector(NSResponder.insertTab(_:)):
             // ⇥ is consumed either way: letting it through walks the responder chain out of the
             // field, which is never what a half-typed query wants.
-            if anchored { cycleScope(by: 1) }
+            if isSearch { cycleScope(by: 1) }
             return true
         case #selector(NSResponder.insertBacktab(_:)):
-            if anchored { cycleScope(by: -1) }
+            if isSearch { cycleScope(by: -1) }
             return true
         case #selector(NSResponder.moveRight(_:)):
             // ← / → take the chips only in the overlay that draws them; in ⇧⌘P they move the
             // caret, as does ⌥← / ⌥→ and Home/End everywhere.
-            guard anchored else { return false }
+            guard isSearch else { return false }
             cycleScope(by: 1)
             return true
         case #selector(NSResponder.moveLeft(_:)):
-            guard anchored else { return false }
+            guard isSearch else { return false }
             cycleScope(by: -1)
             return true
         case #selector(NSResponder.cancelOperation(_:)):
@@ -819,7 +825,7 @@ extension CommandPaletteController: NSTableViewDataSource, NSTableViewDelegate {
         switch row {
         case .header: 22
         case .more: 24
-        case .result: presentation == .anchored ? 30 : 40
+        case .result: presentation == .search ? 30 : 40
         case .transcript, .file, .action: 28
         }
     }
@@ -840,7 +846,7 @@ extension CommandPaletteController: NSTableViewDataSource, NSTableViewDelegate {
             label.textColor = theme.foregroundDim.nsColor
             return padded(label, leading: 12, top: 4)
         case .result(let result):
-            return presentation == .anchored
+            return presentation == .search
                 ? SearchSessionRowView(result: result, state: state, theme: theme)
                 : PaletteRowView(result: result, theme: theme)
         case .transcript(let hit):

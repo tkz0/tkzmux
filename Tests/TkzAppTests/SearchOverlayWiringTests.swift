@@ -17,21 +17,31 @@ struct SearchOverlayWiringTests {
 
     // MARK: Geometry
 
-    @Test func overlayHangsFromTheWindowsTopRightCorner() {
+    /// It hung from the window's top-right corner until 2026-09-20, under a toolbar field that no
+    /// longer exists. It is centred now, like the ⌘-hold cheat sheet's card.
+    @Test func overlayIsCentredOnTheWindow() {
         let host = NSRect(x: 100, y: 200, width: 1240, height: 820)
-        let frame = CommandPaletteController.anchoredFrame(host: host, contentHeight: 300)
+        let frame = CommandPaletteController.searchFrame(host: host, contentHeight: 300)
 
         #expect(frame.width == 560)
         #expect(frame.height == 300)
-        // 14 pt in from the right edge, 44 pt down from the top — design 2c.6.
-        #expect(frame.maxX == host.maxX - 14)
-        #expect(frame.maxY == host.maxY - 44)
+        #expect(frame.midX == host.midX)
+        #expect(frame.midY == host.midY)
+    }
+
+    /// An odd host width must not leave the panel on a half-pixel, which draws its 1 pt accent
+    /// hairline blurred.
+    @Test func theCentredFrameLandsOnWholePoints() {
+        let host = NSRect(x: 0, y: 0, width: 1241, height: 823)
+        let frame = CommandPaletteController.searchFrame(host: host, contentHeight: 301)
+        #expect(frame.origin.x == frame.origin.x.rounded())
+        #expect(frame.origin.y == frame.origin.y.rounded())
     }
 
     @Test func overlayHeightIsClampedToTheDesignsBounds() {
         let host = NSRect(x: 0, y: 0, width: 1240, height: 820)
-        #expect(CommandPaletteController.anchoredFrame(host: host, contentHeight: 10).height == 120)
-        #expect(CommandPaletteController.anchoredFrame(host: host, contentHeight: 4000).height == 560)
+        #expect(CommandPaletteController.searchFrame(host: host, contentHeight: 10).height == 120)
+        #expect(CommandPaletteController.searchFrame(host: host, contentHeight: 4000).height == 560)
     }
 
     // MARK: Opening
@@ -45,7 +55,7 @@ struct SearchOverlayWiringTests {
 
         controller.beginSearch()
         #expect(controller.palette.isPresented)
-        #expect(controller.palette.presentation == .anchored)
+        #expect(controller.palette.presentation == .search)
         #expect(controller.palette.query == "")
         let field = try #require(controller.palette.searchFieldForTesting)
         #expect(!field.isHidden, "with no toolbar field left, the overlay has to draw its own")
@@ -79,7 +89,7 @@ struct SearchOverlayWiringTests {
 
         #expect(controller.palette.isPresented, "the panel must actually be on screen")
         #expect(!controller.palette.results.isEmpty)
-        #expect(controller.palette.presentation == .anchored)
+        #expect(controller.palette.presentation == .search)
         // Every hit is a session: ⌘F's surface is not the command palette.
         #expect(controller.palette.results.allSatisfy { $0.item.kind == .session })
         controller.endSearch()

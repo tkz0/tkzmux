@@ -50,7 +50,8 @@ live on the keyboard instead, which is where they were always faster:
 | Keys | |
 |---|---|
 | ⌘N | New session, in the selected group. A group's sidebar row has its own ＋ if you would rather click |
-| ⌘F | Search — sessions, transcripts and changed files, in one overlay. ⇥ narrows it to one of those; ↵ opens the hit; ⌘↵ starts a new session with what you typed as the prompt |
+| ⇧⌘N | New group. It starts as a bucket; *Set Repo…* on its context menu attaches a repo |
+| ⌘F | Search — sessions, transcripts and changed files, in one overlay in the middle of the window. ⇥ narrows it to one of those; ↵ opens the hit; ⌘↵ starts a new session with what you typed as the prompt |
 | ⇧⌘P | Command palette: every command, session and group by name |
 | ⌘B | Show/hide the sidebar |
 | ⌘T / ⌘D / ⇧⌘D | New terminal in this session / split side by side / split stacked |
