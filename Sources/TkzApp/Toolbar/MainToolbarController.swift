@@ -319,8 +319,6 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
 
     // MARK: Test / assembly access
 
-    /// The live segmented control, once the toolbar has vended the cluster item.
-    var viewClusterControl: NSSegmentedControl? { segmented }
     /// The live search field, once the toolbar has vended the search item.
     var searchField: NSSearchField? { searchItem?.searchField }
     /// The live centred title label, once the toolbar has vended the title item.

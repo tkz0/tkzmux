@@ -432,7 +432,6 @@ final class PromptCardView: NSView {
     var promptTextViewForTesting: NSTextView { promptView }
     var recapTextViewForTesting: NSTextView { recapView }
     var promptMetaForTesting: String { promptMeta.stringValue }
-    var recapMetaForTesting: String { recapMeta.stringValue }
     var copyPromptButtonForTesting: NSButton { copyPromptButton }
     var copyRecapButtonForTesting: NSButton { copyRecapButton }
 }

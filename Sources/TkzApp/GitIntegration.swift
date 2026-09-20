@@ -627,5 +627,4 @@ public final class GitIntegration {
 
     /// Test access.
     var isOriginCheckArmed: Bool { originTimer != nil }
-    var lastFetchDates: [String: Date] { lastFetchAt }
 }

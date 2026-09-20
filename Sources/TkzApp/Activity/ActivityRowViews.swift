@@ -223,8 +223,6 @@ final class ActivityThreadRowView: NSTableCellView {
         guard row.olderCount > 0 else { return "" }
         return row.expanded ? "\u{2212} older" : "+\(row.olderCount) older"
     }
-
-    var olderButtonForTesting: NSButton { olderButton }
 }
 
 // MARK: - Folded
