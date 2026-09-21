@@ -181,10 +181,49 @@ struct SettingsWindowTests {
         ])
         let both = SettingsModel.statuslineRows(state: state, environment: environment)
         #expect(both.map(\.id) == [.statusline(accountKey: Account.defaultKey(for: .claude)), .statusline(accountKey: "claude-work")])
-        #expect(both.map(\.title) == ["Status line integration \u{00B7} Private", "Status line integration \u{00B7} Work"])
+        #expect(both.map(\.title) == [
+            "Status line integration \u{00B7} Private (claude)",
+            "Status line integration \u{00B7} Work (claude-work)",
+        ])
         #expect(both[0].control == .button(title: "Remove\u{2026}", destructive: false))
         #expect(both[1].control == .button(title: "Configure\u{2026}", destructive: false))
         #expect(both[1].detail.contains("keeps running"))
+    }
+
+    /// Two config dirs signed into the same organisation resolve to the same label — the reason
+    /// the row names an account by key as well. Without it these two rows are the same sentence
+    /// twice, distinguishable only by a path buried in the body text.
+    @Test("Status line: two accounts sharing a label still get titles that tell them apart")
+    func statuslineRowsDisambiguateASharedLabel() {
+        var state = AppState.fixture
+        state.accounts = [
+            Account.defaultKey(for: .claude): Account(
+                key: Account.defaultKey(for: .claude), configDir: "/h/.claude", label: "Acme Inc"),
+            "claude-alt": Account(key: "claude-alt", configDir: "/h/.claude-alt", label: "Acme Inc"),
+        ]
+        let rows = SettingsModel.statuslineRows(state: state, environment: .init())
+        #expect(rows.map(\.title) == [
+            "Status line integration \u{00B7} Acme Inc (claude)",
+            "Status line integration \u{00B7} Acme Inc (claude-alt)",
+        ])
+        #expect(Set(rows.map(\.title)).count == rows.count)
+    }
+
+    /// The other half of the same rule: an account nobody has named is its key, and the key is not
+    /// then printed twice.
+    @Test("Status line: an unnamed account is titled by its key alone")
+    func statuslineRowsNameAnUnnamedAccountByItsKey() {
+        var state = AppState.fixture
+        state.accounts = [
+            Account.defaultKey(for: .claude): Account(
+                key: Account.defaultKey(for: .claude), configDir: "/h/.claude", label: "claude"),
+            "claude-alt": Account(key: "claude-alt", configDir: "/h/.claude-alt", label: "claude-alt"),
+        ]
+        let rows = SettingsModel.statuslineRows(state: state, environment: .init())
+        #expect(rows.map(\.title) == [
+            "Status line integration \u{00B7} claude",
+            "Status line integration \u{00B7} claude-alt",
+        ])
     }
 
     @Test("Statusline sentence names whichever agent the environment says, not a hard-coded product")
@@ -247,7 +286,10 @@ struct SettingsWindowTests {
         // still only names an account when there is more than one — same rule as `statuslineRows`.
         state.setAccount(Account(key: "codex-work", configDir: "/h/.codex-work", label: "Work", agent: .codex))
         let both = SettingsModel.hooksRows(state: state, environment: environment)
-        #expect(both.map(\.title) == ["Hooks integration \u{00B7} Codex", "Hooks integration \u{00B7} Work"])
+        #expect(both.map(\.title) == [
+            "Hooks integration \u{00B7} Codex (codex)",
+            "Hooks integration \u{00B7} Work (codex-work)",
+        ])
     }
 
     @Test("Hooks: producer states read the same way status line's do, plus config.toml's overlap")

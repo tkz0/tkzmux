@@ -256,8 +256,7 @@ public enum SidebarRowAdapter {
     public static func accountTooltip(for session: Session, in state: AppState) -> String? {
         guard session.accountKey != Account.defaultKey(for: session.agent) else { return nil }
         guard let account = state.accounts[session.accountKey] else { return session.accountKey }
-        let name = account.label == account.key ? account.key : "\(account.label) (\(account.key))"
-        return "\(name) \u{2014} \(account.configDir)"
+        return "\(account.qualifiedName) \u{2014} \(account.configDir)"
     }
 
     /// **Drop a leading word equal to the agent's own name, then take the first remaining word**,
