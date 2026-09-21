@@ -266,6 +266,17 @@ struct PromptCardTests {
         // fired late. Assert the watch exists before waiting on it.
         #expect(controller.isWatchingForTesting, "no watch was opened, so nothing could re-read")
 
+        // Key status is process-wide, and Swift Testing runs this target's suites in parallel: any
+        // other `@MainActor` suite that brings up a window takes key from this panel, which is a
+        // resign for a *pinned* card and so dismisses it — cancelling the debounce timer that had
+        // already been armed, a few milliseconds before it would have fired. The card was doing
+        // exactly what it should; the test was the thing depending on global state.
+        //
+        // Detaching the delegate drops only that coupling. `windowDidResignKey` is the controller's
+        // one delegate method, dismissal-on-resign has its own test ("Escape on the panel
+        // dismisses…"), and neither the watch nor the re-read path goes anywhere near it.
+        controller.panelForTesting?.delegate = nil
+
         let handle = try FileHandle(forWritingTo: transcript)
         try handle.seekToEnd()
         try handle.write(contentsOf: Data("{\"type\":\"system\"}\n".utf8))
