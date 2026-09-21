@@ -121,6 +121,10 @@ import Testing
         let accounts = ClaudeAdapter().discoverAccounts(home: home, fileManager: .default)
         #expect(accounts.first { $0.key == "claude" }?.label == "Personal")
         #expect(accounts.first { $0.key == "claude-work" }?.label == "claude-work")
+        // Which of the two names a human wrote is what decides whether a usage snapshot may later
+        // replace it, so the overlay hit has to be recorded and not just applied.
+        #expect(accounts.first { $0.key == "claude" }?.labelIsConfigured == true)
+        #expect(accounts.first { $0.key == "claude-work" }?.labelIsConfigured == false)
     }
 
     @Test func aMissingLabelsFileYieldsNoOverlayRatherThanThrowing() throws {

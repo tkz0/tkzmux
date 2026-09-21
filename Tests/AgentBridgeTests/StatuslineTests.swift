@@ -72,10 +72,14 @@ enum StatuslineTestSupport {
         process.standardOutput = output
         process.standardError = errors
         try process.run()
-        DispatchQueue.global().async {
-            if !stdin.isEmpty { input.fileHandleForWriting.write(Data(stdin.utf8)) }
-            try? input.fileHandleForWriting.close()
-        }
+        // Written and closed on *this* thread, before a byte of output is read. The dispatched
+        // write this replaced deadlocked once the suite grew: every running test parks its own
+        // thread in `readDataToEndOfFile` below, and with enough of them in flight the queued
+        // closes never get a thread to run on — so no child ever sees EOF on stdin, and
+        // `readStdin` blocks forever. Safe because every payload here is a few KB against a
+        // 64 KiB pipe buffer; a larger one would need the write back on a thread of its own.
+        if !stdin.isEmpty { input.fileHandleForWriting.write(Data(stdin.utf8)) }
+        try? input.fileHandleForWriting.close()
         let out = output.fileHandleForReading.readDataToEndOfFile()
         let err = errors.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
@@ -257,6 +261,166 @@ enum StatuslineTestSupport {
             atPath: support.appendingPathComponent("statusline").path)) ?? [])
         #expect(entries.contains("usage-claude.json"))
         #expect(entries.contains("usage-claude-work.json"))
+    }
+
+    // MARK: Account identity
+
+    /// The account block is resolved from the config dir's own identity file and then cached in
+    /// the sidecar, because that file is hundreds of kilobytes and this runs every few seconds.
+    ///
+    /// The cache is what these cover. It used to have no expiry, so the first name a config dir
+    /// was ever seen under stayed on it for good — and a config dir signed out and back in as
+    /// somebody else is ordinary, not exotic. Every test here drives the real binary against a
+    /// throwaway config dir.
+    private static func identityDirectory(
+        _ label: String, organization: String, email: String, uuid: String,
+        organizationType: String = "claude_team", identity: Bool = true
+    ) throws -> URL {
+        let dir = try StatuslineTestSupport.tempDirectory(label)
+            .appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        guard identity else { return dir }
+        let body: [String: Any] = [
+            "oauthAccount": [
+                "emailAddress": email,
+                "organizationName": organization,
+                "accountUuid": uuid,
+                "organizationType": organizationType,
+                "organizationRateLimitTier": "default_claude_max_5x",
+            ]
+        ]
+        try JSONSerialization.data(withJSONObject: body)
+            .write(to: dir.appendingPathComponent(".claude.json"))
+        return dir
+    }
+
+    /// A `usage-claude.json` carrying nothing but an account block. It deliberately has no windows,
+    /// so the run that follows always has something new to write — `shouldWrite` ignores the
+    /// account block precisely so that a rename alone cannot cause churn.
+    private static func seedUsage(_ support: URL, account: [String: Any]) throws {
+        let dir = support.appendingPathComponent("statusline", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let body: [String: Any] = ["updated_at": "2020-01-01T00:00:00.000Z", "account": account]
+        try JSONSerialization.data(withJSONObject: body)
+            .write(to: dir.appendingPathComponent("usage-claude.json"))
+    }
+
+    private func accountBlock(_ support: URL) throws -> [String: Any] {
+        let usage = try StatuslineTestSupport.json(
+            at: support.appendingPathComponent("statusline/usage-claude.json"))
+        return usage["account"] as? [String: Any] ?? [:]
+    }
+
+    @Test func theNameAndPlanComeFromTheConfigDirsOwnIdentity() throws {
+        let support = try StatuslineTestSupport.tempDirectory("identity")
+        let dir = try Self.identityDirectory(
+            "identity-home", organization: "Acme AB", email: "a@acme.test", uuid: "uuid-acme")
+        _ = try runProducer(
+            support: support, configDir: dir.path, stdin: StatuslineTestSupport.fullPayload)
+
+        let account = try accountBlock(support)
+        #expect(account["label"] as? String == "Acme AB")
+        #expect(account["plan"] as? String == "Team 5x")
+        #expect(account["uuid"] as? String == "uuid-acme")
+        #expect(account["config_dir"] as? String == dir.path)
+        // Stamped, so the next run knows how old this answer is.
+        #expect(account["resolved_at"] as? Double != nil)
+    }
+
+    /// A personal plan's org is auto-named `<email>'s Organization`, which says nothing.
+    @Test func aPersonalOrgIsNamedByItsEmailInstead() throws {
+        let support = try StatuslineTestSupport.tempDirectory("identity-personal")
+        let dir = try Self.identityDirectory(
+            "personal-home", organization: "solo@example.test's Organization",
+            email: "solo@example.test", uuid: "uuid-solo", organizationType: "claude_max")
+        _ = try runProducer(
+            support: support, configDir: dir.path, stdin: StatuslineTestSupport.fullPayload)
+        #expect(try accountBlock(support)["label"] as? String == "solo")
+    }
+
+    @Test func aFreshlyResolvedNameIsReusedWithoutRereadingTheIdentity() throws {
+        let support = try StatuslineTestSupport.tempDirectory("identity-cached")
+        let dir = try Self.identityDirectory(
+            "cached-home", organization: "Acme AB", email: "a@acme.test", uuid: "uuid-acme")
+        try Self.seedUsage(support, account: [
+            "key": "claude", "label": "Cached Name", "plan": "Cached Plan", "uuid": "uuid-cached",
+            "config_dir": dir.path, "resolved_at": Date().timeIntervalSince1970,
+        ])
+        _ = try runProducer(
+            support: support, configDir: dir.path, stdin: StatuslineTestSupport.fullPayload)
+
+        let account = try accountBlock(support)
+        #expect(account["label"] as? String == "Cached Name")
+        #expect(account["plan"] as? String == "Cached Plan")
+    }
+
+    /// The regression this whole change exists for: a config dir now signed into a different
+    /// account must stop reporting the old one's name, plan and uuid.
+    @Test func anExpiredNameFollowsWhoeverTheConfigDirIsSignedIntoNow() throws {
+        let support = try StatuslineTestSupport.tempDirectory("identity-expired")
+        let dir = try Self.identityDirectory(
+            "expired-home", organization: "Acme AB", email: "a@acme.test", uuid: "uuid-acme")
+        try Self.seedUsage(support, account: [
+            "key": "claude", "label": "Previous Employer", "plan": "Team 5x", "uuid": "uuid-old",
+            "config_dir": dir.path, "resolved_at": Date().timeIntervalSince1970 - 7200,
+        ])
+        _ = try runProducer(
+            support: support, configDir: dir.path, stdin: StatuslineTestSupport.fullPayload)
+
+        let account = try accountBlock(support)
+        #expect(account["label"] as? String == "Acme AB")
+        #expect(account["uuid"] as? String == "uuid-acme")
+    }
+
+    /// A block written before `resolved_at` existed is exactly the one that might be wrong, so it
+    /// reads as expired rather than as "cached forever".
+    @Test func aBlockFromBeforeTheExpiryExistedIsResolvedAgain() throws {
+        let support = try StatuslineTestSupport.tempDirectory("identity-legacy")
+        let dir = try Self.identityDirectory(
+            "legacy-home", organization: "Acme AB", email: "a@acme.test", uuid: "uuid-acme")
+        try Self.seedUsage(support, account: [
+            "key": "claude", "label": "Previous Employer", "plan": "Team 5x", "uuid": "uuid-old",
+            "config_dir": dir.path,
+        ])
+        _ = try runProducer(
+            support: support, configDir: dir.path, stdin: StatuslineTestSupport.fullPayload)
+        #expect(try accountBlock(support)["label"] as? String == "Acme AB")
+    }
+
+    /// The shape the "no identity anywhere" fallback writes: a bare key for a name and a null
+    /// `resolved_at`. Treating that as a cache hit would freeze the fallback in place the first
+    /// time the identity file happened to be unreadable.
+    @Test func theNoIdentityFallbackIsNeverMistakenForACachedName() throws {
+        let support = try StatuslineTestSupport.tempDirectory("identity-fallback")
+        let dir = try Self.identityDirectory(
+            "fallback-home", organization: "Acme AB", email: "a@acme.test", uuid: "uuid-acme")
+        try Self.seedUsage(support, account: [
+            "key": "claude", "label": "claude", "plan": NSNull(), "uuid": NSNull(),
+            "config_dir": dir.path, "resolved_at": NSNull(),
+        ])
+        _ = try runProducer(
+            support: support, configDir: dir.path, stdin: StatuslineTestSupport.fullPayload)
+        #expect(try accountBlock(support)["label"] as? String == "Acme AB")
+    }
+
+    /// An identity that cannot be read costs a *fresh* name, never the name itself — and the
+    /// attempt is restamped so the next refresh does not reread a large file to fail again.
+    @Test func anUnreadableIdentityKeepsTheNameTheSidecarAlreadyHad() throws {
+        let support = try StatuslineTestSupport.tempDirectory("identity-missing")
+        let dir = try Self.identityDirectory(
+            "missing-home", organization: "", email: "", uuid: "", identity: false)
+        let stamped = Date().timeIntervalSince1970 - 7200
+        try Self.seedUsage(support, account: [
+            "key": "claude", "label": "Acme AB", "plan": "Team 5x", "uuid": "uuid-acme",
+            "config_dir": dir.path, "resolved_at": stamped,
+        ])
+        _ = try runProducer(
+            support: support, configDir: dir.path, stdin: StatuslineTestSupport.fullPayload)
+
+        let account = try accountBlock(support)
+        #expect(account["label"] as? String == "Acme AB")
+        #expect(account["uuid"] as? String == "uuid-acme")
+        #expect((account["resolved_at"] as? Double ?? 0) > stamped)
     }
 
     // MARK: Hand-off — the one thing that must never break

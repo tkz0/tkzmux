@@ -68,7 +68,8 @@ public struct ClaudeAdapter: AgentAdapter, Sendable {
         out.append(
             Account(
                 key: defaultKey, configDir: primary,
-                label: labels[defaultKey] ?? defaultKey, agent: .claude))
+                label: labels[defaultKey] ?? defaultKey,
+                labelIsConfigured: labels[defaultKey] != nil, agent: .claude))
         let entries = (try? fileManager.contentsOfDirectory(atPath: home)) ?? []
         for name in entries.sorted() where name.hasPrefix(".claude-") {
             let path = (home as NSString).appendingPathComponent(name)
@@ -82,7 +83,10 @@ public struct ClaudeAdapter: AgentAdapter, Sendable {
                 })
             else { continue }
             let key = Account.key(forConfigDirectory: path)
-            out.append(Account(key: key, configDir: path, label: labels[key] ?? key, agent: .claude))
+            out.append(
+                Account(
+                    key: key, configDir: path, label: labels[key] ?? key,
+                    labelIsConfigured: labels[key] != nil, agent: .claude))
         }
         return out
     }

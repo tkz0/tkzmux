@@ -324,24 +324,32 @@ struct MainWindowRestoreTests {
         #expect(harness.store.state.selection == launched.id)
     }
 
-    @Test("A folder that already roots another group launches there and leaves the empty group alone")
+    /// The click named a group; that is the group that gets the repo and the session, even when
+    /// another group is already rooted at the folder. The old rule redirected the launch into the
+    /// owning group and left the clicked one empty and rootless, saying nothing — the whole bug.
+    @Test("A folder that already roots another group is used for the clicked group too")
     func newSessionInBucketWithATakenFolder() throws {
         let folder = try Self.temporaryFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
+        let path = folder.standardizedFileURL.path
         var state = AppState()
         let bucket = state.addGroup(name: "Work")
-        let taken = state.addGroup(name: "Taken", repoRoot: folder.standardizedFileURL.path)
+        let taken = state.addGroup(name: "Taken", repoRoot: path)
         let harness = MainWindowControllerTests.makeHarness(state)
         defer { harness.tearDown() }
 
         harness.controller.folderPrompt = { _ in folder }
         try Self.newSession(in: harness, group: bucket.id)
 
-        #expect(harness.store.state.groups.count == 2)
-        #expect(harness.store.state.groups[bucket.id]?.repoRoot == nil, "one folder roots one group")
+        #expect(harness.store.state.groups.count == 2, "no group is made, and none is taken away")
+        #expect(harness.store.state.groups[bucket.id]?.repoRoot == path,
+                "the folder is stored for the group that was clicked")
+        #expect(harness.store.state.groups[taken.id]?.repoRoot == path, "the other group is untouched")
         let launched = try #require(harness.host.opened.last)
-        #expect(harness.store.state.sessions[launched.id]?.groupID == taken.id)
-        #expect(launched.cwd == folder.standardizedFileURL.path)
+        #expect(harness.store.state.sessions[launched.id]?.groupID == bucket.id,
+                "the session lands in the clicked group, not the one that owned the folder")
+        #expect(launched.cwd == path)
+        #expect(harness.store.state.sessions(in: taken.id).isEmpty)
     }
 
     @Test("Cancelling the folder picker starts nothing and changes nothing")
@@ -359,7 +367,7 @@ struct MainWindowRestoreTests {
         #expect(harness.store.state.groups[bucket.id]?.repoRoot == nil)
     }
 
-    @Test("Set Repo… attaches a folder to a bucket group, and one folder roots one group")
+    @Test("Set Repo… attaches a folder to a bucket group, a folder another group has included")
     func setGroupRepo() throws {
         var state = AppState()
         let bucket = state.addGroup(name: "Work")
@@ -383,13 +391,16 @@ struct MainWindowRestoreTests {
         #expect(harness.store.state.groups[bucket.id]?.repoRoot == "/tmp/tkzmux-tests/work")
         #expect(try repoItem(bucket.id).title == "Change Repo\u{2026}")
 
-        // The folder that already roots "Taken" is refused, with a notice.
+        // The folder that already roots "Taken" is taken at its word: roots are not unique, and
+        // this item cannot refuse what "New session in X…" on the same row accepts.
         controller.folderPrompt = { _ in URL(fileURLWithPath: "/tmp/tkzmux-tests/taken", isDirectory: true) }
         let again = try repoItem(bucket.id)
         _ = again.target?.perform(again.action, with: again)
         harness.store.flush()
-        #expect(harness.store.state.groups[bucket.id]?.repoRoot == "/tmp/tkzmux-tests/work")
-        #expect(controller.statusBar.model.notice?.contains("Taken") == true)
+        #expect(harness.store.state.groups[bucket.id]?.repoRoot == "/tmp/tkzmux-tests/taken")
+        #expect(harness.store.state.groups[other.id]?.repoRoot == "/tmp/tkzmux-tests/taken",
+                "the group that had it keeps it")
+        #expect(controller.statusBar.model.notice == nil, "nothing to warn about")
     }
 
     // MARK: Group colour

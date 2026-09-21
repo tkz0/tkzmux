@@ -388,6 +388,8 @@ extension AppState {
     }
 
     /// The group whose `repoRoot` matches, used when adopting a session discovered elsewhere.
+    /// Roots are not unique — a user may point two groups at one checkout to run different agents
+    /// or accounts in it — so this answers with the lowest-ordered match.
     public func group(forRepoRoot repoRoot: String) -> Group? {
         orderedGroups.first { $0.repoRoot == repoRoot }
     }
@@ -533,8 +535,12 @@ extension AppState {
     /// `dash-usage-<key>.json` names its account and plan, which is worth having: an account nobody
     /// has named reads better as its usage file's name than as `claude-alt`. But that name is
     /// **generated**, so it must not overwrite one a human wrote in `dash-accounts.json` — hence
-    /// the `label == key` guard, which is precisely "this account still has no name of its own"
-    /// (`ClaudeIntegration.accountLabels` is the configured source).
+    /// the `labelIsConfigured` guard (`ClaudeIntegration.accountLabels` is the configured source).
+    ///
+    /// The guard is on *provenance*, not on `label == key`: that older test also refused every
+    /// later snapshot, so the first generated name an account was ever given became permanent. It
+    /// must not be. A config dir signed out and back in under a different account reports a new
+    /// name, and the row has to follow it.
     ///
     /// Relabels an account the state already knows; never invents one. Discovery is
     /// `ClaudeIntegration`'s job, and a usage file for a config dir that is not there is not
@@ -542,7 +548,7 @@ extension AppState {
     public mutating func setUsage(_ snapshot: UsageSnapshot) {
         usage[snapshot.accountKey] = snapshot
         guard var account = accounts[snapshot.accountKey] else { return }
-        if account.label == account.key, let label = snapshot.label, !label.isEmpty {
+        if !account.labelIsConfigured, let label = snapshot.label, !label.isEmpty {
             account.label = label
         }
         if let plan = snapshot.plan, !plan.isEmpty { account.plan = plan }

@@ -343,8 +343,12 @@ struct StatusModelMappingTests {
 
     @Test func theUsageTooltipListsEveryAccountsWindow() throws {
         var state = Self.state()
-        state.setAccount(Account(key: "claude", configDir: "/h/.claude", label: "Private"))
-        state.setAccount(Account(key: "claude-work", configDir: "/h/.claude-work", label: "Work"))
+        // Both names came from `dash-accounts.json`, which is what makes them unoverwritable.
+        state.setAccount(Account(
+            key: "claude", configDir: "/h/.claude", label: "Private", labelIsConfigured: true))
+        state.setAccount(Account(
+            key: "claude-work", configDir: "/h/.claude-work", label: "Work",
+            labelIsConfigured: true))
         state.setUsage(UsageSnapshot(
             accountKey: "claude", label: "Private",
             sevenDay: UsageWindow(usedPercentage: 5)))

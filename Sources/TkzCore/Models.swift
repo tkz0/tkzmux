@@ -655,6 +655,12 @@ public struct Account: Hashable, Sendable, Codable, Identifiable {
     public var configDir: String
     /// Display label. Derived from the account's own identity at runtime, never hard-coded.
     public var label: String
+    /// True when `label` was written by a human, in `dash-accounts.json`. A configured name is the
+    /// last word and nothing may overwrite it; a *derived* one is only the best guess so far, and
+    /// has to stay open to correction — the identity behind a config dir changes whenever the user
+    /// signs it into a different account. Not persisted: accounts are rediscovered at launch, and
+    /// this is a fact about where the current label came from, not about the account.
+    public var labelIsConfigured: Bool = false
     /// Plan name reported by the usage file, e.g. from `account.plan`.
     public var plan: String?
     /// Which agent this account belongs to. The key namespace is shared (`claude`, `claude-work`,
@@ -665,18 +671,36 @@ public struct Account: Hashable, Sendable, Codable, Identifiable {
     public var id: String { key }
 
     public init(
-        key: String, configDir: String, label: String, plan: String? = nil,
-        agent: AgentKind = .claude
+        key: String, configDir: String, label: String, labelIsConfigured: Bool = false,
+        plan: String? = nil, agent: AgentKind = .claude
     ) {
         self.key = key
         self.configDir = configDir
         self.label = label
+        self.labelIsConfigured = labelIsConfigured
         self.plan = plan
         self.agent = agent
+    }
+
+    /// `labelIsConfigured` is deliberately absent: it describes this run's discovery, so a decoded
+    /// account is one whose label nobody has claimed yet.
+    private enum CodingKeys: String, CodingKey {
+        case key, configDir, label, plan, agent
     }
 }
 
 extension Account {
+    /// The account as a human would name it: the label, qualified by the key whenever the two
+    /// differ.
+    ///
+    /// The key is not decoration. Two config dirs can carry the same name — `~/.claude` and
+    /// `~/.claude-alt` both signed into one team org resolve to the same label, and a stale label
+    /// on one of them looks exactly the same — so anywhere several accounts are listed side by
+    /// side, the label alone is not enough to tell one row from another.
+    public var qualifiedName: String {
+        label == key ? key : "\(label) (\(key))"
+    }
+
     /// The account a session falls back to when the group names none: the key of that agent's
     /// primary config dir (`~/.claude` for Claude, `~/.codex` for Codex).
     ///
