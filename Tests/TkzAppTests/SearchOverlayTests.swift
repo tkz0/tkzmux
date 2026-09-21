@@ -22,7 +22,7 @@ struct SearchOverlayTests {
             contentRect: NSRect(x: 0, y: 0, width: 1240, height: 820),
             styleMask: [.borderless], backing: .buffered, defer: true)
         let controller = CommandPaletteController(state: state, mode: .sessions)
-        controller.present(anchoredTo: window, state: state)
+        controller.presentSearch(over: window, state: state)
         controller.updateQuery(query)
         return controller
     }
@@ -338,7 +338,7 @@ struct SearchOverlayTests {
         row.layoutSubtreeIfNeeded()
 
         let allotted = CommandPaletteController.height(
-            of: .transcript(hit), presentation: .anchored)
+            of: .transcript(hit), presentation: .search)
         for label in row.subviews.compactMap({ $0 as? NSTextField }) {
             #expect(label.frame.height <= allotted, "a label taller than its row overdraws the next")
         }

@@ -261,11 +261,13 @@ struct MainWindowControllerTests {
         return harness
     }
 
-    /// The rebase sheet and the Settings window would otherwise really appear (`makeKeyAndOrderFront`),
-    /// and a window on screen in the test process is what let runs end early — see the
-    /// header of `RebaseSheetTests`. The main window itself is never ordered front by anything.
+    /// Every sheet and panel would otherwise really appear (`makeKeyAndOrderFront`), and a window
+    /// on screen in the test process is what let runs end early — see `SheetTestSupport.swift`.
+    /// The main window itself is never ordered front by anything.
     static func keepOffScreen(_ controller: MainWindowController) {
         controller.rebaseSheet.orderFront = { _ in }
+        controller.deleteWorktreeSheet.orderFront = { _ in }
+        controller.deleteMergedWorktreesSheet.orderFront = { _ in }
         controller.settings.orderFront = { _ in }
         controller.activityFeed.orderFront = { _ in }
     }

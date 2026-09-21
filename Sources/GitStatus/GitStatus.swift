@@ -2,7 +2,8 @@
 //
 // `GitProcess` (the one subprocess runner), `RepoInfo`, `GitStatusParsing`, `FSEventsWatcher` and
 // `GitStatusService` are M4.1; `PRLookup` is the lookup half of M4.2;
-// `PortScanner` is M4.3; `WorktreeList` came earlier, with M5.2.
+// `PortScanner` is M4.3; `WorktreeList` came earlier, with M5.2; `WorktreeRemoval` is TKZ-70
+// and is, with `GitRebase`, one of the two files here that write to a repository.
 //
 // Nothing here knows what a `Session` is beyond its id: attribution to rows, the store and the
 // status bar all live in `TkzApp/GitIntegration.swift`.

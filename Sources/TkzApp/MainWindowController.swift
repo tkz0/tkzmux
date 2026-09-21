@@ -363,6 +363,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     let changes: ChangesViewerController
     /// The rebase sheet (design 5a/5b): ⌥⌘R, or the `⤿ 7 behind main` chip in the status bar.
     public let rebaseSheet: RebaseSheetController
+    /// The "Delete worktree…" sheet (TKZ-70): a `WT` row's context menu. Same family as the
+    /// rebase sheet — see `Sheets/GlassSheet.swift`.
+    public let deleteWorktreeSheet: DeleteWorktreeSheetController
+    /// Its bulk twin (TKZ-70): Group › "Delete merged worktrees…".
+    public let deleteMergedWorktreesSheet: DeleteMergedWorktreesSheetController
     /// The Settings window (design 7a–d): ⌘,. Holds the preference switches that used to
     /// be app-menu items; the store is still the only writer.
     let settings: SettingsWindowController
@@ -509,7 +514,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
         self.sidebar = SidebarViewController(store: store, theme: theme)
         self.toolbarController = MainToolbarController(theme: theme)
-        toolbarController.searchShortcut = ShortcutsTable.resolved(state: store.state)[.searchSessions]
         self.statusBar = StatusBarView(theme: theme, model: .empty)
         self.palette = CommandPaletteController(state: store.state, mode: .all, theme: theme)
         self.newSessionMenu = NewSessionMenu(theme: theme)
@@ -523,6 +527,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         self.promptCard = PromptCardController(theme: theme)
         self.changes = ChangesViewerController(theme: theme)
         self.rebaseSheet = RebaseSheetController(theme: theme)
+        self.deleteWorktreeSheet = DeleteWorktreeSheetController(theme: theme)
+        self.deleteMergedWorktreesSheet = DeleteMergedWorktreesSheetController(theme: theme)
         self.settings = SettingsWindowController(store: store, theme: theme)
         self.activityFeed = ActivityFeedController(store: store, theme: theme)
         self.chrome = ChromeViewController(
@@ -941,7 +947,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         newSessionMenu.onSelectAccount = { [weak self] groupID, key in
             self?.setGroupDefaultAccount(groupID, key: key)
         }
-        toolbarController.newSessionMenu = newSessionMenu.menu
         // `>_` is "new terminal" in the design: a bare shell in the selected group's directory,
         // not another way to open the `＋` menu.
         toolbarController.onNewTerminal = { [weak self] in
@@ -960,51 +965,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         toolbarController.onToggleTheme = { [weak self] in
             self?.toggleTheme()
-        }
-        // Design 2c.6: typing in the toolbar field opens the results overlay under the
-        // window's top-right corner and keeps the caret where it is. Emptying the field closes it
-        // again — the field is the only state, so there is nothing left filtered or floating.
-        toolbarController.onSearchChanged = { [weak self] query in
-            guard let self else { return }
-            // Backspacing to empty closes the overlay but leaves the caret in the field: the user
-            // is mid-edit, and moving focus to the terminal here means the next characters they
-            // type go into the shell (GUI pass 2026-09-11).
-            guard !query.isEmpty else { return closeSearchOverlay() }
-            palette.present(anchoredTo: window, state: store.state, mode: .sessions)
-            palette.updateQuery(query)
-            // Sessions are ranked synchronously and are already on screen; transcripts and changed
-            // files read files, so they arrive when they arrive.
-            scheduleSlowSearch(for: query)
-        }
-        toolbarController.onSearchMove = { [weak self] offset in
-            self?.palette.moveSelection(by: offset)
-        }
-        toolbarController.onSearchSubmit = { [weak self] _ in
-            guard let self, palette.isPresented else { return }
-            palette.activateSelection()
-            endSearch()
-        }
-        toolbarController.onSearchCommandSubmit = { [weak self] _ in
-            guard let self, palette.isPresented else { return }
-            guard palette.activateActionRow() else { return }
-            endSearch()
-        }
-        toolbarController.onSearchCycleScope = { [weak self] offset in
-            guard let self, palette.isPresented else { return false }
-            palette.cycleScope(by: offset)
-            return true
-        }
-        toolbarController.onSearchCancel = { [weak self] in
-            self?.endSearch()
-        }
-        // Clicking a row makes the overlay key, which ends the field's editing session — so this
-        // fires *before* the click is delivered. Deferring one turn lets the click land, and the
-        // overlay only closes when focus really went somewhere else.
-        toolbarController.onSearchEndEditing = { [weak self] in
-            DispatchQueue.main.async {
-                guard let self, !self.palette.ownsKeyWindow else { return }
-                self.palette.dismiss()
-            }
         }
     }
 
@@ -1110,24 +1070,35 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         palette.dismiss()
     }
 
-    /// Ends the search outright: overlay down, field empty, keyboard back to the terminal. Esc and
-    /// an activated row end here; an emptied field does not (see ``closeSearchOverlay()``).
+    /// Ends the search outright: overlay down, keyboard back to the terminal. Esc and an activated
+    /// row end here.
     func endSearch() {
         closeSearchOverlay()
-        if let field = toolbarController.searchField, !field.stringValue.isEmpty {
-            field.stringValue = ""
-        }
         focusTerminalIfSessionShown()
     }
 
     private func wirePalette() {
         palette.onActivate = { [weak self] result in
             guard let self else { return }
-            let wasAnchored = palette.presentation == .anchored
+            let wasSearch = palette.presentation == .search
             activate(result)
-            // A click on a row of the toolbar overlay activates without ever going through the
-            // field, so the field has to be emptied here too.
-            if wasAnchored { endSearch() } else { palette.dismiss() }
+            // ⌘F's overlay hands the keyboard back to the terminal on the way out; ⇧⌘P's panel just
+            // closes, because it is not covering the thing the user was typing into.
+            if wasSearch { endSearch() } else { palette.dismiss() }
+        }
+        // The sections that have to read something (transcripts, changed files) are filled from
+        // here: the palette ranks what is already in memory synchronously, and these arrive when
+        // they arrive.
+        palette.onQueryChanged = { [weak self] query in
+            guard let self, palette.presentation == .search else { return }
+            guard !query.isEmpty else {
+                searchTask?.cancel()
+                searchTask = nil
+                palette.setTranscriptRows([])
+                palette.setFileRows([])
+                return
+            }
+            scheduleSlowSearch(for: query)
         }
     }
 
@@ -1149,6 +1120,16 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // stuck showing that forever, with Cancel disabled and no dismiss path.
             guard self.git?.rebaseOntoBase(id, skipFetch: true) == true else { return }
             self.rebaseSheet.rebaseStarted(for: id)
+        }
+
+        deleteWorktreeSheet.onDismiss = { [weak self] in self?.focusTerminalIfSessionShown() }
+        deleteWorktreeSheet.onDelete = { [weak self] id, branchDelete in
+            self?.performWorktreeDelete(for: id, branchDelete: branchDelete)
+        }
+
+        deleteMergedWorktreesSheet.onDismiss = { [weak self] in self?.focusTerminalIfSessionShown() }
+        deleteMergedWorktreesSheet.onDelete = { [weak self] ids in
+            self?.performMergedWorktreeDeletes(ids)
         }
     }
 
@@ -1198,6 +1179,159 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// the strip either way, at its right.
     private func rebaseSheetAnchor() -> NSRect? {
         detailAnchor()
+    }
+
+    // MARK: Delete worktree (TKZ-70)
+
+    /// The row context menu's *Delete worktree…*. Mirrors `toggleRebaseSheet()`: every refusal
+    /// gets a notice rather than an empty sheet, since the menu item can be stale by a frame.
+    ///
+    /// Opened for `id`, which need **not** be the selected row — right-clicking a row does not
+    /// select it. The selection is deliberately left alone: the sheet's title names the worktree,
+    /// so there is no ambiguity, and stealing the selection would move the terminal out from
+    /// under the user.
+    func presentDeleteWorktreeSheet(for id: SessionID) {
+        guard let session = store.state.sessions[id] else { return }
+        let agentName = agents?.adapters[session.agent]?.displayName ?? "the agent"
+        if let refusal = git?.deleteWorktreeRefusal(for: id) {
+            let name = git?.service.repoInfo(for: id).map { ($0.toplevel as NSString).lastPathComponent }
+            showNotice(
+                GitIntegration.notice(for: refusal, name: name ?? nil, agent: agentName),
+                for: .seconds(3))
+            return
+        }
+        guard let request = git?.deleteWorktreeRequest(for: id) else {
+            showNotice(
+                GitIntegration.notice(for: .notAWorktreePath, name: nil, agent: agentName),
+                for: .seconds(3))
+            return
+        }
+
+        let summary = session.live?.git
+        var model = DeleteWorktreeSheetModel(worktreePath: request.worktreePath)
+        model.home = home
+        model.branch = request.branch
+        model.baseRef = request.base?.ref ?? summary?.baseBranch
+        model.agentWorking = session.status == .working
+        model.agentDisplayName = agentName
+        // Seeded from the last summary so the card is not blank for the instant the survey takes;
+        // the survey overwrites all of it, and the buttons stay off until it lands.
+        let seed = WorktreeRemoval.classify(summary: summary, pr: summary?.pr)
+        model.merge = seed.merge
+        model.isDirty = seed.isDirty
+        model.dirtyFileCount = seed.dirtyFileCount
+
+        deleteWorktreeSheet.present(
+            for: id, request: request, pr: summary?.pr, model: model, over: detailAnchor())
+    }
+
+    /// The sheet's Delete. **The order here is the whole of this feature's risk.**
+    ///
+    /// 1. Capture the request while the row, its `RepoInfo` and its `GitSummary` still exist.
+    ///    `WorktreeRemoval.Request` is a value; nothing after this point can invalidate it, and
+    ///    nothing downstream looks anything up by session id.
+    /// 2. Take the sheet down before any modal alert — a floating `.nonactivatingPanel` left over
+    ///    an `NSAlert` is a mess, and `.deleting` already blocks a second Return.
+    /// 3. Close the row, with the normal working/waiting confirmation. That is `removeSession`'s
+    ///    own rule, not a second one.
+    /// 4. Run git out of band on `rebaseQueue`, with no session id: there is no row any more.
+    ///
+    /// Running git *first* and closing the row on success was the alternative, and it is wrong:
+    /// it leaves the row's pty alive with its shell's cwd inside the directory
+    /// `git worktree remove` is unlinking. The unlink succeeds on macOS and the shell is left in
+    /// a ghost cwd — a live terminal pointed at a directory that no longer has a name — with
+    /// whatever it was running still working against files that are gone.
+    ///
+    /// One residual race, left alone on purpose: a grandchild may still be alive in the directory
+    /// between the SIGHUP and the removal landing on the queue. `git worktree remove` does not
+    /// care (an open cwd does not block an unlink), and waiting for an arbitrary process tree is
+    /// not something a UI action may do.
+    func performWorktreeDelete(for id: SessionID, branchDelete: WorktreeRemoval.BranchDelete) {
+        guard let model = deleteWorktreeSheet.model, model.canDelete else { return }
+        guard var request = git?.deleteWorktreeRequest(for: id) else {
+            deleteWorktreeSheet.dismiss()
+            showNotice(
+                GitIntegration.notice(for: .notAWorktreePath, name: nil, agent: "the agent"),
+                for: .seconds(3))
+            return
+        }
+        request.force = model.isDirty && model.acknowledgedDirty
+        request.branchDelete = branchDelete
+        // The branch comes from the **model**, not the store: the survey re-read `HEAD` a moment
+        // ago and may know a name the last `GitSummary` did not. Without this a sheet whose
+        // button read "Delete" (branch included) could leave the branch behind, because the
+        // request's own `branch` was still nil and `plan` would emit no branch step.
+        request.branch = model.branch ?? request.branch
+        request.expectedBranch = request.branch
+
+        deleteWorktreeSheet.deleteStarted(for: id)
+        deleteWorktreeSheet.dismiss()
+
+        guard confirmCloseForWorktreeDelete(id) else { return }
+        launcher.remove(id)
+        git?.deleteWorktree(request)
+    }
+
+    /// The row's own close confirmation, reused so *Delete worktree…* asks exactly what ⌘W would
+    /// — and asks nothing at all for an idle row, which is the common case here. Returns whether
+    /// to go ahead; the delete offer itself is suppressed, since the user has already chosen it.
+    private func confirmCloseForWorktreeDelete(_ id: SessionID) -> Bool {
+        guard let session = store.state.sessions[id] else { return false }
+        let name = agents?.adapters[session.agent]?.displayName ?? "the agent"
+        guard let plan = Self.closePlan(
+            for: session, agentName: name, isMergedWorktree: false,
+            worktreePath: nil, branch: nil, home: home)
+        else { return true }
+        if let confirmClose { return confirmClose(plan) != .cancel }
+        if let confirmRemove { return confirmRemove(session) }
+        return runCloseConfirmation(plan) != .cancel
+    }
+
+    /// The group header's *Delete merged worktrees…*. Every worktree row in the group is a
+    /// candidate; the sheet's own survey decides which are actually merged and which are listed
+    /// but off.
+    func presentDeleteMergedWorktreesSheet(for groupID: GroupID) {
+        guard let group = store.state.groups[groupID] else { return }
+        let candidates: [DeleteMergedWorktreesSheetController.Candidate] =
+            store.state.sessions(in: groupID)
+            .filter(\.showsWorktreeBadge)
+            .compactMap { session in
+                guard let request = self.git?.deleteWorktreeRequest(for: session.id) else { return nil }
+                // The path safety rules are the same ones the row menu uses; a row that fails
+                // them is not a candidate at all rather than a listed row nobody may tick.
+                switch self.git?.deleteWorktreeRefusal(for: session.id) {
+                case .notAWorktreePath, .mainCheckout, .containsRepoRoot, .rebaseInProgress,
+                    .deleteInProgress:
+                    return nil
+                default: break
+                }
+                return .init(
+                    id: session.id,
+                    title: session.displayTitle,
+                    request: request,
+                    pr: session.live?.git?.pr,
+                    agentWorking: session.status == .working,
+                    agentName: agents?.adapters[session.agent]?.displayName ?? "the agent")
+            }
+
+        deleteMergedWorktreesSheet.present(
+            for: groupID, groupName: group.name, candidates: candidates, over: detailAnchor())
+    }
+
+    /// The group sheet's Delete. Same ordering rule as the per-row one (capture, close, then run
+    /// git), applied to the whole checked set at once.
+    ///
+    /// The per-row close confirmation is deliberately **not** re-run here: the checked list *is*
+    /// the confirmation, a working row is excluded by construction, and asking N times is exactly
+    /// what `removeGroup` already calls out as the wrong shape ("once for the whole group rather
+    /// than once per member").
+    func performMergedWorktreeDeletes(_ ids: [SessionID]) {
+        let requests = deleteMergedWorktreesSheet.checkedRequests()
+        guard !requests.isEmpty else { return }
+        deleteMergedWorktreesSheet.deleteStarted()
+        deleteMergedWorktreesSheet.dismiss()
+        for id in ids { launcher.remove(id) }
+        git?.deleteWorktrees(requests)
     }
 
     /// ⇧⌘G, or a click on the status bar's diff chips: the viewer for the selected row's
@@ -1754,6 +1888,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         activityFeed.dismiss()
         changes.dismiss()
         rebaseSheet.dismiss()
+        deleteWorktreeSheet.dismiss()
+        deleteMergedWorktreesSheet.dismiss()
         settings.close()
         if let commandKeyMonitor {
             NSEvent.removeMonitor(commandKeyMonitor)
@@ -1824,6 +1960,22 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             git.onRebaseStateChange = { [weak self] in self?.updateStatusBar() }
             git.onRebaseFinished = { [weak self] id, _ in self?.rebaseSheet.rebaseFinished(for: id) }
             rebaseSheet.useFetchQueue(git.rebaseQueue)
+
+            git.onDeleteWorktreeNotice = { [weak self] notice in self?.showNotice(notice, for: .seconds(8)) }
+            git.onDeleteWorktreeStateChange = { [weak self] in self?.updateStatusBar() }
+            // `id` is nil on the normal path -- the row was closed before the removal ran -- so
+            // this usually only re-lists the repo's worktrees, which is what drops the `WT` badge
+            // from any *other* row that pointed at the directory just removed.
+            git.onDeleteWorktreeFinished = { [weak self] id, repoRoot, _ in
+                guard let self else { return }
+                if let id { self.deleteWorktreeSheet.deleteFinished(for: id) }
+                self.launcher.refreshWorktrees(repoRoot: repoRoot)
+            }
+            git.onDeleteWorktreesFinished = { [weak self] _, roots in
+                for root in roots { self?.launcher.refreshWorktrees(repoRoot: root) }
+            }
+            deleteWorktreeSheet.useGitQueue(git.rebaseQueue)
+            deleteMergedWorktreesSheet.useGitQueue(git.rebaseQueue)
             git.start()
             agents?.onStop = { [weak git] id in git?.sessionDidStop(id) }
         }
@@ -2267,11 +2419,23 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             promptCard.dismiss()
             changes.dismiss()
             rebaseSheet.dismiss()
+            deleteWorktreeSheet.dismiss()
+            deleteMergedWorktreesSheet.dismiss()
             _ = scrollReveal.reset()
         }
         // The sheet's Rebase button follows the row's Claude status (off while working).
         if let id = rebaseSheet.sessionID, change.sessions.contains(id) {
             rebaseSheet.setClaudeWorking(store.state.sessions[id]?.status == .working)
+        }
+        // The delete sheet's buttons follow the same rule. It is also the one sheet that can be
+        // up for a row that leaves by another route (its shell exited), since it is opened from
+        // the sidebar for a row that need not be selected -- so it checks for that too.
+        if let id = deleteWorktreeSheet.sessionID {
+            if store.state.sessions[id] == nil {
+                deleteWorktreeSheet.dismiss()
+            } else if change.sessions.contains(id) {
+                deleteWorktreeSheet.setClaudeWorking(store.state.sessions[id]?.status == .working)
+            }
         }
         if change.chrome {
             applySidebarVisible(store.state.sidebarVisible)
@@ -2706,15 +2870,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         newSessionMenu.menu.popUp(positioning: nil, at: point, in: contentView)
     }
 
-    /// ⌘F — the toolbar's search field if it is on screen, else the palette in session mode.
+    /// ⌘F — the search overlay (design 2c.6), hung from the window's top-right corner. Since the
+    /// 2026-09-20 GUI pass this is the only way in: the toolbar no longer carries a field, and the
+    /// overlay owns the caret itself.
     public func beginSearch() {
-        if let item = window.toolbar?.items.first(where: { $0.itemIdentifier == .tkzSearch })
-            as? NSSearchToolbarItem
-        {
-            item.beginSearchInteraction()
-            return
-        }
-        presentPalette(mode: .sessions)
+        palette.presentSearch(over: window, state: store.state)
     }
 
     /// ⇧⌘P (and ⌘P's fallback).
@@ -3086,6 +3246,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         activityFeed.theme = new
         changes.theme = new
         rebaseSheet.theme = new
+        deleteWorktreeSheet.theme = new
+        deleteMergedWorktreesSheet.theme = new
         settings.theme = new
         cheatSheet.setTheme(new)
 
@@ -3115,11 +3277,102 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// and terminates the app.
     public var performRelaunch: ((RelaunchPlan) throws -> Void)?
 
+    /// What a close confirmation will ask, as data. Built by `closePlan`, answered by
+    /// `confirmClose` (or by a real `NSAlert`), so the whole decision is testable without one.
+    public enum CloseChoice: Equatable, Sendable {
+        case cancel
+        case close
+        /// Close the row *and* remove its worktree and branch (TKZ-70). Only ever offered for a
+        /// merged worktree row that `GitIntegration.canDeleteWorktree` already approves of.
+        case closeAndDeleteWorktree
+    }
+
+    public struct CloseSessionPlan: Equatable, Sendable {
+        public var sessionID: SessionID
+        public var title: String
+        public var message: String
+        /// In the order they are added to the alert, so **the first is the default button**.
+        public var buttons: [CloseChoice]
+        public var worktreePath: String?
+        public var branch: String?
+    }
+
+    /// Overrides the close confirmation: gets the plan, returns what the user chose. Tests set it
+    /// — an `NSAlert` never returns in a test process.
+    ///
+    /// `confirmRemove` (above) is the older, two-outcome seam and still works for the busy-row
+    /// case that every existing suite uses; this one wins when both are set.
+    public var confirmClose: ((CloseSessionPlan) -> CloseChoice)?
+
+    /// What closing `session` should ask, or **`nil` for "ask nothing and close"** — which is what
+    /// an idle row has always done and must keep doing.
+    ///
+    /// Pure, so the five cases are a test rather than five dialogs to open by hand. The only new
+    /// one is the merged worktree row: it now asks, with *Close and Delete Worktree* as the
+    /// default, where before it closed silently. That is a deliberate interruption on the rows
+    /// closed most often, taken because leaving the worktree behind is the thing this ticket
+    /// exists to stop.
+    ///
+    /// A **working** row is offered no delete, for the same reason the menu item is disabled for
+    /// one: the agent may be editing files under the worktree. A `waiting` row is blocked on the
+    /// human, not writing, so it keeps the offer — the same rule the rebase sheet keys on
+    /// (`status == .working` alone), not a second one.
+    static func closePlan(
+        for session: Session, agentName: String, isMergedWorktree: Bool,
+        worktreePath: String?, branch: String?, home: String
+    ) -> CloseSessionPlan? {
+        let title = "Close \u{201C}\(session.displayTitle)\u{201D}?"
+        let offersDelete = isMergedWorktree && session.status != .working
+        let busy: Bool
+        switch session.status {
+        case .working, .waiting: busy = true
+        case .idle: busy = false
+        }
+        guard busy || offersDelete else { return nil }
+
+        // The busy sentences are byte-identical to the ones this dialog has always shown.
+        var message = ""
+        switch session.status {
+        case .working:
+            message = "\(agentName) is still working in this session. Closing ends the shell and removes the row; the conversation is kept by \(agentName)."
+        case .waiting:
+            message = "This session is waiting for you. Closing ends the shell and removes the row; the conversation is kept by \(agentName)."
+        case .idle:
+            message = ""
+        }
+        if offersDelete {
+            let where_ = worktreePath.map { PaneHeaderAdapter.abbreviatingHome($0, home: home) }
+            let branchClause = branch.map { " and its branch \($0)" } ?? ""
+            let at = where_.map { " at \($0)" } ?? ""
+            let sentence = "Its pull request is merged. Closing removes the row; deleting also removes the worktree\(at)\(branchClause)."
+            message = message.isEmpty ? sentence : message + " " + sentence
+        }
+
+        return CloseSessionPlan(
+            sessionID: session.id,
+            title: title,
+            message: message,
+            buttons: offersDelete ? [.closeAndDeleteWorktree, .close, .cancel] : [.close, .cancel],
+            worktreePath: worktreePath,
+            branch: branch)
+    }
+
+    static func buttonTitle(for choice: CloseChoice, offersDelete: Bool) -> String {
+        switch choice {
+        case .cancel: "Cancel"
+        case .close: offersDelete ? "Close Only" : "Close"
+        case .closeAndDeleteWorktree: "Close and Delete Worktree"
+        }
+    }
+
     /// ⌘W, the row's `×`, the context menu: the session goes — row, shell and snapshot. There is
     /// no "closed but kept" state (decision 2026-09-08: a terminal cannot be exited). A session
     /// that is `working` or `waiting` is confirmed first — Claude is mid-answer, or mid-question;
-    /// an idle one goes at once. The worktree on disk is never touched, and the conversation
-    /// itself is Claude Code's to keep.
+    /// an idle one goes at once, unless it is a merged worktree row, which is offered the delete
+    /// (TKZ-70). The conversation itself is Claude Code's to keep, and the worktree is only ever
+    /// touched when the user picks *Close and Delete Worktree*.
+    ///
+    /// See `closePlan` for the five cases and for which of them say nothing at all.
     func removeSelectedSession() {
         guard let id = store.state.selection else { return }
         removeSession(id)
@@ -3127,22 +3380,67 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     func removeSession(_ id: SessionID) {
         guard let session = store.state.sessions[id] else { return }
-        let busy: Bool
-        switch session.status {
-        case .working, .waiting: busy = true
-        case .idle: busy = false
+        let name = agents?.adapters[session.agent]?.displayName ?? "the agent"
+        let info = self.git?.service.repoInfo(for: id)
+        // `canDeleteWorktree` and not the PR state alone: the safety rules (under the agent's own
+        // worktree marker, opened as a `WT` row, nothing else running on it) gate the offer too.
+        let merged = SidebarRowAdapter.isMerged(session) && self.git?.canDeleteWorktree(id) == true
+
+        guard let plan = Self.closePlan(
+            for: session, agentName: name, isMergedWorktree: merged,
+            worktreePath: info?.toplevel, branch: session.live?.git?.branch, home: home)
+        else {
+            launcher.remove(id)
+            return
         }
-        if busy {
-            let name = agents?.adapters[session.agent]?.displayName ?? "the agent"
-            let confirmed = confirmRemove?(session) ?? runConfirmation(
-                title: "Close \u{201C}\(session.displayTitle)\u{201D}?",
-                message: session.status == .working
-                    ? "\(name) is still working in this session. Closing ends the shell and removes the row; the conversation is kept by \(name)."
-                    : "This session is waiting for you. Closing ends the shell and removes the row; the conversation is kept by \(name).",
-                button: "Close")
-            guard confirmed else { return }
+
+        let offersDelete = plan.buttons.contains(.closeAndDeleteWorktree)
+        let choice: CloseChoice
+        if let confirmClose {
+            choice = confirmClose(plan)
+        } else if let confirmRemove, !offersDelete {
+            choice = confirmRemove(session) ? .close : .cancel
+        } else {
+            choice = runCloseConfirmation(plan)
         }
-        launcher.remove(id)
+
+        switch choice {
+        case .cancel:
+            return
+        case .close:
+            launcher.remove(id)
+        case .closeAndDeleteWorktree:
+            // Captured before the row goes: `deleteWorktreeRequest` reads `RepoInfo` and the
+            // summary, and `launcher.remove` drops both. See `performWorktreeDelete`.
+            guard var request = self.git?.deleteWorktreeRequest(for: id) else {
+                launcher.remove(id)
+                return
+            }
+            // Merged, so a plain `-d` will succeed. `force` stays false: ⇧⌘W has no
+            // acknowledgement checkbox, so a dirty worktree comes back as "has uncommitted
+            // changes — not deleted" and the row still closes. Forcing lives in the sheet.
+            request.branchDelete = request.branch == nil ? .keep : .safe
+            request.force = false
+            launcher.remove(id)
+            self.git?.deleteWorktree(request)
+        }
+    }
+
+    /// The real alert for a `CloseSessionPlan`. Buttons are added in `plan.buttons` order, which
+    /// is what makes the first one the default (Return); AppKit gives Cancel Escape.
+    private func runCloseConfirmation(_ plan: CloseSessionPlan) -> CloseChoice {
+        let offersDelete = plan.buttons.contains(.closeAndDeleteWorktree)
+        let alert = NSAlert()
+        alert.messageText = plan.title
+        alert.informativeText = plan.message
+        for choice in plan.buttons {
+            alert.addButton(withTitle: Self.buttonTitle(for: choice, offersDelete: offersDelete))
+        }
+        alert.alertStyle = .warning
+        let response = alert.runModal()
+        let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        guard index >= 0, index < plan.buttons.count else { return .cancel }
+        return plan.buttons[index]
     }
 
     /// The group header's context menu: the group goes, and with it every session in it — row,
@@ -3165,6 +3463,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
     /// The alert's body. The busy count is called out because those are the rows the user would
     /// have been asked about one at a time had they closed them with ⌘W.
+    ///
+    /// "the worktrees on disk are not touched" is **still true and must stay**: removing a group
+    /// is not *Delete Merged Worktrees…*, which is a separate item on the same menu (TKZ-70).
+    /// Do not "fix" this sentence when you find the delete elsewhere in this file.
     private static func removeGroupMessage(_ members: [Session]) -> String {
         let busy = members.filter { member in
             switch member.status {
@@ -3218,6 +3520,31 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         let remove = contextItem("Remove", action: #selector(contextRemove(_:)), id: id.rawValue)
         remove.identifier = ContextItemID.remove
         menu.addItem(remove)
+
+        // Only on a worktree row, so a normal row's menu is byte-identical to what it was, and
+        // right after Remove because it is the same family of thing: this row goes away.
+        //
+        // The reason lives in the **tooltip**, which is a first for a menu item here — the only
+        // precedent (`groupAgentMenuItem`) folds it into the title instead. The ticket says
+        // "disabled with the reason, like the rebase button", and that button's reason is
+        // literally `rebaseButton.toolTip = model.rebaseHint`. Worth knowing: a menu tooltip needs
+        // a hover and a second's dwell, so it is genuinely missable; if that turns out to matter,
+        // the cheap escalation is the title precedent, not both.
+        if session.showsWorktreeBadge {
+            let agentName = agents?.adapters[session.agent]?.displayName ?? "the agent"
+            let deleteWorktree = contextItem(
+                "Delete Worktree\u{2026}", action: #selector(contextDeleteWorktree(_:)),
+                id: id.rawValue)
+            deleteWorktree.identifier = ContextItemID.deleteWorktree
+            // With no coordinator wired yet there is nothing to ask, and for a *destructive*
+            // item the honest default is the opposite of `Resume`'s: refuse rather than offer.
+            let reason =
+                git.map { $0.deleteWorktreeReason(for: id, agentName: agentName) }
+                ?? "Waiting for this row's git status"
+            deleteWorktree.isEnabled = reason == nil
+            deleteWorktree.toolTip = reason
+            menu.addItem(deleteWorktree)
+        }
 
         // Per-session opt-out of token usage/spend (design: enable/disable, per session), on top
         // of the app menu's global switch. Offered regardless of the global switch's state: a
@@ -3288,6 +3615,23 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             action: #selector(contextSetGroupRepo(_:)), id: id.rawValue)
         repo.identifier = ContextItemID.groupRepo
         menu.addItem(repo)
+
+        // Acts on the group's *sessions*, like "Resume all in <group>", so it sits with them
+        // rather than next to "Remove group".
+        //
+        // Enabled on the cheap store-only test "has any worktree row", deliberately not "has any
+        // *merged* worktree row": whether a branch is fully merged is only known after the
+        // sheet's survey, so gating on the PR alone would hide the item from a group whose
+        // merges were all squash-merged without one. The sheet's own empty state says so honestly.
+        let worktreeRows = store.state.sessions(in: id).filter(\.showsWorktreeBadge)
+        let merged = contextItem(
+            "Delete Merged Worktrees\u{2026}", action: #selector(contextDeleteMergedWorktrees(_:)),
+            id: id.rawValue)
+        merged.identifier = ContextItemID.deleteMergedWorktrees
+        merged.isEnabled = !worktreeRows.isEmpty
+        merged.toolTip = worktreeRows.isEmpty ? "No worktree sessions in \(group.name)" : nil
+        menu.addItem(merged)
+
         menu.addItem(.separator())
 
         let remove = contextItem("Remove group", action: #selector(contextRemoveGroup(_:)), id: id.rawValue)
@@ -3543,6 +3887,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         public static let resume = NSUserInterfaceItemIdentifier("tkzmux.context.resume")
         public static let rename = NSUserInterfaceItemIdentifier("tkzmux.context.rename")
         public static let remove = NSUserInterfaceItemIdentifier("tkzmux.context.remove")
+        public static let deleteWorktree = NSUserInterfaceItemIdentifier("tkzmux.context.deleteWorktree")
         public static let killProcessTree = NSUserInterfaceItemIdentifier("tkzmux.context.killProcessTree")
         public static let toggleSpendTracking = NSUserInterfaceItemIdentifier("tkzmux.context.toggleSpendTracking")
         public static let toggleMute = NSUserInterfaceItemIdentifier("tkzmux.context.toggleMute")
@@ -3550,6 +3895,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         public static let resumeAll = NSUserInterfaceItemIdentifier("tkzmux.context.resumeAll")
         public static let groupRepo = NSUserInterfaceItemIdentifier("tkzmux.context.groupRepo")
         public static let removeGroup = NSUserInterfaceItemIdentifier("tkzmux.context.removeGroup")
+        public static let deleteMergedWorktrees = NSUserInterfaceItemIdentifier("tkzmux.context.deleteMergedWorktrees")
         /// The "Group color" parent item; its `submenu` holds the swatches.
         public static let groupColor = NSUserInterfaceItemIdentifier("tkzmux.context.groupColor")
         public static let groupColorNone = NSUserInterfaceItemIdentifier("tkzmux.context.groupColor.none")
@@ -3606,6 +3952,16 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     @objc private func contextRemove(_ sender: Any?) {
         guard let id = sessionID(from: sender) else { return }
         removeSession(id)
+    }
+
+    @objc private func contextDeleteWorktree(_ sender: Any?) {
+        guard let id = sessionID(from: sender) else { return }
+        presentDeleteWorktreeSheet(for: id)
+    }
+
+    @objc private func contextDeleteMergedWorktrees(_ sender: Any?) {
+        guard let id = groupID(from: sender) else { return }
+        presentDeleteMergedWorktreesSheet(for: id)
     }
 
     @objc private func contextToggleSpendTracking(_ sender: Any?) {
@@ -3933,6 +4289,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// Still unimplemented: `.reloadConfig`. Its id and chord stay in `ShortcutsTable`.
     private func registerMenuHandlers() {
         dispatcher.setHandler(.newSession) { [weak self] in self?.presentNewSessionMenu() }
+        // ⇧⌘N — the sidebar's dashed "＋ New group" button as a chord, so a group can be made
+        // with the sidebar hidden.
+        dispatcher.setHandler(.newGroup) { [weak self] in self?.presentNewGroupPanel() }
         // ⌘I — the activity feed. Registering this is what put Notifications back in the menu,
         // the palette and the cheat sheet.
         dispatcher.setHandler(.notifications) { [weak self] in self?.toggleActivityFeed() }
@@ -4097,8 +4456,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// sheet without a relaunch even though the installed menu bar is only built at launch.
     func buildMainMenu(appName: String = "tkzmux") -> NSMenu {
         let shortcuts = ShortcutsTable.resolved(state: store.state)
-        // Same table as the menu, so the field's printed chord never disagrees with the key.
-        toolbarController.searchShortcut = shortcuts[.searchSessions]
         return MainMenu.build(appName: appName, shortcuts: shortcuts, dispatcher: dispatcher)
     }
 

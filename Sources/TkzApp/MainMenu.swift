@@ -218,6 +218,7 @@ public enum MainMenu {
     ) -> NSMenu {
         let menu = NSMenu(title: "File")
         addCommand(.newSession, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.newGroup, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         addCommand(.openFolder, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
         addCommand(.closeTerminal, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)

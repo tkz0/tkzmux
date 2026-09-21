@@ -52,8 +52,11 @@ extension AgentKind {
         return Self.worktreeRoot(ofPath: path, marker: marker)
     }
 
-    /// The marker-agnostic half, so a test can exercise the parsing without an agent.
-    static func worktreeRoot(ofPath path: String, marker: String) -> String? {
+    /// The marker-agnostic half, so a test can exercise the parsing without an agent — and so
+    /// `WorktreeRemoval.preflight` can check a captured marker string without an `AgentKind` to
+    /// hand (its `Request` carries the marker, not the agent, precisely so the safety rule stays
+    /// a pure comparison over the request).
+    public static func worktreeRoot(ofPath path: String, marker: String) -> String? {
         guard let range = path.range(of: marker) else { return nil }
         let rest = path[range.upperBound...]
         let name = rest.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: true).first

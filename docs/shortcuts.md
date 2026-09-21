@@ -12,14 +12,15 @@ this table; nothing hard-codes a key equivalent.
 
 | Action id | Keys | What it does |
 |---|---|---|
-| `newSession` | ⌘N | Opens the group-scoped “＋ New session…” menu |
-| `searchSessions` | ⌘F | Puts the caret in the toolbar's “Search sessions…” field, whose placeholder prints the bound chord (an override shows its own); typing opens the results overlay (see below). With no toolbar (the field hidden), falls back to the centred palette in sessions mode |
+| `newSession` | ⌘N | Opens the group-scoped “＋ New session…” menu — from the selected group's sidebar row, or from under the title bar when the sidebar is hidden |
+| `newGroup` | ⇧⌘N | Asks for a name and makes a group. It starts as a bucket — *Set Repo…* on its context menu, or its first *New session in…*, attaches a repo. The same prompt as the dashed ＋ at the foot of the sidebar, but it does not need the sidebar shown |
+| `searchSessions` | ⌘F | Opens the search overlay in the middle of the window and puts the caret in it (see below). Sessions, transcripts and changed files, in one list |
 | `commandPalette` | ⇧⌘P | Palette, everything (sessions, groups, commands) |
 | `toggleSidebar` | ⌘B | Show/hide the sidebar |
 | `toggleTheme` | — | Flip between the dark theme and its light twin. Also the ☀/☾ button at the right of the toolbar; the choice is remembered across launches |
 | `renameSession` | ⇧⌘R | Rename the selected session |
 | `closeTerminal` | ⌘W | Close the focused pane; the session's **last** terminal closes the session |
-| `closeSession` | ⇧⌘W | Close the session, however many panes it has |
+| `closeSession` | ⇧⌘W | Close the session, however many panes it has. A worktree row whose pull request is merged asks first, with **Close and Delete Worktree** as the default button and **Close Only** beside it; every other idle row still closes with no prompt at all, and a working row is never offered the delete. ⇧⌘W never force-removes a worktree with uncommitted changes — use *Delete worktree…* for that |
 | `selectSession1` … `selectSession9` | ⌘1 … ⌘9 | Select the n-th visible session |
 | `jumpToNeedsYou` | ⇧⌘U | Jump to the next session that needs you |
 | `notifications` | ⌘I | The activity feed: a catch-up inbox over the terminal, newest first — every row's finished turns (the first two lines of Claude's reply), NEEDS YOU flips (permission / question / unattended) and Claude exits, one thread per row with older entries folded under the newest. Rows that are working are pinned at the top with their elapsed time. An entry is **unread** (bold) until its row is looked at — selected, typed into, or a Stop arriving while it is on screen; right-click › *Mark as Unread* raises it again, and the log (200 entries) survives a relaunch in `state.json`. Inside: typing filters by session title, group and message text (contiguous, like ⌘F); ↑/↓ walk the list, ↵ selects the row and closes, → / ← unfold and fold the selected thread (⌥→ / ⌥← still move the caret), esc or the chord again closes |
@@ -30,6 +31,8 @@ this table; nothing hard-codes a key equivalent.
 | `showFirstPrompt` | ⌥⌘P | Glass card over the terminal with the selected session's first prompt and Claude's recap (design 2c.5); again or Esc closes. Scrolling up a few rows in a Claude session *peeks* the same card without taking the keyboard; scrolling back down (or typing) hides it, and the chord pins it |
 | `showChanges` | ⇧⌘G | View-only changes viewer over the terminal (design 2c.2): the changed files of the selected session's repo with per-file `+/−`, each file's diff inline or split, against `HEAD` or the branch's upstream. Also opened by clicking the `+142 −38` / `12 files` chips in the status bar. Inside: ↑/↓ walk the files, Page Up/Down and Home/End scroll the diff, Esc, the header's ✕ or the chord again returns to the terminal. The artboard says ⌘D, which is *Split Vertically* here |
 | `rebaseOntoBase` | ⌥⌘R | The rebase sheet (design 5a/5b) for the selected session's branch: fetches the repo's base branch — `origin/HEAD`, else `origin/main`/`master`, else a local `main`/`master` — says how many commits it pulls in, and *Rebase* runs `git rebase --autostash` onto it, out of band. Also the amber `⤿ 7 behind main` chip in the status bar, shown only while the branch is behind its base. A rebase conflict aborts and restores the tree; if reapplying the autostashed changes conflicts instead, the rebase stands and the tree keeps those conflict markers with the change kept in `git stash` rather than being restored. The button is off while the row's Claude is working. The artboard says ⌘R, which is *Resume Session* here |
+| — | Row context menu | ***Delete worktree…*** — on a `WT` row, a sheet in the rebase sheet's family naming the worktree path, its branch, and one of *PR #12 merged*, *Branch fully merged into main* or *2 commits not on main*. **Delete** removes the worktree and, when the branch has landed, the branch too; when it has commits the base lacks the button reads **Delete, keep branch** and a red **Delete branch too** appears next to it. A worktree with uncommitted changes needs *Discard them and delete anyway* ticked first. The row is closed first (with the normal working/waiting confirmation), then git runs out of band — never in a pane. Disabled, with the reason as a tooltip, while the row's agent is working, while a rebase runs on that worktree, and for anything that is not a `.claude/worktrees` directory tkzmux itself opened |
+| — | Group context menu | ***Delete merged worktrees…*** — lists every worktree row in the group whose PR is merged or whose branch is fully merged into the base, pre-checked, and runs the same per-row delete for the checked ones. Rows whose agent is working are listed but off; rows with uncommitted changes are listed unchecked — delete those one at a time from the row menu, which is the only place that can force |
 | — | Settings › General | *Check origin periodically*: fetch every session repo's base branch every 5 minutes so the `⤿ 7 behind main` chip stays honest without a manual fetch. **Off by default** (background network under your git credentials) |
 | — | Settings › General | *Notify when Claude finishes*: post a macOS notification when Claude finishes a turn in a session you are not looking at — the moment the row gets its *done* tint — with the first line of the reply as the body. The same banner stays when the row ages into NEEDS YOU after 60 s, and goes away when you look at the row. **On by default.** The **NEEDS YOU** banner (permission prompt, question, agent input; Claude's own line as the body; several flips in one tick share one "N sessions need you" banner) has no switch of its own — macOS's per-app notification setting is the master switch for both, and macOS asks for it once at launch |
 | — | Settings › Shell | *Remove shell integration*: delete the claude shim and the zsh/bash/fish wrappers under Application Support (M3.3) until the next launch, when they are installed again |
@@ -66,9 +69,11 @@ commands. An old override for one of those ids still parses and is simply never 
 
 ## Inside the search overlay (⌘F, design 2c.6)
 
-The overlay is a child window that never takes the keyboard: the toolbar field keeps the caret and
-relays these keys to it (`MainToolbarController` → `MainWindowController` → `CommandPaletteController`).
-They are **not** in the shortcuts table — they exist only while the field is being edited.
+The overlay is a child window centred over the main window — the same place the ⌘-hold cheat sheet
+puts its card — with its own search field, the scope chips above the list and the key hints below
+it. It is 560 pt wide and as tall as its rows want, between 120 and 560 pt. It owns the keyboard
+while it is up. These keys are **not** in the shortcuts table — they exist only while it is on
+screen.
 
 | Keys | What it does |
 |---|---|
@@ -76,16 +81,31 @@ They are **not** in the shortcuts table — they exist only while the field is b
 | ↵ | Open the selected row. A transcript hit selects its session and shows that turn in the 2c.5 card |
 | ⌘↵ | Run the Actions row — a new session in the named group, started with what you typed |
 | ⇥ / ⇧⇥, → / ← | Cycle the scope chips: `All → Sessions → Transcripts → Files changed`, wrapping |
-| esc | Close the overlay, empty the field, and hand the keyboard back to the terminal |
+| esc | Close the overlay and hand the keyboard back to the terminal |
+| ⌘F again | Puts the caret back in the field without throwing the query away |
 
-→ and ← only take the chips while the overlay is up; with it down they move the caret as usual.
 ⌥→ / ⌥← and Home/End always move the caret, so a typo mid-query is still reachable. ⇥ is consumed
-either way — letting it through walks the responder chain out of the field.
+either way — letting it through walks the responder chain out of the field. In ⇧⌘P, which draws no
+chips, → and ← are the field editor's and move the caret.
 
-Emptying the field closes the overlay too — the field is the only state, so nothing is left
-filtered or floating. Transcript search covers the sessions currently in the sidebar; a query
-shorter than two characters searches neither transcripts nor changed files, because a single
-character matches almost every line and every path.
+Clicking back into the window behind the overlay closes it, as does switching app. Emptying the
+field leaves the overlay up with the caret where it is — the next character has to land in the box,
+not in the shell — but drops the transcript and changed-file hits the old query had found.
+Transcript search covers the sessions currently in the sidebar; a query shorter than two characters
+searches neither transcripts nor changed files, because a single character matches almost every line
+and every path.
+
+### Why the title bar has neither
+
+“＋ New session…” and a “Search sessions…” field used to sit in the 48 pt bar. The field was a wide,
+permanently-empty box — it cost the centred title its room and spent most of its life showing a
+placeholder — so the 2026-09-20 GUI pass took both out and gave the search its own field inside the
+overlay it was opening anyway. The overlay was centred in the same pass: hanging it from the
+top-right corner only ever made sense as a dropdown under the field that opened it.
+
+Neither command lost a way in: ⌘N and ⌘F still run them, *New Session…* is in the File menu and
+*Search Sessions…* in View, ⇧⌘P finds them by name, the ⌘-hold cheat sheet prints their chords,
+and a group's sidebar row keeps its own ＋. Rebind either in `state.json` (*Overrides*, below).
 
 ## Overrides
 
