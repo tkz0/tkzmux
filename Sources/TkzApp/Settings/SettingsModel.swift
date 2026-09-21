@@ -264,7 +264,11 @@ struct SettingsModel: Hashable, Sendable {
     /// One row per account whose agent claims `.statusline`, the default account first, then by
     /// key. With one account the row carries no account name; with several, each row names its
     /// own — the same rule the sidebar chip follows (nothing to say about the only account there
-    /// is). Gated on the capability rather than on `account.agent == .claude`: today that capability
+    /// is). The name is `Account.qualifiedName` rather than the bare label, because two config
+    /// dirs signed into the same organisation share a label and the rows would otherwise be
+    /// indistinguishable except by the path buried in their body text.
+    ///
+    /// Gated on the capability rather than on `account.agent == .claude`: today that capability
     /// happens to belong to Claude alone, but the row-builder itself does not know that, which is
     /// what keeps a Codex account from growing a status-line row it cannot back.
     static func statuslineRows(state: AppState, environment: Environment) -> [SettingsRow] {
@@ -282,7 +286,7 @@ struct SettingsModel: Hashable, Sendable {
             let producer = environment.statusline[account.key] ?? .none
             let file = "\(account.configDir)/settings.json"
             let title = named
-                ? "Status line integration \u{00B7} \(account.label)"
+                ? "Status line integration \u{00B7} \(account.qualifiedName)"
                 : "Status line integration"
             let agentName = environment.agentDisplayName(account.agent)
             let detail: String
@@ -332,7 +336,7 @@ struct SettingsModel: Hashable, Sendable {
                 ?? CodexHooksDetection(producer: .none, configTomlHasHooks: false, trust: .unknown)
             let file = "\(account.configDir)/hooks.json"
             let title = named
-                ? "Hooks integration \u{00B7} \(account.label)"
+                ? "Hooks integration \u{00B7} \(account.qualifiedName)"
                 : "Hooks integration"
             let agentName = environment.agentDisplayName(account.agent)
             // Codex also reads hooks straight out of its own `config.toml` and merges the two

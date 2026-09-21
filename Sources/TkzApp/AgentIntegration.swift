@@ -198,10 +198,12 @@ public final class AgentIntegration {
                 // The row itself says which agent it belongs to, so the account this fabricates
                 // follows `session.agent` rather than assuming Claude — the adapter table is what
                 // makes that honest now that a second agent can exist.
-                let label = self.adapters[session.agent]?.accountLabels(home: home, fileManager: .default)[session.accountKey]
-                    ?? session.accountKey
+                let configured = self.adapters[session.agent]?
+                    .accountLabels(home: home, fileManager: .default)[session.accountKey]
                 accounts[session.accountKey] = Account(
-                    key: session.accountKey, configDir: dir, label: label, agent: session.agent)
+                    key: session.accountKey, configDir: dir,
+                    label: configured ?? session.accountKey,
+                    labelIsConfigured: configured != nil, agent: session.agent)
             }
         }
         var flatConfigDirs: [String] = []
@@ -304,10 +306,14 @@ public final class AgentIntegration {
         // Only a *new* account needs a name looked up. This method runs on every launch frame and
         // every observation update — several times a minute per session — and label lookup reads
         // and parses a file, so it must not be on that path for an account we already know.
-        let label = known == nil ? (adapters[agent]?.accountLabels(home: home, fileManager: .default)[key] ?? key) : key
+        let configured = known == nil
+            ? adapters[agent]?.accountLabels(home: home, fileManager: .default)[key] : nil
         store.update { state in
             if known == nil {
-                state.setAccount(Account(key: key, configDir: standardized, label: label, agent: agent))
+                state.setAccount(
+                    Account(
+                        key: key, configDir: standardized, label: configured ?? key,
+                        labelIsConfigured: configured != nil, agent: agent))
             }
             state.setSessionAccount(id, key: key)
         }

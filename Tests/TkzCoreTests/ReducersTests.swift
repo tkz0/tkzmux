@@ -616,7 +616,8 @@ import Testing
     }
 
     /// `setUsage` takes the plan, and the usage file's name only for an account nobody has named:
-    /// a generated name must never overwrite the one a human wrote in `dash-accounts.json`.
+    /// a generated name must never overwrite the one a human wrote in `dash-accounts.json` — but it
+    /// may replace an earlier generated one.
     @Test func usageNamesOnlyTheAccountsNobodyHasNamed() {
         var state = AppState.fixture
 
@@ -634,6 +635,11 @@ import Testing
         // …and a snapshot with no name of its own leaves it alone.
         state.setUsage(UsageSnapshot(accountKey: "claude-spare"))
         #expect(state.accounts["claude-spare"]?.label == "Spare")
+        // A *later* generated name still wins: the config dir was signed into another account, and
+        // one derived name has no claim over the next one. (Before this, the first name an account
+        // was ever given stuck — which is how one org's name ended up on two config dirs at once.)
+        state.setUsage(UsageSnapshot(accountKey: "claude-spare", label: "Renamed"))
+        #expect(state.accounts["claude-spare"]?.label == "Renamed")
 
         // A usage file for a config dir nobody has discovered is not evidence that it exists.
         state.setUsage(UsageSnapshot(accountKey: "claude-ghost", label: "Ghost"))

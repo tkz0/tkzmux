@@ -169,6 +169,9 @@ public enum Fixture {
                 key: key,
                 configDir: key == "claude" ? "~/.claude" : "~/.\(key)",
                 label: key == "claude" ? "Claude" : "Claude (alt)",
+                // Both fixture names stand for a `dash-accounts.json` entry, which is what makes
+                // them the names a usage snapshot may not overwrite.
+                labelIsConfigured: true,
                 plan: key == "claude" ? "Max 20x" : "Team 5x",
                 // Both fixture accounts are Claude — spelled out because this fixture is also the
                 // documentation of an `Account`'s shape, not just data for it.

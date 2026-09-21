@@ -19,6 +19,10 @@ import Darwin
 
 /// Both sidecars skip a write when the file on disk is younger than this and unchanged.
 private let writeThrottleSeconds = 30.0
+/// How long a resolved identity is reused before the identity file is opened again. This is what
+/// bounds the cost of a wrong name: a config dir that gets logged out and back in as somebody else
+/// keeps its old label for at most this long instead of forever.
+private let identityCacheSeconds = 600.0
 private let labelMax = 32
 private let planMax = 24
 private let scopedLabelMax = 40
@@ -111,6 +115,9 @@ struct StatuslineAccount {
     var plan: String?
     var uuid: String?
     var configDir: String
+    /// Epoch seconds at which the identity file was last read for this block, or nil when it never
+    /// was. Round-tripped through the sidecar, which is the only place this cache lives.
+    var resolvedAt: Double?
 
     var json: JSONValue {
         var pairs: [JSONPair] = [
@@ -120,6 +127,8 @@ struct StatuslineAccount {
         pairs.append(JSONPair(key: "plan", value: plan.map(JSONValue.string) ?? .null))
         pairs.append(JSONPair(key: "uuid", value: uuid.map(JSONValue.string) ?? .null))
         pairs.append(JSONPair(key: "config_dir", value: .string(configDir)))
+        pairs.append(JSONPair(
+            key: "resolved_at", value: resolvedAt.map { .number(String(Int($0))) } ?? .null))
         return .object(pairs)
     }
 }
@@ -131,25 +140,29 @@ struct StatuslineAccount {
 /// invent a second key and split one account's high-water state across two sidecars. A failed
 /// identity read costs a pretty label and nothing else.
 ///
-/// `previous` is the `account` block of the sidecar already on disk. When it carries a label for the
-/// same config dir we reuse it and never open the identity file at all — this runs on every
-/// statusline refresh.
+/// `previous` is the `account` block of the sidecar already on disk. A resolved block for the same
+/// config dir is reused without opening the identity file at all — this runs on every statusline
+/// refresh — but only for `identityCacheSeconds`. The cache is what makes the name cheap; the bound
+/// is what makes it *correct*: the identity behind one config dir changes whenever the user logs
+/// out and back in as somebody else, and an unbounded cache pins the old org name (and plan, and
+/// uuid) to that dir for good.
 func resolveStatuslineAccount(configDir: String, previous: JSONValue?) -> StatuslineAccount {
     let key = statuslineAccountKey(configDir: configDir)
+    let now = nowEpochSeconds()
+    let cached = cachedStatuslineAccount(previous, key: key, configDir: configDir)
 
-    if let previous,
-       previous.get("config_dir")?.asString == configDir,
-       let label = previous.get("label")?.asString, !label.isEmpty {
-        return StatuslineAccount(
-            key: key,
-            label: label,
-            plan: previous.get("plan")?.asString,
-            uuid: previous.get("uuid")?.asString,
-            configDir: configDir)
+    // No `resolved_at` means the block never came from an identity file — the fallback below, or
+    // anything written before this function had an expiry, which is precisely the block that might
+    // be carrying the wrong account. Either way it is not a cache hit.
+    if let cached, let resolvedAt = cached.resolvedAt {
+        let age = now - resolvedAt
+        // A negative age is a clock that went backwards, not a fresh entry.
+        if age >= 0, age < identityCacheSeconds { return cached }
     }
 
     // Order matters: a non-default profile keeps identity INSIDE the dir
-    // (`~/.claude-work/.claude.json`), the default one keeps it as a SIBLING (`~/.claude.json`).
+    // (`~/.claude-work/.claude.json`); the default one has it in both places on a current Claude
+    // Code, and historically only as a SIBLING (`~/.claude.json`).
     for candidate in [configDir + "/.claude.json", configDir + ".json"] {
         guard let bytes = readFile(candidate) else { continue }
         var parser = JSONParser(bytes: bytes)
@@ -159,10 +172,39 @@ func resolveStatuslineAccount(configDir: String, previous: JSONValue?) -> Status
             label: accountLabel(account, fallback: key),
             plan: accountPlan(account),
             uuid: account.get("accountUuid")?.asString,
-            configDir: configDir)
+            configDir: configDir,
+            resolvedAt: now)
     }
 
-    return StatuslineAccount(key: key, label: key, plan: nil, uuid: nil, configDir: configDir)
+    // Nothing readable. A stale name beats no name, so keep what the sidecar had and restamp it —
+    // retrying on every refresh would reread a large file to fail the same way.
+    if var cached {
+        cached.resolvedAt = now
+        return cached
+    }
+
+    return StatuslineAccount(
+        key: key, label: key, plan: nil, uuid: nil, configDir: configDir, resolvedAt: nil)
+}
+
+/// The sidecar's `account` block, as a name worth keeping — expired or not. `resolved_at` is what
+/// says which: a block that has none was never resolved against an identity file (it is either the
+/// no-identity fallback, or a block from before this function had an expiry at all), so it is
+/// usable as a last resort but must never satisfy the cache.
+private func cachedStatuslineAccount(
+    _ previous: JSONValue?, key: String, configDir: String
+) -> StatuslineAccount? {
+    guard let previous,
+          previous.get("config_dir")?.asString == configDir,
+          let label = previous.get("label")?.asString, !label.isEmpty
+    else { return nil }
+    return StatuslineAccount(
+        key: key,
+        label: label,
+        plan: previous.get("plan")?.asString,
+        uuid: previous.get("uuid")?.asString,
+        configDir: configDir,
+        resolvedAt: previous.get("resolved_at")?.asNumber)
 }
 
 private func accountLabel(_ account: JSONValue, fallback: String) -> String {
@@ -274,6 +316,17 @@ func isoString(seconds: Double) -> String? {
     while fraction.count < 3 { fraction = "0" + fraction }
     let stamp = String(decoding: buffer[0..<written].map { UInt8(bitPattern: $0) }, as: UTF8.self)
     return stamp + "." + fraction + "Z"
+}
+
+/// Wall-clock seconds since the epoch, sub-second included.
+///
+/// The fraction matters even though the only consumer is a ten-minute cache: truncating here made
+/// `now` up to a second *earlier* than a timestamp written moments ago, which reads as a clock
+/// that went backwards and threw the entry away.
+func nowEpochSeconds() -> Double {
+    var tv = timeval()
+    gettimeofday(&tv, nil)
+    return Double(tv.tv_sec) + Double(tv.tv_usec) / 1_000_000
 }
 
 /// `updated_at` for a snapshot written right now.
