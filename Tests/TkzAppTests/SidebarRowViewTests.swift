@@ -538,54 +538,26 @@ struct SidebarRowViewTests {
                                  Self.components(expected.cgColor)))
     }
 
-    // MARK: - Agent glyph (TKZ-87)
+    // MARK: - No per-agent marker
 
-    /// The model-level rule: `nil` unless the sidebar actually mixes agents — asserted directly
-    /// against `SidebarRowAdapter`, which is the one place that decides.
-    @Test("The agent glyph is nil until the sidebar actually mixes two agents")
-    func agentGlyphOnlyAppearsOnceTwoAgentsAreMixedIn() {
+    /// The one-letter agent badge (`C`/`X`/`A`, TKZ-87) is gone as of 2026-09-21: grey on grey and
+    /// a letter deep, it asked the reader to learn a code for something the pane itself already
+    /// spells out. Mixing a second agent into the sidebar must therefore leave every row's model
+    /// exactly as it was — this is the guard against the badge creeping back in.
+    @Test("Mixing two agents into one sidebar changes nothing about a row")
+    func mixingAgentsLeavesTheRowUntouched() {
         var state = AppState()
         let group = state.addGroup(name: "G", repoRoot: "/tmp")
-        let claudeOnly = state.createSession(groupID: group.id, cwd: "/tmp")
-        // A single-agent sidebar — every fixture that predates TKZ-87 — must still get `nil`.
-        #expect(SidebarRowAdapter.sessionModel(claudeOnly, in: state).agentGlyph == nil)
+        let claudeSession = state.createSession(groupID: group.id, cwd: "/tmp")
+        let before = SidebarRowAdapter.sessionModel(claudeSession, in: state)
 
         let codexSession = state.createSession(groupID: group.id, cwd: "/tmp", agent: .codex)
-        // Now that a second agent is in the same state, both rows carry a glyph naming their own.
-        #expect(SidebarRowAdapter.sessionModel(claudeOnly, in: state).agentGlyph == "C")
-        #expect(SidebarRowAdapter.sessionModel(codexSession, in: state).agentGlyph == "X")
-    }
-
-    /// The view side: hidden and pixel-inert with one agent, drawn (and shifting the title over)
-    /// once the model actually carries a glyph.
-    @Test("The agent glyph badge is hidden without a glyph, and shifts the title over with one")
-    func agentGlyphBadgeIsOptionalAndMovesTheTitle() {
-        let none = Self.sessionRow(SidebarSessionRowModel(title: "s"))
-        #expect(none.agentGlyphLayer.isHidden)
-        let bareTitleLeft = none.titleTextLayer.frame.minX
-
-        let withGlyph = Self.sessionRow(SidebarSessionRowModel(title: "s", agentGlyph: "X"))
-        #expect(!withGlyph.agentGlyphLayer.isHidden)
-        // The badge sits exactly where the title always started, and the title moves right to
-        // make room for it — a single-agent row (`none`, above) is therefore untouched.
-        #expect(withGlyph.agentGlyphLayer.frame.minX == bareTitleLeft)
-        #expect(withGlyph.titleTextLayer.frame.minX > bareTitleLeft)
-    }
-
-    /// A single-agent row must render pixel-for-pixel as it did before this field existed: the
-    /// same headless-render determinism check the rest of the suite holds every badge to.
-    @Test("A single-agent row renders identically whether or not the model even mentions the glyph")
-    func singleAgentRenderIsUnaffectedByTheGlyphField() throws {
-        let implicit = Self.sessionRow(Self.sample)
-        let explicitNil = Self.sessionRow(
-            SidebarSessionRowModel(
-                title: Self.sample.title, branch: Self.sample.branch, isWorktree: Self.sample.isWorktree,
-                status: Self.sample.status, accountLabel: Self.sample.accountLabel,
-                accountColor: Self.sample.accountColor, needsAttention: Self.sample.needsAttention,
-                isSelected: Self.sample.isSelected, agentGlyph: nil))
-        let a = try Self.pixels(Self.render(implicit, scale: 2))
-        let b = try Self.pixels(Self.render(explicitNil, scale: 2))
-        #expect(a == b)
+        #expect(SidebarRowAdapter.sessionModel(claudeSession, in: state) == before)
+        // And the Codex row differs from the Claude one only in the ways it always did — its own
+        // title and account — never by carrying a marker the other one lacks.
+        let codexRow = SidebarRowAdapter.sessionModel(codexSession, in: state)
+        #expect(Self.sessionRow(codexRow).titleTextLayer.frame.minX
+            == Self.sessionRow(before).titleTextLayer.frame.minX)
     }
 
     /// The chip is a `CALayer` in a row with no subviews, so its tooltip is a registered rect the
