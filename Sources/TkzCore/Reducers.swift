@@ -388,6 +388,8 @@ extension AppState {
     }
 
     /// The group whose `repoRoot` matches, used when adopting a session discovered elsewhere.
+    /// Roots are not unique — a user may point two groups at one checkout to run different agents
+    /// or accounts in it — so this answers with the lowest-ordered match.
     public func group(forRepoRoot repoRoot: String) -> Group? {
         orderedGroups.first { $0.repoRoot == repoRoot }
     }

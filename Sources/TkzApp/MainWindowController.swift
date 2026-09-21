@@ -845,8 +845,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// live row ("In another repo…") makes a *new* group, which is not what a click on this group
     /// asked for.
     ///
-    /// A folder that already roots another group launches into that group instead — one folder
-    /// roots one group — and this group is left as it was.
+    /// The folder is taken at its word even when another group is already rooted there: the click
+    /// named *this* group, so this group gets the repo and the session. Redirecting into the group
+    /// that happened to own the folder — which is what this did until 2026-09-21 — left the clicked
+    /// group empty and rootless while a session appeared somewhere the user had not asked for, with
+    /// nothing said about it. Two groups on one repo is a real arrangement anyway: same checkout,
+    /// different agent or account.
     public func presentSetRepoAndStartPanel(for id: GroupID) {
         guard let group = store.state.groups[id] else { return }
         presentFolderPanel(
@@ -854,15 +858,8 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             message: "Choose the repo for \u{201C}\(group.name)\u{201D}. It becomes the group\u{2019}s repo, and the agent starts in it."
         ) { [weak self] url in
             guard let self else { return }
-            let path = url.standardizedFileURL.path
-            let target: GroupID
-            if let other = self.group(rootedAt: path) {
-                target = other.id
-            } else {
-                self.store.update { $0.setGroupRepoRoot(id, path: path) }
-                target = id
-            }
-            self.startClaude(in: target)
+            self.store.update { $0.setGroupRepoRoot(id, path: url.standardizedFileURL.path) }
+            self.startClaude(in: id)
         }
     }
 
@@ -915,9 +912,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         return created
     }
 
-    /// The group rooted at `path`, if any. One folder roots at most one group — the rule
-    /// ``createGroup(from:)`` and *Set Repo…* both keep. Paths are stored as written, so the
-    /// stored root is tilde-expanded before the comparison.
+    /// The group rooted at `path`, if any — the **first** one, since roots are not unique. Only
+    /// ``createGroup(from:)`` asks: "In another repo…" makes a group *out of* a folder, so an
+    /// existing group for that folder is the answer rather than a duplicate. The two paths that
+    /// root a group the user pointed at — *Set Repo…* and
+    /// ``presentSetRepoAndStartPanel(for:)`` — do not consult this and take the folder as given.
+    /// Paths are stored as written, so the stored root is tilde-expanded before the comparison.
     func group(rootedAt path: String) -> Group? {
         // `orderedGroups`, not `groups.values`: a dictionary's first match is not stable, and this
         // decides which group "In another repo…" lands in.
@@ -4079,13 +4079,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
                            message: "Choose the repo this group's sessions start in.") {
             [weak self] url in
             guard let self else { return }
-            let path = url.standardizedFileURL.path
-            if let other = self.group(rootedAt: path), other.id != id {
-                self.showNotice("\u{201C}\(other.name)\u{201D} is already rooted there",
-                                for: .seconds(4))
-                return
-            }
-            self.store.update { $0.setGroupRepoRoot(id, path: path) }
+            // No "already rooted there" refusal: the twin path, "New session in X…", roots the
+            // group the user clicked whatever else points at that folder, and the item right below
+            // this one cannot mean the opposite.
+            self.store.update { $0.setGroupRepoRoot(id, path: url.standardizedFileURL.path) }
         }
     }
 
