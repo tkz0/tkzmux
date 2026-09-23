@@ -1,0 +1,29 @@
+Sources/TkzShaderTypes/include/TkzShaderTypes.h
+  s_cc82a6589cb7fd::t_e7d01b73064e9a 148
+Sources/TkzTerminalRender/Resources/Shaders/Terminal.metal
+  s_cc82a6589cb7fd::t_adb2a490f237b2 264-273,276-277,280,282-293
+Sources/TkzTerminalRender/Resources/Shaders/TkzShaderTypes.h
+  s_cc82a6589cb7fd::t_a358aa2a40d0ce 148
+Sources/TkzTerminalRender/TerminalRenderer.swift
+  s_cc82a6589cb7fd::t_3414c6e4c51c7b 73,433
+Sources/TkzCore/Theme.swift
+  s_cc82a6589cb7fd::t_d5a0e505d3f43e 110-117,283,367
+Tests/TkzTerminalRenderTests/TerminalRendererTests.swift
+  s_cc82a6589cb7fd::t_a4d3a2f5cf69f4 527-563
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "210cef1244d4a146acf2d974b9b4ccce527b448e",
+  "prompts": {},
+  "sessions": {
+    "s_cc82a6589cb7fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "604044a0-bc31-430c-a64c-637405f96383",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
