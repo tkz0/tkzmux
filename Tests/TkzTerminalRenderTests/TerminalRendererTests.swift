@@ -524,6 +524,43 @@ struct TerminalRendererPixelTests {
                 "a cell with no explicit background composites to the theme background")
     }
 
+    /// Regression: on the light theme, Claude Code's dark-theme pastels — `#b1b9f9` for inline code
+    /// is 1.9:1 on white — were drawn as sent and all but vanished.
+    @Test("on the light theme a program's pastel is deepened to the theme's minimum contrast, keeps its hue, and theme text is untouched")
+    func lightThemeLiftsProgramColoursToMinimumContrast() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else { return }
+        let theme = Theme.light
+        let renderer = try TerminalRenderer(
+            device: device,
+            glyphCache: GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2), device: device),
+            theme: theme)
+        let session = try TerminalSession(options: TerminalSessionOptions(cols: 4, rows: 1, theme: theme))
+        // Cell 0: a full block in the pastel. Cell 2: a full block in the theme's own foreground.
+        session.write(ptyText: "\u{1b}[H\u{1b}[38;2;177;185;249m\u{2588}\u{1b}[0m \u{2588}")
+        let surface = TerminalSurface()
+        try surface.attach(session)
+
+        let metrics = renderer.glyphCache.metrics
+        let size = renderer.drawableSize(columns: 4, rows: 1)
+        let texture = try #require(renderer.makeOffscreenTexture(width: size.width, height: size.height))
+        let outcome = try renderer.render(surface: surface, to: texture)
+        outcome.commandBuffer?.waitUntilCompleted()
+        #expect(outcome.commandBuffer?.error == nil)
+        let pixels = TerminalRenderer.bgraBytes(of: texture)
+
+        let pastel = pixel(pixels, width: size.width, x: metrics.width / 2, y: metrics.height / 2)
+        let drawn = RGB(rgb: pastel.r, pastel.g, pastel.b)
+        let ratio = drawn.contrastRatio(against: theme.terminalBackground)
+        #expect(ratio >= theme.terminalMinContrast - 0.1, "drawn at \(ratio):1")
+        #expect(ratio < theme.terminalMinContrast + 0.5, "only as far as needed, not to black: \(ratio):1")
+        #expect(pastel.b > pastel.r && pastel.b > pastel.g, "still blue: \(pastel)")
+
+        let themed = pixel(pixels, width: size.width, x: metrics.width * 2 + metrics.width / 2,
+                           y: metrics.height / 2)
+        let fg = theme.terminalForeground.bytes
+        #expect(themed == (fg.b, fg.g, fg.r), "theme-coloured text is drawn exactly as the theme says")
+    }
+
     @Test("the shader library loads through the makeLibrary(source:) fallback")
     func libraryLoads() throws {
         guard let device = MTLCreateSystemDefaultDevice() else { return }

@@ -145,7 +145,7 @@ typedef struct {
     uint32_t cursorTextColor;
     /// Minimum WCAG contrast ratio to force between a glyph and its own background. `1.0` (or any
     /// value ≤ 1) disables the adjustment entirely. Only applied to instances that opt in with
-    /// `TKZ_GLYPH_FLAG_MIN_CONTRAST`. `1.1` is a reasonable "only fix invisible text" setting.
+    /// `TKZ_GLYPH_FLAG_MIN_CONTRAST`. Set from `Theme.terminalMinContrast`.
     float minContrast;
     /// Reserved; must be zero. Present so the struct is a round 80 bytes and so three more
     /// scalars can be added later without moving any existing field.
