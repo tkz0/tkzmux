@@ -1,0 +1,19 @@
+README.md
+  s_1333d9f8178b4e::t_7b4b484044cb97 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bed23c4598cc31e10968abae601882a5140777aa",
+  "prompts": {},
+  "sessions": {
+    "s_1333d9f8178b4e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a8f4a17-ce02-49bc-939a-912ef363ee8f",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
