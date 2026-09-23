@@ -1,0 +1,59 @@
+Sources/AgentBridge/AgentAdapter.swift
+  s_797b4be0230d71::t_8d0f90b73bbf94 113-125
+Sources/AgentBridge/Claude/ClaudeAdapter.swift
+  s_797b4be0230d71::t_80747e27d5b09f 185-208
+Sources/AgentBridge/Claude/ClaudeHookMapper.swift
+  s_797b4be0230d71::t_9c5c8d8aabf522 16-18,21-23,27-30,34-43,59-64
+Sources/AgentBridge/HookFrame.swift
+  s_797b4be0230d71::t_ae5fda25dc62cc 41-48,61-64,77-100
+Sources/AgentBridge/HookServer.swift
+  s_797b4be0230d71::t_28b0939f0636e0 308,333-335,348-351,360-375
+Sources/TkzApp/AgentIntegration.swift
+  s_797b4be0230d71::t_88165446111b55 556-595,659-665,675
+Sources/TkzApp/MainWindowController.swift
+  s_797b4be0230d71::t_832a2a173b5c1e 2729-2732,2772-2788
+Sources/TkzApp/StatusBar/StatusBarModel.swift
+  s_797b4be0230d71::t_8efbd2a93d8599 40-45
+Sources/TkzApp/StatusBar/StatusBarView.swift
+  s_797b4be0230d71::t_33bf7f3854644d 295-303
+Sources/TkzCore/AgentEvent.swift
+  s_797b4be0230d71::t_2957731f5cc08a 57-61,64-75,94-97,111,124,128-141
+Sources/TkzCore/Models.swift
+  s_797b4be0230d71::t_86790dbdc1894e 527-531,588-602
+Sources/TkzCore/Reducers.swift
+  s_797b4be0230d71::t_cdc5ce347cf182 627-630,641-670,703,709-735,794
+Sources/TkzCore/StatusDerivation.swift
+  s_797b4be0230d71::t_36f5e20167c36c 15,30-36,54-55,66,76,139-144,188
+Sources/tkzmux-hook/SettingsMerge.swift
+  s_797b4be0230d71::t_28dc1aaea0ecd1 4-6
+Tests/AgentBridgeTests/Fixtures/hooks/stop_background_tasks.json
+  s_797b4be0230d71::t_bec1cc94db9963 1-15
+Tests/AgentBridgeTests/Fixtures/hooks/subagent_start.json
+  s_797b4be0230d71::t_56f9cdbc02562e 1-9
+Tests/AgentBridgeTests/Fixtures/hooks/subagent_stop.json
+  s_797b4be0230d71::t_68a86705470b1a 1-18
+Tests/AgentBridgeTests/HookBinaryTests.swift
+  s_797b4be0230d71::t_02fd31b877a5db 675-677,691,701-706,734
+Tests/AgentBridgeTests/SubagentHookTests.swift
+  s_797b4be0230d71::t_fa03586af6d8dc 1-135
+Tests/TkzAppTests/SubagentStatusTests.swift
+  s_797b4be0230d71::t_4cbc4aebb90a7b 1-120
+Tests/TkzCoreTests/SubagentTrackingTests.swift
+  s_797b4be0230d71::t_831f3ac2403908 1-200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f114997cd193d3e7a45ed2f5cd9ea0fe37e8aad0",
+  "prompts": {},
+  "sessions": {
+    "s_797b4be0230d71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9951b63-e1de-4288-8450-280553bfdfcf",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
