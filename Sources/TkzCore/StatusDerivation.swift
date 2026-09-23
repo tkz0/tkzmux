@@ -12,6 +12,7 @@
 //   2b. `observation.activity == .waiting` (the agent's own prompt flag) → `.waiting(.permission)`
 //   3. `observation.parked == true`                                     → `.idle` (parked)
 //   4. `observation.activity == .busy`                                  → `.working`
+//   4a. a sub-agent the agent reported starting is still running        → `.working`
 //   4b. no observation, and `lastPromptAt` is newer than `lastStopAt`
 //      (or there is a `lastPromptAt` and no `lastStopAt` at all)        → `.working`
 //   5. a `Stop` newer than `attendedAt`, and (an `.idleNudge` after it,
@@ -25,6 +26,13 @@
 // agent that *does* write a descriptor has strictly better evidence — Claude always has an
 // observation while it runs, so 4b never fires for it, and a lagging descriptor or a cancelled
 // prompt cannot flip an idle Claude row to working through this rule.
+//
+// Rule 4a exists because a turn can end with work still running: Claude Code launches sub-agents in
+// the background, its `Stop` fires and its descriptor goes `idle`, and the agents keep going for
+// minutes. Without it the row read as done — and after 60 s as NEEDS YOU — while three agents were
+// still working (reported 2026-09-23: "I have to prompt Claude 'are you done?'"). It sits below the
+// waiting rules on purpose: a sub-agent's permission prompt is still a prompt. Background *shells*
+// deliberately do not count (decision 2026-09-23): a dev server would keep the row pulsing forever.
 //
 // Without any events this degrades to observation-only (busy → working, idle → idle); with
 // neither events nor an observation (a plain shell) it is `.idle` while alive — both asserted in
@@ -43,6 +51,8 @@ public struct StatusInput: Hashable, Sendable {
     public var attendedAt: Date?
     /// `UserPromptSubmit`'s timestamp — rule 4b's only evidence for an agent with no observation.
     public var lastPromptAt: Date?
+    /// How many sub-agents are still running — rule 4a.
+    public var runningSubagents: Int
     public var now: Date
 
     public init(
@@ -53,6 +63,7 @@ public struct StatusInput: Hashable, Sendable {
         lastStopAt: Date? = nil,
         attendedAt: Date? = nil,
         lastPromptAt: Date? = nil,
+        runningSubagents: Int = 0,
         now: Date
     ) {
         self.observation = observation
@@ -62,6 +73,7 @@ public struct StatusInput: Hashable, Sendable {
         self.lastStopAt = lastStopAt
         self.attendedAt = attendedAt
         self.lastPromptAt = lastPromptAt
+        self.runningSubagents = runningSubagents
         self.now = now
     }
 }
@@ -124,6 +136,12 @@ public enum StatusDerivation {
             return StatusOutcome(status: .working, attention: false, isDone: false)
         }
 
+        // 4a. The main turn may be over, but sub-agents it started are still running. Not done,
+        // and not NEEDS YOU either: the agent will pick their results up itself.
+        if input.runningSubagents > 0 {
+            return StatusOutcome(status: .working, attention: false, isDone: false)
+        }
+
         // 4b. No observation to trust, and a prompt was submitted more recently than the last
         // `Stop` (or there is a prompt and no `Stop` at all): the only evidence available says a
         // turn is still in progress. Gated on `observation == nil` — an agent that writes a
@@ -167,6 +185,7 @@ public enum StatusDerivation {
                 lastStopAt: live.lastStopAt,
                 attendedAt: live.attendedAt,
                 lastPromptAt: live.lastPromptAt,
+                runningSubagents: live.runningSubagents.count,
                 now: now
             ))
     }

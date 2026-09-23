@@ -1,0 +1,15 @@
+{
+  "session_id": "35c06bda-b2cf-48c7-ad23-d9637cc06782",
+  "prompt_id": "5b7f1c2e-9a41-4d0b-8f6e-2c3d4e5f6a7b",
+  "transcript_path": "/Users/someone/.claude/projects/-Users-someone-dev-tkzmux/35c06bda-b2cf-48c7-ad23-d9637cc06782.jsonl",
+  "cwd": "/Users/someone/dev/tkzmux",
+  "permission_mode": "default",
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "waiting",
+  "background_tasks": [
+    {"id": "b4uo0szea", "type": "shell", "status": "running", "description": "Sleep for 25 seconds in background", "command": "sleep 25"},
+    {"id": "a19f6a0e7f3474257", "type": "subagent", "status": "running", "description": "Run sleep and respond", "agent_type": "general-purpose"}
+  ],
+  "session_crons": []
+}

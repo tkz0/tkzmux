@@ -292,6 +292,15 @@ public final class StatusBarView: NSView {
                 tooltip: "Model \(name)"))
         }
 
+        // In the dot's own working green, so it reads as the reason the row is still pulsing.
+        if let agents = model.runningAgents, agents > 0 {
+            out.append(StatusItem(
+                .runs([
+                    StatusRun(text: "\u{27F3} \(agents) agent\(agents == 1 ? "" : "s")", color: theme.working)  // ⟳
+                ]),
+                tooltip: model.runningAgentsTooltip))
+        }
+
         var diff: [StatusRun] = []
         if let added = model.diffAdded {
             diff.append(StatusRun(text: "+\(added)", color: theme.diffAdd))

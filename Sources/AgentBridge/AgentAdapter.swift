@@ -110,6 +110,19 @@ public protocol TranscriptProvider: Sendable {
     func usage(conversationId: String, path: String, reader: TranscriptUsageReader) async -> SessionUsage?
     /// A searchable index over the conversation, extended from `existing` when it has only grown.
     func searchIndex(path: String, existing: TranscriptIndex?) throws -> TranscriptIndex
+    /// When each of `subagentIds` last showed a sign of life on disk, keyed by id — the evidence
+    /// the stale sub-agent sweep reads. An id with nothing to show is simply absent.
+    func subagentActivity(
+        transcriptPath: String, subagentIds: [String], fileManager: FileManager
+    ) -> [String: Date]
+}
+
+extension TranscriptProvider {
+    /// An agent that keeps no per-sub-agent files has no evidence to offer; its entries age out
+    /// from their start time alone.
+    public func subagentActivity(
+        transcriptPath: String, subagentIds: [String], fileManager: FileManager
+    ) -> [String: Date] { [:] }
 }
 
 /// One coding agent, as tkzmux needs to know it.

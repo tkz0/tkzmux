@@ -2726,6 +2726,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             model.worktreeName = Session.title(forPath: path)
         }
         model.modelName = sidecar?.model?.displayName
+        if let running = session.live?.runningSubagents, !running.isEmpty {
+            model.runningAgents = running.count
+            model.runningAgentsTooltip = Self.runningAgentsTooltip(for: running)
+        }
         model.diffAdded = git.map(\.insertions)
         model.diffRemoved = git.map(\.deletions)
         model.diffFiles = git.map(\.changedFiles)
@@ -2763,6 +2767,23 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         model.spendUSD = spendEnabled ? session.live?.usage?.totalCostUSD : nil
         model.spendTooltip = spendEnabled ? Self.spendTooltip(for: session.live?.usage) : nil
         return model
+    }
+
+    /// A heading, then one line per running sub-agent, oldest first: its description where the
+    /// agent gave one, its type in parentheses where known.
+    static func runningAgentsTooltip(for running: [String: RunningSubagent]) -> String {
+        let count = running.count
+        let heading = "\(count) sub-agent\(count == 1 ? "" : "s") still running"
+        let lines = running.values
+            .sorted { ($0.startedAt, $0.info.id) < ($1.startedAt, $1.info.id) }
+            .map { entry -> String in
+                let type = entry.info.type.flatMap { $0.isEmpty ? nil : $0 }
+                guard let description = entry.info.description, !description.isEmpty else {
+                    return "• " + (type ?? "agent")
+                }
+                return "• " + description + (type.map { " (\($0))" } ?? "")
+            }
+        return ([heading] + lines).joined(separator: "\n")
     }
 
     /// One line per model this session has used: tokens, and `$` where the model is priced.

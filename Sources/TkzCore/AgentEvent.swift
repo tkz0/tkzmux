@@ -54,8 +54,25 @@ public struct AgentEvent: Hashable, Sendable, Codable {
         case attention(AttentionKind)
         /// A prompt that was up has been answered or withdrawn.
         case attentionCleared
+        /// The agent started a sub-agent — in the foreground or, the case that matters, in the
+        /// background, where it keeps working after the main turn has ended.
+        case subagentStarted(SubagentInfo)
+        /// A sub-agent finished.
+        case subagentStopped(id: String)
         /// Something the adapter did not recognise, kept verbatim for the log.
         case unknown(String)
+
+        /// About a sub-agent rather than the session's own turn.
+        public var isSubagentEvent: Bool {
+            switch self {
+            case .subagentStarted, .subagentStopped: true
+            default: false
+            }
+        }
+
+        public var isSubagentStop: Bool {
+            if case .subagentStopped = self { true } else { false }
+        }
     }
 
     public var kind: Kind
@@ -74,6 +91,10 @@ public struct AgentEvent: Hashable, Sendable, Codable {
     /// survives because `ActivityEvent.Kind.sessionEnded(reason:)` persists and renders it.
     public var reason: String?
     public var pid: pid_t?
+    /// The agent's own list of sub-agents still running as of this event, when it sends one. A
+    /// `turnEnded` carrying it replaces the row's running set outright — the list is authoritative
+    /// and repairs any start/stop pair that went missing. `nil` means "not sent", never "none".
+    public var runningSubagents: [SubagentInfo]?
     public var receivedAt: Date
 
     public init(
@@ -87,6 +108,7 @@ public struct AgentEvent: Hashable, Sendable, Codable {
         source: String? = nil,
         reason: String? = nil,
         pid: pid_t? = nil,
+        runningSubagents: [SubagentInfo]? = nil,
         receivedAt: Date = Date()
     ) {
         self.kind = kind
@@ -99,6 +121,21 @@ public struct AgentEvent: Hashable, Sendable, Codable {
         self.source = source
         self.reason = reason
         self.pid = pid
+        self.runningSubagents = runningSubagents
         self.receivedAt = receivedAt
+    }
+}
+
+/// A sub-agent as the agent described it. `type` and `description` are the agent's own words
+/// ("Explore", "Compare CRM adapter interfaces"), shown verbatim in the status bar's tooltip.
+public struct SubagentInfo: Hashable, Sendable, Codable {
+    public var id: String
+    public var type: String?
+    public var description: String?
+
+    public init(id: String, type: String? = nil, description: String? = nil) {
+        self.id = id
+        self.type = type
+        self.description = description
     }
 }

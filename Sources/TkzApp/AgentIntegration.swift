@@ -553,6 +553,46 @@ public final class AgentIntegration {
     func tickFired() {
         pollLivenessForRowsWithNoObservation()
         store.update { $0.rederiveStatuses(now: Date()) }
+        sweepSubagents()
+    }
+
+    /// How long a sub-agent may show no sign of life before it is assumed gone. Ten minutes is
+    /// Bash's own ceiling for one foreground command, so a sub-agent sitting inside a single long
+    /// command — writing nothing to its transcript meanwhile — is never dropped for it.
+    static let subagentMaxSilence: TimeInterval = 10 * 60
+
+    /// The safety net under `runningSubagents`: a sub-agent whose stop hook never came (a crash, a
+    /// kill) would keep its row pulsing until the agent's next `Stop`, and an agent sitting idle
+    /// sends none. Each tick, the adapter reports when every running sub-agent last wrote to disk;
+    /// anything silent for `subagentMaxSilence` is dropped. The stat runs off the main queue.
+    private func sweepSubagents() {
+        guard store.state.sessions.values.contains(where: { $0.live?.runningSubagents.isEmpty == false })
+        else { return }
+        // A row with no transcript to stat still gets its entries aged out, from their start time.
+        let work = store.state.sessions.compactMap {
+            id, session -> (id: SessionID, path: String, provider: any TranscriptProvider, subagentIds: [String])? in
+            guard let running = session.live?.runningSubagents, !running.isEmpty,
+                let adapter = adapters[session.agent], let path = transcriptPath(for: id)
+            else { return nil }
+            return (id, path, adapter.transcript, Array(running.keys))
+        }
+        let box = WeakBox()
+        box.value = self
+        transcriptQueue.async {
+            let activity = work.map { item in
+                (item.id, item.provider.subagentActivity(
+                    transcriptPath: item.path, subagentIds: item.subagentIds, fileManager: .default))
+            }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self = box.value else { return }
+                    self.store.update { state in
+                        for (id, seen) in activity { state.touchSubagents(id, activity: seen) }
+                        state.expireSubagents(maxSilence: Self.subagentMaxSilence, now: Date())
+                    }
+                }
+            }
+        }
     }
 
     /// The fallback for an agent that writes no descriptor file at all. Claude always has an
@@ -616,7 +656,13 @@ public final class AgentIntegration {
                 let now = Date()
                 state.applyEvent(event, to: id, now: now)
                 if attended {
-                    if event.kind == .turnEnded { state.markAttended(id, now: now) } else { state.markActivityRead(id) }
+                    // The last sub-agent finishing is a stop too (`applyEvent` moves `lastStopAt`
+                    // for it), so a row the user is watching is attended for it the same way.
+                    if event.kind == .turnEnded || event.kind.isSubagentStop {
+                        state.markAttended(id, now: now)
+                    } else {
+                        state.markActivityRead(id)
+                    }
                 }
             }
             if event.kind == .turnEnded { onStop?(id) }
@@ -626,7 +672,7 @@ public final class AgentIntegration {
             switch event.kind {
             case .sessionStart, .turnEnded, .sessionEnd, .promptSubmitted:
                 refreshUsage(for: id)
-            case .attention, .attentionCleared, .unknown:
+            case .attention, .attentionCleared, .subagentStarted, .subagentStopped, .unknown:
                 break
             }
         }

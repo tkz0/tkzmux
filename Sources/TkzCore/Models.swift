@@ -524,6 +524,11 @@ public struct LiveSessionState: Hashable, Sendable {
     /// read the agent's own cwd there and the shell's everywhere else (`GitIntegration`). Process
     /// state: cleared when the observation is lost or the pane closes, never persisted.
     public var agentTerminal: TerminalID?
+    /// Sub-agents the agent reported starting and has not yet reported stopping, by the agent's
+    /// own id for them. While any is here the row is working even when the main turn has ended
+    /// (`StatusDerivation` rule 4a) — a Claude that backgrounded three agents is not done.
+    /// Process state, never persisted.
+    public var runningSubagents: [String: RunningSubagent] = [:]
 
     public init(
         pid: pid_t? = nil,
@@ -577,6 +582,21 @@ public struct LiveSessionState: Hashable, Sendable {
         self.paneCwds = paneCwds
         self.agentStartup = agentStartup
         self.agentTerminal = agentTerminal
+    }
+}
+
+/// One sub-agent still running under a session — see `LiveSessionState.runningSubagents`.
+public struct RunningSubagent: Hashable, Sendable {
+    public var info: SubagentInfo
+    public var startedAt: Date
+    /// The newest evidence it is still doing something: its start, or its own transcript being
+    /// written to. The stale-entry sweep (`AppState.expireSubagents`) reads this.
+    public var lastActivityAt: Date
+
+    public init(info: SubagentInfo, startedAt: Date, lastActivityAt: Date? = nil) {
+        self.info = info
+        self.startedAt = startedAt
+        self.lastActivityAt = lastActivityAt ?? startedAt
     }
 }
 
