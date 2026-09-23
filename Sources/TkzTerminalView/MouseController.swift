@@ -246,7 +246,7 @@ public final class MouseController: NSObject, TerminalMouseHandling {
     public private(set) var lastWheelRows = 0
     /// Every non-zero wheel event, in rows (**negative = up**), whether the terminal scrolled its
     /// viewport or reported the wheel to the program. On the alternate screen this is the only
-    /// evidence that the user is scrolling at all — see `ScrollRevealPolicy` in the app.
+    /// evidence that the user is scrolling at all.
     public var onWheelRows: ((Int) -> Void)?
 
     // MARK: Private

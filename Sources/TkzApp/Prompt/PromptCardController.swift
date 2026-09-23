@@ -36,27 +36,17 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
         didSet { if theme != oldValue { applyTheme() } }
     }
 
-    /// How the card came to be on screen. `pinned` is the chord: the panel is key, its text is
-    /// selectable and its buttons work. `peek` is a scroll: the panel is ordered front but never
-    /// key and ignores the mouse, so the keyboard and the wheel stay with the terminal — the
-    /// chord pins it, scrolling back down (or typing) takes it away again.
-    public enum Mode: Sendable {
-        case pinned
-        case peek
-    }
-
     /// The row the card is showing, while it is up.
     public private(set) var sessionID: SessionID?
-    /// `nil` while the card is hidden.
-    public private(set) var mode: Mode?
     public var isShown: Bool { panel?.isVisible ?? false }
 
     private var panel: PromptCardPanel?
     private var effectView: NSVisualEffectView?
     private var cardView: PromptCardView?
     private var watch: TranscriptWatch?
-    /// Where the card was last placed, so a refresh that changes its height keeps the top edge.
-    private var anchorFrame: NSRect?
+    /// The visible frame of the screen the card is centred on, so a refresh that changes its
+    /// height re-centres it on the same screen.
+    private var hostFrame: NSRect?
     /// Set just before a `show` that came from the search overlay.
     private var pendingHit: PromptCardView.HitContent?
 
@@ -68,22 +58,22 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
     // MARK: Presentation
 
     /// ⌥⌘P: shows the card for `id`, or hides it if it is already up. A second press with another
-    /// row selected re-targets rather than hides — that is "show me this one", not "go away". A
-    /// press while the card is only peeking pins it.
+    /// row selected re-targets rather than hides — that is "show me this one", not "go away".
+    /// The chord is the only way onto the card: scrolling the terminal never shows it.
     public func toggle(for id: SessionID, over anchor: NSRect?) {
         if isShown, sessionID == id {
-            if mode == .peek { pin() } else { dismiss() }
+            dismiss()
         } else {
             present(for: id, over: anchor)
         }
     }
 
-    /// Shows the card for `id`, top-centred over `anchor` (the detail area, in screen
-    /// coordinates), and starts the read. The cached summary — whatever the last read said — is
+    /// Shows the card for `id`, centred on the screen that holds `anchor` (the detail area, in
+    /// screen coordinates), and starts the read. The cached summary — whatever the last read said — is
     /// shown at once so the card never opens blank when it has been open before.
     public func present(for id: SessionID, over anchor: NSRect?) {
         pendingHit = nil
-        show(for: id, over: anchor, mode: .pinned)
+        show(for: id, over: anchor)
     }
 
     /// The search overlay's ↵ on a transcript hit (design 2c.6): the card, opened on that line
@@ -91,55 +81,22 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
     /// card still says what the conversation is.
     func present(hit: PromptCardView.HitContent, for id: SessionID, over anchor: NSRect?) {
         pendingHit = hit
-        show(for: id, over: anchor, mode: .pinned)
+        show(for: id, over: anchor)
     }
 
-    /// The scroll trigger: the card, without taking the keyboard or the mouse. A card the user
-    /// pinned stays pinned; a peek already up for this row stays as it is.
-    public func peek(for id: SessionID, over anchor: NSRect?) {
-        if isShown, mode == .pinned { return }
-        if isShown, mode == .peek, sessionID == id { return }
-        show(for: id, over: anchor, mode: .peek)
-    }
-
-    /// Scrolled back down, or typed: a peek goes away; a pinned card is the user's to close.
-    public func endPeek() {
-        guard mode == .peek else { return }
-        dismiss()
-    }
-
-    private func show(for id: SessionID, over anchor: NSRect?, mode: Mode) {
+    private func show(for id: SessionID, over anchor: NSRect?) {
         sessionID = id
-        anchorFrame = anchor
-        self.mode = mode
+        hostFrame = Self.hostFrame(for: anchor)
         let panel = makePanelIfNeeded()
-        apply(mode: mode, to: panel)
-        cardView?.maxTextHeight = Self.maxTextHeight(for: anchor)
+        cardView?.maxTextHeight = Self.maxTextHeight(for: hostFrame)
         cardView?.setSummary(nil)
         cardView?.setHit(pendingHit)
         // Before the panel is ordered front: the cached summary arrives synchronously, so the
         // card is sized for its real content on its first frame rather than for "Loading…".
         refresh()
         place(panel)
-        switch mode {
-        case .pinned: panel.makeKeyAndOrderFront(nil)
-        case .peek: panel.orderFront(nil)
-        }
-        startWatching()
-    }
-
-    /// The chord on a peeking card: same row, same content, now interactive.
-    private func pin() {
-        guard let panel, mode == .peek else { return }
-        mode = .pinned
-        apply(mode: .pinned, to: panel)
-        place(panel)
         panel.makeKeyAndOrderFront(nil)
-    }
-
-    private func apply(mode: Mode, to panel: NSPanel) {
-        panel.ignoresMouseEvents = mode == .peek
-        cardView?.setPeeking(mode == .peek)
+        startWatching()
     }
 
     /// Escape, a click outside, the chord again, a selection change.
@@ -147,7 +104,6 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
         guard let panel, panel.isVisible || sessionID != nil else { return }
         stopWatching()
         sessionID = nil
-        mode = nil
         pendingHit = nil
         panel.orderOut(nil)
         onDismiss?()
@@ -252,34 +208,36 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
         cardView?.setTheme(theme)
     }
 
-    /// Sizes the panel to its content and puts it top-centred over the anchor — 40 pt below the
-    /// anchor's top, the artboard's placement — or, with no anchor, a fifth down the main screen.
+    /// Sizes the panel to its content and centres it on the host screen.
     private func place(_ panel: NSPanel) {
         guard let cardView else { return }
         cardView.layoutSubtreeIfNeeded()
         let size = NSSize(width: PromptCardView.Metrics.width, height: cardView.fittingSize.height)
-        panel.setFrame(Self.frame(for: size, over: anchorFrame), display: true)
+        let host = hostFrame ?? Self.hostFrame(for: nil)
+        panel.setFrame(Self.frame(for: size, centredIn: host), display: true)
     }
 
-    static func frame(for size: NSSize, over anchor: NSRect?) -> NSRect {
-        if let anchor {
-            return NSRect(
-                x: (anchor.midX - size.width / 2).rounded(),
-                y: (anchor.maxY - 40 - size.height).rounded(),
-                width: size.width, height: size.height)
-        }
-        let host = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
-        return NSRect(
+    /// The visible frame of the screen holding the anchor's centre — the window's screen, not
+    /// necessarily the main one — or of the main screen with no anchor.
+    static func hostFrame(for anchor: NSRect?) -> NSRect {
+        let screen = anchor.flatMap { anchor in
+            NSScreen.screens.first { $0.frame.contains(NSPoint(x: anchor.midX, y: anchor.midY)) }
+        } ?? NSScreen.main
+        return screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+    }
+
+    static func frame(for size: NSSize, centredIn host: NSRect) -> NSRect {
+        NSRect(
             x: (host.midX - size.width / 2).rounded(),
-            y: (host.maxY - size.height - host.height * 0.18).rounded(),
+            y: (host.midY - size.height / 2).rounded(),
             width: size.width, height: size.height)
     }
 
-    /// Each text block may take up to ~30 % of the anchor's height, so two blocks, the chrome
-    /// and the buttons always fit under the 40 pt inset. Never below one comfortable paragraph.
-    static func maxTextHeight(for anchor: NSRect?) -> CGFloat {
-        guard let anchor else { return PromptCardView.Metrics.defaultMaxTextHeight }
-        return min(PromptCardView.Metrics.defaultMaxTextHeight, max(88, (anchor.height * 0.3).rounded()))
+    /// Each text block may take up to ~30 % of the host's height, so two blocks, the chrome and
+    /// the buttons always fit on the screen. Never below one comfortable paragraph.
+    static func maxTextHeight(for host: NSRect?) -> CGFloat {
+        guard let host else { return PromptCardView.Metrics.defaultMaxTextHeight }
+        return min(PromptCardView.Metrics.defaultMaxTextHeight, max(88, (host.height * 0.3).rounded()))
     }
 
     // MARK: Copy
@@ -301,10 +259,8 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
 
     // MARK: NSWindowDelegate
 
-    /// A click back into the main window, ⌘-Tab, Spotlight: the card is done. A peek is never
-    /// key, so this only ever fires for a pinned card — the guard is belt and braces.
+    /// A click back into the main window, ⌘-Tab, Spotlight: the card is done.
     public func windowDidResignKey(_ notification: Notification) {
-        guard mode == .pinned else { return }
         dismiss()
     }
 
