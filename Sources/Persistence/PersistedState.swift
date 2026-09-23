@@ -94,6 +94,8 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     /// like `showSessionSpend`: a file written before the switch existed must not silently turn
     /// it off.
     public var notifyOnDone: Bool
+    /// The Dock badge switch (TKZ-67). Absent in older files ⇒ **on**, like `notifyOnDone`.
+    public var badgeDockIcon: Bool
 
     public init(
         autoResumeOnLaunch: Bool = false,
@@ -103,7 +105,8 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         themePreset: String? = nil,
         showSessionSpend: Bool = true,
         checkOriginPeriodically: Bool = false,
-        notifyOnDone: Bool = true
+        notifyOnDone: Bool = true,
+        badgeDockIcon: Bool = true
     ) {
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
@@ -113,12 +116,13 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         self.showSessionSpend = showSessionSpend
         self.checkOriginPeriodically = checkOriginPeriodically
         self.notifyOnDone = notifyOnDone
+        self.badgeDockIcon = badgeDockIcon
     }
 
     private enum CodingKeys: String, CodingKey {
         case autoResumeOnLaunch, statuslineOffered, codexHooksOffered, hooksOffered
         case dismissedUpdateVersion, themePreset
-        case showSessionSpend, checkOriginPeriodically, notifyOnDone
+        case showSessionSpend, checkOriginPeriodically, notifyOnDone, badgeDockIcon
     }
 
     public init(from decoder: any Decoder) throws {
@@ -139,6 +143,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         showSessionSpend = try c.decodeIfPresent(Bool.self, forKey: .showSessionSpend) ?? true
         checkOriginPeriodically = try c.decodeIfPresent(Bool.self, forKey: .checkOriginPeriodically) ?? false
         notifyOnDone = try c.decodeIfPresent(Bool.self, forKey: .notifyOnDone) ?? true
+        badgeDockIcon = try c.decodeIfPresent(Bool.self, forKey: .badgeDockIcon) ?? true
     }
 
     /// Spelled out rather than synthesised, because the file carries one key this type no longer
@@ -160,6 +165,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         try c.encode(showSessionSpend, forKey: .showSessionSpend)
         try c.encode(checkOriginPeriodically, forKey: .checkOriginPeriodically)
         try c.encode(notifyOnDone, forKey: .notifyOnDone)
+        try c.encode(badgeDockIcon, forKey: .badgeDockIcon)
     }
 }
 
@@ -261,7 +267,8 @@ public struct PersistedState: Hashable, Sendable, Codable {
                 themePreset: state.themePreset.rawValue,
                 showSessionSpend: state.showSessionSpend,
                 checkOriginPeriodically: state.checkOriginPeriodically,
-                notifyOnDone: state.notifyOnDone),
+                notifyOnDone: state.notifyOnDone,
+                badgeDockIcon: state.badgeDockIcon),
             activity: state.activity)
     }
 
@@ -324,6 +331,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
         state.showSessionSpend = preferences.showSessionSpend
         state.checkOriginPeriodically = preferences.checkOriginPeriodically
         state.notifyOnDone = preferences.notifyOnDone
+        state.badgeDockIcon = preferences.badgeDockIcon
         if let raw = preferences.themePreset {
             if let preset = Theme.Preset(rawValue: raw) {
                 state.themePreset = preset

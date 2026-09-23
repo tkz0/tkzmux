@@ -273,6 +273,18 @@ import Testing
         #expect(probe.last.theme == false)
     }
 
+    /// The Dock badge switch (TKZ-67) is `chrome` too: `DockBadge` recounts on it, no row reloads.
+    @Test func dockBadgeSwitchIsChrome() {
+        let probe = Probe()
+        let store = probe.store
+        #expect(store.state.badgeDockIcon)
+
+        store.update { $0.setBadgeDockIcon(false) }
+        store.flush()
+        #expect(probe.last.chrome)
+        #expect(probe.last.sessions.isEmpty)
+    }
+
     /// The theme preset gets its own bucket rather than a corner of `chrome`: `chrome` fires on
     /// every window-frame nudge and sidebar-divider settle, and reacting to this one re-tints every
     /// row, every pane and every live terminal.

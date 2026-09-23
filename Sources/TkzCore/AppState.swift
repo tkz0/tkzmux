@@ -62,6 +62,10 @@ public struct AppState: Hashable, Sendable {
     /// per-app setting is the master switch for both. Durable, in `PersistedPreferences`.
     /// `AttentionNotifier` (TkzApp) is its sole reader.
     public var notifyOnDone: Bool
+    /// Show on the Dock icon how many rows need the user — `summaryCounts.needsYou`, the summary
+    /// strip's own figure (2026-09-22, TKZ-67). On by default. Durable, in `PersistedPreferences`.
+    /// `DockBadge` (TkzApp) is its sole reader.
+    public var badgeDockIcon: Bool
     /// The active colour scheme. The ☾/☀ toggle in the toolbar writes it; `MainWindowController` is
     /// its sole observer, via `ChangeSet.theme`. Durable, in `PersistedPreferences`.
     public var themePreset: Theme.Preset
@@ -93,6 +97,7 @@ public struct AppState: Hashable, Sendable {
         showSessionSpend: Bool = true,
         checkOriginPeriodically: Bool = false,
         notifyOnDone: Bool = true,
+        badgeDockIcon: Bool = true,
         themePreset: Theme.Preset = Theme.default.preset,
         update: UpdateState = UpdateState(),
         activity: [ActivityEvent] = []
@@ -113,6 +118,7 @@ public struct AppState: Hashable, Sendable {
         self.showSessionSpend = showSessionSpend
         self.checkOriginPeriodically = checkOriginPeriodically
         self.notifyOnDone = notifyOnDone
+        self.badgeDockIcon = badgeDockIcon
         self.themePreset = themePreset
         self.update = update
         self.activity = activity

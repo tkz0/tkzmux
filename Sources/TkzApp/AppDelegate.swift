@@ -33,6 +33,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var agents: AgentIntegration?
     private var git: GitIntegration?
     private var attention: AttentionNotifier?
+    private var dockBadge: DockBadge?
     private var update: UpdateIntegration?
     private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "app")
 
@@ -132,6 +133,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 let notifier = AttentionNotifier(store: store)
                 controller.attention = notifier
                 attention = notifier
+                // The same NEEDS YOU count as the summary strip, on the Dock icon (TKZ-67).
+                dockBadge = DockBadge(store: store)
                 // The sidebar's update card. Release builds only (a dev build checks
                 // when `TKZMUX_UPDATE_URL` points it at a feed); the first check is 15 s out.
                 if UpdateIntegration.shouldRun() {

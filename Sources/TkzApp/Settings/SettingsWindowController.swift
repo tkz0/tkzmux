@@ -155,6 +155,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         case .autoResume: store.update { $0.setAutoResumeOnLaunch(isOn) }
         case .originCheck: store.update { $0.setCheckOriginPeriodically(isOn) }
         case .notifyOnDone: store.update { $0.setNotifyOnDone(isOn) }
+        case .badgeDockIcon: store.update { $0.setBadgeDockIcon(isOn) }
         case .sessionSpend: actions.setShowSessionSpend(isOn)
         default: break
         }

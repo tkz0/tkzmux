@@ -179,6 +179,7 @@ public struct ChangeSet: Hashable, Sendable {
             || old.autoResumeOnLaunch != new.autoResumeOnLaunch
             || old.checkOriginPeriodically != new.checkOriginPeriodically
             || old.notifyOnDone != new.notifyOnDone
+            || old.badgeDockIcon != new.badgeDockIcon
             || old.statuslineOffered != new.statuslineOffered
             || old.hooksOffered != new.hooksOffered
             || old.dismissedUpdateVersion != new.dismissedUpdateVersion
