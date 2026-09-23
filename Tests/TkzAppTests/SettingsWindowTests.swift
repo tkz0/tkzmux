@@ -143,6 +143,7 @@ struct SettingsWindowTests {
         state.setAutoResumeOnLaunch(true)
         state.setCheckOriginPeriodically(true)
         state.setNotifyOnDone(false)
+        state.setBadgeDockIcon(false)
         state.setShowSessionSpend(false)
         state.setThemePreset(.light)
         let model = SettingsModel.make(state: state)
@@ -152,6 +153,7 @@ struct SettingsWindowTests {
         #expect(rows[.autoResume]?.control == .toggle(isOn: true))
         #expect(rows[.originCheck]?.control == .toggle(isOn: true))
         #expect(rows[.notifyOnDone]?.control == .toggle(isOn: false))
+        #expect(rows[.badgeDockIcon]?.control == .toggle(isOn: false))
         #expect(rows[.sessionSpend]?.control == .toggle(isOn: false))
         #expect(rows[.themePreset]?.control == .popup(titles: ["Midnight indigo", "Light"], selected: 1))
         #expect(rows[.removeShell]?.control == .button(title: "Remove\u{2026}", destructive: true))
@@ -468,6 +470,17 @@ struct SettingsWindowTests {
         store.flush()
         #expect(notify.isOn == false)
         #expect(view.controlForTesting(.notifyOnDone) === notify, "updated, not rebuilt")
+
+        // The Dock badge switch, both directions.
+        let dock = try #require(view.controlForTesting(.badgeDockIcon) as? ThemedSwitch)
+        #expect(dock.isOn == true)
+        dock.toggleForTesting()
+        store.flush()
+        #expect(store.state.badgeDockIcon == false)
+        store.update { $0.setBadgeDockIcon(true) }
+        store.flush()
+        #expect(dock.isOn == true)
+        #expect(view.controlForTesting(.badgeDockIcon) === dock, "updated, not rebuilt")
     }
 
     @Test("The theme popup selects a preset, and follows the store")

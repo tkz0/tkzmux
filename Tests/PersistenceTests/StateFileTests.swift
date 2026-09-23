@@ -51,6 +51,7 @@ private func makeState() -> AppState {
     state.setCheckOriginPeriodically(true)
     // Defaults on, so off is the value a dropped round trip would fail on.
     state.setNotifyOnDone(false)
+    state.setBadgeDockIcon(false)
     // Defaults off, like `statuslineOffered` — the non-default value, so a dropped round trip
     // fails loudly (TKZ-87).
     state.setHooksOffered(.codex)
@@ -107,6 +108,7 @@ private func makeState() -> AppState {
         #expect(restored.showSessionSpend == original.showSessionSpend)
         #expect(restored.checkOriginPeriodically == original.checkOriginPeriodically)
         #expect(restored.notifyOnDone == original.notifyOnDone)
+        #expect(restored.badgeDockIcon == original.badgeDockIcon)
         #expect(restored.hooksOffered == original.hooksOffered)
     }
 }
@@ -150,6 +152,21 @@ private func makeState() -> AppState {
     fresh.setNotifyOnDone(false)
     try StateFile.decode(JSONEncoder().encode(object)).state.apply(to: &fresh)
     #expect(fresh.notifyOnDone == true)
+}
+
+@Test func theDockBadgeSwitchRoundTripsAndDefaultsOn() throws {
+    let data = try StateFile.encode(StateDocument(state: PersistedState(makeState())))
+    var restored = AppState()
+    try StateFile.decode(data).state.apply(to: &restored)
+    #expect(restored.badgeDockIcon == false)
+
+    // Missing from a file written before TKZ-67 ⇒ on, like `notifyOnDone`.
+    var object = try JSONDecoder().decode([String: JSONValue].self, from: data)
+    object["preferences"] = .object(["notifyOnDone": .bool(false)])
+    var fresh = AppState()
+    fresh.setBadgeDockIcon(false)
+    try StateFile.decode(JSONEncoder().encode(object)).state.apply(to: &fresh)
+    #expect(fresh.badgeDockIcon == true)
 }
 
 @Test func theOriginCheckSwitchRoundTripsAndDefaultsOff() throws {
@@ -270,6 +287,7 @@ private func makeState() -> AppState {
     // every other switch in this block, which defaults off.
     #expect(restored.showSessionSpend == true)
     #expect(restored.notifyOnDone == true)
+    #expect(restored.badgeDockIcon == true)
     #expect(restored.hooksOffered.isEmpty)
     #expect(restored.sessions.count == state.sessions.count)
 }
