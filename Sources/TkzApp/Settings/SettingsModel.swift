@@ -49,6 +49,7 @@ struct SettingsRow: Hashable, Sendable {
         case autoResume
         case originCheck
         case notifyOnDone
+        case badgeDockIcon
         case sessionSpend
         case statusline(accountKey: String)
         /// Codex's own consent-to-install hooks row (TKZ-87). Never produced for an account whose
@@ -247,6 +248,10 @@ struct SettingsModel: Hashable, Sendable {
                         + "are not looking at. NEEDS YOU banners follow the system notification "
                         + "setting and have no switch of their own.",
                     control: .toggle(isOn: state.notifyOnDone)),
+                SettingsRow(
+                    id: .badgeDockIcon, title: "Badge Dock icon",
+                    detail: "Show on tkzmux's Dock icon how many sessions need you.",
+                    control: .toggle(isOn: state.badgeDockIcon)),
             ]),
             SettingsSection(caption: "Status bar", rows: statusBar),
         ]

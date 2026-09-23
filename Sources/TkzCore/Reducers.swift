@@ -442,6 +442,12 @@ extension AppState {
         notifyOnDone = enabled
     }
 
+    /// The Dock badge switch (TKZ-67). Like `setNotifyOnDone`, nothing in the state depends on it:
+    /// `DockBadge` reads it on `ChangeSet.chrome`.
+    public mutating func setBadgeDockIcon(_ enabled: Bool) {
+        badgeDockIcon = enabled
+    }
+
     /// The global on/off for token usage/spend (design: enable/disable, all sessions). Turning it
     /// off clears every session's already-summed `live.usage` right away, rather than leaving a
     /// stale figure on screen until the next hook fires; turning it back on needs a fresh read,
