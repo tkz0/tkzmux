@@ -139,6 +139,15 @@ struct PromptCardTests {
         #expect(PromptCardController.maxTextHeight(for: nil) == PromptCardView.Metrics.defaultMaxTextHeight)
     }
 
+    @Test("The card is centred on its host screen, both ways")
+    func centredOnScreen() {
+        let host = NSRect(x: 100, y: 40, width: 1600, height: 1000)
+        let frame = PromptCardController.frame(for: NSSize(width: 640, height: 300), centredIn: host)
+        #expect(frame == NSRect(x: 580, y: 390, width: 640, height: 300))
+        #expect(frame.midX == host.midX)
+        #expect(frame.midY == host.midY)
+    }
+
     // MARK: Controller
 
     @Test("Presenting builds the panel lazily, glass and floating, and renders the provider's summary")
@@ -162,9 +171,10 @@ struct PromptCardTests {
         #expect(controller.sessionID == id)
         #expect(asked == [id])
         #expect(controller.cardViewForTesting?.promptText == "Fix the build")
-        // Top-centred over the anchor, 40 pt down.
-        #expect(panel.frame.midX == 550)
-        #expect(panel.frame.maxY == 660)
+        // Centred on the screen holding the anchor, not over the anchor itself.
+        let host = PromptCardController.hostFrame(for: NSRect(x: 100, y: 100, width: 900, height: 600))
+        #expect(abs(panel.frame.midX - host.midX) <= 1)
+        #expect(abs(panel.frame.midY - host.midY) <= 1)
         #expect(panel.frame.width == PromptCardView.Metrics.width)
         #expect(panel.frame.height > 120, "a zero-height panel is an invisible one: \(panel.frame)")
         #expect(panel.isVisible)
