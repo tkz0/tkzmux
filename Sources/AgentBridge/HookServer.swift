@@ -305,7 +305,7 @@ public final class HookServer: Sendable {
         (payload[snake] as? String) ?? (payload[camel] as? String)
     }
 
-    private static func parseHookFrame(_ obj: [String: Any]) -> HookFrame? {
+    static func parseHookFrame(_ obj: [String: Any]) -> HookFrame? {
         // The envelope's own `event` is the shim's argv[1]; a real hook payload from either agent
         // prefers its own `hook_event_name` when present (both Claude and Codex spell it that way),
         // falling back to the envelope only when the payload omits it.
@@ -330,6 +330,9 @@ public final class HookServer: Sendable {
         let cwd = payload["cwd"] as? String
         let transcriptPath = Self.field(payload, "transcript_path", "transcriptPath")
         let toolName = Self.field(payload, "tool_name", "toolName")
+        let agentId = Self.field(payload, "agent_id", "agentId")
+        let agentType = Self.field(payload, "agent_type", "agentType")
+        let backgroundTasks = Self.backgroundTasks(payload["background_tasks"] ?? payload["backgroundTasks"])
 
         let hookPayload = HookPayload(
             agent: agent,
@@ -342,13 +345,32 @@ public final class HookServer: Sendable {
             lastAssistantMessage: lastAssistantMessageFull.map { prefixUTF8($0, maxBytes: 4096) },
             reason: reason,
             source: source,
-            toolName: toolName
+            toolName: toolName,
+            agentId: agentId,
+            agentType: agentType,
+            backgroundTasks: backgroundTasks
         )
         return .hook(
             hookPayload,
             sessionID: sid.isEmpty ? nil : SessionID(sid),
             ppid: pid_t(ppidRaw),
             fullMessage: lastAssistantMessageFull)
+    }
+
+    /// A running-work list: an array of objects, each needing at least an `id`. Entries without
+    /// one are skipped; anything that is not an array at all is "not sent" (`nil`), not `[]`.
+    static func backgroundTasks(_ raw: Any?) -> [HookBackgroundTask]? {
+        guard let entries = raw as? [Any] else { return nil }
+        return entries.compactMap { entry in
+            guard let object = entry as? [String: Any], let id = object["id"] as? String, !id.isEmpty
+            else { return nil }
+            return HookBackgroundTask(
+                id: id,
+                type: object["type"] as? String,
+                status: object["status"] as? String,
+                description: (object["description"] as? String).map { prefixUTF8($0, maxBytes: 256) },
+                agentType: field(object, "agent_type", "agentType"))
+        }
     }
 
     private static func parseLaunchFrame(_ obj: [String: Any]) -> HookFrame? {

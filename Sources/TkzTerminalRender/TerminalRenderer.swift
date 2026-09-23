@@ -70,15 +70,11 @@ public final class TerminalRenderer {
     public let glyphCache: GlyphCache
     public let frameBuilder: FrameBuilder
 
-    /// Theme used for the letterbox and the selection tint.
+    /// Theme used for the letterbox, the selection tint and `TkzUniforms.minContrast`.
     public var theme: Theme {
         get { frameBuilder.theme }
         set { frameBuilder.theme = newValue }
     }
-
-    /// `TkzUniforms.minContrast`. `1.0` (the default) disables the adjustment; `1.1` is the
-    /// "only fix invisible text" setting.
-    public var minContrast: Float = 1.0
 
     public private(set) var stats = RenderStats()
 
@@ -434,7 +430,7 @@ public final class TerminalRenderer {
         uniforms.cursorColor = surface.colors.effectiveCursor
         // Text under a filled cursor is drawn in the background colour — the classic inversion.
         uniforms.cursorTextColor = surface.colors.background
-        uniforms.minContrast = minContrast
+        uniforms.minContrast = Float(theme.terminalMinContrast)
         uniforms.reserved0 = 0
         uniforms.reserved1 = 0
         uniforms.reserved2 = 0

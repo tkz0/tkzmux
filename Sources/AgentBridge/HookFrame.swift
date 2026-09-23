@@ -38,6 +38,14 @@ public struct HookPayload: Hashable, Sendable {
     public var source: String?
     /// Which tool a permission request is about. Codex populates it; Claude does not.
     public var toolName: String?
+    /// The sub-agent a sub-agent lifecycle event is about (Claude's `agent_id`).
+    public var agentId: String?
+    /// That sub-agent's kind, in the agent's own words (Claude's `agent_type`).
+    public var agentType: String?
+    /// The agent's own list of work still running after this event, when it sends one (Claude's
+    /// `background_tasks`, on `Stop` and `SubagentStop`). `nil` when the field is absent — an older
+    /// agent build — which is distinct from `[]`, "nothing is running".
+    public var backgroundTasks: [HookBackgroundTask]?
 
     public init(
         agent: AgentKind = .claude,
@@ -50,7 +58,10 @@ public struct HookPayload: Hashable, Sendable {
         lastAssistantMessage: String? = nil,
         reason: String? = nil,
         source: String? = nil,
-        toolName: String? = nil
+        toolName: String? = nil,
+        agentId: String? = nil,
+        agentType: String? = nil,
+        backgroundTasks: [HookBackgroundTask]? = nil
     ) {
         self.agent = agent
         self.eventName = eventName
@@ -63,6 +74,30 @@ public struct HookPayload: Hashable, Sendable {
         self.reason = reason
         self.source = source
         self.toolName = toolName
+        self.agentId = agentId
+        self.agentType = agentType
+        self.backgroundTasks = backgroundTasks
+    }
+}
+
+/// One entry of an agent's running-work list, lifted as raw strings like the rest of
+/// `HookPayload` — which `type` values exist and what they mean is the mapper's business.
+public struct HookBackgroundTask: Hashable, Sendable {
+    public var id: String
+    public var type: String?
+    public var status: String?
+    public var description: String?
+    public var agentType: String?
+
+    public init(
+        id: String, type: String? = nil, status: String? = nil, description: String? = nil,
+        agentType: String? = nil
+    ) {
+        self.id = id
+        self.type = type
+        self.status = status
+        self.description = description
+        self.agentType = agentType
     }
 }
 

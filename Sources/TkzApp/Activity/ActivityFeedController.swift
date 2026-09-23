@@ -285,15 +285,27 @@ public final class ActivityFeedController: NSObject, NSWindowDelegate {
         return 14 + 22 + 10 + rowsHeight + 8 + ActivityFooterView.height
     }
 
-    /// Top-centred over the anchor, 40 pt down like the card; never taller than ~60 % of it.
+    /// Top-centred over the anchor, 40 pt down; never taller than ~60 % of it.
     private func place(_ panel: NSPanel) {
         let maxHeight = anchorFrame.map { max(200, ($0.height * 0.6).rounded()) } ?? 480
         let size = NSSize(width: Self.width, height: min(max(contentHeight, 160), maxHeight))
         panel.setFrame(Self.frame(for: size, over: anchorFrame), display: true)
     }
 
+    /// 40 pt below the anchor's top, horizontally centred — or, with no anchor, a fifth down the
+    /// main screen.
     static func frame(for size: NSSize, over anchor: NSRect?) -> NSRect {
-        PromptCardController.frame(for: size, over: anchor)
+        if let anchor {
+            return NSRect(
+                x: (anchor.midX - size.width / 2).rounded(),
+                y: (anchor.maxY - 40 - size.height).rounded(),
+                width: size.width, height: size.height)
+        }
+        let host = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+        return NSRect(
+            x: (host.midX - size.width / 2).rounded(),
+            y: (host.maxY - size.height - host.height * 0.18).rounded(),
+            width: size.width, height: size.height)
     }
 
     private func syncTableSelection() {

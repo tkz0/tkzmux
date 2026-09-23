@@ -374,15 +374,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// The activity feed (⌘I): the catch-up inbox of every row's turns and prompts, over the
     /// terminal like the prompt card.
     let activityFeed: ActivityFeedController
-    /// The other way onto the card: scrolling up in the focused terminal peeks it. One policy for
-    /// the window — it only ever describes the selected row's focused pane, and is reset when
-    /// that changes.
-    private var scrollReveal = ScrollRevealPolicy()
-    /// May a scroll peek the card right now? macOS delivers a wheel to the window under the
-    /// pointer even while another app is active, and the terminal scrolls on it — but a floating
-    /// panel popping over someone else's window is not what "scrolled up a bit" means. Injected,
-    /// like `isSessionAttended`, so the headless tests need no key window.
-    var canPeek: () -> Bool = { false }
     let detail: DetailViewController
     /// The pane tree. `paneContainer.paneView(for:)` is the per-pane view; `terminalView` below
     /// is the focused one, which is what almost every caller means.
@@ -1354,7 +1345,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// here. Until the coordinator exists the card shows its empty states.
     private func wirePromptCard() {
         promptCard.onCopied = { [weak self] notice in self?.showNotice(notice, for: .seconds(2)) }
-        canPeek = { [weak self] in self?.window.isKeyWindow ?? false }
     }
 
     /// ⌘I. Toggles the activity feed, top-centred over the detail area. The card and the palette
@@ -1378,7 +1368,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// ⌥⌘P. Toggles the card for the selected row, top-centred over the detail area.
+    /// ⌥⌘P. Toggles the card for the selected row, centred on the window's screen.
     public func toggleFirstPromptCard() {
         guard let id = store.state.selection else {
             showNotice("No session selected", for: .seconds(2))
@@ -1400,43 +1390,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             over: detailAnchor())
     }
 
-    /// The detail area in screen coordinates — what the card centres itself over.
+    /// The detail area in screen coordinates — which screen the card centres itself on.
     private func detailAnchor() -> NSRect? {
         let detailView = detail.view
         return detailView.window.map {
             $0.convertToScreen(detailView.convert(detailView.bounds, to: nil))
         }
-    }
-
-    /// A scroll signal from pane `id`. Only the selected row's focused pane drives the policy, and
-    /// only a row with a Claude conversation gets a peek: a plain shell has no prompt to show and
-    /// a card saying so on every scroll would be noise.
-    func terminalScrolled(
-        _ id: TerminalID, _ transition: (inout ScrollRevealPolicy) -> ScrollRevealPolicy.Effect?
-    ) {
-        guard let selection = store.state.selection,
-            let session = store.state.sessions[selection],
-            session.focusedTerminalID == id
-        else { return }
-        guard let effect = transition(&scrollReveal) else { return }
-        switch effect {
-        case .reveal:
-            guard session.conversationId != nil else { return }
-            guard canPeek() else {
-                // Not ours to show right now. Forget the reveal rather than remember it, so the
-                // next scroll once the window is key is judged afresh instead of "already shown".
-                _ = scrollReveal.reset()
-                return
-            }
-            promptCard.peek(for: selection, over: detailAnchor())
-        case .conceal:
-            promptCard.endPeek()
-        }
-    }
-
-    /// A key went to the terminal: on the alternate screen that ends a peek.
-    private func terminalKeyTyped() {
-        if scrollReveal.keyTyped() == .conceal { promptCard.endPeek() }
     }
 
     private func wireTabStrip() {
@@ -1515,10 +1474,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             default:
                 self.cheatSheet.keyDown(event.modifierFlags)
                 if self.handleCommandKey(event) { return nil }
-                // A plain key in a pane: the user is back at the prompt (see `ScrollRevealPolicy`).
-                if !event.modifierFlags.contains(.command), self.focusedPane != nil {
-                    self.terminalKeyTyped()
-                }
             }
             return event
         }
@@ -1781,14 +1736,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // through this pane's own key path so kitty vs legacy encoding is honoured.
         pane.mouse.pasteClipboardImage = { [weak input = pane.input] view in
             input?.sendClipboardImageChord(in: view) ?? false
-        }
-        // Both scroll signals the first-prompt card peeks on: the viewport position on the primary
-        // screen, the wheel itself on the alternate one (design 2c.5, `ScrollRevealPolicy`).
-        metal.onScrollMetricsChanged = { [weak self] metrics in
-            self?.terminalScrolled(id) { $0.metrics(metrics) }
-        }
-        pane.mouse.onWheelRows = { [weak self] rows in
-            self?.terminalScrolled(id) { $0.wheel(rows: rows) }
         }
         // `onGridResize` is installed by `TerminalHost.show` on attach, not here: that is the one
         // place the view↔terminal pairing is known.
@@ -2421,7 +2368,6 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             rebaseSheet.dismiss()
             deleteWorktreeSheet.dismiss()
             deleteMergedWorktreesSheet.dismiss()
-            _ = scrollReveal.reset()
         }
         // The sheet's Rebase button follows the row's Claude status (off while working).
         if let id = rebaseSheet.sessionID, change.sessions.contains(id) {
@@ -2726,6 +2672,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             model.worktreeName = Session.title(forPath: path)
         }
         model.modelName = sidecar?.model?.displayName
+        if let running = session.live?.runningSubagents, !running.isEmpty {
+            model.runningAgents = running.count
+            model.runningAgentsTooltip = Self.runningAgentsTooltip(for: running)
+        }
         model.diffAdded = git.map(\.insertions)
         model.diffRemoved = git.map(\.deletions)
         model.diffFiles = git.map(\.changedFiles)
@@ -2763,6 +2713,23 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         model.spendUSD = spendEnabled ? session.live?.usage?.totalCostUSD : nil
         model.spendTooltip = spendEnabled ? Self.spendTooltip(for: session.live?.usage) : nil
         return model
+    }
+
+    /// A heading, then one line per running sub-agent, oldest first: its description where the
+    /// agent gave one, its type in parentheses where known.
+    static func runningAgentsTooltip(for running: [String: RunningSubagent]) -> String {
+        let count = running.count
+        let heading = "\(count) sub-agent\(count == 1 ? "" : "s") still running"
+        let lines = running.values
+            .sorted { ($0.startedAt, $0.info.id) < ($1.startedAt, $1.info.id) }
+            .map { entry -> String in
+                let type = entry.info.type.flatMap { $0.isEmpty ? nil : $0 }
+                guard let description = entry.info.description, !description.isEmpty else {
+                    return "• " + (type ?? "agent")
+                }
+                return "• " + description + (type.map { " (\($0))" } ?? "")
+            }
+        return ([heading] + lines).joined(separator: "\n")
     }
 
     /// One line per model this session has used: tokens, and `$` where the model is priced.

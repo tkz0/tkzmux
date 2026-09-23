@@ -261,16 +261,36 @@ static inline float tkz_contrast_ratio(float lumA, float lumB) {
     return (max(lumA, lumB) + 0.05f) / (min(lumA, lumB) + 0.05f);
 }
 
-/// If `fg` on `bg` is below `minRatio`, replace it with whichever of white/black has more contrast
-/// against `bg`. Deliberately all-or-nothing: nudging the hue looks worse than a clean swap, and
-/// the frame builder only opts in for colours the *program* chose, never theme colours.
+static inline float tkz_linear_to_srgb(float c) {
+    return c <= 0.0031308f ? c * 12.92f : 1.055f * pow(c, 1.0f / 2.4f) - 0.055f;
+}
+
+/// If `fg` on `bg` is below `minRatio`, move it toward black or white — whichever has more contrast
+/// against `bg` — just far enough to reach `minRatio`. The mix is done in linear light, where it
+/// moves luminance linearly, so the amount is solved exactly rather than searched for, and the hue
+/// survives: a pastel a program chose for a dark background comes out as a deeper shade of the same
+/// colour on a light one, not as black. The frame builder only opts in for colours the *program*
+/// chose, never theme colours.
 static inline float3 tkz_min_contrast(float3 fg, float3 bg, float minRatio) {
     float bgLuminance = tkz_relative_luminance(bg);
-    if (tkz_contrast_ratio(tkz_relative_luminance(fg), bgLuminance) >= minRatio) {
+    float fgLuminance = tkz_relative_luminance(fg);
+    if (tkz_contrast_ratio(fgLuminance, bgLuminance) >= minRatio) {
         return fg;
     }
+    float3 linear = float3(tkz_srgb_to_linear(fg.r), tkz_srgb_to_linear(fg.g), tkz_srgb_to_linear(fg.b));
     bool whiteWins = tkz_contrast_ratio(1.0f, bgLuminance) > tkz_contrast_ratio(0.0f, bgLuminance);
-    return whiteWins ? float3(1.0f) : float3(0.0f);
+    if (whiteWins) {
+        // L' = L + t(1 - L)
+        float target = min(minRatio * (bgLuminance + 0.05f) - 0.05f, 1.0f);
+        float t = fgLuminance < 1.0f ? saturate((target - fgLuminance) / (1.0f - fgLuminance)) : 0.0f;
+        linear = mix(linear, float3(1.0f), t);
+    } else {
+        // L' = L * s
+        float target = max((bgLuminance + 0.05f) / minRatio - 0.05f, 0.0f);
+        float s = fgLuminance > 0.0f ? saturate(target / fgLuminance) : 0.0f;
+        linear *= s;
+    }
+    return float3(tkz_linear_to_srgb(linear.r), tkz_linear_to_srgb(linear.g), tkz_linear_to_srgb(linear.b));
 }
 
 vertex TkzGlyphVaryings tkz_glyph_vertex(uint vid [[vertex_id]],

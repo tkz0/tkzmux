@@ -182,4 +182,28 @@ public struct ClaudeTranscriptProvider: TranscriptProvider {
     public func searchIndex(path: String, existing: TranscriptIndex?) throws -> TranscriptIndex {
         try TranscriptIndex.build(path: path, existing: existing)
     }
+
+    /// The modification time of each sub-agent's own transcript, which Claude Code writes beside
+    /// the session's: `<dir>/<sessionId>.jsonl` → `<dir>/<sessionId>/subagents/agent-<id>.jsonl`
+    /// (the `agent_transcript_path` its `SubagentStop` names; measured 2026-09-23, 2.1.280).
+    public func subagentActivity(
+        transcriptPath: String, subagentIds: [String], fileManager: FileManager
+    ) -> [String: Date] {
+        var out: [String: Date] = [:]
+        for id in subagentIds {
+            guard let path = Self.subagentTranscriptPath(transcriptPath: transcriptPath, agentId: id),
+                let modified = (try? fileManager.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+            else { continue }
+            out[id] = modified
+        }
+        return out
+    }
+
+    static func subagentTranscriptPath(transcriptPath: String, agentId: String) -> String? {
+        guard !agentId.isEmpty, !agentId.contains("/"), agentId != ".", agentId != "..",
+            transcriptPath.hasSuffix(".jsonl")
+        else { return nil }
+        let sessionDirectory = String(transcriptPath.dropLast(".jsonl".count))
+        return "\(sessionDirectory)/subagents/agent-\(agentId).jsonl"
+    }
 }

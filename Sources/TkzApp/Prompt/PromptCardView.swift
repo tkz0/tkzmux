@@ -45,9 +45,6 @@ final class PromptCardView: NSView {
     private(set) var summary: TranscriptSummary?
     private(set) var hit: HitContent?
     private(set) var isLoading = true
-    /// Peeking: shown by a scroll, not by the chord, with the keyboard and the mouse still the
-    /// terminal's. The buttons are inert and the hint says how to pin the card instead of "esc".
-    private(set) var isPeeking = false
 
     /// The text the Copy buttons put on the pasteboard; `nil` when there is nothing to copy.
     var promptText: String? { hit?.text ?? summary?.firstPrompt }
@@ -118,13 +115,6 @@ final class PromptCardView: NSView {
         guard hit != self.hit else { return }
         self.hit = hit
         render(now: now)
-    }
-
-    func setPeeking(_ peeking: Bool) {
-        guard peeking != isPeeking else { return }
-        isPeeking = peeking
-        applyTheme()
-        render()
     }
 
     // MARK: Derived strings
@@ -309,7 +299,7 @@ final class PromptCardView: NSView {
             meta.textColor = theme.foregroundDim.nsColor
         }
         closeHint.attributedTitle = NSAttributedString(
-            string: isPeeking ? "\u{2325}\u{2318}P to pin" : "esc \u{2715}",
+            string: "esc \u{2715}",
             attributes: [
                 .font: Theme.Fonts.ui(theme.fontUI.caption),
                 .foregroundColor: theme.foregroundDim.nsColor,
@@ -355,8 +345,8 @@ final class PromptCardView: NSView {
         copyPromptButton.title = hit == nil ? "Copy prompt" : "Copy line"
         set(recapView, text: summary.recap, placeholder: recapPlaceholder,
             font: Theme.Fonts.ui(theme.fontUI.title), color: theme.foregroundMuted)
-        copyPromptButton.isEnabled = !isPeeking && promptText != nil
-        copyRecapButton.isEnabled = !isPeeking && summary.recap != nil
+        copyPromptButton.isEnabled = promptText != nil
+        copyRecapButton.isEnabled = summary.recap != nil
         relayoutText()
     }
 

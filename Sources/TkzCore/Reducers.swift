@@ -624,6 +624,10 @@ extension AppState {
             case .sessionEnd(let exited):
                 live.ended = exited
                 live.pendingNotification = nil
+                // An exit takes its sub-agents with it, and so does a `/clear`. A `SessionStart`
+                // does *not* clear them: Claude sends one after a compaction too, with its
+                // background agents still running.
+                live.runningSubagents = [:]
             case .promptSubmitted:
                 live.lastPromptAt = now
                 live.attendedAt = now
@@ -634,6 +638,36 @@ extension AppState {
                     live.lastStopMessage = message
                 }
                 live.pendingNotification = nil
+                // The agent's own running list wins over whatever start/stop pairs we pieced
+                // together — it repairs a stop that never arrived. Entries already known keep
+                // their clocks.
+                if let snapshot = event.runningSubagents {
+                    live.runningSubagents = Dictionary(
+                        snapshot.map { info in
+                            var entry = live.runningSubagents[info.id]
+                                ?? RunningSubagent(info: info, startedAt: now)
+                            entry.info = SubagentInfo(
+                                id: info.id,
+                                type: info.type ?? entry.info.type,
+                                description: info.description ?? entry.info.description)
+                            return (info.id, entry)
+                        },
+                        uniquingKeysWith: { first, _ in first })
+                }
+            case .subagentStarted(let info):
+                live.runningSubagents[info.id] = RunningSubagent(info: info, startedAt: now)
+            case .subagentStopped(let subagentId):
+                let removed = live.runningSubagents.removeValue(forKey: subagentId) != nil
+                // The last one finishing is when the work actually ended. The main turn's `Stop`
+                // may be minutes old by now, and letting it stand would flash NEEDS YOU in the
+                // moment before the agent's follow-up turn flips its descriptor to busy — so the
+                // finish counts as a fresh stop. Not while the agent is busy anyway (a foreground
+                // sub-agent inside a running turn): that turn's own `Stop` is still to come.
+                if removed, live.runningSubagents.isEmpty, live.observation?.activity != .busy,
+                    live.lastStopAt != nil
+                {
+                    live.lastStopAt = now
+                }
             case .attention(let kind):
                 live.pendingNotification = PendingNotification(kind: kind, receivedAt: now)
                 // Claude's own line for the banner ("Claude needs your permission to use Bash").
@@ -666,10 +700,37 @@ extension AppState {
             }
         case .promptSubmitted:
             markActivityRead(id)
-        case .sessionStart, .attention, .attentionCleared, .unknown:
+        case .sessionStart, .attention, .attentionCleared, .subagentStarted, .subagentStopped, .unknown:
             break
         }
         rederiveStatus(for: id, now: now)
+    }
+
+    /// Newer evidence that sub-agents are still doing something (their own transcript was written
+    /// at `activity[id]`). Ids no longer running are ignored; an older date never moves a clock back.
+    public mutating func touchSubagents(_ id: SessionID, activity: [String: Date]) {
+        guard let running = sessions[id]?.live?.runningSubagents, !running.isEmpty else { return }
+        var updated = running
+        for (subagentId, at) in activity {
+            guard var entry = updated[subagentId], at > entry.lastActivityAt else { continue }
+            entry.lastActivityAt = at
+            updated[subagentId] = entry
+        }
+        guard updated != running else { return }
+        updateLive(id) { $0.runningSubagents = updated }
+    }
+
+    /// Drops sub-agents with no sign of life for `maxSilence` — the safety net for a stop that
+    /// never arrived (a crash, a kill), which would otherwise keep the row pulsing forever. The
+    /// next `Stop` would repair it too, but an agent that is idle sends none.
+    public mutating func expireSubagents(maxSilence: TimeInterval, now: Date = Date()) {
+        for (id, session) in sessions {
+            guard let running = session.live?.runningSubagents, !running.isEmpty else { continue }
+            let kept = running.filter { now.timeIntervalSince($0.value.lastActivityAt) < maxSilence }
+            guard kept.count != running.count else { continue }
+            updateLive(id) { $0.runningSubagents = kept }
+            rederiveStatus(for: id, now: now)
+        }
     }
 
     /// Binds a discovered observation and its liveness together — the M3.4 successor to
@@ -730,6 +791,7 @@ extension AppState {
             live.pid = nil
             live.alive = true
             live.agentTerminal = nil
+            live.runningSubagents = [:]
         }
         rederiveStatus(for: id, now: now)
     }

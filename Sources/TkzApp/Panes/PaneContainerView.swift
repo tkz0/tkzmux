@@ -306,6 +306,7 @@ public final class PaneContainerView: NSView {
     func applyRatios(_ tab: Tab?) {
         guard let tab, tab.zoomedLeaf == nil else { return }
         layoutSubtreeIfNeeded()
+        var placed = false
         for split in splitViews {
             guard let ratio = ratio(in: tab.root, above: split.anchorLeaf, levels: split.anchorLevels)
             else { continue }
@@ -320,7 +321,16 @@ public final class PaneContainerView: NSView {
             appliedRatioCount += 1
             split.setPosition(usable * CGFloat(ratio), ofDividerAt: 0)
             isApplyingStoreState = false
+            placed = true
         }
+        // `setPosition` resizes only the split's own children — each pane's chrome. The terminal
+        // surface *inside* the chrome, under its header, keeps its old frame until the next layout
+        // pass. The caller attaches right after this returns, and an attach measures the surface:
+        // without this the pane was attached at the split's pre-ratio size (NSSplitView's default,
+        // proportional to the views' initial frames), then resized on the next pass — two SIGWINCHes
+        // on every return to a split row, which left Claude Code's redraw garbled
+        // (reported 2026-09-23; `SessionSwitchResizeTests`).
+        if placed { layoutSubtreeIfNeeded() }
     }
 
     /// How many times a divider has been re-placed from the store. A drag that snaps back is
