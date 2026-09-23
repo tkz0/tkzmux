@@ -12,7 +12,7 @@ Sessions survive a quit: screen and scrollback are snapshotted, and a restored r
 fresh shell with its own agent's resume command — `claude --resume`, `codex resume` or
 `agy --conversation` — a keystroke away.
 
-<!-- SCREENSHOT: a shot of the main window (sidebar + terminal) goes here. Not added yet. -->
+![The tkzmux main window: sessions grouped by repository in the sidebar, each with its branch and status, and the selected session's terminal on the right](docs/images/main-window.png)
 
 ## Status
 
