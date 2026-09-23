@@ -107,6 +107,14 @@ public struct Theme: Hashable, Sendable {
 
     /// ANSI 0…7 then bright 8…15, all opaque. Built by `Theme.palette16`; see the rule there.
     public let terminalPalette16: [RGB]
+    /// The WCAG contrast a glyph coloured by the *program* is pushed to against its own cell
+    /// background (`TkzUniforms.minContrast`; 1 = off). Programs pick colours for the scheme they
+    /// assume, and Claude Code's default dark theme sends 24-bit pastels — `#b1b9f9` for inline code
+    /// is 1.9:1 on white — that all but vanish on the light terminal. Light holds them to 3:1, the
+    /// WCAG floor for text that still reads; AA's 4.5 would also deepen colours a program chose *for*
+    /// a light background, such as Claude's orange (~3.1:1). The dark preset draws them as sent.
+    /// Theme-coloured glyphs are never adjusted.
+    public let terminalMinContrast: Double
 
     public let fontUI: Fonts.UI
     public let fontMono: Fonts.Mono
@@ -272,6 +280,7 @@ extension Theme {
                     blue: RGB(hex: 0x8b93f8), magenta: RGB(hex: 0xc084fc), cyan: RGB(hex: 0x41c6a8)
                 )
             ),
+            terminalMinContrast: 1,
             fontUI: Fonts.ui, fontMono: Fonts.mono
         )
     }()
@@ -355,6 +364,7 @@ extension Theme {
                     blue: indigo, magenta: RGB(hex: 0x8352b8), cyan: RGB(hex: 0x2c8a74)
                 )
             ),
+            terminalMinContrast: 3,
             fontUI: Fonts.ui, fontMono: Fonts.mono
         )
     }()
