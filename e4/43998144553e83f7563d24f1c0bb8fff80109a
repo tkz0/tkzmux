@@ -1,0 +1,41 @@
+Sources/Persistence/PersistedState.swift
+  s_f5f0ab2ccbe1dd::t_512ef0ea6b87e4 97-98,108-109,119,125,146,168,270-271,334
+Sources/TkzApp/AppDelegate.swift
+  s_f5f0ab2ccbe1dd::t_90ce2687a115d3 36,136-137
+Sources/TkzApp/DockBadge.swift
+  s_f5f0ab2ccbe1dd::t_dc842ddff51b25 1-75
+Sources/TkzApp/Settings/SettingsModel.swift
+  s_f5f0ab2ccbe1dd::t_051a52ad160813 52,251-254
+Sources/TkzApp/Settings/SettingsWindowController.swift
+  s_f5f0ab2ccbe1dd::t_ed7852dd106953 158
+Sources/TkzCore/AppState.swift
+  s_f5f0ab2ccbe1dd::t_3c82076c3d5465 65-68,100,121
+Sources/TkzCore/AppStore.swift
+  s_f5f0ab2ccbe1dd::t_0e89fa209e0dea 182
+Sources/TkzCore/Reducers.swift
+  s_f5f0ab2ccbe1dd::t_d34e0fe156bc07 445-450
+Tests/PersistenceTests/StateFileTests.swift
+  s_f5f0ab2ccbe1dd::t_747646605a5f94 54,111,157-171,290
+Tests/TkzAppTests/DockBadgeTests.swift
+  s_f5f0ab2ccbe1dd::t_ffb55cfbde12b6 1-173
+Tests/TkzAppTests/SettingsWindowTests.swift
+  s_f5f0ab2ccbe1dd::t_fd753ab2c246ee 146,156,473-483
+Tests/TkzCoreTests/AppStoreTests.swift
+  s_f5f0ab2ccbe1dd::t_ad2e23e952c978 276-287
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e443998144553e83f7563d24f1c0bb8fff80109a",
+  "prompts": {},
+  "sessions": {
+    "s_f5f0ab2ccbe1dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8c49d31-ec5f-414b-ad67-4c86e4bbe9de",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
