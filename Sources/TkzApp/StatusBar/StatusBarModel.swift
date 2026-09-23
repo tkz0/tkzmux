@@ -37,6 +37,12 @@ public struct StatusBarModel: Hashable, Sendable {
     /// `model.display_name`, never the model id. Rendered as a subdued badge.
     public var modelName: String?
 
+    /// Sub-agents the session's agent still has running — the reason its dot keeps pulsing after
+    /// the turn ended. Rendered `⟳ 3 agents` in the working green; `nil` (never `0`) when none.
+    public var runningAgents: Int? = nil
+    /// One line per running sub-agent, for that segment's tooltip.
+    public var runningAgentsTooltip: String? = nil
+
     /// Lines added in the working tree vs. HEAD. Rendered `+142` in `diffAdd`.
     public var diffAdded: Int?
 

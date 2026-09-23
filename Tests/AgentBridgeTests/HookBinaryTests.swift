@@ -672,7 +672,9 @@ private func bestWallTime(
         let preToolHooks = (preToolUse?.first?["hooks"] as? [[String: Any]])?.first
         #expect(preToolHooks?["command"] as? String == "~/.claude/hooks/block-rm.sh")
 
-        for event in ["SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "Notification"] {
+        for event in [
+            "SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "Notification", "SubagentStart", "SubagentStop",
+        ] {
             let groups = hooks?[event] as? [[String: Any]]
             #expect(groups?.count == 1, "expected exactly one injected group for \(event)")
             let commandHook = (groups?.first?["hooks"] as? [[String: Any]])?.first
@@ -686,7 +688,7 @@ private func bestWallTime(
         #expect(sessionEndHook?["timeout"] as? Int == 1)
     }
 
-    @Test func settingsMergeWithNoArgYieldsExactlyFiveEvents() throws {
+    @Test func settingsMergeWithNoArgYieldsExactlyTheInjectedEvents() throws {
         let binary = try hookBinaryURL()
         let result = try runHook(
             ["settings-merge"],
@@ -696,8 +698,12 @@ private func bestWallTime(
         #expect(result.exitCode == 0)
         let parsed = try JSONSerialization.jsonObject(with: result.stdout) as? [String: Any]
         let hooks = parsed?["hooks"] as? [String: Any]
-        #expect(hooks?.count == 5)
-        #expect(Set(hooks?.keys ?? [:].keys) == ["SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "Notification"])
+        #expect(hooks?.count == 7)
+        #expect(Set(hooks?.keys ?? [:].keys) == [
+            "SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "Notification", "SubagentStart", "SubagentStop",
+        ])
+        // The sub-agent pair fires for every sub-agent, so no matcher narrows it.
+        #expect((hooks?["SubagentStart"] as? [[String: Any]])?.first?["matcher"] == nil)
     }
 
     @Test func settingsMergeWithInvalidJSONFileExitsOneEmptyStdout() throws {
@@ -725,7 +731,7 @@ private func bestWallTime(
         #expect(result.exitCode == 0)
         let parsed = try JSONSerialization.jsonObject(with: result.stdout) as? [String: Any]
         #expect(parsed?["foo"] as? String == "bar")
-        #expect((parsed?["hooks"] as? [String: Any])?.count == 5)
+        #expect((parsed?["hooks"] as? [String: Any])?.count == 7)
     }
 
     /// Exercises the hand-written JSON parser's full escape handling (`\uXXXX`, a surrogate pair,

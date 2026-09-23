@@ -1,7 +1,9 @@
 // `tkzmux-hook settings-merge` — the only subcommand allowed to write to stdout. `Darwin` only.
 import Darwin
 
-private let injectedEvents = ["SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "Notification"]
+private let injectedEvents = [
+    "SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "Notification", "SubagentStart", "SubagentStop",
+]
 private let notificationMatcher =
     "permission_prompt|idle_prompt|elicitation_dialog|elicitation_url_dialog|elicitation_complete|elicitation_response|agent_needs_input"
 

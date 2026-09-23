@@ -13,16 +13,32 @@ public enum ClaudeHookMapper {
     /// left nil here — it is envelope data (`HookFrame.hook`'s own associated value), not something
     /// Claude sent, and the caller fills it in from the frame.
     public static func map(_ payload: HookPayload) -> AgentEvent? {
-        AgentEvent(
-            kind: mapKind(payload),
+        let kind = mapKind(payload)
+        return AgentEvent(
+            kind: kind,
             conversationId: payload.sessionId,
             message: payload.message,
-            lastAssistantMessage: payload.lastAssistantMessage,
+            // A sub-agent's `SubagentStop` carries *its* last message, which is not the session's
+            // recap and must never land where the main turn's does.
+            lastAssistantMessage: kind.isSubagentEvent ? nil : payload.lastAssistantMessage,
             cwd: payload.cwd,
             transcriptPath: payload.transcriptPath,
             source: payload.source,
-            reason: payload.reason
+            reason: payload.reason,
+            // Only `Stop`'s list is a snapshot to trust: `SubagentStop`'s still names the agent
+            // that is stopping (measured 2026-09-23, Claude Code 2.1.280).
+            runningSubagents: kind == .turnEnded ? payload.backgroundTasks.map(runningSubagents) : nil
         )
+    }
+
+    /// `background_tasks` entries of `type: "subagent"` that have not finished. Background shells
+    /// (`type: "shell"`) are left out on purpose — see `StatusDerivation` rule 4a.
+    private static func runningSubagents(_ tasks: [HookBackgroundTask]) -> [SubagentInfo] {
+        let finished: Set<String> = ["completed", "failed", "killed", "stopped", "cancelled"]
+        return tasks.compactMap { task in
+            guard task.type == "subagent", !finished.contains(task.status ?? "") else { return nil }
+            return SubagentInfo(id: task.id, type: task.agentType, description: task.description)
+        }
     }
 
     private static func mapKind(_ payload: HookPayload) -> AgentEvent.Kind {
@@ -40,6 +56,12 @@ public enum ClaudeHookMapper {
             return .turnEnded
         case "Notification":
             return mapNotification(payload.notificationType)
+        case "SubagentStart":
+            guard let agentId = payload.agentId, !agentId.isEmpty else { return .unknown(payload.eventName) }
+            return .subagentStarted(SubagentInfo(id: agentId, type: payload.agentType))
+        case "SubagentStop":
+            guard let agentId = payload.agentId, !agentId.isEmpty else { return .unknown(payload.eventName) }
+            return .subagentStopped(id: agentId)
         default:
             return .unknown(payload.eventName)
         }
