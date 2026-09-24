@@ -28,7 +28,8 @@ public struct AppState: Hashable, Sendable {
     /// M2.4 owns the vocabulary.
     public var shortcuts: [String: String]
     /// The "auto-resume on launch" preference (M5.2): every restored row with a
-    /// `conversationId` gets `claude --resume` typed into a fresh shell when the app starts.
+    /// `conversationId` whose agent was still running at quit (`Session.agentExited` unset) gets
+    /// `claude --resume` typed into a fresh shell when the app starts.
     public var autoResumeOnLaunch: Bool
     /// Whether the statusline consent sheet has already been put to the user. Asked once
     /// and never again: declining is an answer, and re-asking every launch would be nagging. The

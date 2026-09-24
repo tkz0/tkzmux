@@ -417,7 +417,8 @@ public final class SessionLauncher {
         resumeAll(store.state.sessions(in: groupID).map(\.id))
     }
 
-    /// The auto-resume-on-launch pass: every restored row with a `conversationId`.
+    /// Every row in `ids` with a `conversationId` and no agent running. The caller chooses the
+    /// rows: the auto-resume-on-launch pass leaves out the ones whose agent had exited.
     @discardableResult
     public func resumeAll(_ ids: [SessionID]) -> (resumed: [SessionID], failed: [(SessionID, Failure)]) {
         var resumed: [SessionID] = []

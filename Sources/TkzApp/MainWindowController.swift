@@ -1368,13 +1368,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// ⌥⌘P. Toggles the card for the selected row, centred on the window's screen.
+    /// ⌥⌘P. Toggles the card for the selected row, centred on the window.
     public func toggleFirstPromptCard() {
         guard let id = store.state.selection else {
             showNotice("No session selected", for: .seconds(2))
             return
         }
-        promptCard.toggle(for: id, over: detailAnchor())
+        promptCard.toggle(for: id, over: window.frame)
     }
 
     /// Opens the first-prompt card on a search hit rather than on the first prompt.
@@ -1387,10 +1387,10 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
                 at: hit.at,
                 sessionTitle: hit.sessionTitle),
             for: hit.sessionID,
-            over: detailAnchor())
+            over: window.frame)
     }
 
-    /// The detail area in screen coordinates — which screen the card centres itself on.
+    /// The detail area in screen coordinates — what the activity feed and the glass sheets sit over.
     private func detailAnchor() -> NSRect? {
         let detailView = detail.view
         return detailView.window.map {
@@ -3038,10 +3038,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     /// The "auto-resume on launch" pass. `AppDelegate` calls it once the Claude integration is up,
-    /// so every `claude --resume` runs through the shim and gets a `launch` frame.
+    /// so every `claude --resume` runs through the shim and gets a `launch` frame. A row whose
+    /// agent had already exited before the quit stays a plain shell — it can still be resumed by
+    /// hand.
     public func autoResumeIfEnabled() {
         guard store.state.autoResumeOnLaunch else { return }
-        let ids = store.state.orderedSessions.map(\.id)
+        let ids = store.state.orderedSessions.filter { $0.agentExited != true }.map(\.id)
         let outcome = launcher.resumeAll(ids)
         reattachSurface()
         logger.info("auto-resume: \(outcome.resumed.count) resumed, \(outcome.failed.count) failed")
