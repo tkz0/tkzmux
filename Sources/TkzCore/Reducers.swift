@@ -629,6 +629,7 @@ extension AppState {
                 // does *not* clear them: Claude sends one after a compaction too, with its
                 // background agents still running.
                 live.runningSubagents = [:]
+                live.backgroundShells = []
             case .promptSubmitted:
                 live.lastPromptAt = now
                 live.attendedAt = now
@@ -654,6 +655,9 @@ extension AppState {
                             return (info.id, entry)
                         },
                         uniquingKeysWith: { first, _ in first })
+                }
+                if let shells = event.backgroundShells {
+                    live.backgroundShells = shells
                 }
             case .subagentStarted(let info):
                 live.runningSubagents[info.id] = RunningSubagent(info: info, startedAt: now)
@@ -751,6 +755,20 @@ extension AppState {
         var live = session.live ?? LiveSessionState()
         let rebound = live.observation?.conversationId != observation.conversationId
             || live.observation?.pid != observation.pid
+        // The last background shell exiting is when the work actually ended — the same reasoning
+        // as the last sub-agent stopping (`applyEvent`): the turn's `Stop` may be many minutes old,
+        // and letting it stand would flash NEEDS YOU before the agent's follow-up turn goes busy.
+        // Only `→ idle`: `→ busy` is that follow-up turn already, whose own `Stop` is still to come.
+        if !rebound, live.observation?.activity == .backgroundShell, observation.activity == .idle,
+            live.lastStopAt != nil
+        {
+            live.lastStopAt = now
+        }
+        // Idle means none is left. Not on `busy`: a `Stop` can land while the descriptor still
+        // says busy, and its list is the one the coming `shell` is about.
+        if observation.activity == .idle {
+            live.backgroundShells = []
+        }
         live.pid = observation.pid
         live.observation = observation
         live.alive = alive
@@ -805,6 +823,7 @@ extension AppState {
             live.alive = true
             live.agentTerminal = nil
             live.runningSubagents = [:]
+            live.backgroundShells = []
         }
         // The Codex path has no descriptor to lose and may miss its `SessionEnd`: the pid going
         // away is the exit. Quit stops the watchers before it hangs up the shells, so an agent

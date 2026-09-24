@@ -57,6 +57,10 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
         /// (measured 2026-09-08: idle → busy on submit → waiting at the prompt → busy the moment
         /// it is answered → idle at Stop). It is the hook-free way to see NEEDS YOU.
         case waiting
+        /// Claude Code 2.1.281 writes `"shell"` for "idle, but a background Bash task is still
+        /// running" (its own `status === "idle" && hasRunningLocalBash ? "shell" : status`, read
+        /// from the binary 2026-09-24), and `idle` again once the last one exits.
+        case shell
         case unknown(String)
 
         public init(raw: String) {
@@ -64,6 +68,7 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
             case "idle": self = .idle
             case "busy": self = .busy
             case "waiting": self = .waiting
+            case "shell": self = .shell
             default: self = .unknown(raw)
             }
         }
@@ -232,6 +237,7 @@ extension ClaudeSessionInfo {
                 case .idle: .idle
                 case .busy: .busy
                 case .waiting: .waiting
+                case .shell: .backgroundShell
                 case .unknown: nil
                 }
             },

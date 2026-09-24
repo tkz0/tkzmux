@@ -36,7 +36,7 @@ import TkzCore
         #expect(payload.backgroundTasks == [
             HookBackgroundTask(
                 id: "b4uo0szea", type: "shell", status: "running",
-                description: "Sleep for 25 seconds in background"),
+                description: "Sleep for 25 seconds in background", command: "sleep 25"),
             HookBackgroundTask(
                 id: "a19f6a0e7f3474257", type: "subagent", status: "running",
                 description: "Run sleep and respond", agentType: "general-purpose"),
@@ -80,14 +80,34 @@ import TkzCore
         #expect(ClaudeHookMapper.map(HookPayload(eventName: "SubagentStop", agentId: ""))?.kind == .unknown("SubagentStop"))
     }
 
-    /// Only sub-agents make the snapshot — background shells are deliberately not tracked.
-    @Test func stopSnapshotKeepsSubagentsOnly() throws {
+    /// Sub-agents and background shells land in their own lists.
+    @Test func stopSnapshotSplitsSubagentsFromShells() throws {
         let event = ClaudeHookMapper.map(try Self.frame(fixture: "stop_background_tasks.json", event: "Stop"))
         #expect(event?.kind == .turnEnded)
         #expect(event?.lastAssistantMessage == "waiting")
         #expect(event?.runningSubagents == [
             SubagentInfo(id: "a19f6a0e7f3474257", type: "general-purpose", description: "Run sleep and respond")
         ])
+        #expect(event?.backgroundShells == [
+            BackgroundShellInfo(id: "b4uo0szea", description: "Sleep for 25 seconds in background", command: "sleep 25")
+        ])
+    }
+
+    @Test func stopShellListDropsFinishedShells() {
+        let event = ClaudeHookMapper.map(HookPayload(
+            eventName: "Stop",
+            backgroundTasks: [
+                HookBackgroundTask(id: "done", type: "shell", status: "completed"),
+                HookBackgroundTask(id: "live", type: "shell", status: "running", command: "npm run dev"),
+            ]))
+        #expect(event?.backgroundShells == [BackgroundShellInfo(id: "live", command: "npm run dev")])
+    }
+
+    /// Only `Stop`'s list is a snapshot; `SubagentStop` carries one too, and it must not land.
+    @Test func onlyStopCarriesAShellList() throws {
+        let event = ClaudeHookMapper.map(try Self.frame(fixture: "subagent_stop.json", event: "SubagentStop"))
+        #expect(event?.backgroundShells == nil)
+        #expect(ClaudeHookMapper.map(try Self.frame(fixture: "stop.json", event: "Stop"))?.backgroundShells == nil)
     }
 
     @Test func stopSnapshotDropsFinishedSubagents() {

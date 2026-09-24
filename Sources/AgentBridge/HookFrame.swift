@@ -88,16 +88,19 @@ public struct HookBackgroundTask: Hashable, Sendable {
     public var status: String?
     public var description: String?
     public var agentType: String?
+    /// A shell entry's command line.
+    public var command: String?
 
     public init(
         id: String, type: String? = nil, status: String? = nil, description: String? = nil,
-        agentType: String? = nil
+        agentType: String? = nil, command: String? = nil
     ) {
         self.id = id
         self.type = type
         self.status = status
         self.description = description
         self.agentType = agentType
+        self.command = command
     }
 }
 

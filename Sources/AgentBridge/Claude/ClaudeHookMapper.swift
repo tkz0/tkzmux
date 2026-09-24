@@ -27,17 +27,27 @@ public enum ClaudeHookMapper {
             reason: payload.reason,
             // Only `Stop`'s list is a snapshot to trust: `SubagentStop`'s still names the agent
             // that is stopping (measured 2026-09-23, Claude Code 2.1.280).
-            runningSubagents: kind == .turnEnded ? payload.backgroundTasks.map(runningSubagents) : nil
+            runningSubagents: kind == .turnEnded ? payload.backgroundTasks.map(runningSubagents) : nil,
+            backgroundShells: kind == .turnEnded ? payload.backgroundTasks.map(backgroundShells) : nil
         )
     }
 
-    /// `background_tasks` entries of `type: "subagent"` that have not finished. Background shells
-    /// (`type: "shell"`) are left out on purpose — see `StatusDerivation` rule 4a.
+    private static let finishedStatuses: Set<String> = ["completed", "failed", "killed", "stopped", "cancelled"]
+
+    /// `background_tasks` entries of `type: "subagent"` that have not finished.
     private static func runningSubagents(_ tasks: [HookBackgroundTask]) -> [SubagentInfo] {
-        let finished: Set<String> = ["completed", "failed", "killed", "stopped", "cancelled"]
-        return tasks.compactMap { task in
-            guard task.type == "subagent", !finished.contains(task.status ?? "") else { return nil }
+        tasks.compactMap { task in
+            guard task.type == "subagent", !finishedStatuses.contains(task.status ?? "") else { return nil }
             return SubagentInfo(id: task.id, type: task.agentType, description: task.description)
+        }
+    }
+
+    /// `background_tasks` entries of `type: "shell"` that have not finished — for the status bar
+    /// to name. Whether the row is working on their account is the descriptor's `"shell"` status.
+    private static func backgroundShells(_ tasks: [HookBackgroundTask]) -> [BackgroundShellInfo] {
+        tasks.compactMap { task in
+            guard task.type == "shell", !finishedStatuses.contains(task.status ?? "") else { return nil }
+            return BackgroundShellInfo(id: task.id, description: task.description, command: task.command)
         }
     }
 
