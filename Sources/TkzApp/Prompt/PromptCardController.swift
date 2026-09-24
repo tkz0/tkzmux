@@ -44,8 +44,10 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
     private var effectView: NSVisualEffectView?
     private var cardView: PromptCardView?
     private var watch: TranscriptWatch?
-    /// The visible frame of the screen the card is centred on, so a refresh that changes its
-    /// height re-centres it on the same screen.
+    /// The window the card is centred on (in screen coordinates), so a refresh that changes its
+    /// height re-centres it on the same window.
+    private var anchorFrame: NSRect?
+    /// The visible frame of the anchor's screen: the card's height cap and the bounds it is kept in.
     private var hostFrame: NSRect?
     /// Set just before a `show` that came from the search overlay.
     private var pendingHit: PromptCardView.HitContent?
@@ -68,8 +70,8 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Shows the card for `id`, centred on the screen that holds `anchor` (the detail area, in
-    /// screen coordinates), and starts the read. The cached summary — whatever the last read said — is
+    /// Shows the card for `id`, centred on `anchor` (the app window, in screen coordinates) and
+    /// kept on its screen, and starts the read. The cached summary — whatever the last read said — is
     /// shown at once so the card never opens blank when it has been open before.
     public func present(for id: SessionID, over anchor: NSRect?) {
         pendingHit = nil
@@ -86,6 +88,7 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
 
     private func show(for id: SessionID, over anchor: NSRect?) {
         sessionID = id
+        anchorFrame = anchor
         hostFrame = Self.hostFrame(for: anchor)
         let panel = makePanelIfNeeded()
         cardView?.maxTextHeight = Self.maxTextHeight(for: hostFrame)
@@ -208,13 +211,14 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
         cardView?.setTheme(theme)
     }
 
-    /// Sizes the panel to its content and centres it on the host screen.
+    /// Sizes the panel to its content and centres it on the anchor (the host screen with none),
+    /// kept inside the host screen.
     private func place(_ panel: NSPanel) {
         guard let cardView else { return }
         cardView.layoutSubtreeIfNeeded()
         let size = NSSize(width: PromptCardView.Metrics.width, height: cardView.fittingSize.height)
         let host = hostFrame ?? Self.hostFrame(for: nil)
-        panel.setFrame(Self.frame(for: size, centredIn: host), display: true)
+        panel.setFrame(Self.frame(for: size, centredIn: anchorFrame ?? host, keptIn: host), display: true)
     }
 
     /// The visible frame of the screen holding the anchor's centre — the window's screen, not
@@ -231,6 +235,15 @@ public final class PromptCardController: NSObject, NSWindowDelegate {
             x: (host.midX - size.width / 2).rounded(),
             y: (host.midY - size.height / 2).rounded(),
             width: size.width, height: size.height)
+    }
+
+    /// Centred on `anchor`, then slid back inside `host` — a window hanging off the screen's edge
+    /// must not take the card with it. A card larger than the host keeps its top-left inside.
+    static func frame(for size: NSSize, centredIn anchor: NSRect, keptIn host: NSRect) -> NSRect {
+        var frame = frame(for: size, centredIn: anchor)
+        frame.origin.x = max(host.minX, min(frame.origin.x, host.maxX - size.width))
+        frame.origin.y = min(host.maxY - size.height, max(frame.origin.y, host.minY))
+        return frame
     }
 
     /// Each text block may take up to ~30 % of the host's height, so two blocks, the chrome and

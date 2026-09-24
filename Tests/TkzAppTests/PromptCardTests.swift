@@ -148,6 +148,23 @@ struct PromptCardTests {
         #expect(frame.midY == host.midY)
     }
 
+    @Test("A window hanging off the screen's edge does not take the card with it")
+    func keptOnScreen() {
+        let host = NSRect(x: 0, y: 0, width: 1600, height: 1000)
+        let size = NSSize(width: 640, height: 300)
+        let inside = NSRect(x: 200, y: 100, width: 800, height: 600)
+        #expect(PromptCardController.frame(for: size, centredIn: inside, keptIn: host)
+            == PromptCardController.frame(for: size, centredIn: inside))
+
+        let offRightBottom = NSRect(x: 1300, y: -400, width: 800, height: 600)
+        let frame = PromptCardController.frame(for: size, centredIn: offRightBottom, keptIn: host)
+        #expect(frame == NSRect(x: 960, y: 0, width: 640, height: 300))
+
+        let tiny = NSRect(x: 0, y: 0, width: 400, height: 200)
+        #expect(PromptCardController.frame(for: size, centredIn: tiny, keptIn: tiny)
+            == NSRect(x: 0, y: -100, width: 640, height: 300), "too big: top-left stays inside")
+    }
+
     // MARK: Controller
 
     @Test("Presenting builds the panel lazily, glass and floating, and renders the provider's summary")
@@ -171,10 +188,12 @@ struct PromptCardTests {
         #expect(controller.sessionID == id)
         #expect(asked == [id])
         #expect(controller.cardViewForTesting?.promptText == "Fix the build")
-        // Centred on the screen holding the anchor, not over the anchor itself.
-        let host = PromptCardController.hostFrame(for: NSRect(x: 100, y: 100, width: 900, height: 600))
-        #expect(abs(panel.frame.midX - host.midX) <= 1)
-        #expect(abs(panel.frame.midY - host.midY) <= 1)
+        // Centred on the anchor (the app window), not on its screen.
+        let anchor = NSRect(x: 100, y: 100, width: 900, height: 600)
+        let host = PromptCardController.hostFrame(for: anchor)
+        let expected = PromptCardController.frame(for: panel.frame.size, centredIn: anchor, keptIn: host)
+        #expect(abs(panel.frame.midX - expected.midX) <= 1)
+        #expect(abs(panel.frame.midY - expected.midY) <= 1)
         #expect(panel.frame.width == PromptCardView.Metrics.width)
         #expect(panel.frame.height > 120, "a zero-height panel is an invisible one: \(panel.frame)")
         #expect(panel.isVisible)
