@@ -3,6 +3,7 @@
 // `kill(pid, 0)` tells us whether *a* process with that pid exists and is signalable, but pids get
 // reused: a descriptor's `startedAt` (ms since epoch) is compared against the live process's actual
 // start time (`PROC_PIDTBSDINFO.pbi_start_tvsec`) so a reused pid reads as dead rather than alive.
+// The comparison is one-sided — see `SystemProcessLiveness.startTimeMatches`.
 
 import Darwin
 import Foundation
@@ -11,7 +12,7 @@ import Foundation
 /// processes.
 public protocol ProcessLiveness: Sendable {
     /// `kill(pid,0)`: `ESRCH` → false, `EPERM` → true (exists, not ours to signal); when `startedAt`
-    /// is known, also requires the live process's actual start time to be within 30 s of it, else
+    /// is known, also requires the live process not to have started more than 30 s *after* it, else
     /// false (pid-reuse guard).
     func isAlive(pid: pid_t, startedAt: Date?) -> Bool
 }
@@ -32,7 +33,23 @@ public struct SystemProcessLiveness: ProcessLiveness {
             // no permission) — do not claim aliveness we cannot verify.
             return false
         }
-        return abs(actualStart.timeIntervalSince(startedAt)) <= 30
+        return Self.startTimeMatches(actualStart: actualStart, descriptorStartedAt: startedAt)
+    }
+
+    /// Whether the process holding a pid now can be the one that wrote a descriptor stamped
+    /// `descriptorStartedAt`.
+    ///
+    /// One-sided on purpose. The writer held the pid at `descriptorStartedAt`, so a live process
+    /// that started *before* then has held it ever since and is the writer; a reused pid can only
+    /// belong to a process that started *after* it. The 30 s slack on that side is the old window.
+    ///
+    /// The window used to be symmetric (`abs(…) <= 30`), and that was wrong for any agent whose
+    /// startup runs long before it writes its descriptor: a repo's `WorktreeCreate` hook runs
+    /// inside `claude -w` first, and `startedAt` lands as late as the hook takes (measured 31.5 s
+    /// on aira, 2026-09-24). The live row then read as dead, and `StatusDerivation` rule 1 made it
+    /// idle for good — no pulse while working, no NEEDS YOU at a prompt.
+    public static func startTimeMatches(actualStart: Date, descriptorStartedAt: Date) -> Bool {
+        actualStart.timeIntervalSince(descriptorStartedAt) <= 30
     }
 }
 
