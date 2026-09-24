@@ -1,0 +1,35 @@
+Sources/TkzApp/MainWindowController.swift
+  s_0f55262a6aa4e7::t_a9c0a23d3bc3b9 3041-3043,3046
+Sources/TkzApp/SessionLauncher.swift
+  s_0f55262a6aa4e7::t_414389891fd01a 420-421
+Sources/TkzCore/AppState.swift
+  s_0f55262a6aa4e7::t_0440eeb2574e85 31-32
+Sources/TkzCore/Models.swift
+  s_0f55262a6aa4e7::t_685d682e45d028 203-209,236,256,442
+Sources/TkzCore/Reducers.swift
+  s_0f55262a6aa4e7::t_a6ba8bb6784f2f 82,689-695,776-780,809-812
+Tests/PersistenceTests/StateFileTests.swift
+  s_0f55262a6aa4e7::t_9e9969aa631ec7 43-45,105-107,803-819
+Tests/TkzAppTests/MainWindowRestoreTests.swift
+  s_0f55262a6aa4e7::t_362b912d12b823 725-740
+Tests/TkzAppTests/SessionLauncherTests.swift
+  s_0f55262a6aa4e7::t_e85bed7850f6c2 413-424
+Tests/TkzCoreTests/ReducersTests.swift
+  s_0f55262a6aa4e7::t_28f0d4c380ba33 869-915
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "352f77741ba40bfb42e6b4e95de2de4271382f47",
+  "prompts": {},
+  "sessions": {
+    "s_0f55262a6aa4e7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "10079a5b-6c83-4644-8c66-aa21e981c199",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
