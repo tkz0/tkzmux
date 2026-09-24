@@ -1,0 +1,19 @@
+README.md
+  s_27d1b1bd8c17c8::t_69d2d041e616c2 3-7,11-12,18-21,23,25,29-35,39-40,43,47,54-55,58,60,62-66,68,70,72-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d6d967fd69fcf1b4c0fb24fe08f0b13e96e76565",
+  "prompts": {},
+  "sessions": {
+    "s_27d1b1bd8c17c8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab548976-4087-420a-8bc1-3b6124993347",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
