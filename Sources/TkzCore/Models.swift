@@ -200,6 +200,13 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// badge and the tint are untouched. `nil` = not muted, the default; `true` = muted. Never
     /// `false` — see `AppState.setNotificationsMuted(_:_:)`, the only writer.
     public var notificationsMuted: Bool?
+    /// The agent in this row has exited (`/exit`, a crash, its process gone) and has not come
+    /// back since. Persisted, because it is what tells the launch-time auto-resume pass that this
+    /// conversation was *not* running when tkzmux quit — `conversationId` alone cannot. It gates
+    /// only that pass: ⌘R and the menu's Resume still reopen the conversation. `nil` = running or
+    /// unknown (the default, and what a file from before this key decodes to); `true` = exited.
+    /// Never `false`: `applyEvent`, `applyObservation`, `adoptDescriptor` and `agentLost` write it.
+    public var agentExited: Bool?
 
     /// The session's tabs, in strip order. Never empty: `closePane`/`closeTab` refuse to empty a
     /// row, and `normalizeLayout` re-seeds a file that says otherwise.
@@ -226,6 +233,7 @@ public struct Session: Hashable, Sendable, Identifiable {
         lastActiveAt: Date = Date(),
         spendTrackingDisabled: Bool? = nil,
         notificationsMuted: Bool? = nil,
+        agentExited: Bool? = nil,
         tabs: [Tab]? = nil,
         activeTab: TabID? = nil,
         live: LiveSessionState? = nil
@@ -245,6 +253,7 @@ public struct Session: Hashable, Sendable, Identifiable {
         self.lastActiveAt = lastActiveAt
         self.spendTrackingDisabled = spendTrackingDisabled
         self.notificationsMuted = notificationsMuted
+        self.agentExited = agentExited
         // A default argument cannot reference another parameter, so the single-leaf seed is built
         // here. Its terminal and tab ids are the session's own uuid — the same invariant
         // `Migrations.liftV1ToV2` gives every row it lifts, which is what lets `restoreAll` map a
@@ -430,6 +439,7 @@ extension Session: Codable {
         /// what moves an existing file's value across, so no alias is needed here any more.
         case conversationId
         case notificationsMuted
+        case agentExited
         case tabs, activeTab
     }
 }

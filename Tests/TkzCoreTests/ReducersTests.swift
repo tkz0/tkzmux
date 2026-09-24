@@ -866,6 +866,53 @@ import Testing
         #expect(state.sessions[id]?.status == .idle)
     }
 
+    // MARK: agentExited — what the launch-time auto-resume pass reads
+
+    @Test func anExitMarksTheAgentExitedAndAClearDoesNot() {
+        var (state, id) = makeState()
+        state.applyEvent(.init(kind: .sessionEnd(exited: false), reason: "clear"), to: id, now: now)
+        #expect(state.sessions[id]?.agentExited == nil)
+        state.applyEvent(.init(kind: .sessionEnd(exited: true), reason: "prompt_input_exit"), to: id, now: now)
+        #expect(state.sessions[id]?.agentExited == true)
+        // The conversation stays resumable by hand.
+        state.applyEvent(.init(kind: .sessionStart, conversationId: "c", source: "startup"), to: id, now: now)
+        state.applyEvent(.init(kind: .sessionEnd(exited: true)), to: id, now: now)
+        #expect(state.sessions[id]?.conversationId == "c")
+    }
+
+    @Test func aSessionStartBringsTheAgentBack() {
+        var (state, id) = makeState()
+        state.applyEvent(.init(kind: .sessionEnd(exited: true)), to: id, now: now)
+        state.applyEvent(.init(kind: .sessionStart, conversationId: "c", source: "resume"), to: id, now: now)
+        #expect(state.sessions[id]?.agentExited == nil)
+    }
+
+    @Test func losingTheAgentMarksItExited() {
+        var (state, id) = makeState()
+        let observation = AgentObservation(pid: 1, conversationId: "s", configDir: "~/.codex", activity: .idle)
+        state.applyObservation(observation, alive: true, to: id, now: now)
+        state.agentLost(for: id, now: now)
+        #expect(state.sessions[id]?.agentExited == true)
+    }
+
+    @Test func onlyALiveObservationBringsTheAgentBack() {
+        var (state, id) = makeState()
+        state.applyEvent(.init(kind: .sessionEnd(exited: true)), to: id, now: now)
+        let observation = AgentObservation(pid: 2, conversationId: "s", configDir: "~/.claude", activity: .idle)
+        state.applyObservation(observation, alive: false, to: id, now: now)
+        #expect(state.sessions[id]?.agentExited == true)
+        state.applyObservation(observation, alive: true, to: id, now: now)
+        #expect(state.sessions[id]?.agentExited == nil)
+    }
+
+    @Test func adoptingADescriptorBringsTheAgentBack() {
+        var (state, id) = makeState()
+        state.applyEvent(.init(kind: .sessionEnd(exited: true)), to: id, now: now)
+        let observation = AgentObservation(pid: 3, conversationId: "s", configDir: "~/.claude", activity: .idle)
+        state.adoptDescriptor(observation, for: id, now: now)
+        #expect(state.sessions[id]?.agentExited == nil)
+    }
+
     @Test func setAliveFalseIsPlainIdle() {
         // No "exited" status: a dead shell's row is removed by the window, so for the instant it
         // still exists it is idle with nothing to attend to.

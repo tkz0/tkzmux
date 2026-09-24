@@ -3038,10 +3038,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     /// The "auto-resume on launch" pass. `AppDelegate` calls it once the Claude integration is up,
-    /// so every `claude --resume` runs through the shim and gets a `launch` frame.
+    /// so every `claude --resume` runs through the shim and gets a `launch` frame. A row whose
+    /// agent had already exited before the quit stays a plain shell — it can still be resumed by
+    /// hand.
     public func autoResumeIfEnabled() {
         guard store.state.autoResumeOnLaunch else { return }
-        let ids = store.state.orderedSessions.map(\.id)
+        let ids = store.state.orderedSessions.filter { $0.agentExited != true }.map(\.id)
         let outcome = launcher.resumeAll(ids)
         reattachSurface()
         logger.info("auto-resume: \(outcome.resumed.count) resumed, \(outcome.failed.count) failed")

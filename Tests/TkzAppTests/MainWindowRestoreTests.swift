@@ -722,6 +722,22 @@ struct MainWindowRestoreTests {
         #expect(harness.store.state.autoResumeOnLaunch == false)
     }
 
+    @Test("Auto-resume skips a conversation whose agent had exited before the quit")
+    func autoResumeSkipsAnExitedAgent() throws {
+        let (harness, ids, _) = Self.makeRestoredHarness()
+        defer { harness.tearDown() }
+        harness.mutate {
+            $0.sessions[ids[1]]?.agentExited = true
+            $0.setAutoResumeOnLaunch(true)
+        }
+        harness.controller.autoResumeIfEnabled()
+        harness.store.flush()
+        #expect(harness.host.commandsIssued == ["claude --resume conv-0"])
+        #expect(harness.host.opened.count == 1)
+        // Still there to resume by hand.
+        #expect(harness.store.state.sessions[ids[1]]?.conversationId == "conv-1")
+    }
+
     @Test("An exiting shell schedules a worktree refresh for its repo")
     func exitTriggersWorktreeRefresh() async throws {
         let (harness, ids, _) = Self.makeRestoredHarness()

@@ -40,6 +40,9 @@ private func makeState() -> AppState {
     state.select(one.id)
     // A conversation to resume, so the round trip and the on-disk-key test below both see it.
     state.sessions[one.id]?.conversationId = "conv-1"
+    // And one whose agent the user had exited, which the launch-time auto-resume must skip.
+    state.sessions[two.id]?.conversationId = "conv-2"
+    state.sessions[two.id]?.agentExited = true
     state.shortcuts = ["newSession": "cmd+t", "palette": "cmd+shift+p"]
     state.windowFrame = CGRect(x: 12, y: 34, width: 1100, height: 760)
     state.sidebarWidth = 372
@@ -99,6 +102,9 @@ private func makeState() -> AppState {
         #expect(restored.groups.values.contains { $0.agent == .codex })
         let resumable = try #require(original.orderedSessions.first { $0.conversationId == "conv-1" })
         #expect(restored.sessions[resumable.id]?.conversationId == "conv-1")
+        #expect(restored.sessions[resumable.id]?.agentExited == nil)
+        let exited = try #require(original.orderedSessions.first { $0.conversationId == "conv-2" })
+        #expect(restored.sessions[exited.id]?.agentExited == true)
             #expect(restored.selection == original.selection)
         #expect(restored.sidebarVisible == original.sidebarVisible)
         #expect(restored.sidebarWidth == original.sidebarWidth)
@@ -793,4 +799,21 @@ private struct SeededGenerator: RandomNumberGenerator {
         #expect(second.quarantined.count == 1)
         #expect(!first.quarantined.contains(second.quarantined[0]))
     }
+}
+
+/// `Session.agentExited` is written only when set, so every file from before the key — and every
+/// row whose agent was running at quit — decodes to `nil`, which auto-resume treats as running.
+@Test func agentExitedIsWrittenOnlyWhenSet() throws {
+    let original = makeState()
+    let running = try #require(original.orderedSessions.first { $0.conversationId == "conv-1" })
+    let exited = try #require(original.orderedSessions.first { $0.conversationId == "conv-2" })
+    let data = try StateFile.encode(StateDocument(state: PersistedState(original)))
+    let object = try JSONDecoder().decode([String: JSONValue].self, from: data)
+
+    guard case .array(let sessions)? = object["sessions"] else { Issue.record("no sessions"); return }
+    func row(_ id: SessionID) throws -> [String: JSONValue] {
+        try #require(sessions.first { $0.objectValue?["id"]?.stringValue == id.rawValue }?.objectValue)
+    }
+    #expect(try row(running.id)["agentExited"] == nil)
+    #expect(try row(exited.id)["agentExited"] == .bool(true))
 }

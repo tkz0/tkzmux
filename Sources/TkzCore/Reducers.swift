@@ -79,6 +79,7 @@ extension AppState {
         live.observation = observation
         session.live = live
         session.conversationId = observation.conversationId
+        session.agentExited = nil
         session.lastActiveAt = now
         sessions[id] = session
     }
@@ -685,6 +686,13 @@ extension AppState {
         if event.kind == .sessionStart, let conversationId = event.conversationId {
             sessions[id]?.conversationId = conversationId
         }
+        // Whether the next launch auto-resumes this conversation: an exit says no, and only the
+        // agent coming back says yes again. A `/clear` (`exited: false`) leaves it alone.
+        switch event.kind {
+        case .sessionStart: sessions[id]?.agentExited = nil
+        case .sessionEnd(exited: true): sessions[id]?.agentExited = true
+        default: break
+        }
         // The feed: a finished turn, an exit (once — a `sessionEnd(exited: false)` is not one, and
         // a second exit on an already-ended row says nothing new), and typing a prompt as proof the
         // user is looking at the row. NEEDS YOU entries come from `rederiveStatus` below, which
@@ -765,6 +773,11 @@ extension AppState {
         }
         session.live = live
         session.conversationId = observation.conversationId
+        // Only a live observation says the agent is back; a stale descriptor from before a crash
+        // says nothing about whether the user left it.
+        if alive {
+            session.agentExited = nil
+        }
         session.lastActiveAt = now
         // `claude -w` starts Claude *inside* the worktree it just created, so the observation's
         // cwd is the first thing that says where it went.
@@ -793,6 +806,10 @@ extension AppState {
             live.agentTerminal = nil
             live.runningSubagents = [:]
         }
+        // The Codex path has no descriptor to lose and may miss its `SessionEnd`: the pid going
+        // away is the exit. Quit stops the watchers before it hangs up the shells, so an agent
+        // that dies *because* tkzmux quit never gets here and is resumed on the next launch.
+        sessions[id]?.agentExited = true
         rederiveStatus(for: id, now: now)
     }
 

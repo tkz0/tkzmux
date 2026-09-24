@@ -410,6 +410,18 @@ struct SessionLauncherTests {
         #expect(h.session(id)?.conversationId == "abc-123")
     }
 
+    @Test("resume: a conversation whose agent had exited still resumes by hand")
+    func resumeExitedAgent() throws {
+        let h = try Self.makeHarness()
+        defer { h.tree.tearDown() }
+        let id = Self.restoredRow(h, conversationId: "abc-123")
+        h.store.update { $0.sessions[id]?.agentExited = true }
+        h.store.flush()
+
+        #expect(h.launcher.resume(id) == .success(.resumed(conversationId: "abc-123")))
+        #expect(h.host.bootCommands == ["claude --resume abc-123"])
+    }
+
     /// The regression this whole rebase was about: a boot command must reach only the row's
     /// focused pane. Putting it in the shared `reopen` environment instead would have run
     /// `claude --resume` in every pane's `.zlogin`, once per pane.
