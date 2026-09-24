@@ -539,6 +539,10 @@ public struct LiveSessionState: Hashable, Sendable {
     /// (`StatusDerivation` rule 4a) — a Claude that backgrounded three agents is not done.
     /// Process state, never persisted.
     public var runningSubagents: [String: RunningSubagent] = [:]
+    /// The background shells the agent's last `Stop` listed — what the status bar names while the
+    /// observation says `.backgroundShell`. Description only: the working state itself is read
+    /// off the observation, and this is cleared when it goes idle. Process state, never persisted.
+    public var backgroundShells: [BackgroundShellInfo] = []
 
     public init(
         pid: pid_t? = nil,

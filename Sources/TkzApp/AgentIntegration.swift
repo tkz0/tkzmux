@@ -864,7 +864,18 @@ public final class AgentIntegration {
             externalDescriptors[key] = nil
             // The watcher hands us the agent's own descriptor; what crosses into the store is its
             // agent-blind projection (the file header's boundary rule).
-            store.update { $0.applyObservation(observation, alive: alive, to: id, now: Date()) }
+            let attended = isSessionAttended(id)
+            store.update { state in
+                let now = Date()
+                let stopBefore = state.sessions[id]?.live?.lastStopAt
+                state.applyObservation(observation, alive: alive, to: id, now: now)
+                // The last background shell exiting is a stop too (`applyObservation` moves
+                // `lastStopAt` for it), so a row the user is watching is attended for it the way a
+                // `Stop` hook is.
+                if attended, state.sessions[id]?.live?.lastStopAt != stopBefore {
+                    state.markAttended(id, now: now)
+                }
+            }
             // The descriptor's directory is where the agent *actually* keeps this session — truer
             // than the launch frame, which reports the shell's environment before it ran.
             learnAccount(configDir: observation.configDir, for: id, agent: agent)

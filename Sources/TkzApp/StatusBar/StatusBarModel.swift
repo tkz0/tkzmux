@@ -43,6 +43,13 @@ public struct StatusBarModel: Hashable, Sendable {
     /// One line per running sub-agent, for that segment's tooltip.
     public var runningAgentsTooltip: String? = nil
 
+    /// Background shells the agent is still waiting on — the other reason a finished turn keeps
+    /// pulsing. Rendered `⟳ 1 shell`; `0` when the agent says one is running but no `Stop` has
+    /// listed them (rendered `⟳ shell`); `nil` when none is running.
+    public var runningShells: Int? = nil
+    /// One line per background shell, for that segment's tooltip.
+    public var runningShellsTooltip: String? = nil
+
     /// Lines added in the working tree vs. HEAD. Rendered `+142` in `diffAdd`.
     public var diffAdded: Int?
 

@@ -369,7 +369,8 @@ public final class HookServer: Sendable {
                 type: object["type"] as? String,
                 status: object["status"] as? String,
                 description: (object["description"] as? String).map { prefixUTF8($0, maxBytes: 256) },
-                agentType: field(object, "agent_type", "agentType"))
+                agentType: field(object, "agent_type", "agentType"),
+                command: (object["command"] as? String).map { prefixUTF8($0, maxBytes: 256) })
         }
     }
 

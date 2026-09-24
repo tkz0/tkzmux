@@ -21,6 +21,11 @@ public struct AgentObservation: Hashable, Sendable {
         /// A prompt is on screen and unanswered. Claude Code writes this while a permission prompt
         /// is up, which is what lets a session with no hooks at all still light `NEEDS YOU`.
         case waiting
+        /// The turn is over but a shell the agent put in the background is still running — a
+        /// build watcher it said it will report back from. Claude Code 2.1.281 writes `"shell"`
+        /// for exactly this (idle + a running background Bash task), and flips back to `idle` the
+        /// moment the last one exits, with no hook to say so.
+        case backgroundShell
     }
 
     public var pid: pid_t

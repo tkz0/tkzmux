@@ -75,6 +75,15 @@ import Testing
         #expect(info.isBackground == false)
     }
 
+    /// Claude Code 2.1.281: idle with a background Bash task still running (captured from a live
+    /// CoreInvest session waiting on a CI watcher, 2026-09-24).
+    @Test func shellStatusProjectsToBackgroundShell() throws {
+        let json = #"{"pid":8892,"sessionId":"s","kind":"interactive","status":"shell","statusUpdatedAt":1790258975617}"#
+        let info = try ClaudeSessionInfo.decode(Data(json.utf8), configDir: "~/.claude")
+        #expect(info.status == .shell)
+        #expect(info.observation.activity == .backgroundShell)
+    }
+
     @Test func mapsTheBackgroundKind() throws {
         let json = #"{"pid":2,"sessionId":"s","kind":"bg","parkedJobId":"job-4"}"#
         let info = try ClaudeSessionInfo.decode(Data(json.utf8), configDir: "~/.claude")
