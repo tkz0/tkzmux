@@ -30,6 +30,11 @@ struct ProcessLivenessTests {
         let bogusStart = Date().addingTimeInterval(-3600)
         #expect(!liveness.isAlive(pid: sleepPid, startedAt: bogusStart))
 
+        // …but a descriptor written long *after* the process started is the same process: a
+        // `WorktreeCreate` hook delays the write by as long as it runs.
+        let lateStamp = try #require(ProcessTree.startTime(of: sleepPid)).addingTimeInterval(300)
+        #expect(liveness.isAlive(pid: sleepPid, startedAt: lateStamp))
+
         // kill -9 and wait for exit.
         kill(sleepPid, SIGKILL)
         process.waitUntilExit()
@@ -42,6 +47,21 @@ struct ProcessLivenessTests {
             Thread.sleep(forTimeInterval: 0.01)
         }
         #expect(!alive)
+    }
+
+    @Test func startTimeGuardIsOneSided() {
+        let process = Date(timeIntervalSince1970: 1_790_237_820)
+        func matches(descriptorAfterProcess seconds: TimeInterval) -> Bool {
+            SystemProcessLiveness.startTimeMatches(
+                actualStart: process, descriptorStartedAt: process.addingTimeInterval(seconds))
+        }
+        #expect(matches(descriptorAfterProcess: 0))
+        // The aira `claude -w` case: its WorktreeCreate hook ran 31.5 s before the descriptor.
+        #expect(matches(descriptorAfterProcess: 31.5))
+        #expect(matches(descriptorAfterProcess: 15 * 60))
+        // A process that started after the descriptor was written: slack, then pid reuse.
+        #expect(matches(descriptorAfterProcess: -29))
+        #expect(!matches(descriptorAfterProcess: -31))
     }
 
     @Test func deadPidIsNotAlive() {
