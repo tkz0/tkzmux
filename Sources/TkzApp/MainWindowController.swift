@@ -2676,6 +2676,13 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             model.runningAgents = running.count
             model.runningAgentsTooltip = Self.runningAgentsTooltip(for: running)
         }
+        // Gated on the observation, not the stored list: the list is only as fresh as the last
+        // `Stop`, while the descriptor flips back to idle the moment the last shell exits.
+        if session.live?.observation?.activity == .backgroundShell {
+            let shells = session.live?.backgroundShells ?? []
+            model.runningShells = shells.count
+            model.runningShellsTooltip = Self.runningShellsTooltip(for: shells)
+        }
         model.diffAdded = git.map(\.insertions)
         model.diffRemoved = git.map(\.deletions)
         model.diffFiles = git.map(\.changedFiles)
@@ -2729,6 +2736,20 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
                 }
                 return "• " + description + (type.map { " (\($0))" } ?? "")
             }
+        return ([heading] + lines).joined(separator: "\n")
+    }
+
+    /// A heading, then one line per background shell in the agent's own order: its description
+    /// where it gave one, else the command.
+    static func runningShellsTooltip(for shells: [BackgroundShellInfo]) -> String {
+        guard !shells.isEmpty else { return "A background shell is still running" }
+        let count = shells.count
+        let heading = "\(count) background shell\(count == 1 ? "" : "s") still running"
+        let lines = shells.map { shell -> String in
+            let description = shell.description.flatMap { $0.isEmpty ? nil : $0 }
+            let command = shell.command.flatMap { $0.isEmpty ? nil : $0 }
+            return "• " + (description ?? command ?? "shell")
+        }
         return ([heading] + lines).joined(separator: "\n")
     }
 

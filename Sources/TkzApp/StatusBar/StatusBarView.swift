@@ -300,6 +300,12 @@ public final class StatusBarView: NSView {
                 ]),
                 tooltip: model.runningAgentsTooltip))
         }
+        if let shells = model.runningShells {
+            let text = shells > 0 ? "\u{27F3} \(shells) shell\(shells == 1 ? "" : "s")" : "\u{27F3} shell"  // ⟳
+            out.append(StatusItem(
+                .runs([StatusRun(text: text, color: theme.working)]),
+                tooltip: model.runningShellsTooltip))
+        }
 
         var diff: [StatusRun] = []
         if let added = model.diffAdded {

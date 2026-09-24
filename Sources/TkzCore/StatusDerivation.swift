@@ -12,7 +12,8 @@
 //   2b. `observation.activity == .waiting` (the agent's own prompt flag) → `.waiting(.permission)`
 //   3. `observation.parked == true`                                     → `.idle` (parked)
 //   4. `observation.activity == .busy`                                  → `.working`
-//   4a. a sub-agent the agent reported starting is still running        → `.working`
+//   4a. a sub-agent the agent reported starting is still running, or
+//      `observation.activity == .backgroundShell`                      → `.working`
 //   4b. no observation, and `lastPromptAt` is newer than `lastStopAt`
 //      (or there is a `lastPromptAt` and no `lastStopAt` at all)        → `.working`
 //   5. a `Stop` newer than `attendedAt`, and (an `.idleNudge` after it,
@@ -32,7 +33,11 @@
 // minutes. Without it the row read as done — and after 60 s as NEEDS YOU — while three agents were
 // still working (reported 2026-09-23: "I have to prompt Claude 'are you done?'"). It sits below the
 // waiting rules on purpose: a sub-agent's permission prompt is still a prompt. Background *shells*
-// deliberately do not count (decision 2026-09-23): a dev server would keep the row pulsing forever.
+// count too (decision 2026-09-24, reversing 2026-09-23's): Claude backgrounds a CI watcher, says
+// "I'll report back when it completes", and the row read as done. The price is that a dev server
+// Claude started keeps its row pulsing; the status bar's "⟳ 1 shell" segment says why. The
+// evidence is the agent's own descriptor, not the hook's list: it flips back to idle the moment
+// the last shell exits, where no hook fires at all.
 //
 // Without any events this degrades to observation-only (busy → working, idle → idle); with
 // neither events nor an observation (a plain shell) it is `.idle` while alive — both asserted in
@@ -136,9 +141,9 @@ public enum StatusDerivation {
             return StatusOutcome(status: .working, attention: false, isDone: false)
         }
 
-        // 4a. The main turn may be over, but sub-agents it started are still running. Not done,
-        // and not NEEDS YOU either: the agent will pick their results up itself.
-        if input.runningSubagents > 0 {
+        // 4a. The main turn may be over, but sub-agents or background shells it started are still
+        // running. Not done, and not NEEDS YOU either: the agent will pick their results up itself.
+        if input.runningSubagents > 0 || input.observation?.activity == .backgroundShell {
             return StatusOutcome(status: .working, attention: false, isDone: false)
         }
 

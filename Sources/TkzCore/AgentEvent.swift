@@ -95,6 +95,10 @@ public struct AgentEvent: Hashable, Sendable, Codable {
     /// `turnEnded` carrying it replaces the row's running set outright — the list is authoritative
     /// and repairs any start/stop pair that went missing. `nil` means "not sent", never "none".
     public var runningSubagents: [SubagentInfo]?
+    /// The same list's background shells, on a `turnEnded`. Only ever *described* by this — the
+    /// row's working state comes from the observation (`AgentObservation.Activity.backgroundShell`),
+    /// which, unlike a hook, also says when the last one has exited. `nil` means "not sent".
+    public var backgroundShells: [BackgroundShellInfo]?
     public var receivedAt: Date
 
     public init(
@@ -109,6 +113,7 @@ public struct AgentEvent: Hashable, Sendable, Codable {
         reason: String? = nil,
         pid: pid_t? = nil,
         runningSubagents: [SubagentInfo]? = nil,
+        backgroundShells: [BackgroundShellInfo]? = nil,
         receivedAt: Date = Date()
     ) {
         self.kind = kind
@@ -122,6 +127,7 @@ public struct AgentEvent: Hashable, Sendable, Codable {
         self.reason = reason
         self.pid = pid
         self.runningSubagents = runningSubagents
+        self.backgroundShells = backgroundShells
         self.receivedAt = receivedAt
     }
 }
@@ -137,5 +143,20 @@ public struct SubagentInfo: Hashable, Sendable, Codable {
         self.id = id
         self.type = type
         self.description = description
+    }
+}
+
+/// A shell the agent left running in the background, as the agent described it ("Poll PR 1388's
+/// build until it finishes"), with the command itself as the fallback. Shown verbatim in the
+/// status bar's tooltip.
+public struct BackgroundShellInfo: Hashable, Sendable, Codable {
+    public var id: String
+    public var description: String?
+    public var command: String?
+
+    public init(id: String, description: String? = nil, command: String? = nil) {
+        self.id = id
+        self.description = description
+        self.command = command
     }
 }
