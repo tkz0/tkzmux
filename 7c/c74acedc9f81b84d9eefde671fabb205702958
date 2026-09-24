@@ -1,0 +1,23 @@
+Sources/TkzApp/MainWindowController.swift
+  s_4c91c9c2c9fedf::t_b197c1f8bef6b3 1371,1377,1390,1393
+Sources/TkzApp/Prompt/PromptCardController.swift
+  s_4c91c9c2c9fedf::t_69d55afaafafc2 47-50,73-74,91,214-215,221,240-248
+Tests/TkzAppTests/PromptCardTests.swift
+  s_4c91c9c2c9fedf::t_b4e4375dc84070 151-167,191-196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7cc74acedc9f81b84d9eefde671fabb205702958",
+  "prompts": {},
+  "sessions": {
+    "s_4c91c9c2c9fedf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d87b9e4-0c7d-4236-8114-2799274738a8",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
