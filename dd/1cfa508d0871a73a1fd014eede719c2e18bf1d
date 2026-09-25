@@ -1,0 +1,25 @@
+Sources/TkzApp/TerminalHost.swift
+  s_29a5baab0287f4::t_014df2dea4a3aa 693-696
+Sources/TkzTerminalCore/TerminalInputModes.swift
+  s_29a5baab0287f4::t_29f9540fff5cba 65-86
+Tests/TkzAppTests/TerminalHostTests.swift
+  s_29a5baab0287f4::t_100c085a84b87c 615-652
+Tests/TkzTerminalCoreTests/SessionInputSeamTests.swift
+  s_29a5baab0287f4::t_a46a570d41f33d 250-279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dd1cfa508d0871a73a1fd014eede719c2e18bf1d",
+  "prompts": {},
+  "sessions": {
+    "s_29a5baab0287f4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c25cf832-4991-4113-8cc3-a9b3fb8ab57c",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
