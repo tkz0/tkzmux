@@ -576,6 +576,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         applySelection(focusTerminal: false)
         updateStatusBar()
         updateToolbarTitle()
+        updateRunButton(refresh: true)
     }
 
     /// The single-view initialiser, for callers that drive the window with one terminal.
@@ -957,6 +958,18 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         toolbarController.onToggleTheme = { [weak self] in
             self?.toggleTheme()
         }
+        // ▶ Run.
+        toolbarController.onRunPrimary = { [weak self] in self?.toggleDevServer() }
+        toolbarController.onRunTask = { [weak self] command in
+            guard let self, let id = store.state.selection else { return }
+            runDevServer(command, for: id, remember: true)
+        }
+        toolbarController.onCustomRunCommand = { [weak self] in self?.chooseCustomRunCommand() }
+        toolbarController.onResetRunCommand = { [weak self] in
+            guard let self, let id = store.state.selection else { return }
+            store.update { $0.rememberRunCommand(nil, for: id) }
+        }
+        toolbarController.onRunMenuWillOpen = { [weak self] in self?.updateRunButton(refresh: true) }
     }
 
     /// The sections that have to read something. Debounced, cancellable, and stamped: a result
@@ -2417,6 +2430,16 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             updateStatusBar()
             updateToolbarTitle()
         }
+        // ▶ Run: re-read the manifests when the selection moves (a project edited while another
+        // row was on screen); otherwise only redraw from the cache, since `touches` fires on every
+        // port scan. A group change is the remembered command moving.
+        if change.selection {
+            updateRunButton(refresh: true)
+        } else if let selected, change.touches(selected)
+            || store.state.sessions[selected].map({ change.groups.contains($0.groupID) }) == true
+        {
+            updateRunButton()
+        }
         // The headers read live state (a pane's cwd, the row's status) and focus, none of which
         // rebuilds the tree, so they are re-tinted here rather than only in `applyPaneTree`.
         if change.selection || (selected.map(change.touches) ?? false) {
@@ -2622,6 +2645,118 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         toolbarController.setTitle(
             session: session.displayTitle,
             group: store.state.groups[session.groupID]?.name)
+    }
+
+    // MARK: ▶ Run
+
+    /// Where the selected row's ▶ Run detects and runs: its own checkout. Git's toplevel is a
+    /// worktree's own directory, so a worktree row never runs in the main checkout.
+    func runDirectory(for id: SessionID) -> String? {
+        store.state.sessions[id]?.runDirectory(gitToplevel: git?.service.repoInfo(for: id)?.toplevel)
+    }
+
+    /// The tasks detected in one directory — the one the button is showing. Re-read on selection
+    /// changes and when the ▾ menu opens; every other refresh (they come with each port scan and
+    /// status flip) reuses it.
+    private var runTaskCache: (directory: String, tasks: [RunTask])?
+
+    private func runTasks(in directory: String, refresh: Bool) -> [RunTask] {
+        if !refresh, let runTaskCache, runTaskCache.directory == directory { return runTaskCache.tasks }
+        let tasks = RunTaskDetector.detect(
+            inDirectory: Paths.expandingTilde(directory, home: NSHomeDirectory()))
+        runTaskCache = (directory, tasks)
+        return tasks
+    }
+
+    /// The button for the selected row, or `nil` (hidden) for a row with no shell to run in yet.
+    func runButtonModel(refresh: Bool = false) -> RunButtonModel? {
+        guard let id = store.state.selection, let session = store.state.sessions[id],
+            session.live != nil, let directory = runDirectory(for: id)
+        else { return nil }
+        let tasks = runTasks(in: directory, refresh: refresh)
+        let remembered = store.state.rememberedRunCommand(for: id)
+        let runPane = session.live?.runPane
+        return RunButtonModel(
+            command: RunTaskDetector.bestGuess(in: tasks, remembered: remembered),
+            running: runPane?.running == true ? runPane?.command : nil,
+            remembered: remembered,
+            tasks: tasks)
+    }
+
+    func updateRunButton(refresh: Bool = false) {
+        toolbarController.setRun(runButtonModel(refresh: refresh))
+    }
+
+    /// ▶ / ■ / ⌃⌘R: stop the row's dev server while it runs, else run what the button names — and
+    /// with nothing to name, ask for a command.
+    func toggleDevServer() {
+        guard let id = store.state.selection, let session = store.state.sessions[id],
+            session.live != nil
+        else { return }
+        if session.live?.runPane?.running == true {
+            launcher.stopDevServer(id)
+            return
+        }
+        guard let command = runButtonModel()?.command else {
+            chooseCustomRunCommand()
+            return
+        }
+        runDevServer(command, for: id)
+    }
+
+    /// Runs `command` for `id` in its own checkout. `remember` is set for a choice the user made
+    /// (a ▾ task, a custom command): that choice becomes the group's ▶ from then on.
+    func runDevServer(_ command: String, for id: SessionID, remember: Bool = false) {
+        guard let directory = runDirectory(for: id) else { return }
+        if remember { store.update { $0.rememberRunCommand(command, for: id) } }
+        // No explicit re-attach: the store delivery that records the run pane brings the pane's
+        // new shell on screen through `apply`'s "held but not attached" check — a split and an
+        // in-place respawn alike.
+        if case .failure(let failure) = launcher.runDevServer(command, in: directory, for: id) {
+            showNotice(Self.runFailureNotice(failure))
+        }
+    }
+
+    static func runFailureNotice(_ failure: SessionLauncher.Failure) -> String {
+        switch failure {
+        case .missingDirectory(let path): "Can\u{2019}t run: \(path) is missing"
+        case .spawnFailed(let reason): "Can\u{2019}t run: \(reason)"
+        case .unknownSession: "Can\u{2019}t run: the session has no shell yet"
+        }
+    }
+
+    /// Overrides the Custom Command sheet: gets the current command, returns the new one or `nil`
+    /// for cancel. Tests set it — a sheet needs a key window and a run loop.
+    public var runCommandPrompt: ((String?) -> String?)?
+
+    /// ▾ → Custom Command…: ask for a command line, then run it and remember it for the group.
+    func chooseCustomRunCommand() {
+        guard let id = store.state.selection, let directory = runDirectory(for: id) else { return }
+        let current = store.state.rememberedRunCommand(for: id) ?? runButtonModel()?.command
+        let accept: (String) -> Void = { [weak self] answer in
+            let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let self, !trimmed.isEmpty else { return }
+            runDevServer(trimmed, for: id, remember: true)
+        }
+        if let runCommandPrompt {
+            if let answer = runCommandPrompt(current) { accept(answer) }
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Run Command"
+        alert.informativeText = "Runs in \((directory as NSString).abbreviatingWithTildeInPath) "
+            + "and is remembered for every session of this repo."
+        alert.addButton(withTitle: "Run")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.stringValue = current ?? ""
+        field.placeholderString = "pnpm dev"
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            accept(field.stringValue)
+        }
     }
 
     func updateStatusBar() {
@@ -4245,6 +4380,11 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             {
                 store.update { $0.endAgentStartup(session.id) }
             }
+            // The same marker is how a ▶ Run's dev server is known to have stopped:
+            // Ctrl-C, a crash, or the server exiting by itself. ■ turns back into ▶.
+            if store.state.session(owning: id)?.live?.runPane?.terminal == id {
+                store.update { $0.runPaneReturned(id) }
+            }
         case .bell:
             // BEL is emitted by far too many things — a shell completion ding, `vim`, `htop` — to
             // mean anything about an agent's state. Only the structured OSC 9 notification below
@@ -4322,6 +4462,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         dispatcher.setHandler(.resumeSession) { [weak self] in self?.resumeSelectedSession() }
         dispatcher.setHandler(.resumeAllInGroup) { [weak self] in self?.resumeAll() }
         dispatcher.setHandler(.toggleTheme) { [weak self] in self?.toggleTheme() }
+        // The toolbar's ▶/■ as a chord. Enabled whenever the toolbar shows the button.
+        dispatcher.setHandler(.runDevServer) { [weak self] in self?.toggleDevServer() }
+        dispatcher.setEnabled(.runDevServer) { [weak self] in
+            guard let self, let id = self.store.state.selection else { return false }
+            return self.store.state.sessions[id]?.live != nil
+        }
         dispatcher.setHandler(.nextSession) { [weak self] in
             self?.store.update { $0.selectAdjacentSession(offset: 1) }
         }

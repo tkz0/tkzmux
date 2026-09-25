@@ -72,7 +72,7 @@ import Testing
         // default proves nothing, because dropping it entirely would look identical.
         let group = Group(name: "Repo", repoRoot: "~/dev/repo", color: RGB(hex: 0x41c6a8, alpha: 0.5),
                           isCollapsed: true, order: 3, defaultAccountKey: "claude-work",
-                          agent: .codex)
+                          agent: .codex, runCommand: "pnpm dev:web")
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
         #expect(try decoder.decode(Group.self, from: encoder.encode(group)) == group)
@@ -91,10 +91,13 @@ import Testing
             """.utf8)
         let group = try JSONDecoder().decode(Group.self, from: json)
         #expect(group.agent == nil)
+        // `runCommand` rides the same story: absent means "nothing remembered".
+        #expect(group.runCommand == nil)
         // And it does not come back on the way out, so the file does not grow a null key.
         let reencoded = try JSONSerialization.jsonObject(
             with: try JSONEncoder().encode(group)) as? [String: Any]
         #expect(reencoded?["agent"] == nil)
+        #expect(reencoded?["runCommand"] == nil)
     }
 
     @Test func statusAndWaitReasonHaveStableNames() {

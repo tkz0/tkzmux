@@ -74,6 +74,9 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     /// No key: flip between the dark preset and its light twin — the ☾/☀ segment's command form.
     /// No checkmark: this is a flip between two named appearances, not a boolean that is on or off.
     public static let toggleTheme = ShortcutAction("toggleTheme")
+    /// ⌃⌘R — the toolbar's ▶ Run as a chord: runs the selected row's dev server, or stops
+    /// it while it runs. ⌘R is Resume, ⇧⌘R Rename and ⌥⌘R Rebase, so "R for run" takes ⌃.
+    public static let runDevServer = ShortcutAction("runDevServer")
 
     // MARK: Panes and tabs
 
@@ -178,7 +181,7 @@ public enum ShortcutsTable {
             .closeTerminal, .closeSession, .jumpToNeedsYou, .notifications, .settings,
             .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
             .showFirstPrompt, .showChanges, .rebaseOntoBase,
-            .resumeSession, .resumeAllInGroup, .toggleTheme,
+            .resumeSession, .resumeAllInGroup, .toggleTheme, .runDevServer,
             .newTerminal, .splitVertically, .splitHorizontally,
             .focusPaneLeft, .focusPaneRight, .focusPaneUp, .focusPaneDown,
             .equalizeSplits, .zoomPane, .previousTab, .nextTab,
@@ -207,6 +210,7 @@ public enum ShortcutsTable {
             .showChanges: Shortcut("g", [.shift, .command]),
             .rebaseOntoBase: Shortcut("r", [.option, .command]),
             .resumeSession: Shortcut("r", .command),
+            .runDevServer: Shortcut("r", [.control, .command]),
             .closeSession: Shortcut("w", [.shift, .command]),
             .newTerminal: Shortcut("t", .command),
             .splitVertically: Shortcut("d", .command),
@@ -252,6 +256,8 @@ public enum ShortcutsTable {
         // Static on purpose: `MainMenuTests` asserts the menu item's title equals this, so a
         // state-dependent "Switch to Light…" would fail on every toggle.
         case .toggleTheme: "Toggle Light / Dark Theme"
+        // Static for the same reason: the toolbar button is where the command's name shows.
+        case .runDevServer: "Run / Stop Dev Server"
         case .newTerminal: "New Terminal"
         case .splitVertically: "Split Vertically"
         case .splitHorizontally: "Split Horizontally"

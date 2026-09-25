@@ -612,6 +612,44 @@ struct HostSnapshotTests {
         #expect(screen.contains("MARKER-9F3A"))
     }
 
+    /// A pane snapshotted while a TUI owned it (Claude Code: kitty keys, focus events, any-motion
+    /// mouse in SGR) is restored under a **fresh shell** that asked for none of it. Carrying the
+    /// modes over made every hover a `ESC[<35;x;yM` report typed into zsh's prompt, which showed
+    /// up as `35;75;44M35;67;38M…` on launch. The screen comes back; the input protocols do not.
+    @Test("restore under a fresh shell drops the old program's input modes")
+    func restoreDropsTheOldProgramsInputModes() throws {
+        let temp = try TempDirectory()
+        guard let (_, view, host) = try makeHost(temp) else { return }
+        defer { host.closeAll(signal: SIGKILL) }
+
+        let tui = try makeSession()
+        tui.write(ptyText: "MARKER-7C21\r\n")
+        // Mouse: normal, button, any-motion tracking; SGR encoding. Then focus, paste, kitty keys.
+        tui.write(ptyText: "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1003h\u{1b}[?1006h")
+        tui.write(ptyText: "\u{1b}[?1004h\u{1b}[?2004h\u{1b}[>5u")
+        #expect(tui.mode(1003) && tui.mode(1006) && tui.kittyKeyboardFlags == 5)
+        let snapshot = try tui.snapshot()
+
+        let id = TerminalID.generate()
+        _ = try host.restore(
+            id, session: SessionID(uuid: id.uuid), from: snapshot, cwd: NSHomeDirectory(), env: [:])
+        let restored = try #require(host.session(for: id))
+        #expect(try restored.formatted().contains("MARKER-7C21"), "the screen still comes back")
+
+        // What a hover over the pane sends to the new shell: nothing.
+        let grid = view.gridSizeForBounds()
+        restored.setMousePixelGeometry(TerminalPixelGeometry(
+            screenWidth: UInt32(grid.cols) * 10, screenHeight: UInt32(grid.rows) * 20,
+            cellWidth: 10, cellHeight: 20))
+        let hover = try restored.encodeMouse(
+            MousePress(action: .motion, button: nil, position: SurfacePoint(x: 55, y: 30)))
+        #expect(hover == nil, "hover encoded as \(hover.map { String(decoding: $0, as: UTF8.self) } ?? "")")
+        for mode: UInt16 in [1000, 1002, 1003, 1006, 1004, 2004] {
+            #expect(!restored.mode(mode), "mode \(mode) survived the restore")
+        }
+        #expect(restored.inputModes == .nothingSet)
+    }
+
     @Test("discard removes the row and its snapshot")
     func discardDeletesSnapshot() throws {
         let temp = try TempDirectory()

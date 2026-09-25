@@ -62,4 +62,26 @@ extension TerminalSession {
             focusReporting: mode(1004),
             kittyKeyboardFlags: kittyKeyboardFlags)
     }
+
+    /// Switches off every input protocol a program can turn on for itself — what that program
+    /// would have sent on a clean exit — for a terminal whose program is gone and whose next
+    /// reader is a fresh shell. A `.ghsnap` carries the modes of whatever was running when it was
+    /// taken; restored under a new zsh, Claude Code's any-motion SGR mouse turned every hover into
+    /// `ESC[<35;x;yM` typed at the prompt.
+    ///
+    /// Sent as VT sequences through the parser, so the terminal's own bookkeeping stays
+    /// consistent. The alternate screen is deliberately left alone: it decides *which* screen is
+    /// showing, and leaving it would swap the restored content for whatever was underneath.
+    public func resetInputModes() {
+        write(ptyText: Self.inputModeReset)
+    }
+
+    /// Mouse tracking (X10, normal, highlight, button, any-motion) and its encodings (UTF-8, SGR,
+    /// urxvt, SGR-pixels); focus events; bracketed paste; synchronized output; application cursor
+    /// keys; application keypad (`ESC >`); the kitty keyboard flags of the current stack entry.
+    static let inputModeReset =
+        "\u{1b}[?9l\u{1b}[?1000l\u{1b}[?1001l\u{1b}[?1002l\u{1b}[?1003l"
+        + "\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1016l"
+        + "\u{1b}[?1004l\u{1b}[?2004l\u{1b}[?2026l\u{1b}[?1l\u{1b}>"
+        + "\u{1b}[=0;1u"
 }
