@@ -806,5 +806,4 @@ final class ChangesViewerView: NSView {
     // MARK: Test hooks
 
     var pathHeaderForTesting: NSTextField { pathHeader }
-    var diffScrollForTesting: NSScrollView { diffScroll }
 }

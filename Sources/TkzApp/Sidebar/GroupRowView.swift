@@ -152,7 +152,6 @@ public final class GroupRowView: NSTableCellView {
     /// `true` while the chevron is rotated a quarter turn — i.e. the group is collapsed.
     var chevronPointsRight: Bool { chevronLayer.affineTransform().b > 0.5 }
     var colourEdgeLayer: CALayer { edgeLayer }
-    var addGlyphLayer: CATextLayer { addLayer }
 
     // MARK: Layout
 
