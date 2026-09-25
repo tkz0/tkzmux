@@ -247,6 +247,36 @@ private let claudeCodeFlags = "\u{1b}[>5u"
         #expect(session.hyperlinkRun(at: pixels(col: 8, row: 0)) == nil)
     }
 
+    // MARK: Reset for a new process
+
+    /// `resetInputModes` is what a TUI should have sent on its way out. It must clear the input
+    /// protocols — mouse, focus, paste, cursor keys, kitty flags — and leave the screen as it is,
+    /// alternate screen included.
+    @Test func resetInputModesClearsInputProtocolsButNotTheScreen() throws {
+        let (session, sink) = try makeSession()
+        session.write(ptyText: "\u{1b}[?1049hon the alt screen")
+        session.write(ptyText: "\u{1b}[?1003h\u{1b}[?1006h\u{1b}[?1004h\u{1b}[?2004h\u{1b}[?1h")
+        session.write(ptyText: claudeCodeFlags)
+        #expect(session.kittyKeyboardFlags == 5)
+
+        session.resetInputModes()
+        sink.clear()
+
+        for mode: UInt16 in [1003, 1006, 1004, 2004, 1] {
+            #expect(!session.mode(mode), "mode \(mode) is still on")
+        }
+        #expect(session.kittyKeyboardFlags == 0)
+        #expect(session.mode(1049), "the alternate screen is which screen shows, not an input mode")
+        #expect(try session.formatted().contains("on the alt screen"))
+        #expect(try session.encodeMouse(
+            MousePress(action: .motion, button: nil, position: pixels(col: 3, row: 1))) == nil)
+        // Not the kitty-protocol form a restored Claude would have wanted.
+        #expect(try session.encodeKey(
+            KeyPress(key: GHOSTTY_KEY_ENTER, mods: [.shift], consumedMods: [.shift]))
+            != bytes("\u{1b}[13;2u"))
+        #expect(sink.bytes.isEmpty, "a reset answers nothing to the pty")
+    }
+
     // MARK: Restore
 
     /// The double-free / stale-handle trap. `restore(from:)` swaps the terminal handle, and
