@@ -1,0 +1,61 @@
+Sources/TkzApp/MainMenu.swift
+  s_ce6f25a0b93fcb::t_83ae531ec743ec 284
+docs/shortcuts.md
+  s_ce6f25a0b93fcb::t_8b277c52ec3d60 34
+Sources/TkzCore/PaneReducers.swift
+  s_29a5baab0287f4::t_b838de4883d2dd 112-114
+Sources/TkzApp/MainWindowController.swift
+  s_29a5baab0287f4::t_fa0d1eed5a7113 579,961-972,2433-2442,2650-2761,4383-4387,4465-4470
+Sources/TkzApp/Menus/ShortcutsTable.swift
+  s_29a5baab0287f4::t_c262ce8838e5f5 77-79,184,213,259-260
+Sources/TkzApp/SessionLauncher.swift
+  s_29a5baab0287f4::t_16bcd0595174e1 352-422
+Sources/TkzApp/Toolbar/MainToolbarController.swift
+  s_29a5baab0287f4::t_cf65bbb614138e 3-5,23-66,124-142,149-151,211-298,321,336,381-402
+Sources/TkzCore/Models.swift
+  s_29a5baab0287f4::t_42dd555ada0904 138-144,154-155,165,376-385,565-569,661-676
+Sources/TkzCore/Reducers.swift
+  s_29a5baab0287f4::t_eb062f775da5fc 349-383
+Sources/TkzCore/RunTasks.swift
+  s_29a5baab0287f4::t_ddcc430b568a4b 1-316
+Tests/TkzAppTests/MainToolbarTests.swift
+  s_29a5baab0287f4::t_8b720ca1e72251 22,38,43,53
+Tests/TkzAppTests/RunButtonTests.swift
+  s_29a5baab0287f4::t_960b6a6b3ac2d4 1-154
+Tests/TkzAppTests/RunDevServerTests.swift
+  s_29a5baab0287f4::t_1a4ff1f7a44aa9 1-149
+Tests/TkzAppTests/RunDevServerWiringTests.swift
+  s_29a5baab0287f4::t_e7b19b0364b6f8 1-165
+Tests/TkzCoreTests/ModelsTests.swift
+  s_29a5baab0287f4::t_50c6598c24b087 75,94-95,100
+Tests/TkzCoreTests/RunPaneTests.swift
+  s_29a5baab0287f4::t_cecd58e1379460 1-152
+Tests/TkzCoreTests/RunTasksTests.swift
+  s_29a5baab0287f4::t_027e6beb662db0 1-291
+docs/plans/2026-09-25-run-button-design.md
+  s_29a5baab0287f4::t_32f1fa72e71cad 1-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "183cf9426becdefa4e36610e99b58c6d19bb34da",
+  "prompts": {},
+  "sessions": {
+    "s_29a5baab0287f4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c25cf832-4991-4113-8cc3-a9b3fb8ab57c",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    },
+    "s_ce6f25a0b93fcb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c5babb6-8c22-45ae-aa2d-336d58046079",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
