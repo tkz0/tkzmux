@@ -690,6 +690,10 @@ public final class TerminalViewHost: TerminalHost {
         let grid = visible[id]?.gridSizeForBounds() ?? defaultGrid()
         let session = try makeSession(size: grid)
         try session.restore(from: data)
+        // The screen is the old program's; the input protocols must not be. The shell spawned
+        // below asked for none of them, and a restored any-motion mouse types a report into its
+        // prompt on every hover.
+        session.resetInputModes()
         let restoredSize = session.size
         let size = TerminalSize(
             rows: restoredSize.rows, cols: restoredSize.cols,
