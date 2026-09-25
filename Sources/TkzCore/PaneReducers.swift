@@ -109,6 +109,9 @@ extension AppState {
         if session.live?.agentTerminal == terminal {
             session.live?.agentTerminal = nil
         }
+        if session.live?.runPane?.terminal == terminal {
+            session.live?.runPane = nil
+        }
     }
 
     /// **Close a tab** and every pane in it. Refuses the last tab of a session, for the same

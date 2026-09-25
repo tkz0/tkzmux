@@ -349,6 +349,77 @@ public final class SessionLauncher {
         }
     }
 
+    // MARK: - ▶ Run
+
+    /// The toolbar's ▶ Run: `command` in the row's run pane, started in `directory` — the row's own
+    /// checkout, which the caller resolves (`Session.runDirectory`), so a worktree row runs in its
+    /// worktree and never in the main checkout.
+    ///
+    /// The first run splits the focused pane (stacked, like ⇧⌘D) and hands the keyboard back to it:
+    /// the dev server's pane is for reading. Every later run **respawns that same leaf** — the
+    /// layout the user arranged stays put, and a server still running there is hung up with its
+    /// shell. The command rides `TKZMUX_BOOT_COMMAND` like an agent launch does, so it runs after
+    /// direnv/mise, lands in history, and is bracketed in the OSC 9;4 marker that flips ■ back to
+    /// ▶ when it returns. Unlike an agent launch it raises no "Starting…" overlay.
+    @discardableResult
+    public func runDevServer(
+        _ command: String, in directory: String, for id: SessionID
+    ) -> Result<TerminalID, Failure> {
+        guard let session = store.state.sessions[id], session.live != nil else {
+            return .failure(.unknownSession)
+        }
+        let cwd = Paths.expandingTilde(directory, home: home)
+        guard isDirectory(cwd) else { return .failure(.missingDirectory(cwd)) }
+        let env = environment(accountKey: session.accountKey, bootCommand: command)
+
+        if let existing = session.live?.runPane?.terminal, session.terminalIDs.contains(existing) {
+            do {
+                // `open` evicts the old shell under this id first; its late `.exited` is dropped by
+                // identity, so it cannot close the pane it is being replaced in.
+                let pid = try host.open(existing, session: id, cwd: cwd, env: env, size: gridSize(existing))
+                store.update {
+                    $0.setPanePid(existing, pid: pid)
+                    $0.beginRunPane(id, terminal: existing, command: command)
+                }
+                logLaunch(kind: "run", id: id, cwd: cwd, env: env, command: command)
+                return .success(existing)
+            } catch {
+                logger.error("run respawn failed: \(String(describing: error), privacy: .public)")
+                return .failure(.spawnFailed(String(describing: error)))
+            }
+        }
+
+        let source = session.focusedTerminalID
+        var created: TerminalID?
+        store.updating { state in
+            created = state.splitPane(source, axis: .vertical)
+            if created != nil { state.focusPane(source) }
+        }
+        guard let terminal = created else { return .failure(.spawnFailed("the tab is full")) }
+        do {
+            let pid = try host.open(terminal, session: id, cwd: cwd, env: env, size: gridSize(terminal))
+            store.update {
+                $0.setPanePid(terminal, pid: pid)
+                $0.beginRunPane(id, terminal: terminal, command: command)
+            }
+            logLaunch(kind: "run", id: id, cwd: cwd, env: env, command: command)
+            return .success(terminal)
+        } catch {
+            // Same rule as `addTerminal`: no leaf without a shell behind it.
+            store.update { _ = $0.closePane(terminal) }
+            logger.error("run failed: \(String(describing: error), privacy: .public)")
+            return .failure(.spawnFailed(String(describing: error)))
+        }
+    }
+
+    /// ■ Stop: Ctrl-C into the run pane, exactly what the user would type. The pane stays, with the
+    /// server's last words on screen; the button flips when the boot command's *remove* marker
+    /// arrives (`AppState.runPaneReturned`), not here — a server that traps SIGINT is still running.
+    public func stopDevServer(_ id: SessionID) {
+        guard let runPane = store.state.sessions[id]?.live?.runPane, runPane.running else { return }
+        host.writeInput(runPane.terminal, Data([0x03]))
+    }
+
     /// ⌘W on a pane, and a pane whose shell exited: close that leaf, and only if it was the row's
     /// last one does the row itself go.
     public func closeTerminal(_ terminal: TerminalID) {

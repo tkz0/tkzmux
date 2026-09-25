@@ -346,6 +346,41 @@ extension AppState {
         groups[id]?.agent = agent
     }
 
+    // MARK: ▶ Run
+
+    /// Remembers `command` as what ▶ runs for every row in `session`'s group — picking a task from
+    /// the ▾ menu *is* choosing it. `nil` or blank forgets it ("Reset to detected"). A group with no
+    /// `repoRoot` is a bucket of unrelated directories, so it remembers nothing.
+    public mutating func rememberRunCommand(_ command: String?, for session: SessionID) {
+        guard let groupID = sessions[session]?.groupID, groups[groupID]?.repoRoot != nil else { return }
+        let trimmed = command?.trimmingCharacters(in: .whitespacesAndNewlines)
+        groups[groupID]?.runCommand = (trimmed?.isEmpty ?? true) ? nil : trimmed
+    }
+
+    /// The command `session`'s group remembers, if any.
+    public func rememberedRunCommand(for session: SessionID) -> String? {
+        guard let groupID = sessions[session]?.groupID, let group = groups[groupID],
+            group.repoRoot != nil
+        else { return nil }
+        return group.runCommand
+    }
+
+    /// `terminal` (a pane of `id`) is now running `command` for ▶ Run.
+    public mutating func beginRunPane(_ id: SessionID, terminal: TerminalID, command: String) {
+        guard sessions[id]?.live != nil, sessions[id]?.terminalIDs.contains(terminal) == true else { return }
+        updateLive(id) { $0.runPane = RunPane(terminal: terminal, command: command, running: true) }
+    }
+
+    /// The OSC 9;4 *remove* from `terminal`: if it is a run pane, its command has returned. Any
+    /// other pane's marker is not this, and costs no delivery.
+    public mutating func runPaneReturned(_ terminal: TerminalID) {
+        guard let id = sessionID(owning: terminal),
+            let runPane = sessions[id]?.live?.runPane,
+            runPane.terminal == terminal, runPane.running
+        else { return }
+        updateLive(id) { $0.runPane?.running = false }
+    }
+
     /// Collapse state is a group change, never a structural one.
     public mutating func setGroupCollapsed(_ id: GroupID, _ collapsed: Bool) {
         groups[id]?.isCollapsed = collapsed

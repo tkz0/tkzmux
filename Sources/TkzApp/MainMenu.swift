@@ -281,6 +281,7 @@ public enum MainMenu {
         addCommand(.showFirstPrompt, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         addCommand(.showChanges, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         addCommand(.rebaseOntoBase, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
+        addCommand(.runDevServer, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         menu.addItem(.separator())
         addCommand(.previousSession, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)
         addCommand(.nextSession, to: menu, shortcuts: shortcuts, dispatcher: dispatcher)

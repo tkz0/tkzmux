@@ -19,7 +19,7 @@ struct MainToolbarTests {
 
     @Test func vendsEveryExpectedItemIdentifier() {
         let controller = MainToolbarController()
-        let expected: [NSToolbarItem.Identifier] = [.tkzTitle, .tkzViewCluster]
+        let expected: [NSToolbarItem.Identifier] = [.tkzTitle, .tkzRun, .tkzViewCluster]
 
         let defaults = controller.toolbarDefaultItemIdentifiers(controller.toolbar)
         for id in expected {
@@ -35,11 +35,12 @@ struct MainToolbarTests {
         // Wave 2 references these by name when assembling the window.
         #expect(NSToolbarItem.Identifier.tkzTitle.rawValue == "tkzmux.title")
         #expect(NSToolbarItem.Identifier.tkzViewCluster.rawValue == "tkzmux.viewCluster")
+        #expect(NSToolbarItem.Identifier.tkzRun.rawValue == "tkzmux.run")
     }
 
     /// The 2026-09-20 GUI pass took “＋ New session…” and the search field out of the bar. Both
     /// commands keep a chord, a palette row and a menu item; the bar keeps the title and the
-    /// cluster and nothing else.
+    /// cluster, plus the ▶ Run button, and nothing else.
     @Test func barCarriesNeitherNewSessionNorSearch() {
         let controller = MainToolbarController()
         let defaults = controller.toolbarDefaultItemIdentifiers(controller.toolbar)
@@ -49,7 +50,7 @@ struct MainToolbarTests {
             #expect(!controller.toolbarAllowedItemIdentifiers(controller.toolbar).contains(id))
             #expect(Self.item(controller, id) == nil)
         }
-        #expect(defaults.filter { $0 != .flexibleSpace }.count == 2)
+        #expect(defaults.filter { $0 != .flexibleSpace }.count == 3)
     }
 
     @Test func titleItemUsesSessionAndGroup() {

@@ -135,6 +135,13 @@ public struct Group: Hashable, Sendable, Codable, Identifiable {
     /// `Session.agent`, whose absence would mislabel every row — which is why *that* one earned the
     /// v3→v4 lift and this one does not.
     public var agent: AgentKind?
+    /// The command the toolbar's ▶ Run starts for every row in this group, remembered the
+    /// moment one is picked from its ▾ menu or typed as a custom command. `nil` = nothing picked,
+    /// so ▶ runs whatever `RunTaskDetector` guesses. A command string rather than a task name so it
+    /// means the same in every worktree of the repo, and covers what detection cannot see (a
+    /// `.sln` whose server is `dotnet watch run --project src/Api`). Optional for the same no-migration
+    /// decode story as `agent`. Only groups with a `repoRoot` hold one — see `rememberRunCommand`.
+    public var runCommand: String?
 
     public init(
         id: GroupID = .generate(),
@@ -144,7 +151,8 @@ public struct Group: Hashable, Sendable, Codable, Identifiable {
         isCollapsed: Bool = false,
         order: Int = 0,
         defaultAccountKey: String? = nil,
-        agent: AgentKind? = nil
+        agent: AgentKind? = nil,
+        runCommand: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -154,6 +162,7 @@ public struct Group: Hashable, Sendable, Codable, Identifiable {
         self.order = order
         self.defaultAccountKey = defaultAccountKey
         self.agent = agent
+        self.runCommand = runCommand
     }
 }
 
@@ -364,6 +373,16 @@ public struct Session: Hashable, Sendable, Identifiable {
         return out
     }
 
+    /// Where the toolbar's ▶ Run detects its tasks and starts them: the checkout this row
+    /// is working in. That is git's toplevel when it has answered — for a worktree, the worktree's
+    /// own directory, **never** `repoRoot`, the main checkout — else the row's worktree path, else
+    /// wherever the row is standing.
+    public func runDirectory(gitToplevel: String?) -> String {
+        if let gitToplevel, !gitToplevel.isEmpty { return gitToplevel }
+        if isWorktree, let worktreePath, !worktreePath.isEmpty { return worktreePath }
+        return effectiveCwd
+    }
+
     /// The first of `resumeDirectoryCandidates` — what a resume starts in when every directory
     /// still exists.
     public var resumeDirectory: String {
@@ -543,6 +562,11 @@ public struct LiveSessionState: Hashable, Sendable {
     /// observation says `.backgroundShell`. Description only: the working state itself is read
     /// off the observation, and this is cleared when it goes idle. Process state, never persisted.
     public var backgroundShells: [BackgroundShellInfo] = []
+    /// The pane the toolbar's ▶ Run started, and whether its command is still going —
+    /// what flips the button between ▶ and ■. Never the agent's pane, and never part of the row's
+    /// status. Process state: cleared when the pane closes, never persisted, so a relaunch shows
+    /// the pane as the plain shell it restores as.
+    public var runPane: RunPane?
 
     public init(
         pid: pid_t? = nil,
@@ -631,6 +655,22 @@ public struct AgentStartup: Hashable, Sendable {
         self.terminal = terminal
         self.command = command
         self.startedAt = startedAt
+    }
+}
+
+/// The pane a ▶ Run started, and whether its command is still going.
+public struct RunPane: Hashable, Sendable {
+    public var terminal: TerminalID
+    /// The command as it rides in `TKZMUX_BOOT_COMMAND` — what the button names while ■.
+    public var command: String
+    /// `false` once the boot command's OSC 9;4 *remove* arrived: Ctrl-C, a crash, or the server
+    /// exiting by itself. The pane stays, at its prompt with the logs above it.
+    public var running: Bool
+
+    public init(terminal: TerminalID, command: String, running: Bool) {
+        self.terminal = terminal
+        self.command = command
+        self.running = running
     }
 }
 
