@@ -152,6 +152,86 @@ struct FileViewerTests {
         }
     }
 
+    // MARK: Images
+
+    /// A real `width`×`height` PNG, so decoding and the pixel-size readout are exercised for real.
+    private static func writePNG(to url: URL, width: Int, height: Int) throws {
+        let rep = try #require(
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8,
+                samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                bytesPerRow: 0, bitsPerPixel: 0))
+        try #require(rep.representation(using: .png, properties: [:])).write(to: url)
+    }
+
+    @Test func imagesAreClassifiedByExtensionNotContent() throws {
+        let root = try Self.scratchDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let png = root.appendingPathComponent("shot.PNG")
+        let fakeJPEG = root.appendingPathComponent("photo.jpg")
+        let pdf = root.appendingPathComponent("paper.pdf")
+        try Self.writePNG(to: png, width: 2, height: 2)
+        try Data("not really a jpeg".utf8).write(to: fakeJPEG)
+        try Data("%PDF-1.4".utf8).write(to: pdf)
+
+        #expect(FileViewerLoader.load(png) == .image(png))
+        #expect(FileViewerLoader.load(fakeJPEG) == .image(fakeJPEG))
+        #expect(FileViewerLoader.load(pdf) == .text("%PDF-1.4"))
+    }
+
+    @Test func anImageTabShowsThePictureAndHandsTheKeyboardToIt() throws {
+        let root = try Self.scratchDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let png = root.appendingPathComponent("shot.png")
+        let markdown = root.appendingPathComponent("notes.md")
+        try Self.writePNG(to: png, width: 3, height: 2)
+        try Data("# Notes".utf8).write(to: markdown)
+        let viewer = FileViewerView(theme: .default)
+
+        viewer.show(png, theme: .default, home: "/Users/nobody")
+        #expect(!viewer.imageView.isHidden)
+        #expect(viewer.scrollView.isHidden)
+        #expect(viewer.imageView.image != nil)
+        #expect(viewer.keyView === viewer.imageView)
+        #expect(viewer.imageView.pixelSize.map { [$0.width, $0.height] } == [3, 2])
+
+        viewer.show(markdown, theme: .default, home: "/Users/nobody")
+        #expect(viewer.imageView.isHidden)
+        #expect(!viewer.scrollView.isHidden)
+        #expect(viewer.imageView.image == nil)
+        #expect(viewer.keyView === viewer.textView)
+        #expect(viewer.textView.string == "Notes")
+    }
+
+    @Test func anUndecodableImageSaysSoInsteadOfShowingNothing() throws {
+        let root = try Self.scratchDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let bad = root.appendingPathComponent("bad.png")
+        try Data([0x00, 0x01, 0x02, 0x03]).write(to: bad)
+        let viewer = FileViewerView(theme: .default)
+
+        viewer.show(bad, theme: .default, home: "/Users/nobody")
+        #expect(viewer.imageView.isHidden)
+        #expect(viewer.keyView === viewer.textView)
+        #expect(viewer.textView.string == "This image could not be decoded.")
+    }
+
+    @Test func copyingAnImagePutsThePixelsAndTheFileOnThePasteboard() throws {
+        let root = try Self.scratchDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let png = root.appendingPathComponent("shot.png")
+        try Self.writePNG(to: png, width: 2, height: 2)
+        let viewer = FileViewerView(theme: .default)
+        viewer.show(png, theme: .default, home: "/Users/nobody")
+        let pasteboard = NSPasteboard(name: .init("tkz-fileviewer-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+
+        viewer.imageView.copy(to: pasteboard)
+        #expect(NSImage(pasteboard: pasteboard) != nil)
+        let urls = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL]
+        #expect(urls?.first?.standardizedFileURL == png.standardizedFileURL)
+    }
+
     // MARK: Markdown
 
     private static func font(at substring: String, in rendered: NSAttributedString) -> NSFont? {

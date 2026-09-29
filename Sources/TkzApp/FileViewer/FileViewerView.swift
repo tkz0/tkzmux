@@ -2,6 +2,7 @@
 //
 // A header naming the file with a READ-ONLY tag, over a non-editable `NSTextView`. Markdown is
 // rendered (`MarkdownRenderer`); anything else is shown verbatim in the terminal's mono face.
+// An image replaces the text view with an `ImageCanvas`, fitted to the tab and never enlarged.
 
 import AppKit
 import TkzCore
@@ -14,7 +15,8 @@ final class FileViewerView: NSView, NSTextViewDelegate {
     private(set) var content: FileViewerContent?
 
     let textView: NSTextView
-    private let scrollView: NSScrollView
+    let scrollView: NSScrollView
+    let imageView = ImageCanvas()
     private let header = NSView()
     private let pathLabel = NSTextField(labelWithString: "")
     private let readOnlyLabel = NSTextField(labelWithString: "READ-ONLY")
@@ -23,6 +25,9 @@ final class FileViewerView: NSView, NSTextViewDelegate {
     private var home: String = NSHomeDirectory()
 
     static let headerHeight: CGFloat = 28
+
+    /// The body on screen, which is what should hold the keyboard while the tab is.
+    var keyView: NSView { imageView.isHidden ? textView : imageView }
 
     init(theme: Theme) {
         self.theme = theme
@@ -49,12 +54,14 @@ final class FileViewerView: NSView, NSTextViewDelegate {
         pathLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         header.wantsLayer = true
         headerBorder.wantsLayer = true
+        imageView.isHidden = true
 
-        for view in [header, scrollView, pathLabel, readOnlyLabel, headerBorder] as [NSView] {
+        for view in [header, scrollView, imageView, pathLabel, readOnlyLabel, headerBorder] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
         }
         addSubview(header)
         addSubview(scrollView)
+        addSubview(imageView)
         header.addSubview(pathLabel)
         header.addSubview(readOnlyLabel)
         header.addSubview(headerBorder)
@@ -80,6 +87,11 @@ final class FileViewerView: NSView, NSTextViewDelegate {
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            imageView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: Self.imageInset),
+            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.imageInset),
+            imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.imageInset),
+            imageView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.imageInset),
         ])
         applyChrome()
     }
@@ -100,6 +112,8 @@ final class FileViewerView: NSView, NSTextViewDelegate {
         render()
         if fileChanged { textView.scrollToBeginningOfDocument(nil) }
     }
+
+    private static let imageInset: CGFloat = 16
 
     private func applyChrome() {
         layer?.backgroundColor = theme.terminalBackground.cgColor
@@ -123,6 +137,18 @@ final class FileViewerView: NSView, NSTextViewDelegate {
     }
 
     private func render() {
+        if case .image(let url) = content {
+            if imageView.image == nil || imageView.url != url {
+                imageView.show(NSImage(contentsOf: url).flatMap { $0.isValid ? $0 : nil }, url: url)
+            }
+            if imageView.image != nil {
+                showImageBody(true)
+                return
+            }
+            content = .notice("This image could not be decoded.")
+        }
+        showImageBody(false)
+
         let rendered: NSAttributedString
         switch content {
         case .markdown(let source):
@@ -144,10 +170,18 @@ final class FileViewerView: NSView, NSTextViewDelegate {
                     .font: Theme.Fonts.ui(Theme.Fonts.ui.title),
                     .foregroundColor: theme.foregroundMuted.nsColor,
                 ])
-        case nil:
+        case .image, nil:
             rendered = NSAttributedString()
         }
         textView.textStorage?.setAttributedString(rendered)
+    }
+
+    private func showImageBody(_ image: Bool) {
+        imageView.isHidden = !image
+        scrollView.isHidden = image
+        if !image { imageView.show(nil, url: nil) }
+        let size = image ? imageView.pixelSize.map { "\($0.width) × \($0.height) · " } ?? "" : ""
+        readOnlyLabel.stringValue = size + "READ-ONLY"
     }
 
     // MARK: NSTextViewDelegate
@@ -172,5 +206,68 @@ final class FileViewerView: NSView, NSTextViewDelegate {
             onOpenFile?(target)
         }
         return true
+    }
+}
+
+/// An image tab's body: the picture centred, scaled down to fit and never up, and ⌘C-able.
+final class ImageCanvas: NSImageView {
+    /// The file the image came from, so ⌘C can put the file on the pasteboard next to the pixels.
+    private(set) var url: URL?
+
+    init() {
+        super.init(frame: .zero)
+        imageScaling = .scaleProportionallyDown
+        imageAlignment = .alignCenter
+        imageFrameStyle = .none
+        animates = true
+        isEditable = false
+        focusRingType = .none
+        // The tab decides the size; a big image must not push the window around.
+        for orientation in [NSLayoutConstraint.Orientation.horizontal, .vertical] {
+            setContentCompressionResistancePriority(.defaultLow, for: orientation)
+            setContentHuggingPriority(.defaultLow, for: orientation)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func show(_ image: NSImage?, url: URL?) {
+        self.image = image
+        self.url = image == nil ? nil : url
+    }
+
+    /// The largest bitmap's pixel dimensions; a vector image has no pixels, so its point size.
+    var pixelSize: (width: Int, height: Int)? {
+        guard let image else { return nil }
+        let bitmap = image.representations
+            .map { (width: $0.pixelsWide, height: $0.pixelsHigh) }
+            .filter { $0.width > 0 && $0.height > 0 }
+            .max { $0.width * $0.height < $1.width * $1.height }
+        return bitmap ?? (Int(image.size.width.rounded()), Int(image.size.height.rounded()))
+    }
+
+    // Read-only, but still the keyboard's home while the tab is on screen: typing must not fall
+    // through to the shell behind it.
+    override var acceptsFirstResponder: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+    }
+
+    @objc func copy(_ sender: Any?) {
+        copy(to: .general)
+    }
+
+    func copy(to pasteboard: NSPasteboard) {
+        guard let image else { return }
+        pasteboard.clearContents()
+        var items: [NSPasteboardWriting] = [image]
+        if let url { items.append(url as NSURL) }
+        pasteboard.writeObjects(items)
+    }
+
+    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        menuItem.action == #selector(copy(_:)) ? image != nil : super.validateMenuItem(menuItem)
     }
 }
