@@ -1573,7 +1573,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         if viewer.isHidden {
             viewer.isHidden = false
             // Keys typed while reading must not land, unseen, in the shell underneath.
-            window.makeFirstResponder(viewer.textView)
+            window.makeFirstResponder(viewer.keyView)
+        } else if let responder = window.firstResponder as? NSView, responder.isDescendant(of: viewer),
+            !responder.isDescendant(of: viewer.keyView)
+        {
+            // Text tab → image tab (or back): the body that held the keyboard was just hidden.
+            window.makeFirstResponder(viewer.keyView)
         }
     }
 
