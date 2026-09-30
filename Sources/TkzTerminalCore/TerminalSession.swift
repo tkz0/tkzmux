@@ -1145,6 +1145,17 @@ public final class TerminalSession: Sendable {
         }
     }
 
+    /// The cells of viewport row `row`, or nil past the bottom of the viewport — the rows above a
+    /// ⌘-hovered `…/name`, searched for the full path it abbreviates.
+    public func rowCells(onRow row: UInt32) -> [String]? {
+        state.withLock { state -> [String]? in
+            guard row < UInt32(state.options.rows) else { return nil }
+            return RowTextLookup.cells(
+                onRowOf: TerminalGridPoint(x: 0, y: row, space: .viewport),
+                in: state.terminal, columns: state.options.cols)
+        }
+    }
+
     /// Shared shape for the gesture methods: mutate under the lock, signal a frame after it drops.
     private func selectionChange<T: Sendable>(
         _ body: (inout SessionState) throws -> T
