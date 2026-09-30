@@ -1,0 +1,27 @@
+Sources/TkzTerminalCore/TerminalSession.swift
+  s_9f30e089cbf892::t_6601059b8b4f7e 1148-1158
+Sources/TkzTerminalView/FileLinkDetector.swift
+  s_9f30e089cbf892::t_f96c5cbefe515f 8,24-33,50-53,58-60,62-67,73-76,92-153
+Sources/TkzTerminalView/MouseController.swift
+  s_9f30e089cbf892::t_966a2cf0d43afd 84-87,95-96,794,799-826
+Tests/TkzTerminalViewTests/FileLinkDetectorTests.swift
+  s_9f30e089cbf892::t_02d39e47022d97 44-85
+Tests/TkzTerminalViewTests/MouseControllerTests.swift
+  s_9f30e089cbf892::t_a9740307fc0113 34,50,123-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4770117ef65ebf9a915ed48ee7a2c67795379ce0",
+  "prompts": {},
+  "sessions": {
+    "s_9f30e089cbf892": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "498ba1cc-8b75-4fad-847d-5f1fec8bab20",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
