@@ -31,6 +31,7 @@ final class LiveTestTerminal: MouseControllerTerminal {
     let encoder: MouseEncoder
     let selection: SelectionController
     let columns: UInt16
+    let rows: UInt16
 
     // Recorded calls — what the routing decision actually did.
     private(set) var pressCalls: [(SurfacePoint, Double)] = []
@@ -46,6 +47,7 @@ final class LiveTestTerminal: MouseControllerTerminal {
     init(cols: UInt16, rows: UInt16, geometry: TerminalPixelGeometry) throws {
         handle = try GhosttyTerminalHandle(cols: cols, rows: rows)
         columns = cols
+        self.rows = rows
         encoder = try MouseEncoder(geometry: geometry)
         selection = try SelectionController(
             terminal: handle, geometry: geometry, doubleClickInterval: 0.5)
@@ -117,6 +119,88 @@ final class LiveTestTerminal: MouseControllerTerminal {
         guard let point = selection.gridPoint(at: position),
               let run = HyperlinkLookup.run(at: point, in: handle, columns: columns) else { return nil }
         return (run.uri, run.columns, point.y)
+    }
+
+    func rowCells(at position: SurfacePoint) -> (cells: [String], column: UInt16, row: UInt32)? {
+        guard let point = selection.gridPoint(at: position) else { return nil }
+        return (RowTextLookup.cells(onRowOf: point, in: handle, columns: columns), point.x, point.y)
+    }
+
+    func rowCells(onRow row: UInt32) -> [String]? {
+        guard row < rows else { return nil }
+        return RowTextLookup.cells(
+            onRowOf: TerminalGridPoint(x: 0, y: row), in: handle, columns: columns)
+    }
+}
+
+// MARK: - Plain-text file links
+
+@MainActor
+@Suite("MouseController file links")
+struct MouseControllerFileLinkTests {
+    /// 60×6 cells of 10×20 px; no view and no GPU needed, the terminal is read directly.
+    private static let geometry = TerminalPixelGeometry(
+        screenWidth: 600, screenHeight: 120, cellWidth: 10, cellHeight: 20)
+
+    /// The paths the resolver was asked about, in order.
+    final class Asked {
+        var paths: [String] = []
+    }
+
+    private static func terminal(_ lines: [String]) throws -> LiveTestTerminal {
+        let terminal = try LiveTestTerminal(cols: 60, rows: 6, geometry: geometry)
+        terminal.write(lines.joined(separator: "\r\n"))
+        return terminal
+    }
+
+    private static func controller(accepting accepted: String, asked: Asked) -> MouseController {
+        let controller = MouseController()
+        controller.resolveFilePath = { path in
+            asked.paths.append(path)
+            return path == accepted ? URL(fileURLWithPath: path) : nil
+        }
+        return controller
+    }
+
+    private static func point(column: Int, row: Int) -> SurfacePoint {
+        SurfacePoint(x: Double(column) * 10 + 5, y: Double(row) * 20 + 10)
+    }
+
+    @Test("an elided …/name resolves next to the full path printed above it")
+    func elidedPathUsesTheFullPathAbove() throws {
+        let terminal = try Self.terminal([
+            "Screenshots:",
+            "- Desktop: /tmp/x/T/dir/shot-0.jpg",
+            "- Phone: …/shot-7.jpg",
+        ])
+        let asked = Asked()
+        let controller = Self.controller(accepting: "/tmp/x/T/dir/shot-7.jpg", asked: asked)
+
+        let link = controller.fileLink(at: Self.point(column: 12, row: 2), in: terminal)
+        #expect(link?.url.path == "/tmp/x/T/dir/shot-7.jpg")
+        #expect(link?.run.columns == 9...20)
+        #expect(asked.paths == ["/tmp/x/T/dir/shot-7.jpg"])
+    }
+
+    @Test("with no full path on screen, the tail is tried against the pane's own bases")
+    func elidedPathFallsBackToTheTail() throws {
+        let terminal = try Self.terminal(["Edited …/Sources/Foo.swift"])
+        let asked = Asked()
+        let controller = Self.controller(accepting: "Sources/Foo.swift", asked: asked)
+
+        let link = controller.fileLink(at: Self.point(column: 12, row: 0), in: terminal)
+        #expect(link?.url.path.hasSuffix("Sources/Foo.swift") == true)
+        #expect(asked.paths == ["Sources/Foo.swift"])
+    }
+
+    @Test("an ordinary path is resolved as printed")
+    func ordinaryPathIsResolvedAsPrinted() throws {
+        let terminal = try Self.terminal(["/tmp/x/a.jpg", "see Sources/Foo.swift"])
+        let asked = Asked()
+        let controller = Self.controller(accepting: "Sources/Foo.swift", asked: asked)
+
+        #expect(controller.fileLink(at: Self.point(column: 6, row: 1), in: terminal) != nil)
+        #expect(asked.paths == ["Sources/Foo.swift"])
     }
 }
 

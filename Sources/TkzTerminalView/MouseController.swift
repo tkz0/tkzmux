@@ -81,6 +81,10 @@ public protocol MouseControllerTerminal: AnyObject {
     /// The viewport row under `position`, one string per column, plus the pointer's column —
     /// what ⌘-click reads a plain-text file path from.
     func rowCells(at position: SurfacePoint) -> (cells: [String], column: UInt16, row: UInt32)?
+
+    /// Viewport row `row`, one string per column, or nil past the viewport — where an elided
+    /// `…/name` looks for the full path it abbreviates.
+    func rowCells(onRow row: UInt32) -> [String]?
 }
 
 extension MouseControllerTerminal {
@@ -88,6 +92,8 @@ extension MouseControllerTerminal {
     public func rowCells(at position: SurfacePoint) -> (cells: [String], column: UInt16, row: UInt32)? {
         nil
     }
+
+    public func rowCells(onRow row: UInt32) -> [String]? { nil }
 }
 
 // MARK: - Pure policy
@@ -785,9 +791,37 @@ public final class MouseController: NSObject, TerminalMouseHandling {
         guard let resolveFilePath,
               let row = terminal.rowCells(at: position),
               let candidate = FileLinkDetector.candidate(in: row.cells, column: Int(row.column)),
-              let url = resolveFilePath(candidate.path)
+              let url = resolve(candidate, onRow: row.row, cells: row.cells, in: terminal, with: resolveFilePath)
         else { return nil }
         return (url, (uri: url.path, columns: candidate.columns, row: row.row))
+    }
+
+    /// How many full paths an elided `…/name` is tried against, nearest first. Each costs a
+    /// `stat` per directory level, on every ⌘-hover move.
+    static let elisionAnchorLimit = 4
+
+    /// An ordinary candidate goes straight to the resolver. An elided `…/name` is first tried next
+    /// to the full paths printed on its own row and the rows above it (only the viewport: a path
+    /// scrolled off the top is not read back), then as `name` against the pane's usual bases.
+    private func resolve(
+        _ candidate: FileLinkCandidate,
+        onRow row: UInt32,
+        cells: [String],
+        in terminal: any MouseControllerTerminal,
+        with resolveFilePath: @MainActor (String) -> URL?
+    ) -> URL? {
+        guard let tail = candidate.elidedTail else { return resolveFilePath(candidate.path) }
+        var rows = [cells]
+        var above = row
+        while above > 0, let cells = terminal.rowCells(onRow: above - 1) {
+            rows.append(cells)
+            above -= 1
+        }
+        let anchors = FileLinkDetector.absolutePaths(in: rows).prefix(Self.elisionAnchorLimit)
+        for path in FileLinkDetector.elisionExpansions(tail: tail, anchors: Array(anchors)) {
+            if let url = resolveFilePath(path) { return url }
+        }
+        return resolveFilePath(tail)
     }
 
     /// The overlay layer, if a link is currently underlined. Tests only.
