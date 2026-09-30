@@ -41,4 +41,46 @@ struct FileLinkDetectorTests {
     @Test func thePointerOnTrimmedPunctuationIsNotALink() {
         #expect(Self.candidate("docs/perf.md, then", at: ", then") == nil)
     }
+
+    // MARK: Elided paths
+
+    @Test func keepsTheEllipsisOfAnElidedPath() {
+        let row = "- Phone drawer: …/screenshot-9.png"
+        let found = Self.candidate(row, at: "screenshot")
+        #expect(found?.path == "…/screenshot-9.png")
+        #expect(found?.elidedTail == "screenshot-9.png")
+        #expect(found?.columns == 16...33)
+        // The pointer on the ellipsis itself is on the same link.
+        #expect(Self.candidate(row, at: "…") == found)
+    }
+
+    @Test func threeDotsElideToo() {
+        #expect(Self.candidate("see .../a/b.swift", at: "b.swift")?.elidedTail == "a/b.swift")
+        #expect(Self.candidate("see Sources/a.swift", at: "a.swift")?.elidedTail == nil)
+    }
+
+    @Test func anEllipsisInProseIsNotAPath() {
+        #expect(Self.candidate("wait… then", at: "…") == nil)
+        #expect(Self.candidate("wait… then", at: "then") == nil)
+    }
+
+    @Test func absolutePathsAreFoundNearestFirstWithoutSuffixesOrDuplicates() {
+        let rows = [
+            "- Phone: …/shot-7.jpg and ~/dev/a.txt:12",
+            "- Desktop: /var/folders/x/T/dir/shot-0.jpg, see Sources/Foo.swift",
+            "https://example.com/x and /var/folders/x/T/dir/shot-0.jpg again",
+        ].map(Self.cells)
+        #expect(FileLinkDetector.absolutePaths(in: rows) == [
+            "~/dev/a.txt", "/var/folders/x/T/dir/shot-0.jpg",
+        ])
+    }
+
+    @Test func elisionExpansionsWalkUpEachAnchorInTurn() {
+        let expansions = FileLinkDetector.elisionExpansions(
+            tail: "b.png", anchors: ["/var/x/T/a.png", "~/dev/p/c.md"])
+        #expect(expansions == [
+            "/var/x/T/b.png", "/var/x/b.png", "/var/b.png",
+            "~/dev/p/b.png", "~/dev/b.png",
+        ])
+    }
 }
