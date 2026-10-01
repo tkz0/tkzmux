@@ -129,6 +129,35 @@ struct AttentionNotifierTests {
         #expect(rig.presenter.requests[1].identifier == request.identifier)
     }
 
+    @Test("the ready sound plays once per delivery for done and NEEDS YOU, only with the bell on")
+    func readySoundFollowsTheBell() {
+        let rig = Rig(count: 3)
+        var plays = 0
+        rig.notifier.playReadySound = { plays += 1 }
+
+        rig.prompt(rig.ids[0])
+        #expect(plays == 0, "the bell is off by default")
+
+        rig.store.update { $0.setSoundOnReady(true) }
+        rig.store.flush()
+        rig.prompt(rig.ids[1], after: 1)
+        #expect(plays == 1)
+        rig.stop(rig.ids[2], after: 2)
+        #expect(plays == 2, "a finished turn is ready too")
+
+        // A row you are looking at makes no sound, like it posts no banner.
+        rig.answer(rig.ids[1], after: 3)
+        rig.look(at: rig.ids[1], after: 4)
+        rig.prompt(rig.ids[1], after: 5)
+        #expect(plays == 2)
+
+        rig.store.update { $0.setSoundOnReady(false) }
+        rig.store.flush()
+        rig.answer(rig.ids[0], after: 6)
+        rig.prompt(rig.ids[0], after: 7)
+        #expect(plays == 2)
+    }
+
     @Test("without a hook message the body names the reason")
     func fallbackBodyPerReason() {
         let cases: [(AttentionKind, String)] = [

@@ -1,4 +1,4 @@
-// MainToolbarController.swift — the 48 pt unified title bar of the main window.
+// MainToolbarController.swift — the compact unified title bar of the main window.
 //
 // Layout: the centred title “<session> — <group>”, the ▶ Run split button, and the four
 // right-hand buttons (`>_` new terminal, `◫`/`⬓` splits, `☾`/`☀` theme). The design's fifth
@@ -107,7 +107,7 @@ public final class MainToolbarController: NSObject, NSToolbarDelegate {
     }
 
     /// Point size of the cluster glyphs. Toolbar chrome, not a theme token: the sidebar's 10 pt
-    /// `detail` size read too small for `◫`/`⬓` in the 48 pt bar.
+    /// `detail` size read too small for `◫`/`⬓` in the bar.
     static let clusterGlyphSize: Double = 12
 
     public let toolbar: NSToolbar

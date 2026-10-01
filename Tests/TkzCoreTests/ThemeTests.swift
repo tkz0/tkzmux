@@ -5,7 +5,7 @@ import Testing
     // MARK: Presets
 
     @Test func bothPresetsAndDefault() {
-        #expect(Theme.Preset.allCases.count == 2)
+        #expect(Theme.Preset.allCases.count == 3)
         #expect(Theme.allPresets.map(\.preset) == Theme.Preset.allCases)
         #expect(Theme.default.preset == .midnightIndigo)
         #expect(Theme.preset(.light).preset == .light)
@@ -231,6 +231,7 @@ import Testing
     @Test func toggledPairsDarkWithLight() {
         #expect(Theme.toggled(.midnightIndigo) == .light)
         #expect(Theme.toggled(.light) == .midnightIndigo)
+        #expect(Theme.toggled(.black) == .light)
         // Involutive on the pair the toggle actually walks.
         #expect(Theme.toggled(Theme.toggled(.midnightIndigo)) == .midnightIndigo)
         // Every dark preset has somewhere to go, and it is always a light one.
@@ -323,6 +324,7 @@ extension Theme {
         switch preset {
         case .midnightIndigo: "2c.1 Midnight indigo (default)"
         case .light: "1b Light"
+        case .black: "Black"
         }
     }
 }

@@ -96,6 +96,8 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
     public var notifyOnDone: Bool
     /// The Dock badge switch (TKZ-67). Absent in older files ⇒ **on**, like `notifyOnDone`.
     public var badgeDockIcon: Bool
+    /// The bell in the sidebar header. Absent in older files ⇒ **off**, its default.
+    public var soundOnReady: Bool
 
     public init(
         autoResumeOnLaunch: Bool = false,
@@ -106,7 +108,8 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         showSessionSpend: Bool = true,
         checkOriginPeriodically: Bool = false,
         notifyOnDone: Bool = true,
-        badgeDockIcon: Bool = true
+        badgeDockIcon: Bool = true,
+        soundOnReady: Bool = false
     ) {
         self.autoResumeOnLaunch = autoResumeOnLaunch
         self.statuslineOffered = statuslineOffered
@@ -117,12 +120,14 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         self.checkOriginPeriodically = checkOriginPeriodically
         self.notifyOnDone = notifyOnDone
         self.badgeDockIcon = badgeDockIcon
+        self.soundOnReady = soundOnReady
     }
 
     private enum CodingKeys: String, CodingKey {
         case autoResumeOnLaunch, statuslineOffered, codexHooksOffered, hooksOffered
         case dismissedUpdateVersion, themePreset
         case showSessionSpend, checkOriginPeriodically, notifyOnDone, badgeDockIcon
+        case soundOnReady
     }
 
     public init(from decoder: any Decoder) throws {
@@ -144,6 +149,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         checkOriginPeriodically = try c.decodeIfPresent(Bool.self, forKey: .checkOriginPeriodically) ?? false
         notifyOnDone = try c.decodeIfPresent(Bool.self, forKey: .notifyOnDone) ?? true
         badgeDockIcon = try c.decodeIfPresent(Bool.self, forKey: .badgeDockIcon) ?? true
+        soundOnReady = try c.decodeIfPresent(Bool.self, forKey: .soundOnReady) ?? false
     }
 
     /// Spelled out rather than synthesised, because the file carries one key this type no longer
@@ -166,6 +172,7 @@ public struct PersistedPreferences: Hashable, Sendable, Codable {
         try c.encode(checkOriginPeriodically, forKey: .checkOriginPeriodically)
         try c.encode(notifyOnDone, forKey: .notifyOnDone)
         try c.encode(badgeDockIcon, forKey: .badgeDockIcon)
+        try c.encode(soundOnReady, forKey: .soundOnReady)
     }
 }
 
@@ -268,7 +275,8 @@ public struct PersistedState: Hashable, Sendable, Codable {
                 showSessionSpend: state.showSessionSpend,
                 checkOriginPeriodically: state.checkOriginPeriodically,
                 notifyOnDone: state.notifyOnDone,
-                badgeDockIcon: state.badgeDockIcon),
+                badgeDockIcon: state.badgeDockIcon,
+                soundOnReady: state.soundOnReady),
             activity: state.activity)
     }
 
@@ -332,6 +340,7 @@ public struct PersistedState: Hashable, Sendable, Codable {
         state.checkOriginPeriodically = preferences.checkOriginPeriodically
         state.notifyOnDone = preferences.notifyOnDone
         state.badgeDockIcon = preferences.badgeDockIcon
+        state.soundOnReady = preferences.soundOnReady
         if let raw = preferences.themePreset {
             if let preset = Theme.Preset(rawValue: raw) {
                 state.themePreset = preset

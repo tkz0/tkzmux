@@ -67,6 +67,11 @@ public struct AppState: Hashable, Sendable {
     /// strip's own figure (2026-09-22, TKZ-67). On by default. Durable, in `PersistedPreferences`.
     /// `DockBadge` (TkzApp) is its sole reader.
     public var badgeDockIcon: Bool
+    /// Play a sound when a session becomes ready — Claude finished a turn, or it is waiting on the
+    /// user — and the user is not looking at that row (2026-10-01). The bell in the sidebar header
+    /// toggles it. **Off by default**: a sound is intrusive and must be a choice. Durable, in
+    /// `PersistedPreferences`. `AttentionNotifier` (TkzApp) is its sole reader.
+    public var soundOnReady: Bool
     /// The active colour scheme. The ☾/☀ toggle in the toolbar writes it; `MainWindowController` is
     /// its sole observer, via `ChangeSet.theme`. Durable, in `PersistedPreferences`.
     public var themePreset: Theme.Preset
@@ -99,6 +104,7 @@ public struct AppState: Hashable, Sendable {
         checkOriginPeriodically: Bool = false,
         notifyOnDone: Bool = true,
         badgeDockIcon: Bool = true,
+        soundOnReady: Bool = false,
         themePreset: Theme.Preset = Theme.default.preset,
         update: UpdateState = UpdateState(),
         activity: [ActivityEvent] = []
@@ -120,6 +126,7 @@ public struct AppState: Hashable, Sendable {
         self.checkOriginPeriodically = checkOriginPeriodically
         self.notifyOnDone = notifyOnDone
         self.badgeDockIcon = badgeDockIcon
+        self.soundOnReady = soundOnReady
         self.themePreset = themePreset
         self.update = update
         self.activity = activity

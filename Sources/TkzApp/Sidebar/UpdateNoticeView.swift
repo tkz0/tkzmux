@@ -7,7 +7,7 @@
 //     └──────────────────────────────────────────────┘
 //       10 pt side margins, 2 pt above, 6 pt below → 48 pt strip
 //
-// Built like `NewGroupFooterView`: every visible thing is a layer, so the card rasterises in the
+// Built like the group header's `＋`: every visible thing is a layer, so the card rasterises in the
 // headless bitmap tests, with transparent `NSButton`s on top purely for hit-testing, tooltips,
 // the pointing-hand cursor and accessibility — one per clickable run on the second line, plus the
 // `✕`. The links read as links: accent-coloured, a pointing hand over them, and the one under the

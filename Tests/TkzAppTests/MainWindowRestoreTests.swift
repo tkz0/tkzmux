@@ -277,7 +277,7 @@ struct MainWindowRestoreTests {
         harness.store.flush()
 
         #expect(asked == false, "nothing was going to be closed, so nothing was asked")
-        #expect(harness.store.state.groups.isEmpty, "the last group is removable; the footer is the way back")
+        #expect(harness.store.state.groups.isEmpty, "the last group is removable; the header's folder button is the way back")
         #expect(harness.host.discarded.isEmpty)
     }
 
