@@ -16,7 +16,6 @@
 // row, and there is no code path that can make it
 // anything else.
 
-import CoreGraphics
 import Foundation
 import TkzCore
 

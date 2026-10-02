@@ -4,7 +4,7 @@
 // invents one inline. Nothing here is a theme token — colours come from `Theme`.
 
 import AppKit
-import CoreGraphics
+import Foundation
 import TkzCore
 
 public enum SplitMetrics {

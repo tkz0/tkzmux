@@ -28,6 +28,7 @@
 
 import Foundation
 import TkzCore
+import TkzPlatform
 
 public enum StateFileError: Error, Equatable, Sendable {
     case writeFailed(errno: Int32)
@@ -80,22 +81,16 @@ public struct StateFile: Sendable, Hashable {
         self.url = url
     }
 
-    /// `~/Library/Application Support/tkzmux/state.json`, beside `SnapshotStore.standard()`'s
-    /// `sessions/`. Only production code may use this; tests pass a temp directory.
+    /// `<AppPaths.support>/state.json` (`~/Library/Application Support/tkzmux` on the Mac),
+    /// beside `SnapshotStore.standard()`'s `sessions/`. Only production code may use this; tests
+    /// pass a temp directory.
     public static func standard(
         applicationSupport: URL? = nil,
         fileManager: FileManager = .default
     ) -> StateFile {
-        let base = applicationSupport
-            ?? (try? fileManager.url(
-                for: .applicationSupportDirectory, in: .userDomainMask,
-                appropriateFor: nil, create: false
-            ))
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appending(path: "Library/Application Support")
-        return StateFile(
-            url: base
-                .appending(path: "tkzmux", directoryHint: .isDirectory)
-                .appending(path: "state.json", directoryHint: .notDirectory))
+        let directory = applicationSupport?.appending(path: AppPaths.directoryName, directoryHint: .isDirectory)
+            ?? AppPaths.support(fileManager: fileManager)
+        return StateFile(url: directory.appending(path: "state.json", directoryHint: .notDirectory))
     }
 
     public var directory: URL { url.deletingLastPathComponent() }

@@ -4,7 +4,6 @@
 // inside it, so the view renders deterministically from data a test can construct, and the one
 // place that knows both vocabularies (`PaneHeaderAdapter`) is a pure function over `AppState`.
 
-import CoreGraphics
 import Foundation
 import TkzCore
 

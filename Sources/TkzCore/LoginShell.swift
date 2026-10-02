@@ -64,13 +64,19 @@ public struct LoginShell: Sendable, Equatable, Hashable {
         self.family = Family(rawValue: (path as NSString).lastPathComponent) ?? .other
     }
 
-    /// The old behaviour and the fallback: `/bin/zsh`.
+    /// The old behaviour and the first fallback: `/bin/zsh`.
     public static let zsh = LoginShell(path: "/bin/zsh")
 
+    /// The last resort, in order, when neither `SHELL` nor the account database names a usable
+    /// shell: `/bin/zsh` is always there on macOS, many Linux systems have no zsh, and POSIX
+    /// guarantees `/bin/sh`.
+    public static let fallbackPaths = ["/bin/zsh", "/bin/bash", "/bin/sh"]
+
     /// The login shell to spawn: `SHELL` from `environment`, then the account database
-    /// (`getpwuid`, what `dscl . -read /Users/$USER UserShell` reports), then `/bin/zsh`. A
-    /// candidate that is not an executable file is skipped — a stale `SHELL` pointing at a
-    /// removed Homebrew fish must not leave the user with no terminal at all.
+    /// (`getpwuid`, what `dscl . -read /Users/$USER UserShell` reports), then the first executable
+    /// of `fallbackPaths`, and `/bin/sh` if even those fail the check. A candidate that is not an
+    /// executable file is skipped — a stale `SHELL` pointing at a removed Homebrew fish must not
+    /// leave the user with no terminal at all.
     public static func detect(
         environment: [String: String],
         passwordDatabaseShell: String? = LoginShell.passwordDatabaseShell(),
@@ -81,7 +87,10 @@ public struct LoginShell: Sendable, Equatable, Hashable {
             guard candidate.hasPrefix("/"), isExecutable(candidate) else { continue }
             return LoginShell(path: candidate)
         }
-        return .zsh
+        for path in fallbackPaths where isExecutable(path) {
+            return LoginShell(path: path)
+        }
+        return LoginShell(path: "/bin/sh")
     }
 
     /// `pw_shell` for the current user, or nil.

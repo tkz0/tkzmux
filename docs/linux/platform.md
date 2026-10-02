@@ -1,6 +1,6 @@
 # TkzPlatform on Linux
 
-The OS seam below the UI (`Sources/TkzPlatform/`): one API per primitive, a back-end per OS. The Darwin back-ends live in `Darwin/` and the Linux ones in `Linux/`. Written in WOR-304 S2 (logging and signposts); WOR-304 S3 adds the path table, and later WOR-304 sessions add the other primitives.
+The OS seam below the UI (`Sources/TkzPlatform/`): one API per primitive, a back-end per OS. The Darwin back-ends live in `Darwin/` and the Linux ones in `Linux/`. Written in WOR-304 S2 (logging and signposts) and extended in WOR-304 S3 (paths); later WOR-304 sessions add the other primitives.
 
 ## Logging: `TkzLogger`
 
@@ -66,3 +66,41 @@ On macOS `TkzSignposter` is `OSSignposter`. On Linux it is a struct with the sam
   - `ts` is `CLOCK_MONOTONIC` in microseconds, and `tid` is the kernel thread id.
 - **Always valid JSON.** Each event overwrites the closing `]}` and writes a new one, so the file stays loadable even if the process is killed.
 - **Viewing a trace.** Open the file in [ui.perfetto.dev](https://ui.perfetto.dev) or `chrome://tracing`. On 2026-10-03 a probe trace loaded in Perfetto's `trace_processor_shell` v57.2, the engine behind the UI, with no error or data-loss stats. It showed 3 `show` slices of 2, 4 and 6 ms, and the process named `tkzmux`.
+
+## Paths: `AppPaths`
+
+`AppPaths` (`Sources/TkzPlatform/AppPaths.swift`) names tkzmux's own directories on both OSes. It applies [ADR-0002](adr-0002-platform-defaults.md) D7. Nothing in it creates a directory, except `runtime` on Linux.
+
+| Root | Holds | Linux | macOS (unchanged) |
+|---|---|---|---|
+| `home` | – | `$HOME` if absolute, otherwise `pw_dir` from `getpwuid` (`/` if neither is absolute) | `NSHomeDirectory()` |
+| `support` | user data: `state.json`, `sessions/`, `usage/`, `statusline/`, `bin/`, `zsh/`, `terminfo/` | `$XDG_DATA_HOME/tkzmux`, default `~/.local/share/tkzmux` | `.applicationSupportDirectory/tkzmux`, falling back to `~/Library/Application Support/tkzmux` |
+| `cache` | regenerable files | `$XDG_CACHE_HOME/tkzmux`, default `~/.cache/tkzmux` | `.cachesDirectory/tkzmux` (`~/Library/Caches/tkzmux`) |
+| `runtime` | per-login files (the hook socket moves here in WOR-305) | `$XDG_RUNTIME_DIR/tkzmux`, created 0700; `support` if that is unavailable | `support` |
+
+- **Ignored XDG values.** An XDG variable that is unset, empty or relative is ignored, as the Base Directory spec requires, and the default applies. Each variable is judged on its own.
+- **No `state` root.** `$XDG_STATE_HOME` is not used. If WOR-320 wants it for `update.log`, WOR-320 adds the root and names the file.
+- **Disjoint from the install tree.** `support` never overlaps the installed read-only tree, `<prefix>/lib/tkzmux/` (ResourceLocator). That holds even with `PREFIX=$HOME/.local`, so `make install` and `ShimInstaller` never write each other's `terminfo/` or `bin/`.
+- **The runtime directory is private.** `runtime` is created with `mkdir(…, 0700)`. An existing entry must be a real directory (not a symlink) owned by the effective uid, and it is narrowed to 0700. `$XDG_RUNTIME_DIR` itself is never created. Anything else falls back to `support`, which matches the Mac.
+- **Tilde abbreviation.** `AppPaths.abbreviatingHome(_:)` replaces `NSString.abbreviatingWithTildeInPath`, which corelibs Foundation does not have. On the Mac it still calls that method, so the output is the same as before. On Linux it writes `~` for `home` and `~/…` for paths under it, and leaves every other path unchanged.
+- **Who routes through it.** `StateFile.standard()` and `SnapshotStore.standard()` take `support` (their `applicationSupport:` injection is unchanged). The tilde sites in `MainWindowController` use `abbreviatingHome`. The rest of the support-directory users, the socket and the hook's Foundation-free mirror of this table move in WOR-305 and WOR-306.
+- **`TKZMUX_SUPPORT_DIR`.** `AppPaths` does not read it, because the Mac app never has. It is still the hook's override (`Sources/tkzmux-hook/StatuslineCommand.swift`).
+
+### Why not `FileManager` and `NSHomeDirectory()` on Linux
+
+This was checked on 2026-10-03 with a probe built by Swift 6.3.3 (corelibs Foundation) on the reference machine:
+
+| Environment | `NSHomeDirectory()` | `.applicationSupportDirectory` |
+|---|---|---|
+| default | `/home/<user>` | `/home/<user>/.local/share` |
+| `HOME=/tmp` | `/home/<user>`, so `$HOME` is ignored | `/home/<user>/.local/share` |
+| `HOME=` (empty) or unset | `/home/<user>` | `/home/<user>/.local/share` |
+| `XDG_DATA_HOME=/xd` | `/home/<user>` | `/xd` |
+| `XDG_DATA_HOME=reldata` | `/home/<user>` | `/home/<user>/.local/share` |
+| `HOME=rel XDG_DATA_HOME=reldata` | `/home/<user>` | `<cwd>/rel/.local/share` |
+
+- `NSHomeDirectory()` and `homeDirectoryForCurrentUser` ignore `$HOME` and always answer from the account database. This confirms the research's inferred claim.
+- `.applicationSupportDirectory` honours an absolute `$XDG_DATA_HOME`. When `$XDG_DATA_HOME` is relative, though, it falls back to the raw `$HOME`, even when `$HOME` is relative too.
+- `NSString.abbreviatingWithTildeInPath` does not exist in corelibs Foundation at all.
+
+So on Linux `AppPaths` resolves the table itself, from `ProcessInfo.processInfo.environment` and `getpwuid`, as a pure function (`AppPaths.xdgLayout`). That function is table-tested on both OSes (`Tests/TkzPlatformTests/AppPathsTests.swift`). On the Mac, `Tests/PersistenceTests/StandardLocationTests.swift` compares `StateFile.standard()`, `SnapshotStore.standard()` and `AppPaths.support` with the code they replaced, kept verbatim in the test.

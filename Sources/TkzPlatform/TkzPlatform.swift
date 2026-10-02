@@ -8,6 +8,7 @@
 //   Darwin/Logging.swift      `TkzLogger` / `TkzSignposter`, aliases of `os.Logger` / `OSSignposter`
 //   Linux/LinuxLogging.swift  `TkzLogger`: the same call shape, journald-backed (Linux/Journal.swift)
 //   Linux/Signposts.swift     `TkzSignposter`: a no-op, or Chrome trace JSON under `TKZMUX_TRACE`
+//   AppPaths.swift            `AppPaths`: home, support, cache and runtime directories (XDG on Linux)
 
 /// Module marker used by the smoke tests until the module has API on every OS.
 public enum TkzPlatformModule {

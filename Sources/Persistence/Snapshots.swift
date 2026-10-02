@@ -8,8 +8,11 @@
 // `~/Library/Application Support/tkzmux` (shared agent brief, hard rule 8). `SnapshotStore.standard`
 // is the only place the real location is spelled out.
 
+#if canImport(Darwin)
 import Darwin
+#endif
 import Foundation
+import TkzPlatform
 
 /// One `.ghsnap` file on disk.
 public struct SnapshotEntry: Sendable, Hashable {
@@ -89,22 +92,15 @@ public struct SnapshotStore: Sendable, Hashable {
         self.directory = directory
     }
 
-    /// `~/Library/Application Support/tkzmux/sessions`. Only production code may use this.
+    /// `<AppPaths.support>/sessions` (`~/Library/Application Support/tkzmux` on the Mac). Only
+    /// production code may use this.
     public static func standard(
         applicationSupport: URL? = nil,
         fileManager: FileManager = .default
     ) -> SnapshotStore {
-        let base = applicationSupport
-            ?? (try? fileManager.url(
-                for: .applicationSupportDirectory, in: .userDomainMask,
-                appropriateFor: nil, create: false
-            ))
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appending(path: "Library/Application Support")
-        return SnapshotStore(
-            directory: base
-                .appending(path: "tkzmux", directoryHint: .isDirectory)
-                .appending(path: "sessions", directoryHint: .isDirectory)
-        )
+        let support = applicationSupport?.appending(path: AppPaths.directoryName, directoryHint: .isDirectory)
+            ?? AppPaths.support(fileManager: fileManager)
+        return SnapshotStore(directory: support.appending(path: "sessions", directoryHint: .isDirectory))
     }
 
     // MARK: Paths

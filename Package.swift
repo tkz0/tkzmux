@@ -55,6 +55,12 @@ let sharedTargets: [Target] = [  // hygiene-scan
         path: "Sources/TkzCore"
     ),
 
+    .target(
+        name: "Persistence",
+        dependencies: ["TkzCore", "TkzPlatform"],
+        path: "Sources/Persistence"
+    ),
+
     .testTarget(name: "TkzPlatformTests", dependencies: ["TkzPlatform"], path: "Tests/TkzPlatformTests"),
     .testTarget(name: "TkzCoreTests", dependencies: ["TkzCore"], path: "Tests/TkzCoreTests"),
 
@@ -90,6 +96,10 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
         exclude: ["glsl", "generated"],
         publicHeadersPath: "include"
     ),
+
+    // The Mac's PersistenceTests also lists TkzTerminalCore and GhosttyVt; nothing in it imports
+    // them, and neither is in the Linux graph yet (WOR-304 S3).
+    .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzCore"], path: "Tests/PersistenceTests"),
 
     .testTarget(
         name: "GhosttyVtSmokeTests",
@@ -169,11 +179,6 @@ let macOnlyTargets: [Target] = [
         name: "GitStatus",
         dependencies: ["TkzCore"],
         path: "Sources/GitStatus"
-    ),
-    .target(
-        name: "Persistence",
-        dependencies: ["TkzCore", "TkzPlatform"],
-        path: "Sources/Persistence"
     ),
     .target(
         name: "TkzApp",

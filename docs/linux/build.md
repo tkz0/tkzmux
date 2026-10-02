@@ -10,8 +10,8 @@ How one `Package.swift` builds the Mac app and the Linux port, which build syste
 
   | Array | Contents today | Grows in |
   |---|---|---|
-  | `shared` | `GhosttyVt`, `TkzPlatform`, `TkzCore`, `TkzPlatformTests`, `TkzCoreTests`; product `TkzCore` | WOR-304 to WOR-310, as targets compile on Linux |
-  | `linuxOnly` | `TkzmuxLinux` (product `tkzmux`), `GhosttyVtSmokeTests` | WOR-311 to WOR-314 |
+  | `shared` | `GhosttyVt`, `TkzPlatform`, `TkzCore`, `Persistence`, `TkzPlatformTests`, `TkzCoreTests`; product `TkzCore` | WOR-304 to WOR-310, as targets compile on Linux |
+  | `linuxOnly` | `TkzmuxLinux` (product `tkzmux`), `GhosttyVtSmokeTests`, and the Linux `PersistenceTests`, which depends only on `Persistence` and `TkzCore` (the Mac entry also lists `TkzTerminalCore` and `GhosttyVt`, which none of its files import) | WOR-311 to WOR-314 |
   | `macOnly` | everything else, as before | shrinks as targets move to `shared` |
 
 - **`GhosttyVt` keeps one name.** On macOS it is `vendor/ghostty-vt/ghostty-vt.xcframework`; on Linux it is the SE-0482 bundle `vendor/ghostty-vt/ghostty-vt-linux.artifactbundle` ([vendoring.md](vendoring.md)). Linux consumers add `.linkedLibrary("m")`, because the bundle's localized compiler_rt leaves `exp`, `log` and friends to libm.
@@ -26,8 +26,8 @@ How one `Package.swift` builds the Mac app and the Linux port, which build syste
 
 | Change | Why | Removed by |
 |---|---|---|
-| `#if canImport(CoreGraphics)` around `import CoreGraphics` in `AppState.swift`, `Models.swift`, `Panes.swift` and `Tests/TkzCoreTests/PaneTests.swift` | There is no CoreGraphics on Linux; `CGFloat`/`CGRect` come from Foundation there | WOR-304 S3, which drops the import for `import Foundation` |
-| `RGB.swift`: `import Darwin`, else `import Glibc` | `pow` | stays |
+| `#if canImport(CoreGraphics)` around `import CoreGraphics` in `AppState.swift`, `Models.swift`, `Panes.swift` and `Tests/TkzCoreTests/PaneTests.swift` | There is no CoreGraphics on Linux; `CGFloat`/`CGRect` come from Foundation there | Removed in WOR-304 S3: the files import Foundation only, and `SourceHygieneTests` forbids `import CoreGraphics` in TkzCore, even behind a guard |
+| `RGB.swift`: `import Darwin`, else `import Glibc` | `pow` | Removed in WOR-304 S3: `import Foundation`, which provides `pow` on both OSes |
 | `AppStore.swift`: `@preconcurrency import Dispatch` on Linux only | swift-corelibs-libdispatch does not mark `DispatchSourceUserDataAdd` Sendable, so the nonisolated `deinit` could not cancel the source (a hard error in Swift 6 mode). Cancelling a source is thread-safe on both OSes, and the Mac import is unchanged | stays until corelibs Dispatch is annotated |
 
 No TkzCoreTests test fails on Linux, so none is disabled. The two `AppStoreTests` that wait for the store's main-queue delivery carry `.timeLimit(.minutes(1))`, so a main queue that never drains on Linux fails instead of hanging the run (WOR-304 owns the rest of TkzCore's main-queue users).

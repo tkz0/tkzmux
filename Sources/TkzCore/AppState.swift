@@ -6,9 +6,6 @@
 //   * every view addresses rows by id anyway (`NSOutlineView` items are ids).
 // Display order comes from the `order` field via the ordered accessors below.
 
-#if canImport(CoreGraphics)
-import CoreGraphics
-#endif
 import Foundation
 
 public struct AppState: Hashable, Sendable {

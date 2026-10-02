@@ -6,7 +6,7 @@
 // landing on the wrong tab is a bug worth catching without a window.
 
 import AppKit
-import CoreGraphics
+import Foundation
 
 public enum TabStripMetrics {
     /// Tall enough for a 12.5 pt title and a badge, short enough that a single-tab session loses

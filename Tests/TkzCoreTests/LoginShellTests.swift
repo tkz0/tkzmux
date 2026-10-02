@@ -42,6 +42,27 @@ import Testing
         #expect(relative == .zsh)
     }
 
+    /// The last resort walks `/bin/zsh` → `/bin/bash` → `/bin/sh`, skipping what is not
+    /// executable: a Linux system without zsh gets bash, a minimal one sh.
+    @Test(arguments: [
+        (["/bin/zsh", "/bin/bash", "/bin/sh"], "/bin/zsh"),
+        (["/bin/bash", "/bin/sh"], "/bin/bash"),
+        (["/bin/sh"], "/bin/sh"),
+        // Nothing passes the check: still `/bin/sh`, never no shell at all.
+        ([], "/bin/sh"),
+    ])
+    func lastResortFallbackChain(executable: [String], expected: String) {
+        let shell = LoginShell.detect(
+            environment: ["SHELL": "/opt/homebrew/bin/fish"], passwordDatabaseShell: "relative/zsh",
+            isExecutable: { executable.contains($0) })
+        #expect(shell.path == expected)
+    }
+
+    @Test func fallbackOrder() {
+        #expect(LoginShell.fallbackPaths == ["/bin/zsh", "/bin/bash", "/bin/sh"])
+        #expect(LoginShell.fallbackPaths.first == LoginShell.zsh.path)
+    }
+
     @Test func classifiesByBasename() {
         #expect(LoginShell(path: "/bin/zsh").family == .zsh)
         #expect(LoginShell(path: "/opt/homebrew/bin/bash").family == .bash)

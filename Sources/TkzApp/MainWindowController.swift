@@ -2751,7 +2751,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         }
         let alert = NSAlert()
         alert.messageText = "Run Command"
-        alert.informativeText = "Runs in \((directory as NSString).abbreviatingWithTildeInPath) "
+        alert.informativeText = "Runs in \(AppPaths.abbreviatingHome(directory)) "
             + "and is remembered for every session of this repo."
         alert.addButton(withTitle: "Run")
         alert.addButton(withTitle: "Cancel")
@@ -3280,7 +3280,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             shellIntegrationInstalled: { [weak self] in self?.agents?.installer?.isInstalled },
             shellIntegrationDirectory: { [weak self] in
                 guard let directory = self?.agents?.installer?.directory else { return nil }
-                return (directory.path as NSString).abbreviatingWithTildeInPath
+                return AppPaths.abbreviatingHome(directory.path)
             },
             offerCodexHooks: { [weak self] key in self?.configureCodexHooks(accountKey: key) },
             removeCodexHooks: { [weak self] key in self?.removeCodexHooks(accountKey: key) },
