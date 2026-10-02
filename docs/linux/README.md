@@ -20,14 +20,14 @@ All five ADRs were ratified in WOR-299 S6 on 2026-10-02. ADR-0004 and ADR-0005 a
 
 ## Other docs, by milestone
 
-None of these exist yet, so they are listed by file name and become links when they are written. Each is created by the session listed with it. Later sessions may extend a doc, but they do not start a second doc on the same topic.
+Docs that do not exist yet are listed by file name and become links when they are written. Each is created by the session listed with it. Later sessions may extend a doc, but they do not start a second doc on the same topic.
 
 | Document | Topic | Created by |
 |---|---|---|
 | `dev.md` | Toolchain on Omarchy/Arch, container tag and digest, pacman and apt package table | WOR-300 S1 |
 | `spikes.md` | GtkApplication, libdispatch, @MainActor and Swift Testing spike results; go/no-go | WOR-300 S2 |
 | `spike-presentation.md` | Vulkan dmabuf → GdkDmabufTexture → GraphicsOffload spike, offload debug variable | WOR-301 S1 |
-| `vendoring.md` | libghostty-vt for Linux: artifact bundle, compiler_rt localization, ABI files, terminfo | WOR-302 S4 |
+| [vendoring.md](vendoring.md) | libghostty-vt for Linux: artifact bundle, compiler_rt localization, ABI files, terminfo, binary checks | WOR-302 S4 |
 | `build.md` | Two-platform Package.swift, build-system choice, resource lookup, version stamping | WOR-303 S1 |
 | `platform.md` | TkzPlatform path table (XDG) and platform back-ends | WOR-304 S3 |
 | `hook.md` | `tkzmux-hook` on Linux: timing results and linkage choice | WOR-305 S6 |

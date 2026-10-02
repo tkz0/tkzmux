@@ -17,6 +17,7 @@ VERSION=1.2.3 make app      # override the derived version
 make notarize               # notarize + staple an already-built, really-signed app (network)
 make dist                   # tag → signed+notarized zip + sha256 → gh release (see docs/release.md)
 make vendor                 # rebuild vendor/ghostty-vt at vendor/ghostty-vt/COMMIT (zig 0.16.x, xcodebuild, tic; network)
+make vendor-linux           # Linux x86_64: rebuild vendor/ghostty-vt/ghostty-vt-linux.artifactbundle at the same COMMIT (zig 0.16.x, swift; network)
 make clean                  # rm -rf .build build
 ```
 
