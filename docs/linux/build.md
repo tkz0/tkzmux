@@ -1,6 +1,6 @@
 # Building tkzmux on two platforms
 
-How one `Package.swift` builds the Mac app and the Linux port, which build system Linux uses, and how the macOS graph is kept unchanged. Written in WOR-303 S1. WOR-303 S2 adds Linux CI, WOR-303 S3 adds resource lookup and the `Bundle.main` findings, and WOR-303 S4 adds version stamping.
+How one `Package.swift` builds the Mac app and the Linux port, which build system Linux uses, and how the macOS graph is kept unchanged. Written in WOR-303 S1. WOR-303 S2 adds Linux CI, WOR-303 S3 adds resource lookup and the `Bundle.main` findings, and WOR-303 S4 adds version stamping and `AppIdentity`.
 
 ## Package.swift: one manifest, two graphs
 
@@ -16,8 +16,9 @@ How one `Package.swift` builds the Mac app and the Linux port, which build syste
 
 - **`GhosttyVt` keeps one name.** On macOS it is `vendor/ghostty-vt/ghostty-vt.xcframework`; on Linux it is the SE-0482 bundle `vendor/ghostty-vt/ghostty-vt-linux.artifactbundle` ([vendoring.md](vendoring.md)). Linux consumers add `.linkedLibrary("m")`, because the bundle's localized compiler_rt leaves `exp`, `log` and friends to libm.
 - **The Linux `tkzmux`** is the product name of target `TkzmuxLinux` (`Sources/tkzmux-linux/main.swift`), so the binary is `tkzmux` under both build systems. Until WOR-314 it is a synchronous stub:
-  - `--version`/`-v` prints the same banner as the Mac app (`tkzmux 0.0.0-dev (0) libghostty-vt unknown` from `.build`; WOR-303 S4 stamps real values);
+  - `--version`/`-v` prints the same banner as the Mac app: `tkzmux 0.0.0-dev (0) libghostty-vt unknown` from `.build`, the stamped values from an install ([Version stamping](#version-stamping-and-app-identity));
   - the hidden `--vt-smoke` writes `hello` to an 80×24 libghostty-vt terminal and prints the plain-text screen;
+  - the hidden `--locate-resources` prints `<module> <path>` for every resource bundle as the process resolves it, and exits 1 if one is missing;
   - anything else prints `tkzmux: not yet implemented on Linux` to stderr and exits 69, so `make run` fails on Linux for now.
 - **`hygiene-scan` marker.** The `shared` and `linuxOnly` target arrays carry `// hygiene-scan` on their declaration line. `Tests/TkzCoreTests/RunLoopHygieneTests.swift` reads every `Sources/…`/`Tests/…` path from those arrays and fails on `Timer.scheduledTimer`, `RunLoop`, `CFRunLoop…(`, `.add(to: .main`, `Timer(timeInterval:/fire:`, `perform(_:afterDelay:)` and `dispatchMain()` there, because none of them fire under the GTK main loop ([spikes.md](spikes.md#runloop-inventory)). A target moved into either array is covered without touching the test. The only allowed site is the Mac display link at `Sources/TkzTerminalView/TerminalMetalView.swift:546`, which is not scanned today. An injected `Timer.scheduledTimer` in `Sources/TkzCore` fails the test (verified once, not committed).
 
@@ -68,7 +69,7 @@ ADR-0002 D2 recommends `--build-system native`, passed explicitly so that a tool
 
 | Job | Image | Steps | Required |
 |---|---|---|---|
-| `arch` | `archlinux:base-20260927.0.600689` by digest; `pacman -Syu` against the Arch Linux Archive snapshot of the same day (`ARCH_SNAPSHOT`) | the `pin swift` toolchain from [dev.md](dev.md) (tarball, signature, ncurses links, `libxml2-legacy`); `check-linkage.sh --lint`; `swift build`; `swift test --no-parallel` with the guard; test runner vs `[tests]`; `swift build -c release --product tkzmux` (default stdlib) with `--version` and `--vt-smoke`; `check-linkage.sh` and `check-binary.sh` vs `[tkzmux-default-stdlib]` | yes |
+| `arch` | `archlinux:base-20260927.0.600689` by digest; `pacman -Syu` against the Arch Linux Archive snapshot of the same day (`ARCH_SNAPSHOT`) | the `pin swift` toolchain from [dev.md](dev.md) (tarball, signature, ncurses links, `libxml2-legacy`); `check-linkage.sh --lint`; `swift build`; `swift test --no-parallel` with the guard; test runner vs `[tests]`; `swift build -c release --product tkzmux` (default stdlib) with `--version` and `--vt-smoke`; `InstalledStubTests` against that release stub (the same guarded step, `TKZMUX_TEST_STUB` set); `check-linkage.sh` and `check-binary.sh` vs `[tkzmux-default-stdlib]` | yes |
 | `ubuntu` | `ubuntu-24.04` + the dev.md `pin image` (`swift:6.3.3-noble` by digest); asserts the image's Swift equals the pin | apt `zsh fish git python3 ncurses-bin binutils pkg-config`; one `swift build --target` per entry of `NON_GTK_TARGETS`; `swift test --no-parallel` with the guard | no; WOR-314 S1 restricts or retires it |
 | `arch-latest` | `archlinux:latest`, live mirrors | the `arch` steps (a YAML anchor), no `.build` cache | no; schedule (Mondays) and manual runs only |
 
@@ -147,6 +148,34 @@ The real `ModuleResources.swift` and `TerminalEnvironment.swift` were compiled o
 | `TKZMUX_RESOURCE_DIR` holding only `tkzmux_AgentBridge.bundle` | that one from the override, the rest from `<T>/lib/tkzmux` | unchanged |
 
 `TERMINFO=<located dir> infocmp xterm-ghostty` succeeds for the located directory of the relocated tree.
+
+## Version stamping and app identity
+
+WOR-303 S4. The Mac stamps three keys into the `.app`'s Info.plist; Linux has no Info.plist (`Bundle.main.infoDictionary` is empty), so the same keys go into `<prefix>/lib/tkzmux/version.plist`, beside the resource bundles.
+
+| | Mac | Linux |
+|---|---|---|
+| Derivation | `scripts/lib/version.sh` (`version_stamp`, `version_from_describe`), sourced by `scripts/make-app.sh` | the same file, sourced by `scripts/linux-version-plist.sh` |
+| Written by | PlistBuddy into `Contents/Info.plist` | `scripts/linux-version-plist.sh [OUT]`: plain-text XML plist, no PlistBuddy or plutil, stdout without `OUT`; WOR-324's install runs it |
+| Keys | `CFBundleShortVersionString` (`git describe`, or `VERSION`), `CFBundleVersion` (`git rev-list --count HEAD`), `TkzGhosttyCommit` (`vendor/ghostty-vt/COMMIT`) | same; the script also refuses a commit that is not 40 hex characters and a non-numeric build |
+| Read by `AppVersion.current` | `Bundle.main.infoDictionary` (unchanged) | `PropertyListSerialization` over `ResourceLocator.versionPlistURL`: `$TKZMUX_RESOURCE_DIR/version.plist`, then `<prefix>/lib/tkzmux/version.plist`; never the executable's own directory, where a file would be stale |
+| Without it | `0.0.0-dev (0) … unknown` (`swift run`) | the same, also for an unreadable file |
+
+- **`make app` is unchanged.** `version_from_describe` moved verbatim. Replaying the version block of the old and new `make-app.sh` in a scratch repository gives identical `==> version …` lines for no tag (clean and dirty), an exact tag, an exact prerelease tag (clean and dirty), commits past a tag (clean and dirty), a `VERSION` override and an empty `VERSION`. The PlistBuddy calls and self-checks read the same three variables.
+- **One table, two implementations.** `AppVersionTests.shellAgreesWithTheTable` sources `scripts/lib/version.sh` and runs `version_from_describe` against the Swift `AppVersion.marketingVersion(fromGitDescribe:)` table, on both OSes.
+- **Bash 5.2.** `${s//&/&amp;}` does not escape on bash ≥ 5.2 (`patsub_replacement` substitutes the match for an unquoted `&`), so the script escapes with `sed`.
+
+`Sources/TkzCore/AppIdentity.swift`:
+
+| | macOS | Linux release | Linux debug (`swift build`, `swift run`, `swift test`) |
+|---|---|---|---|
+| `AppIdentity.id` | `se.tkz.tkzmux` (`CFBundleIdentifier`) | `se.tkz.tkzmux` | `se.tkz.tkzmux.Devel` |
+| `AppIdentity.isInstalled` | `Bundle.main.bundleIdentifier != nil` | `<prefix>/lib/tkzmux` exists beside `<prefix>/bin` | same |
+
+- `DEBUG` is SwiftPM's own define for `-c debug`. Checked under both configurations: `swift test -c release --filter AppIdentityTests` asserts `id == releaseID`, the debug run asserts `.Devel`.
+- `SystemNotificationPresenter.isAvailable` (`Sources/TkzApp/SessionSeams.swift`) now reads `AppIdentity.isInstalled`, which on the Mac is the expression it replaced.
+
+**Relocated install.** `Tests/TkzCoreTests/InstalledStubTests.swift` (Linux) copies the stub to `<tmp>/bin/tkzmux`, checks the dev fallback and that no bundle resolves, then writes `<tmp>/lib/tkzmux/version.plist` with the script and one empty `tkzmux_<Module>.resources` per `ResourceLocator.resourceModules`. Run with only `PATH` and `HOME` in its environment and `<tmp>` as its working directory, directly and through `<tmp>/home/.local/bin/tkzmux` → `<tmp>/bin/tkzmux`, it prints `tkzmux <ver> (<build>) libghostty-vt <40-char commit>` and resolves every bundle in `<tmp>/lib/tkzmux`. The stub is `$TKZMUX_TEST_STUB` when set (CI: the release build), else the debug `tkzmux` that `swift test` builds beside the test runner (both build systems). `resourceModules` is checked against the `resources:` of Package.swift's non-test targets.
 
 ## Tests on Linux
 

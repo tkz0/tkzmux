@@ -7,9 +7,10 @@
 # Jobs (ADR-0002 D5):
 #   arch         REQUIRED. archlinux:base pinned by digest, its packages pinned to the same day's
 #                Arch Linux Archive snapshot, the Swift pin from docs/linux/dev.md installed as that
-#                page describes. Debug build, serial tests, release build of `tkzmux`, then
-#                scripts/linux/check-linkage.sh (NEEDED/RUNPATH only, per linkage-policy.txt; the
-#                ldd closure count is printed, never gated) and scripts/linux/check-binary.sh.
+#                page describes. Debug build, serial tests, release build of `tkzmux` and its
+#                relocated-install test (InstalledStubTests), then scripts/linux/check-linkage.sh
+#                (NEEDED/RUNPATH only, per linkage-policy.txt; the ldd closure count is printed,
+#                never gated) and scripts/linux/check-binary.sh.
 #   ubuntu       ubuntu-24.04 + the pinned swift:<pin>-noble image (never the runner's own Swift):
 #                one `swift build --target` per non-GTK target, then the tests. WOR-314 S1
 #                restricts the list or retires the job once a GTK target exists (noble has GTK 4.14).
@@ -143,11 +144,18 @@ jobs:
 
       # The summary-line guard, shared by every job (see the header). --no-parallel is required:
       # ci.yml explains why, and docs/linux/build.md ("Tests on Linux").
+      # The arch job runs this step twice: the whole suite here, and once more after the release
+      # build, with TKZMUX_BIN set, for InstalledStubTests against the release stub (a relocated
+      # <prefix>/bin + <prefix>/lib/tkzmux tree; without TKZMUX_TEST_STUB it uses the debug stub).
       - &swift-test
-        name: swift test
+        name: swift test${{ env.TKZMUX_BIN && ' (InstalledStubTests, release stub)' || '' }}
+        env:
+          TKZMUX_TEST_STUB: ${{ env.TKZMUX_BIN }}
         run: |
           log="$RUNNER_TEMP/swift-test.log"
-          swift test --build-system native --no-parallel 2>&1 | tee "$log"
+          filter=()
+          if [ -n "$TKZMUX_TEST_STUB" ]; then filter=(--filter InstalledStubTests); fi
+          swift test --build-system native --no-parallel "${filter[@]}" 2>&1 | tee "$log"
           # Exit status 0 is not enough (header; scripts/test-memory-probe.sh): one
           # "Test run with N tests ..." line per finished run, every N > 0.
           counts="$(sed 's/\x1b\[[0-9;]*m//g' "$log" | sed -n 's/.*Test run with \([0-9][0-9]*\) tests\{0,1\} .*/\1/p')"
@@ -172,6 +180,8 @@ jobs:
           echo "TKZMUX_BIN=$bin" >> "$GITHUB_ENV"
           "$bin" --version
           [ "$("$bin" --vt-smoke)" = "hello" ]
+
+      - *swift-test
 
       - name: check-linkage.sh (NEEDED only)
         run: scripts/linux/check-linkage.sh "$TKZMUX_BIN" tkzmux-default-stdlib

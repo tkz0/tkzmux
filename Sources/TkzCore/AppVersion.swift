@@ -16,6 +16,11 @@
 // `swift run tkzmux` has no bundle at all (`Bundle.main.infoDictionary` is nil or empty), so every
 // field falls back to a *visibly* non-release form rather than lying with a plausible number.
 //
+// **Linux** has no Info.plist (`Bundle.main.infoDictionary` is empty there). The same three keys are
+// written by `scripts/linux-version-plist.sh` to `<prefix>/lib/tkzmux/version.plist` (WOR-303 S4;
+// WOR-324 installs it), and `current` reads that file instead, found through `ResourceLocator`
+// (`versionPlistURL`). From `.build` there is no such file, so the same fallbacks apply.
+//
 // TkzCore is the headless half of the app (`SourceHygieneTests`): Foundation only, no AppKit. The
 // reading is injectable — `init(infoDictionary:)` — so the tests never depend on the real bundle.
 
@@ -43,7 +48,8 @@ public struct AppVersion: Sendable, Equatable, CustomStringConvertible {
 
     public static let marketingVersionKey = "CFBundleShortVersionString"
     public static let buildKey = "CFBundleVersion"
-    /// tkzmux's own key — `scripts/make-app.sh` adds it; the committed plist does not have it.
+    /// tkzmux's own key — `scripts/make-app.sh` adds it (and `scripts/linux-version-plist.sh` writes
+    /// it on Linux); the committed plist does not have it.
     public static let ghosttyCommitKey = "TkzGhosttyCommit"
 
     // MARK: Fields
@@ -77,8 +83,28 @@ public struct AppVersion: Sendable, Equatable, CustomStringConvertible {
             ghosttyCommit: string(Self.ghosttyCommitKey) ?? Self.unknownGhosttyCommit)
     }
 
-    /// This process's identity. Reads `Bundle.main` once, lazily.
+    /// This process's identity, read once, lazily: `Bundle.main` on the Mac, the installed
+    /// `version.plist` on Linux (see the header).
+    #if os(Linux)
+    public static let current = AppVersion(infoDictionary: installedInfoDictionary(locator: .current))
+    #else
     public static let current = AppVersion(infoDictionary: Bundle.main.infoDictionary)
+    #endif
+
+    /// The Linux `version.plist` the locator finds, parsed. Nil when there is none or it is not a
+    /// dictionary plist, which ``init(infoDictionary:)`` turns into the dev fallbacks: like a
+    /// missing bundle, a broken file must never stop the app from starting.
+    static func installedInfoDictionary(locator: ResourceLocator) -> [String: Any]? {
+        locator.versionPlistURL.flatMap(infoDictionary(contentsOf:))
+    }
+
+    /// An XML or binary property list whose root is a dictionary, or nil.
+    static func infoDictionary(contentsOf url: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url),
+              let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        else { return nil }
+        return plist as? [String: Any]
+    }
 
     // MARK: Derived
 
@@ -100,8 +126,9 @@ public struct AppVersion: Sendable, Equatable, CustomStringConvertible {
 
     /// Turns `git describe --tags --match 'v*' --dirty` output into a marketing version.
     ///
-    /// **This mirrors `version_from_describe` in `scripts/make-app.sh`, which is what actually
-    /// stamps `CFBundleShortVersionString`.** The Swift copy exists so the rules are pinned by
+    /// **This mirrors `version_from_describe` in `scripts/lib/version.sh`, which is what actually
+    /// stamps `CFBundleShortVersionString`** (through `scripts/make-app.sh` and
+    /// `scripts/linux-version-plist.sh`). The Swift copy exists so the rules are pinned by
     /// tests and so anything on this side (a release check, a distribution filename) derives the
     /// same string. The two must be changed together; `AppVersionTests` is the shared table.
     ///

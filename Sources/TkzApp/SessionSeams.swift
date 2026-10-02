@@ -12,7 +12,7 @@
 //
 // `UNUserNotificationCenter.current()` **traps** in a process with no bundle identifier
 // (`swift run tkzmux`, `swift test`), so it must not be touched unconditionally.
-// `SystemNotificationPresenter` checks `Bundle.main.bundleIdentifier` before it ever names
+// `SystemNotificationPresenter` checks for one (`AppIdentity.isInstalled`) before it ever names
 // the class, and tests inject a fake presenter and never reach UserNotifications at all.
 
 import AppKit
@@ -115,8 +115,9 @@ public final class SystemNotificationPresenter:
         case unknown, requesting, granted
     }
 
-    /// True only inside a real `.app` (or any process with a bundle identifier).
-    public static var isAvailable: Bool { Bundle.main.bundleIdentifier != nil }
+    /// True only inside a real `.app` (or any process with a bundle identifier):
+    /// `AppIdentity.isInstalled`, which is exactly that check on the Mac.
+    public static var isAvailable: Bool { AppIdentity.isInstalled }
 
     public override init() { super.init() }
 

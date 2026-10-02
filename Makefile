@@ -4,7 +4,7 @@
 #                   will quarantine it on anyone else's Mac. A "Developer ID Application: …"
 #                   identity additionally turns on the hardened runtime + secure timestamp.
 #   NOTARY_PROFILE  `xcrun notarytool store-credentials` keychain profile name.
-#   VERSION         override the version derived from `git describe` (see scripts/make-app.sh).
+#   VERSION         override the version derived from `git describe` (see scripts/lib/version.sh).
 #   SWIFT_FLAGS     extra flags for `swift build`/`test`/`run`, e.g. `-c release`. Never a target
 #                   selection: see the cross-compile refusal below.
 #

@@ -22,6 +22,9 @@
 // Each is probed for `tkzmux_<Module>.resources` (the native build system's name on Linux), then
 // `tkzmux_<Module>.bundle` (Swift Build's).
 //
+// The Linux `version.plist` (WOR-303 S4) is read from the same install directory, see
+// `versionPlistURL`, and `AppIdentity.isInstalled` is "the install directory exists".
+//
 // Everything is a function of the injected platform, executable path, environment and main
 // resource URL, so the Linux order is tested on the Mac and the Mac order on Linux.
 
@@ -49,6 +52,14 @@ public struct ResourceLocator: Sendable {
 
     /// SwiftPM names a module's resource bundle `<package>_<module>`.
     public static let bundlePrefix = "tkzmux_"
+
+    /// Every module with a SwiftPM resource bundle, i.e. every non-test target in Package.swift with
+    /// `resources:` (`ResourceLocatorTests` checks the manifest). An install ships one bundle each.
+    public static let resourceModules = ["TkzTerminalCore", "TkzTerminalRender", "AgentBridge"]
+
+    /// The Linux stand-in for the `.app`'s stamped Info.plist, written by
+    /// `scripts/linux-version-plist.sh` and read by `AppVersion.current`.
+    public static let versionPlistName = "version.plist"
 
     /// Either layout of the compiled `xterm-ghostty` entry: hex (`78/`), which macOS ncurses reads,
     /// and letter (`x/`), which Linux ncurses reads. `make vendor` commits both (WOR-302 S1).
@@ -147,6 +158,28 @@ public struct ResourceLocator: Sendable {
         return nil
     }
 
+    /// The Linux `version.plist`: in `$TKZMUX_RESOURCE_DIR` (standing in for the install, as for the
+    /// bundles), then in `installDirectory`. Never the executable's own directory: a version
+    /// describes an install, and a stray file beside a `.build` product would be stale. Nil on
+    /// macOS, where the version is in the bundle's Info.plist, and when no file exists.
+    public var versionPlistURL: URL? {
+        guard platform == .linux else { return nil }
+        var directories: [URL] = []
+        if let override = environment[Self.resourceDirectoryVariable], !override.isEmpty {
+            directories.append(URL(fileURLWithPath: override, isDirectory: true))
+        }
+        if let installDirectory { directories.append(installDirectory) }
+        return directories
+            .map { $0.appending(path: Self.versionPlistName, directoryHint: .notDirectory) }
+            .first { Self.isRegularFile($0) }
+    }
+
+    /// Whether `installDirectory` exists: the executable runs from an installed `<prefix>/bin`.
+    /// False on macOS (no install directory) and from `.build`.
+    public var installDirectoryExists: Bool {
+        installDirectory.map(Self.isDirectory) ?? false
+    }
+
     /// `<directory>/terminfo` if it holds `xterm-ghostty` in either layout, else nil.
     public static func terminfoDirectory(in directory: URL) -> URL? {
         let terminfo = directory.appending(path: "terminfo", directoryHint: .isDirectory)
@@ -161,5 +194,10 @@ public struct ResourceLocator: Sendable {
     static func isDirectory(_ url: URL) -> Bool {
         var isDir: ObjCBool = false
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+    }
+
+    static func isRegularFile(_ url: URL) -> Bool {
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && !isDir.boolValue
     }
 }

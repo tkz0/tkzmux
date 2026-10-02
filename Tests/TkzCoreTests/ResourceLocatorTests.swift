@@ -183,6 +183,67 @@ import Testing
             == Self.paths([install.appending(path: "tkzmux_TkzTerminalCore.resources")]))
     }
 
+    // MARK: version.plist
+
+    /// The override, then the install directory; never the executable's directory, never on macOS.
+    @Test func versionPlistIsReadFromTheOverrideThenTheInstall() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appending(path: "prefix/bin/tkzmux")
+        try Self.makeFile(executable)
+        let install = root.appending(path: "prefix/lib/tkzmux")
+        let override = root.appending(path: "override")
+        let overridden = [ResourceLocator.resourceDirectoryVariable: override.path]
+
+        try Self.makeFile(root.appending(path: "prefix/bin/version.plist"))
+        #expect(Self.linux(executable: executable, main: executable.deletingLastPathComponent()).versionPlistURL == nil)
+
+        // A directory with the name is not the file.
+        try Self.makeDirectory(install.appending(path: "version.plist"))
+        #expect(Self.linux(executable: executable).versionPlistURL == nil)
+        try FileManager.default.removeItem(at: install.appending(path: "version.plist"))
+
+        try Self.makeFile(install.appending(path: "version.plist"))
+        #expect(Self.paths([try #require(Self.linux(executable: executable).versionPlistURL)])
+            == Self.paths([install.appending(path: "version.plist")]))
+        // An override without the file falls through to the install.
+        try Self.makeDirectory(override)
+        #expect(Self.paths([try #require(Self.linux(executable: executable, environment: overridden).versionPlistURL)])
+            == Self.paths([install.appending(path: "version.plist")]))
+
+        try Self.makeFile(override.appending(path: "version.plist"))
+        #expect(Self.paths([try #require(Self.linux(executable: executable, environment: overridden).versionPlistURL)])
+            == Self.paths([override.appending(path: "version.plist")]))
+
+        let mac = ResourceLocator(
+            platform: .macOS, executablePath: executable.path, environment: overridden, mainResourceURL: install)
+        #expect(mac.versionPlistURL == nil)
+    }
+
+    // MARK: Resource modules
+
+    /// `resourceModules` is every non-test target in Package.swift with `resources:`, so the stub's
+    /// `--locate-resources` and the relocated-install test cover every bundle an install ships.
+    @Test func resourceModulesMatchThePackageManifest() throws {
+        let manifest = try String(contentsOf: Self.repoRoot.appending(path: "Package.swift"), encoding: .utf8)
+        let start = try NSRegularExpression(
+            pattern: #"\.(target|executableTarget|testTarget|binaryTarget)\(\s*name:\s*"([^"]+)""#)
+        let matches = start.matches(in: manifest, range: NSRange(manifest.startIndex..., in: manifest))
+        var modules: Set<String> = []
+        for (index, match) in matches.enumerated() {
+            guard let kind = Range(match.range(at: 1), in: manifest).map({ manifest[$0] }),
+                  let name = Range(match.range(at: 2), in: manifest).map({ String(manifest[$0]) }),
+                  let lower = Range(match.range, in: manifest)?.lowerBound
+            else { continue }
+            let upper = index + 1 < matches.count
+                ? Range(matches[index + 1].range, in: manifest)?.lowerBound ?? manifest.endIndex
+                : manifest.endIndex
+            if kind != "testTarget", manifest[lower..<upper].contains("resources:") { modules.insert(name) }
+        }
+        #expect(!matches.isEmpty)
+        #expect(modules == Set(ResourceLocator.resourceModules))
+    }
+
     // MARK: Terminfo
 
     @Test(arguments: ["78/xterm-ghostty", "x/xterm-ghostty"])

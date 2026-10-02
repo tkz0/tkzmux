@@ -4,8 +4,13 @@
 // exercised through `init(infoDictionary:)` so nothing here depends on a real bundle.
 //
 // The derivation table below is the **shared contract with `version_from_describe` in
-// `scripts/make-app.sh`** — the script is what actually stamps `CFBundleShortVersionString`, and
-// these cases are copied from its documented rule table. Change one side, change both.
+// `scripts/lib/version.sh`** — the script is what actually stamps `CFBundleShortVersionString`
+// (through `scripts/make-app.sh` and `scripts/linux-version-plist.sh`), and these cases are copied
+// from its documented rule table. `shellAgreesWithTheTable` runs the function itself against them.
+// Change one side, change both.
+//
+// The Linux half (WOR-303 S4): `scripts/linux-version-plist.sh` writes the three keys to a plist
+// that `AppVersion.current` reads from the install directory. Both are exercised on both OSes.
 
 import Foundation
 import Testing
@@ -16,7 +21,7 @@ import Testing
 
     // MARK: - Derivation from `git describe`
 
-    /// The rule table from `scripts/make-app.sh`, verbatim.
+    /// The rule table from `scripts/lib/version.sh`, verbatim.
     /// `<sha>` in the script's table is `git rev-parse --short HEAD`, passed in as `headSHA`.
     static let derivationTable: [(describe: String, expected: String)] = [
         ("v1.2.3", "1.2.3"),
@@ -27,12 +32,28 @@ import Testing
         ("v1.0.0-rc1-2-gdeadbee-dirty", "1.0.0-rc1-dev.2+deadbee.dirty"),
     ]
 
-    @Test("The whole `git describe` rule table matches scripts/make-app.sh")
+    @Test("The whole `git describe` rule table matches scripts/lib/version.sh")
     func derivationTable() {
         for (describe, expected) in Self.derivationTable {
             let actual = AppVersion.marketingVersion(fromGitDescribe: describe, headSHA: "72e78a1")
             #expect(actual == expected, "\(describe) → \(actual), expected \(expected)")
         }
+    }
+
+    /// The shell function itself, sourced from `scripts/lib/version.sh`, against the same table.
+    /// The script asks git for HEAD's sha where describe gives none, so the Swift side gets the
+    /// same one.
+    @Test("`version_from_describe` in scripts/lib/version.sh produces the table")
+    func shellAgreesWithTheTable() throws {
+        let describes = Self.derivationTable.map(\.describe) + ["v1.2.3", "v1.0.0-rc1", "v1.0.0-1-gamma"]
+        let output = try ScriptSupport.bash(
+            ["-c", #"source scripts/lib/version.sh && for d in "$@"; do version_from_describe "$d"; done"#, "bash"]
+                + describes)
+        #expect(output.status == 0, "\(output.stderr)")
+        let head = try ScriptSupport.git(["rev-parse", "--short", "HEAD"])
+        let shell = output.stdout.split(separator: "\n", omittingEmptySubsequences: false).dropLast().map(String.init)
+        let swift = describes.map { AppVersion.marketingVersion(fromGitDescribe: $0, headSHA: head) }
+        #expect(shell == swift)
     }
 
     @Test("An exact, clean tag loses its `v` and nothing else")
@@ -189,6 +210,87 @@ import Testing
     func trimsPlistValues() {
         let version = AppVersion(infoDictionary: ["CFBundleShortVersionString": " 1.2.3\n"])
         #expect(version.marketingVersion == "1.2.3")
+    }
+
+    // MARK: - The Linux version.plist
+
+    /// What `scripts/linux-version-plist.sh` writes, read back the way `AppVersion.current` reads it
+    /// on Linux. A `VERSION` override with markup characters proves the values are escaped.
+    @Test("scripts/linux-version-plist.sh writes a plist AppVersion reads")
+    func linuxVersionPlistRoundTrips() throws {
+        let root = try ScriptSupport.makeTemporaryDirectory("tkz-version")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let plist = root.appending(path: "lib/tkzmux/version.plist")
+        let override = #"1.2.3-dev.4+abc1234 <&> "q""#
+
+        let written = try ScriptSupport.bash(
+            ["scripts/linux-version-plist.sh", plist.path], extraEnvironment: ["VERSION": override])
+        #expect(written.status == 0, "\(written.stderr)")
+        #expect(written.stdout.isEmpty)
+
+        let dictionary = try #require(AppVersion.infoDictionary(contentsOf: plist))
+        #expect(Set(dictionary.keys)
+                == [AppVersion.marketingVersionKey, AppVersion.buildKey, AppVersion.ghosttyCommitKey])
+        let version = AppVersion(infoDictionary: dictionary)
+        #expect(version.marketingVersion == override)
+        #expect(Int(version.build) != nil, "CFBundleVersion is the commit count: \(version.build)")
+        #expect(version.ghosttyCommit == (try ScriptSupport.ghosttyCommit()))
+        #expect(version.ghosttyCommit.count == 40)
+
+        // Without a path it prints the same document.
+        let printed = try ScriptSupport.bash(
+            ["scripts/linux-version-plist.sh"], extraEnvironment: ["VERSION": override])
+        #expect(printed.status == 0, "\(printed.stderr)")
+        #expect(Data(printed.stdout.utf8) == (try Data(contentsOf: plist)))
+    }
+
+    /// `AppVersion.current` on Linux, through an injected locator: the plist in the install
+    /// directory, the override directory before it, and the fallbacks without a readable file.
+    @Test("The installed version.plist is found the way the Linux `current` finds it")
+    func installedPlistLookup() throws {
+        let root = try ScriptSupport.makeTemporaryDirectory("tkz-version")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appending(path: "prefix/bin/tkzmux")
+        try FileManager.default.createDirectory(
+            at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: executable)
+        let install = root.appending(path: "prefix/lib/tkzmux")
+        try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+
+        func locator(_ environment: [String: String] = [:]) -> ResourceLocator {
+            ResourceLocator(platform: .linux, executablePath: executable.path, environment: environment,
+                            mainResourceURL: executable.deletingLastPathComponent())
+        }
+        func plist(_ version: String) throws -> Data {
+            try PropertyListSerialization.data(
+                fromPropertyList: [AppVersion.marketingVersionKey: version, AppVersion.buildKey: "7",
+                                   AppVersion.ghosttyCommitKey: String(repeating: "a", count: 40)],
+                format: .xml, options: 0)
+        }
+
+        // Nothing installed: the `swift run` fallbacks. A plist beside the executable is ignored.
+        try plist("9.9.9").write(to: root.appending(path: "prefix/bin/version.plist"))
+        #expect(AppVersion(infoDictionary: AppVersion.installedInfoDictionary(locator: locator()))
+                == AppVersion(infoDictionary: nil))
+
+        try plist("1.2.3").write(to: install.appending(path: "version.plist"))
+        let installed = AppVersion(infoDictionary: AppVersion.installedInfoDictionary(locator: locator()))
+        #expect(installed.description == "tkzmux 1.2.3 (7) libghostty-vt \(String(repeating: "a", count: 40))")
+
+        let override = root.appending(path: "override")
+        try FileManager.default.createDirectory(at: override, withIntermediateDirectories: true)
+        try plist("4.5.6").write(to: override.appending(path: "version.plist"))
+        #expect(AppVersion(infoDictionary: AppVersion.installedInfoDictionary(
+            locator: locator([ResourceLocator.resourceDirectoryVariable: override.path]))).marketingVersion == "4.5.6")
+
+        // A broken file falls back instead of failing.
+        try Data("not a plist".utf8).write(to: install.appending(path: "version.plist"))
+        #expect(AppVersion.installedInfoDictionary(locator: locator()) == nil)
+
+        // The Mac never reads it: its version is in the bundle's Info.plist.
+        let mac = ResourceLocator(platform: .macOS, executablePath: executable.path, environment: [:],
+                                  mainResourceURL: override)
+        #expect(AppVersion.installedInfoDictionary(locator: mac) == nil)
     }
 
     // MARK: - The `--version` banner

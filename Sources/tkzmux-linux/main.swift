@@ -1,12 +1,17 @@
 // tkzmux on Linux — the entry point until WOR-314 brings the GTK application.
 //
-// Three cases, all answered synchronously on the main thread (no async main, no `dispatchMain()`:
+// Four cases, all answered synchronously on the main thread (no async main, no `dispatchMain()`:
 // WOR-314's GTK loop must own this thread, so nothing here may start a different one):
 //
-//   --version, -v   the banner, exactly as `Sources/tkzmux/main.swift` prints it on the Mac
-//   --vt-smoke      hidden: feeds `hello` to a libghostty-vt terminal and prints the formatted
-//                   screen, proving the vendored archive links and runs in this binary
-//   anything else   "not yet implemented" on stderr, exit 69 (EX_UNAVAILABLE)
+//   --version, -v        the banner, exactly as `Sources/tkzmux/main.swift` prints it on the Mac;
+//                        on Linux its values come from `<prefix>/lib/tkzmux/version.plist`
+//   --vt-smoke           hidden: feeds `hello` to a libghostty-vt terminal and prints the
+//                        formatted screen, proving the vendored archive links and runs in this binary
+//   --locate-resources   hidden: one `<module> <bundle path>` line per resource bundle as this
+//                        process resolves it (`ResourceLocator`), exit 1 if any is missing. The
+//                        relocated-install test (`InstalledStubTests`) needs the real process,
+//                        because the lookup starts at `/proc/self/exe`
+//   anything else        "not yet implemented" on stderr, exit 69 (EX_UNAVAILABLE)
 //
 // Like the Mac entry point, `--version` is a *scan* rather than a match on argv[1].
 
@@ -25,8 +30,27 @@ if arguments.contains("--vt-smoke") {
     exit(vtSmoke())
 }
 
+if arguments.contains("--locate-resources") {
+    exit(locateResources())
+}
+
 FileHandle.standardError.write(Data("tkzmux: not yet implemented on Linux (try --version)\n".utf8))
 exit(69)
+
+/// Prints where each module's resource bundle resolves. Returns 0, or 1 if any is missing.
+func locateResources() -> Int32 {
+    let locator = ResourceLocator.current
+    var status: Int32 = 0
+    for module in ResourceLocator.resourceModules {
+        if let url = locator.bundleURL(forModule: module) {
+            print("\(module) \(url.path)")
+        } else {
+            FileHandle.standardError.write(Data("tkzmux: no resource bundle for \(module)\n".utf8))
+            status = 1
+        }
+    }
+    return status
+}
 
 /// Creates an 80×24 terminal, writes `hello` to it and prints its plain-text screen. Returns the
 /// exit status: 0, or 1 with the failing call on stderr.
