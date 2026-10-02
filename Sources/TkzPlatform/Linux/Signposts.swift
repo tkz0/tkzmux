@@ -5,7 +5,7 @@
 // trace JSON (the "JSON Object Format" of the Trace Event Format), which ui.perfetto.dev and
 // chrome://tracing open. An interval is a nestable async pair (`ph` "b"/"e") keyed by category
 // and signpost id, because begin and end may run on different threads; an event is an instant
-// ("i"). Timestamps are CLOCK_MONOTONIC microseconds.
+// ("i"). Timestamps are `Clocks.monotonicNanos` (CLOCK_MONOTONIC) in microseconds.
 //
 // The file is valid JSON after every event: each write overwrites the closing `]}` with the event
 // and a new `]}`, so a trace survives the process being killed.
@@ -193,7 +193,7 @@ final class TraceWriter: Sendable {
     deinit { close(fd) }
 
     func write(_ event: TraceEvent) {
-        append(event.json(timestampNanos: Self.monotonicNanos(), pid: pid, tid: currentThreadID()))
+        append(event.json(timestampNanos: Clocks.monotonicNanos, pid: pid, tid: currentThreadID()))
     }
 
     private func append(_ object: String) {
@@ -220,12 +220,6 @@ final class TraceWriter: Sendable {
         guard let last = text.split(separator: "/").last, let tid = Int32(last) else { return 0 }
         pthread_setspecific(traceThreadIDKey, UnsafeRawPointer(bitPattern: Int(tid)))
         return tid
-    }
-
-    static func monotonicNanos() -> UInt64 {
-        var now = timespec()
-        clock_gettime(CLOCK_MONOTONIC, &now)
-        return UInt64(now.tv_sec) * 1_000_000_000 + UInt64(now.tv_nsec)
     }
 }
 #endif

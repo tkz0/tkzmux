@@ -22,7 +22,7 @@
 // `zsh/` may already exist and be empty: `TerminalViewHost` creates it at startup so a login zsh
 // spawned before the installer runs still finds *a* ZDOTDIR (see TerminalHost.swift).
 import Foundation
-import CryptoKit
+import TkzPlatform
 import TkzCore
 
 public enum ShimInstallerError: Error, Equatable, Sendable {

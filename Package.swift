@@ -61,7 +61,8 @@ let sharedTargets: [Target] = [  // hygiene-scan
         path: "Sources/Persistence"
     ),
 
-    .testTarget(name: "TkzPlatformTests", dependencies: ["TkzPlatform"], path: "Tests/TkzPlatformTests"),
+    // Fixtures/ (NIST SHAVS vectors) is read through #filePath, not bundled.
+    .testTarget(name: "TkzPlatformTests", dependencies: ["TkzPlatform"], path: "Tests/TkzPlatformTests", exclude: ["Fixtures"]),
     .testTarget(name: "TkzCoreTests", dependencies: ["TkzCore"], path: "Tests/TkzCoreTests"),
 
     // Dependency-free PNG codec for the parity harness and Linux goldens (WOR-311 S6). Not linked

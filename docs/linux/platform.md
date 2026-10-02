@@ -1,6 +1,6 @@
 # TkzPlatform on Linux
 
-The OS seam below the UI (`Sources/TkzPlatform/`): one API per primitive, a back-end per OS. The Darwin back-ends live in `Darwin/` and the Linux ones in `Linux/`. Written in WOR-304 S2 (logging and signposts) and extended in WOR-304 S3 (paths); later WOR-304 sessions add the other primitives.
+The OS seam below the UI (`Sources/TkzPlatform/`): one API per primitive, a back-end per OS. The Darwin back-ends live in `Darwin/` and the Linux ones in `Linux/`. Written in WOR-304 S2 (logging and signposts) and extended in WOR-304 S3 (paths) and S4 (SHA-256 and clocks); later WOR-304 sessions add the other primitives.
 
 ## Logging: `TkzLogger`
 
@@ -104,3 +104,29 @@ This was checked on 2026-10-03 with a probe built by Swift 6.3.3 (corelibs Found
 - `NSString.abbreviatingWithTildeInPath` does not exist in corelibs Foundation at all.
 
 So on Linux `AppPaths` resolves the table itself, from `ProcessInfo.processInfo.environment` and `getpwuid`, as a pure function (`AppPaths.xdgLayout`). That function is table-tested on both OSes (`Tests/TkzPlatformTests/AppPathsTests.swift`). On the Mac, `Tests/PersistenceTests/StandardLocationTests.swift` compares `StateFile.standard()`, `SnapshotStore.standard()` and `AppPaths.support` with the code they replaced, kept verbatim in the test.
+
+## Hashing: `SHA256`
+
+`SHA256` (`Sources/TkzPlatform/SHA256.swift`) is FIPS 180-4 SHA-256 in plain Swift. Both OSes use it, so the Mac no longer imports CryptoKit anywhere.
+
+- **CryptoKit's call shape.** It has `init()`, `update(data:)`, `update(bufferPointer:)`, `hash(data:)`, and a non-mutating `finalize()` that returns a digest. The digest is a `Sequence` of 32 bytes, and its `description` is lowercase hex. `ShimInstaller` switched by changing its import, and nothing else.
+- **No reinstall.** `ShimInstaller.version` hashes the same bytes as before, so the digest in an installed `VERSION` file still matches. `Tests/AgentBridgeTests/ShimVersionGoldenTests.swift` pins two versions, without and with a hook binary. Their digests were computed outside Swift, with Python's `hashlib`.
+- **Checked against.** `Tests/TkzPlatformTests/SHA256Tests.swift` and `SHA256CryptoKitTests.swift` run these checks:
+  - all 129 NIST CAVP SHAVS byte-oriented short- and long-message vectors (`Fixtures/SHAVS`, with provenance in its README);
+  - the FIPS 180-4 examples, including one million `a`s;
+  - seeded random inputs split at random `update` boundaries;
+  - on the Mac, 1,000 random inputs compared with CryptoKit.
+- **Fast enough.** Words are read with unaligned big-endian loads, and the message schedule lives in a stack allocation. On the reference machine (x86_64, Swift 6.3.3, `-O`), 1 MB hashes in a median of 2.2 ms. The test fails a release build (`swift test -c release`) above 10 ms. A debug build only prints its time, about 110 ms.
+- **Not for secrets.** It is not constant-time. tkzmux uses it only to notice when its own files change.
+
+## Clocks: `Clocks`
+
+| | Stops while asleep | Keeps counting while asleep |
+|---|---|---|
+| API | `Clocks.monotonicNanos` | `Clocks.bootNanos` |
+| Linux | `CLOCK_MONOTONIC` | `CLOCK_BOOTTIME` |
+| macOS | `CLOCK_UPTIME_RAW` (`mach_absolute_time`) | `CLOCK_MONOTONIC_RAW` (`mach_continuous_time`) |
+
+- `monotonicNanos` is the clock that `DispatchTime.now().uptimeNanoseconds` reads on both OSes, so intervals agree with Dispatch deadlines. The Linux signposter timestamps through it.
+- `bootNanos` counts suspend, so it is the one for start times and sleep/wake gaps (WOR-320). On Linux it agrees with `/proc/uptime`. Read after `monotonicNanos`, it is never smaller.
+- Neither is wall time, and neither carries across a reboot.
