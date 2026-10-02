@@ -19,11 +19,11 @@
 
 import CoreGraphics
 import Foundation
-import ImageIO
 import Metal
 import QuartzCore
 import Testing
 import TkzCore
+import TkzPNG
 import TkzShaderTypes
 import TkzTerminalCore
 @testable import TkzTerminalRender
@@ -86,25 +86,13 @@ private func goldenSourceURL(_ name: String) -> URL {
     repoRoot().appendingPathComponent("Tests/TkzTerminalRenderTests/Fixtures/\(name)")
 }
 
-/// BGRA bytes of a PNG on disk, at its native size.
+/// Premultiplied BGRA bytes of a PNG on disk, at its native size — the layout
+/// `TerminalRenderer.bgraBytes(of:)` reads back. Decoded by TkzPNG, so the bytes are the file's own
+/// with no colour management, identical on every platform; `TkzPNGParityTests` pins them against the
+/// CoreGraphics path this replaced.
 private func decodePNG(_ url: URL) throws -> (width: Int, height: Int, pixels: [UInt8]) {
-    let data = try Data(contentsOf: url)
-    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-          let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-        struct UndecodablePNG: Error { let url: URL }
-        throw UndecodablePNG(url: url)
-    }
-    let width = image.width, height = image.height
-    var pixels = [UInt8](repeating: 0, count: width * height * 4)
-    pixels.withUnsafeMutableBytes { raw in
-        guard let context = CGContext(
-            data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8,
-            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
-                | CGBitmapInfo.byteOrder32Little.rawValue) else { return }
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-    }
-    return (width, height, pixels)
+    let image = try PNG.decode([UInt8](try Data(contentsOf: url)))
+    return (image.width, image.height, image.premultipliedBGRA())
 }
 
 /// True on a machine that did not produce the committed goldens — today, any CI runner.
