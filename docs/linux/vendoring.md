@@ -125,4 +125,4 @@ The `-static-stdlib` ceiling failure is a real finding, not a checker bug. The s
   TERMINFO="$PWD/Sources/TkzTerminalCore/Resources/terminfo" infocmp -x xterm-ghostty                  # succeeds
   ```
 
-`TerminalEnvironment.bundledTerminfoDirectory` accepts either layout.
+`TerminalEnvironment.bundledTerminfoDirectory` accepts either layout through `ResourceLocator.terminfoDirectory(in:)`, which looks for `78/xterm-ghostty` or `x/xterm-ghostty` ([build.md](build.md#resource-lookup)).

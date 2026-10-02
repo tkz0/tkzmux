@@ -51,25 +51,17 @@ public enum TerminalEnvironment {
     ///
     /// The same compiled entries are committed in two directory layouts: hex (`78/xterm-ghostty`,
     /// `67/ghostty`), which macOS ncurses reads, and letter (`x/xterm-ghostty`, `g/ghostty`), which
-    /// Linux ncurses reads. A directory with either layout is accepted. `make vendor` writes both.
+    /// Linux ncurses reads. A directory with either layout is accepted
+    /// (`ResourceLocator.terminfoDirectory(in:)`). `make vendor` writes both.
     ///
-    /// Two places are tried: the `TkzTerminalCore` resource bundle (what `swift run`/`swift test`
-    /// see) and `Contents/Resources/terminfo` of the app bundle (what `make app` copies).
+    /// The `terminfo` directory is looked for in the `TkzTerminalCore` resource bundle first (what
+    /// `swift run`/`swift test` see), then in each `ResourceLocator` candidate: on macOS that is
+    /// `Contents/Resources/terminfo` of the app bundle (what `make app` copies), on Linux also the
+    /// install's `<prefix>/lib/tkzmux/terminfo`.
     public static var bundledTerminfoDirectory: URL? {
-        let candidates = [
-            ModuleResources.bundle.url(forResource: "terminfo", withExtension: nil),
-            Bundle.main.resourceURL?.appending(path: "terminfo", directoryHint: .isDirectory),
-        ]
-        for case let url? in candidates {
-            var isDir: ObjCBool = false
-            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue,
-               ["78/xterm-ghostty", "x/xterm-ghostty"].contains(where: {
-                   FileManager.default.fileExists(atPath: url.appending(path: $0).path)
-               }) {
-                return url
-            }
-        }
-        return nil
+        let directories = [ModuleResources.bundle.resourceURL].compactMap { $0 }
+            + ResourceLocator.current.candidateDirectories
+        return directories.lazy.compactMap(ResourceLocator.terminfoDirectory(in:)).first
     }
 
     /// Build the environment for one session.

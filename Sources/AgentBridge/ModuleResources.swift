@@ -9,16 +9,18 @@
 // `Bundle.module` **fatalErrors inside build/tkzmux.app** (verified M1.9). See
 // `Sources/TkzTerminalCore/ModuleResources.swift`, which this mirrors exactly.
 //
-// `Bundle.main.resourceURL` is `Contents/Resources` in an `.app` and the executable's own directory
-// under `swift run`, so it covers both. `Bundle.module` is evaluated **last** and only as the
-// `swift test` path — note that anything written *after* it is dead code, because it is a
-// `static let` that traps rather than returning nil.
+// `ResourceLocator` (TkzCore) finds the bundle first. On macOS it probes `Bundle.main.resourceURL`,
+// which is `Contents/Resources` in an `.app` and the executable's own directory under `swift run`,
+// so it covers both. On Linux it also probes `$TKZMUX_RESOURCE_DIR` and the install's
+// `<prefix>/lib/tkzmux`, for `.resources` (SwiftPM's Linux name) and `.bundle`. `Bundle.module` is
+// evaluated **last** and only as the `swift test` path — note that anything written *after* it is
+// dead code, because it is a `static let` that traps rather than returning nil.
 import Foundation
+import TkzCore
 
 enum ModuleResources {
     static let bundle: Bundle = {
-        let name = "tkzmux_AgentBridge.bundle"
-        if let url = Bundle.main.resourceURL?.appendingPathComponent(name),
+        if let url = ResourceLocator.current.bundleURL(forModule: "AgentBridge"),
            let bundle = Bundle(url: url) { return bundle }
         return Bundle.module
     }()

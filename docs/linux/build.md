@@ -105,6 +105,49 @@ Verified on the reference machine on 2026-10-03 by running each job's `run:` ste
 - `SWIFT_FLAGS` passes extra flags to `build`, `test` and `run` on both OSes.
 - On Linux, a host other than x86_64 is refused, because the artifact bundle has only an `x86_64-unknown-linux-gnu` variant.
 
+## Resource lookup
+
+`Sources/TkzCore/ResourceLocator.swift` (WOR-303 S3) is the one place that knows where read-only resources live outside `Bundle.module`. The three `ModuleResources.swift` files (`TkzTerminalCore`, `TkzTerminalRender`, `AgentBridge`) call `ResourceLocator.current.bundleURL(forModule:)` and fall back to `Bundle.module` last. `TerminalEnvironment.bundledTerminfoDirectory` probes the `TkzTerminalCore` bundle and then every candidate directory with `ResourceLocator.terminfoDirectory(in:)`, which accepts `<dir>/terminfo` holding `78/xterm-ghostty` or `x/xterm-ghostty`.
+
+| | Candidate directories, in order | Bundle names tried in each |
+|---|---|---|
+| macOS | `Bundle.main.resourceURL` only, exactly as before | `tkzmux_<Module>.bundle` |
+| Linux | 1. `$TKZMUX_RESOURCE_DIR`, if non-empty; 2. `<prefix>/lib/tkzmux` for `<prefix>/bin/tkzmux`, from `readlink(/proc/self/exe)` with symlinks resolved (ADR-0002 D7); 3. the executable's directory; 4. `Bundle.main.resourceURL` (duplicates dropped) | `tkzmux_<Module>.resources`, then `tkzmux_<Module>.bundle` |
+
+- **`/proc/self/exe`, never `argv[0]`.** A `~/.local/bin/tkzmux` symlink to `/opt/bin/tkzmux` finds `/opt/lib/tkzmux`. A ` (deleted)` suffix, which the kernel adds after an upgrade replaced the file, is stripped.
+- **Both extensions.** The native build system names a resource bundle `.resources` on Linux (a flat directory). Swift Build names it `.bundle` on Linux too (flat, with an `Info.plist`). Within one directory `.resources` wins; an earlier directory wins over a later one.
+- **Pure.** The locator is a value over the platform, executable path, environment and `Bundle.main.resourceURL`, so `Tests/TkzCoreTests/ResourceLocatorTests.swift` checks the Linux order, both extensions, both terminfo layouts and the symlinked launcher on both OSes. On Linux it also runs `TERMINFO=<located dir> infocmp xterm-ghostty` against the committed database and asserts the file ncurses reports is `<dir>/./x/xterm-ghostty`.
+- **`Bundle.module` stays last.** It is a `static let` that traps, so anything after it is dead code. On Linux the generated accessor tries `Bundle.main.bundleURL/tkzmux_<Module>.resources` and then the absolute `.build` path of the machine that built it, so a relocated tree "works" while `.build` exists. Hide `.build` when testing a relocated tree.
+
+### What `Bundle.main` returns on Linux
+
+Measured on the reference machine on 2026-10-03 with the pinned 6.3.3 toolchain, from a scratch package with resources:
+
+| Context | `executableURL` | `bundleURL` and `resourceURL` |
+|---|---|---|
+| `swift run`, native | `.build/x86_64-unknown-linux-gnu/debug/<exe>` | `.build/x86_64-unknown-linux-gnu/debug` |
+| `swift run`, swiftbuild | `.build/out/Products/Debug-linux/<exe>` | `.build/out/Products/Debug-linux` |
+| `swift test`, native | `.build/x86_64-unknown-linux-gnu/debug/tkzmuxPackageTests.xctest` | `.build/x86_64-unknown-linux-gnu/debug` |
+| `swift test`, swiftbuild | `.build/out/Products/Debug-linux/<Target>-test-runner` | `.build/out/Products/Debug-linux` |
+| plain executable, started from `/` | its path | its directory |
+| through a symlink in another directory | the symlink's target | the target's directory: corelibs resolves the link |
+| copied tree `<T>/bin/<exe>` | `<T>/bin/<exe>` | `<T>/bin` |
+
+- In every case `bundleURL` equals `resourceURL`, which is the executable's directory, `bundleIdentifier` is nil and `infoDictionary` is empty (not nil). There is no Linux equivalent of `Contents/Resources`, hence candidate 2.
+- `Bundle(url:)` opens a `.resources` or `.bundle` directory anywhere, including `<prefix>/lib/tkzmux/`, and returns nil for a missing one. `url(forResource:withExtension:)` and `urls(forResourcesWithExtension:subdirectory:)` work in it, and its `resourceURL` is the directory itself.
+
+The real `ModuleResources.swift` and `TerminalEnvironment.swift` were compiled on Linux in a scratch package (with `TerminalSize`/`PtySpawn` stubbed, since `TkzTerminalCore` is not in the Linux graph until WOR-305) and resolved as follows:
+
+| Run | All three bundles | `bundledTerminfoDirectory` |
+|---|---|---|
+| `swift run`, native | `.build/…/debug/tkzmux_<Module>.resources` | `…/tkzmux_TkzTerminalCore.resources/terminfo` |
+| `swift run`, swiftbuild | `.build/out/Products/Debug-linux/tkzmux_<Module>.bundle` | `…/tkzmux_TkzTerminalCore.bundle/terminfo` |
+| `<T>/bin/<exe>` with `<T>/lib/tkzmux/tkzmux_*.resources`, `.build` hidden | `<T>/lib/tkzmux/…` | the bundle's `terminfo`, or `<T>/lib/tkzmux/terminfo` when the bundle has none |
+| the same through `~/.local/bin` symlink | `<T>/lib/tkzmux/…` | same |
+| `TKZMUX_RESOURCE_DIR` holding only `tkzmux_AgentBridge.bundle` | that one from the override, the rest from `<T>/lib/tkzmux` | unchanged |
+
+`TERMINFO=<located dir> infocmp xterm-ghostty` succeeds for the located directory of the relocated tree.
+
 ## Tests on Linux
 
 - Always `swift test --no-parallel`. Parallel runs pass today too, but serial runs keep memory bounded as more suites arrive (see the `test-memory-probe.sh` rule in CLAUDE.md).
