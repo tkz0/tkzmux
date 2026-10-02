@@ -1,0 +1,238 @@
+# Linux build + test on every push and PR (WOR-303 S2). No signing, no secrets: like ci.yml, this
+# workflow must stay runnable from a fork's pull request. ci.yml (macOS) is separate and stays
+# byte-identical, so its now-stale comments ("no other runner this can use", "941 tests") stay as
+# they are: rewording them would break the "ci.yml unchanged" acceptance of WOR-303, and the Mac
+# test count is checked against that file's run, not its comment.
+#
+# Jobs (ADR-0002 D5):
+#   arch         REQUIRED. archlinux:base pinned by digest, its packages pinned to the same day's
+#                Arch Linux Archive snapshot, the Swift pin from docs/linux/dev.md installed as that
+#                page describes. Debug build, serial tests, release build of `tkzmux`, then
+#                scripts/linux/check-linkage.sh (NEEDED/RUNPATH only, per linkage-policy.txt; the
+#                ldd closure count is printed, never gated) and scripts/linux/check-binary.sh.
+#   ubuntu       ubuntu-24.04 + the pinned swift:<pin>-noble image (never the runner's own Swift):
+#                one `swift build --target` per non-GTK target, then the tests. WOR-314 S1
+#                restricts the list or retires the job once a GTK target exists (noble has GTK 4.14).
+#   arch-latest  Scheduled, NOT required: archlinux:latest with live mirrors, same steps as `arch`,
+#                to catch rolling-release breakage before the pin is bumped.
+#
+# The release binary is built with the default (dynamic) stdlib, never the global
+# `--static-swift-stdlib` (ADR-0001); WOR-323 owns the link mode. It is checked against the
+# temporary [tkzmux-default-stdlib] section of linkage-policy.txt until WOR-323 S1 switches the
+# check to [tkzmux] (docs/linux/build.md, "Linux CI").
+#
+# Every `swift test` step goes through the summary-line guard: exit status 0 is not enough,
+# because the async main can `exit(0)` mid-run (Tests/TkzAppTests/SheetTestSupport.swift) and
+# every test after that point silently never runs. Swift Testing prints its one
+# `Test run with N tests` line only when the run finished; the step fails without it or on N = 0
+# (the same rule as scripts/test-memory-probe.sh).
+#
+# Wall times (budget: 15 min per job with a warm cache). These `run:` steps, replayed in order on
+# the reference machine outside a container on 2026-10-03 (docs/linux/build.md, "Linux CI"):
+# `arch` 26 s cold (toolchain unpack 8 s, debug build 3 s, 355 tests 7 s, release build 8 s,
+# checks < 1 s), `ubuntu` 10 s cold. Not yet measured on GitHub: image pull, package install
+# and the 1.07 GB toolchain download; record them in build.md after the first runs.
+#
+# Shared steps are written once and reused with YAML anchors (&name / *name).
+name: CI Linux
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # arch-latest only; the other jobs skip scheduled runs. Mondays 05:17 UTC.
+    - cron: '17 5 * * 1'
+
+permissions:
+  contents: read
+
+# Same shape as ci.yml, but its own group: concurrency groups are repository-wide, and sharing
+# `ci-<ref>` would let the two workflows cancel each other.
+concurrency:
+  group: ci-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    # Explicit, so every step runs `bash -eo pipefail` (an unspecified shell in a container job
+    # gets no pipefail, and a failing `swift test | tee` would pass).
+    shell: bash
+
+jobs:
+  arch:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      # Bump the tag, the digest and ARCH_SNAPSHOT together (docs/linux/build.md, "Linux CI").
+      image: archlinux:base-20260927.0.600689@sha256:b21322c663be387c0ed9cbc7bbbfe18e41633ad4e7b7c77cfad45f128be20040
+    env:
+      # The Arch Linux Archive day the image was built from, so `pacman -Syu` installs the same
+      # package set on every run. Empty means live mirrors (arch-latest).
+      ARCH_SNAPSHOT: '2026/09/27'
+    steps: &arch-steps
+      # Before checkout: actions/checkout needs git in the container to fetch a real repository,
+      # and actions/cache needs zstd.
+      - name: Install system packages
+        run: |
+          if [ -n "$ARCH_SNAPSHOT" ]; then
+            echo "Server = https://archive.archlinux.org/repos/$ARCH_SNAPSHOT/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist
+          fi
+          # gcc: crt objects and libstdc++ for the toolchain's clang; binutils: ld.gold (the
+          # default linker), readelf, nm, objdump; sqlite, curl, util-linux-libs, zlib, icu: the
+          # toolchain binaries' own libraries; ncurses + libxml2-legacy: the compat sonames from
+          # docs/linux/dev.md ("Compat libraries").
+          pacman -Syu --noconfirm --needed \
+            git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
+            gnupg zstd pkgconf
+          pacman -Q glibc gcc binutils
+
+      - uses: actions/checkout@v5
+
+      - name: Read the Swift pin
+        id: pin
+        run: echo "swift=$(awk '$1 == "pin" && $2 == "swift" { print $3; exit }' docs/linux/dev.md)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the Swift toolchain tarball
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/swift-download
+          key: swift-tarball-${{ steps.pin.outputs.swift }}-ubuntu24.04
+
+      # docs/linux/dev.md, "Toolchain": the swift.org Ubuntu 24.04 tarball, signature-checked,
+      # unpacked per user, with the ncurses compat links in the toolchain's RUNPATH directory.
+      # libxml2.so.2 comes from the libxml2-legacy package installed above.
+      - name: Install Swift ${{ steps.pin.outputs.swift }}
+        env:
+          PIN: ${{ steps.pin.outputs.swift }}
+        run: |
+          [ -n "$PIN" ] || { echo "::error::no 'pin swift' line in docs/linux/dev.md"; exit 1; }
+          name="swift-$PIN-RELEASE-ubuntu24.04.tar.gz"
+          base="https://download.swift.org/swift-$PIN-release/ubuntu2404/swift-$PIN-RELEASE"
+          dl="$HOME/.cache/swift-download"
+          root="$HOME/.local/share/swift/$PIN"
+          mkdir -p "$dl" "$root"
+          for f in "$name" "$name.sig"; do
+            [ -s "$dl/$f" ] || curl -fsSL --retry 3 -o "$dl/$f" "$base/$f"
+          done
+          GNUPGHOME="$(mktemp -d)"; export GNUPGHOME
+          curl -fsSL --compressed --retry 3 https://www.swift.org/keys/all-keys.asc | gpg --batch --quiet --import -
+          gpg --batch --verify "$dl/$name.sig" "$dl/$name"
+          tar -xzf "$dl/$name" -C "$root" --strip-components=1
+          lib="$root/usr/lib/swift/linux"
+          for l in ncurses form panel; do ln -sf "/usr/lib/lib${l}w.so.6" "$lib/lib$l.so.6"; done
+          echo "$root/usr/bin" >> "$GITHUB_PATH"
+          "$root/usr/bin/swift" --version 2>&1 | tee "$RUNNER_TEMP/swift-version"
+          grep -qF "Swift version $PIN (swift-$PIN-RELEASE)" "$RUNNER_TEMP/swift-version"
+
+      - name: Cache .build
+        if: env.ARCH_SNAPSHOT != ''
+        uses: actions/cache@v5
+        with:
+          path: .build
+          key: ${{ github.job }}-swift-${{ steps.pin.outputs.swift }}-${{ hashFiles('Package.swift', 'vendor/ghostty-vt/COMMIT') }}-${{ github.sha }}
+          restore-keys: ${{ github.job }}-swift-${{ steps.pin.outputs.swift }}-${{ hashFiles('Package.swift', 'vendor/ghostty-vt/COMMIT') }}-
+
+      - name: Lint the linkage policy
+        run: scripts/linux/check-linkage.sh --lint
+
+      - name: swift build
+        run: swift build --build-system native
+
+      # The summary-line guard, shared by every job (see the header). --no-parallel is required:
+      # ci.yml explains why, and docs/linux/build.md ("Tests on Linux").
+      - &swift-test
+        name: swift test
+        run: |
+          log="$RUNNER_TEMP/swift-test.log"
+          swift test --build-system native --no-parallel 2>&1 | tee "$log"
+          # Exit status 0 is not enough (header; scripts/test-memory-probe.sh): one
+          # "Test run with N tests ..." line per finished run, every N > 0.
+          counts="$(sed 's/\x1b\[[0-9;]*m//g' "$log" | sed -n 's/.*Test run with \([0-9][0-9]*\) tests\{0,1\} .*/\1/p')"
+          if [ -z "$counts" ]; then
+            echo "::error::swift test exited 0 without a 'Test run with N tests' line: the run ended early, and the tests after that point never ran"
+            exit 1
+          fi
+          if grep -qx 0 <<< "$counts"; then
+            echo "::error::swift test reported a run with 0 tests"
+            exit 1
+          fi
+          echo "Swift Testing ran $(awk '{ n += $1 } END { print n }' <<< "$counts") tests"
+
+      - name: Check the test runner's linkage
+        run: scripts/linux/check-linkage.sh "$(swift build --build-system native --show-bin-path)/tkzmuxPackageTests.xctest" tests
+
+      # Default stdlib, no global --static-swift-stdlib (ADR-0001); WOR-323 owns the link mode.
+      - name: swift build -c release --product tkzmux
+        run: |
+          swift build --build-system native -c release --product tkzmux
+          bin="$(swift build --build-system native -c release --show-bin-path)/tkzmux"
+          echo "TKZMUX_BIN=$bin" >> "$GITHUB_ENV"
+          "$bin" --version
+          [ "$("$bin" --vt-smoke)" = "hello" ]
+
+      - name: check-linkage.sh (NEEDED only)
+        run: scripts/linux/check-linkage.sh "$TKZMUX_BIN" tkzmux-default-stdlib
+
+      - name: check-binary.sh
+        run: scripts/linux/check-binary.sh "$TKZMUX_BIN" --section tkzmux-default-stdlib
+
+  ubuntu:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      # The `pin image` line of docs/linux/dev.md; bump both together.
+      image: swift:6.3.3-noble@sha256:cd45c27b3abc42310c33cfaf3008b18156cbdc9187834c9617e8f43a26d2675c
+    env:
+      # Every non-GTK target, one `swift build --target` each. GhosttyVt is a binary target and
+      # cannot be built on its own; its dependents cover it. A target that joins the Linux graph
+      # without GTK is added here (WOR-304 onwards).
+      NON_GTK_TARGETS: TkzCore TkzmuxLinux TkzCoreTests GhosttyVtSmokeTests
+    steps:
+      - name: Install system packages
+        run: |
+          apt-get update -q
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+            zsh fish git python3 ncurses-bin binutils pkg-config
+
+      - uses: actions/checkout@v5
+
+      - name: Read the Swift pin
+        id: pin
+        run: |
+          pin="$(awk '$1 == "pin" && $2 == "swift" { print $3; exit }' docs/linux/dev.md)"
+          echo "swift=$pin" >> "$GITHUB_OUTPUT"
+          swift --version 2>&1 | tee "$RUNNER_TEMP/swift-version"
+          grep -qF "Swift version $pin (swift-$pin-RELEASE)" "$RUNNER_TEMP/swift-version" \
+            || { echo "::error::the image's Swift is not the docs/linux/dev.md pin ($pin)"; exit 1; }
+
+      - name: Cache .build
+        uses: actions/cache@v5
+        with:
+          path: .build
+          key: ${{ github.job }}-swift-${{ steps.pin.outputs.swift }}-${{ hashFiles('Package.swift', 'vendor/ghostty-vt/COMMIT') }}-${{ github.sha }}
+          restore-keys: ${{ github.job }}-swift-${{ steps.pin.outputs.swift }}-${{ hashFiles('Package.swift', 'vendor/ghostty-vt/COMMIT') }}-
+
+      - name: swift build --target (non-GTK targets)
+        run: |
+          for t in $NON_GTK_TARGETS; do
+            echo "::group::swift build --target $t"
+            swift build --build-system native --target "$t"
+            echo "::endgroup::"
+          done
+
+      # While the Linux graph has no GTK target, `swift test` builds and runs all of it.
+      - *swift-test
+
+  arch-latest:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: archlinux:latest
+    env:
+      ARCH_SNAPSHOT: ''
+    steps: *arch-steps

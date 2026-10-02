@@ -1,6 +1,6 @@
 # Building tkzmux on two platforms
 
-How one `Package.swift` builds the Mac app and the Linux port, which build system Linux uses, and how the macOS graph is kept unchanged. Written in WOR-303 S1. WOR-303 S3 adds resource lookup and the `Bundle.main` findings, and WOR-303 S4 adds version stamping.
+How one `Package.swift` builds the Mac app and the Linux port, which build system Linux uses, and how the macOS graph is kept unchanged. Written in WOR-303 S1. WOR-303 S2 adds Linux CI, WOR-303 S3 adds resource lookup and the `Bundle.main` findings, and WOR-303 S4 adds version stamping.
 
 ## Package.swift: one manifest, two graphs
 
@@ -58,9 +58,38 @@ ADR-0002 D2 recommends `--build-system native`, passed explicitly so that a tool
 | NEEDED of the debug `tkzmux` | Swift runtime + Foundation + dispatch, `libm.so.6`, `libc.so.6` | same |
 
 - **Default: native.** `make build`, `make test` and `make run` pass `--build-system native` on Linux. Plain `swift build` also picks native on 6.3.3, but only because 6.3 still defaults to it.
-- **Summary-line guard (WOR-303 S2).** Under Swift Build there is one `Test run with N tests` line per test target, so a guard that reads only the first line sees a partial count, and with `--filter` a target the filter empties prints `N = 0`. CI runs native, which prints one line.
+- **Summary-line guard ([Linux CI](#linux-ci)).** Under Swift Build there is one `Test run with N tests` line per test target, so a guard that reads only the first line sees a partial count, and with `--filter` a target the filter empties prints `N = 0`. CI runs native, which prints one line; the guard still reads every line and requires each `N > 0`.
 - `swift package describe` works on Linux and lists `GhosttyVt` as a `BinaryTarget` at the artifact bundle path.
 - No AppKit, Metal or CoreText module is compiled on Linux: the build directory holds only `TkzCore`, `TkzCoreTests`, `TkzmuxLinux`, `GhosttyVtSmokeTests` and the test runner.
+
+## Linux CI
+
+`.github/workflows/ci-linux.yml` (WOR-303 S2) runs beside the macOS `ci.yml`, which stays byte-identical, stale comments included. Same triggers, `permissions: contents: read` and no secrets, so it runs on fork PRs. Its concurrency group is `ci-linux-<ref>`: groups are repository-wide, so reusing `ci-<ref>` would let the two workflows cancel each other.
+
+| Job | Image | Steps | Required |
+|---|---|---|---|
+| `arch` | `archlinux:base-20260927.0.600689` by digest; `pacman -Syu` against the Arch Linux Archive snapshot of the same day (`ARCH_SNAPSHOT`) | the `pin swift` toolchain from [dev.md](dev.md) (tarball, signature, ncurses links, `libxml2-legacy`); `check-linkage.sh --lint`; `swift build`; `swift test --no-parallel` with the guard; test runner vs `[tests]`; `swift build -c release --product tkzmux` (default stdlib) with `--version` and `--vt-smoke`; `check-linkage.sh` and `check-binary.sh` vs `[tkzmux-default-stdlib]` | yes |
+| `ubuntu` | `ubuntu-24.04` + the dev.md `pin image` (`swift:6.3.3-noble` by digest); asserts the image's Swift equals the pin | apt `zsh fish git python3 ncurses-bin binutils pkg-config`; one `swift build --target` per entry of `NON_GTK_TARGETS`; `swift test --no-parallel` with the guard | no; WOR-314 S1 restricts or retires it |
+| `arch-latest` | `archlinux:latest`, live mirrors | the `arch` steps (a YAML anchor), no `.build` cache | no; schedule (Mondays) and manual runs only |
+
+- **Bumping the Arch pin.** Change the tag, the digest and `ARCH_SNAPSHOT` together. The digest is the OCI index digest, read as in [dev.md](dev.md#pins) with `repository:library/archlinux` and the new tag; the snapshot is the tag's date as `YYYY/MM/DD`. A failing `arch-latest` is the signal to bump.
+- **Caches.** `.build` is keyed on the job, the Swift pin and the hash of `Package.swift` + `vendor/ghostty-vt/COMMIT`, with the commit appended and that prefix as the restore key. The `arch` job also caches the 1.07 GB toolchain tarball, keyed on the pin; it is still signature-checked on every run.
+- **Summary-line guard.** After every `swift test` the step reads the Swift Testing `Test run with N tests` lines from the log. None, or any `N = 0`, fails the step even when `swift test` exited 0: the async main can `exit(0)` mid-run (`Tests/TkzAppTests/SheetTestSupport.swift`), which is the rule `scripts/test-memory-probe.sh` applies too. The steps run under `bash -eo pipefail` (`defaults.run.shell`), so a failing `swift test | tee` is not masked.
+- **Linkage gate.** `readelf -d` NEEDED and RUNPATH only, through `check-linkage.sh`; its `ldd` closure count is printed and never gates (ADR-0002 D9). The release stub is linked with the default stdlib, which `[tkzmux]` (`stdlib static`) fails by design, so CI checks the temporary `[tkzmux-default-stdlib]`: `[tkzmux]`'s rules with `stdlib dynamic` and the toolchain RUNPATH allowed. Adding per-product `-static-stdlib` early was measured instead and rejected: the stub then passes `[tkzmux]`'s NEEDED rules (`libc`, `libm`, `libstdc++`, `libgcc_s`, `ld-linux`) but needs `GLIBC_2.44` on Arch (`__isoc23_*` at 2.38, `acosf` and friends at 2.43), above `glibc-max 2.35`. WOR-323 S1 owns the release link environment, deletes the temporary section and points CI at `[tkzmux]`.
+- **`[tests]` confirmed.** The first Linux test runner (`tkzmuxPackageTests.xctest`) NEEDs `libswiftSwiftOnoneSupport`, `libswiftCore`, `libswift_Concurrency`, `libswift_StringProcessing`, `libswift_RegexParser`, `libswiftGlibc`, `libBlocksRuntime`, `libdispatch`, `libswiftDispatch`, `libFoundation`, `libFoundationEssentials`, `libFoundationInternationalization`, `libTesting`, `libXCTest`, `lib_Testing_Foundation`, `libm.so.6` and `libc.so.6`, with RUNPATH `<toolchain>/usr/lib/swift/linux:$ORIGIN`. All pass `[tests]`, which CI now gates.
+
+Verified on the reference machine on 2026-10-03 by running each job's `run:` steps from the YAML in order on a fresh copy of the tree, outside a container (no package install, checkout or cache; the toolchain installed from the tarball into a scratch `$HOME`, with `libxml2.so.2` copied in where the container gets `libxml2-legacy`):
+
+| Run | Result |
+|---|---|
+| `arch`, cold | passes in 26 s: toolchain unpack 8 s, `swift build` 3 s, `swift test` 7 s (355 tests), release build 8 s, checks < 1 s |
+| `ubuntu`, cold, with the host toolchain | passes in 10 s: four `--target` builds 9 s, `swift test` 2 s |
+| `swift test` as uid 0 (`unshare -r`), as in the containers | 355 tests pass |
+| injected `import FoundationNetworking` + `URLSession.shared` in the stub | `check-linkage.sh` fails: NEEDED `libFoundationNetworking.so` denied. With the dynamic stdlib, `libcurl.so.4` is NEEDED by that library, not by the stub; a `--static-swift-stdlib` build of the same injection NEEDs `libcurl.so.4` directly and fails `[tkzmux]` on it |
+| injected TkzCoreTests test calling `exit(0)` | `swift test` exits 0 after 81 tests; the guard fails the step: no summary line |
+| guard on synthetic logs | passes for `1 test` (singular) and for colored output; fails on `0 tests` and on a missing line |
+
+`actionlint` 1.7.12 (with shellcheck on the `run:` scripts) and PyYAML accept the file. The containers themselves, GitHub-hosted wall times and the warm-cache budget (≤ 15 min per job) are checked on the first runs; this machine has no container runtime.
 
 ## Makefile
 

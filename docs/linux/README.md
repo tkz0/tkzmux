@@ -14,7 +14,7 @@ Linux docs live here and are committed. `docs/perf.md` stays local-only (see `.g
 | [ADR-0003: parity](adr-0003-parity.md) | Parity definition in logical points, snapping rules, layer thresholds and tools, reference machine and budget, in-app readback, unreachable items and substitutes | Accepted (2026-10-02) | WOR-299 S3 |
 | [ADR-0004: keys and input](adr-0004-keys-input.md) | Super as ⌘, the 39-chord table with Super and fallback rows, reserved chords, `se` layout matching, clipboard and PRIMARY, IME, Alt | Accepted, provisional on WOR-301 S6 | WOR-299 S4 |
 | [ADR-0005: window controls](adr-0005-window-controls.md) | Linux window controls, header strip, Hyprland snippet policy, the `terminal` tag, Omarchy bind collisions | Accepted, provisional on WOR-301 S6 | WOR-299 S5 |
-| [linkage-policy.txt](linkage-policy.txt) | The single machine-readable allow/deny list per product (`[tkzmux]`, `[tkzmux-hook]`, `[tkzmux-vtdump]`, `[tests]`), enforced by `scripts/linux/check-linkage.sh` | Living policy; `[tkzmux]` provisional until WOR-323 S2 | WOR-299 S2; amended by WOR-300 S4, WOR-302 S4, WOR-323 S2 |
+| [linkage-policy.txt](linkage-policy.txt) | The single machine-readable allow/deny list per product (`[tkzmux]`, `[tkzmux-hook]`, `[tkzmux-vtdump]`, `[tests]`, and the temporary `[tkzmux-default-stdlib]` until WOR-323 S1), enforced by `scripts/linux/check-linkage.sh` | Living policy; `[tkzmux]` provisional until WOR-323 S2 | WOR-299 S2; amended by WOR-300 S4, WOR-302 S4, WOR-323 S2 |
 
 All five ADRs were ratified in WOR-299 S6 on 2026-10-02. ADR-0004 and ADR-0005 are accepted provisionally, and WOR-301 S6 fills their open fields and amends them to `Accepted (final)` or records the fallback. An ADR changes only through a reviewed PR that amends it; a change to a user decision is a new dated entry in decisions.md.
 
@@ -28,7 +28,7 @@ Docs that do not exist yet are listed by file name and become links when they ar
 | [spikes.md](spikes.md) | GtkApplication, libdispatch, @MainActor and Swift Testing spike results; libghostty-vt link matrix, NEEDED table and glibc ceiling; go/no-go | WOR-300 S2-S4 |
 | `spike-presentation.md` | Vulkan dmabuf → GdkDmabufTexture → GraphicsOffload spike, offload debug variable | WOR-301 S1 |
 | [vendoring.md](vendoring.md) | libghostty-vt for Linux: artifact bundle, compiler_rt localization, ABI files, terminfo, binary checks | WOR-302 S4 |
-| [build.md](build.md) | Two-platform Package.swift, build-system choice, resource lookup, version stamping | WOR-303 S1; extended by WOR-303 S3, S4 |
+| [build.md](build.md) | Two-platform Package.swift, build-system choice, Linux CI, resource lookup, version stamping | WOR-303 S1; extended by WOR-303 S2, S3, S4 |
 | `platform.md` | TkzPlatform path table (XDG) and platform back-ends | WOR-304 S3 |
 | `hook.md` | `tkzmux-hook` on Linux: timing results and linkage choice | WOR-305 S6 |
 | `agents.md` | AgentBridge on Linux, real-agent probe traces, dotfile-sync collisions | WOR-306 S1 |

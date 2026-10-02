@@ -148,6 +148,7 @@ Why each row is where it is:
   - `[tkzmux-hook]`: `stdlib static`, no RUNPATH at all.
   - `[tkzmux-vtdump]`: an in-tree tool, `stdlib dynamic`, headless, so no GTK.
   - `[tests]`: `stdlib dynamic`, plus the test-only libxkbcommon (ratified in WOR-299 S6).
+  - `[tkzmux-default-stdlib]`: temporary, added in WOR-303 S2 for CI's default-stdlib release build until WOR-323 S1 (see Consequences).
 
   Shared groups hold glibc, the C++ runtime, GTK/GLib, Vulkan and text, Pango for paragraph layout (D10), the Swift runtime, and the deny list.
 - **What the policy encodes.**
@@ -200,11 +201,11 @@ Decided in WOR-299 S6 (2026-10-02) under the user's delegation ([decisions.md](d
 - **WOR-300:**
   - S1 commits the D2 pin (tag and digest) without re-arguing it.
   - S4 measures the NEEDED/PT_INTERP set and the highest `GLIBC_` version. If a measurement differs from the policy, the change is made in [linkage-policy.txt](linkage-policy.txt) and D1, and nowhere else.
-- **Default-stdlib release build vs `[tkzmux]` (open).** `[tkzmux]` says `stdlib static`, but WOR-303 S2's CI checks a release build made with the default stdlib, and that build NEEDs `libswiftCore.so` and carries a toolchain RUNPATH. Until WOR-323 S1 adds per-product `-static-stdlib`, that check fails by design. WOR-303 S2 must pick one of:
+- **Default-stdlib release build vs `[tkzmux]` (decided in WOR-303 S2).** `[tkzmux]` says `stdlib static`, but WOR-303 S2's CI checks a release build made with the default stdlib, and that build NEEDs `libswiftCore.so` and carries a toolchain RUNPATH. Until WOR-323 S1 adds per-product `-static-stdlib`, that check fails by design. WOR-303 S2 had to pick one of:
   - add the same Linux-only per-product flag early;
   - check against a deliberately marked temporary section.
 
-  The global `--static-swift-stdlib` stays forbidden.
+  It picked the temporary section, `[tkzmux-default-stdlib]` in [linkage-policy.txt](linkage-policy.txt): `[tkzmux]`'s rules with `stdlib dynamic` and the toolchain RUNPATH allowed. The early flag was measured and rejected: a `-static-stdlib` stub linked on the Arch CI image needs `GLIBC_2.44`, so `check-binary.sh` would fail the `glibc-max 2.35` line until WOR-323 S1 moves the release link to a glibc ≤ 2.35 environment ([build.md](build.md#linux-ci)). WOR-323 S1 deletes the section and points CI at `[tkzmux]`. The global `--static-swift-stdlib` stays forbidden.
 - **The hook has no RUNPATH.** SwiftPM's local `$ORIGIN` rpath has to be turned off for it, for example with `--disable-local-rpath` or a linker flag. WOR-305 S6 confirms the mechanism.
 - **Mac and Linux use different compilers (6.2 vs 6.3.x).** Shared code is written to the older one. TESTS.md keeps listing toolchain-specific errors.
 - **CI follows the user's distro.** Breakage from a rolling Arch update surfaces in the scheduled job, and the required job stays reproducible through the digest pin.

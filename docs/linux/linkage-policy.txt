@@ -144,6 +144,23 @@ include @deny @no-toolchain-runpath @glibc @cxx-runtime @gtk @gpu-text @text-lay
 deny libxkbcommon.so*        | The app takes keyvals and modifiers from GDK events. libxkbcommon is test-only (ADR-0001, [tests]).
 runpath-allow $ORIGIN        | SwiftPM's default local rpath. Harmless, because nothing is installed beside bin/tkzmux.
 
+# TEMPORARY. The same binary as [tkzmux], built the way ci-linux.yml builds it until WOR-323 S1:
+# `swift build -c release --product tkzmux` with the default (dynamic) stdlib, because WOR-323 owns
+# the link mode and the global `--static-swift-stdlib` is forbidden (ADR-0001). That build NEEDs the
+# Swift runtime and carries the toolchain RUNPATH, so [tkzmux] fails it by design. A per-product
+# `-static-stdlib` now would not help either: linked on Arch, the static runtime needs GLIBC_2.44,
+# above glibc-max (WOR-303 S2, docs/linux/build.md). Every other rule is [tkzmux]'s, so a denied
+# library (FoundationNetworking, libcurl, ...) still fails. WOR-323 S1 deletes this section and
+# points CI at [tkzmux].
+[tkzmux-default-stdlib]
+stdlib dynamic
+status TEMPORARY until WOR-323 S1: the default-stdlib release build that CI checks; the shipped binary is [tkzmux]
+glibc-max 2.35
+include @deny @glibc @cxx-runtime @gtk @gpu-text @text-layout
+deny libxkbcommon.so*        | The app takes keyvals and modifiers from GDK events. libxkbcommon is test-only (ADR-0001, [tests]).
+runpath-allow $ORIGIN        | SwiftPM's default local rpath.
+runpath-allow */usr/lib/swift/linux | The toolchain runtime directory that a dynamic stdlib needs. Never shipped: [tkzmux] denies it.
+
 # The hook relay (`bin/tkzmux-hook`, copied to $XDG_DATA_HOME/tkzmux/bin). It is Foundation-free,
 # links the stdlib statically and starts in under 20 ms. It must run under `env -i` from its copied
 # location, so it may have no RUNPATH at all. If the hook must be libc-only, WOR-305 S6 adopts the
@@ -170,7 +187,7 @@ runpath-allow */usr/lib/swift/linux | The toolchain runtime directory. Acceptabl
 # The Linux test runner (`.build/<config>/tkzmuxPackageTests.xctest`). It runs only in-tree.
 [tests]
 stdlib dynamic
-status the swift-runtime set is provisional until WOR-303 S2's first Linux `swift test`
+status swift-runtime set confirmed by the first Linux `swift test` (WOR-303 S2): 15 runtime sonames plus libm and libc
 include @deny @glibc @cxx-runtime @gtk @gpu-text @text-layout
 allow libxkbcommon.so.0      | libxkbcommon | libxkbcommon0 | Test-only, ratified in WOR-299 S6 (2026-10-02). WOR-315 S1's CXKBCommon layout-fixture generator links it to compile `us` and `se` keymaps headlessly. It is already in GTK's closure, and it is denied in every shipped section.
 runpath-allow $ORIGIN        | SwiftPM's default local rpath.

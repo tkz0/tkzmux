@@ -16,7 +16,8 @@
 #   scripts/linux/check-linkage.sh [options] --section <section> <elf>...
 #   scripts/linux/check-linkage.sh [options] --lint
 #
-#   <section>         a checkable policy section: tkzmux, tkzmux-hook, tkzmux-vtdump or tests.
+#   <section>         a checkable policy section: tkzmux, tkzmux-hook, tkzmux-vtdump, tests, or the
+#                     temporary tkzmux-default-stdlib (CI until WOR-323 S1).
 #                     Both `tkzmux` and `[tkzmux]` are accepted.
 #   --policy FILE     use FILE instead of docs/linux/linkage-policy.txt
 #   --no-closure      skip the informational ldd closure count. ldd runs the binary's loader,
