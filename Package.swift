@@ -48,6 +48,11 @@ let sharedTargets: [Target] = [  // hygiene-scan
     ),
 
     .testTarget(name: "TkzCoreTests", dependencies: ["TkzCore"], path: "Tests/TkzCoreTests"),
+
+    // Dependency-free PNG codec for the parity harness and Linux goldens (WOR-311 S6). Not linked
+    // into the app; the Mac renderer keeps ImageIO.
+    .target(name: "TkzPNG", path: "Sources/TkzPNG"),
+    .testTarget(name: "TkzPNGTests", dependencies: ["TkzPNG"], path: "Tests/TkzPNGTests"),
 ]
 
 // MARK: - Linux only
@@ -65,6 +70,16 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
         dependencies: ["TkzCore", "GhosttyVt"],
         path: "Sources/tkzmux-linux",
         linkerSettings: [.linkedLibrary("m")]
+    ),
+
+    // Committed SPIR-V for the Vulkan renderer (WOR-313 S2); regenerate with
+    // scripts/build-shaders-linux.sh. TkzShadersSPIRVTests joins once TkzShaderTypes.h is portable
+    // (WOR-311 S1).
+    .target(
+        name: "TkzShadersSPIRV",
+        path: "Sources/TkzShadersSPIRV",
+        exclude: ["glsl", "generated"],
+        publicHeadersPath: "include"
     ),
 
     .testTarget(
@@ -176,7 +191,7 @@ let macOnlyTargets: [Target] = [
 
     // MARK: Tests (one per Swift library module; Swift Testing)
     .testTarget(name: "TkzTerminalCoreTests", dependencies: ["TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalCoreTests", resources: [.copy("Fixtures")]),
-    .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "GhosttyVt"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
+    .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "GhosttyVt", "TkzPNG"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
     .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
     // TkzTerminalCore + GhosttyVt for the shell-integration harness, which spawns each login
     // shell on a real `Pty`, like PersistenceTests does for snapshots.
