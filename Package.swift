@@ -42,11 +42,20 @@ let sharedTargets: [Target] = [  // hygiene-scan
         path: ghosttyVtPath
     ),
 
+    // Leaf platform layer (WOR-304): one API per OS-specific primitive, a back-end per OS.
+    // Foundation only, never AppKit or GTK; nothing in tkzmux below it.
+    .target(
+        name: "TkzPlatform",
+        path: "Sources/TkzPlatform"
+    ),
+
     .target(
         name: "TkzCore",
+        dependencies: ["TkzPlatform"],
         path: "Sources/TkzCore"
     ),
 
+    .testTarget(name: "TkzPlatformTests", dependencies: ["TkzPlatform"], path: "Tests/TkzPlatformTests"),
     .testTarget(name: "TkzCoreTests", dependencies: ["TkzCore"], path: "Tests/TkzCoreTests"),
 
     // Dependency-free PNG codec for the parity harness and Linux goldens (WOR-311 S6). Not linked
@@ -142,14 +151,14 @@ let macOnlyTargets: [Target] = [
     ),
     .target(
         name: "TkzTerminalView",
-        dependencies: ["TkzCore", "TkzTerminalCore", "TkzTerminalRender"],
+        dependencies: ["TkzCore", "TkzPlatform", "TkzTerminalCore", "TkzTerminalRender"],
         path: "Sources/TkzTerminalView"
     ),
 
     // MARK: App core and services
     .target(
         name: "AgentBridge",
-        dependencies: ["TkzCore"],
+        dependencies: ["TkzCore", "TkzPlatform"],
         path: "Sources/AgentBridge",
         resources: [
             .copy("Resources/shim"), .copy("Resources/zsh"), .copy("Resources/bash"),
@@ -163,12 +172,12 @@ let macOnlyTargets: [Target] = [
     ),
     .target(
         name: "Persistence",
-        dependencies: ["TkzCore"],
+        dependencies: ["TkzCore", "TkzPlatform"],
         path: "Sources/Persistence"
     ),
     .target(
         name: "TkzApp",
-        dependencies: ["TkzCore", "TkzTerminalCore", "TkzTerminalView", "AgentBridge", "GitStatus", "Persistence"],
+        dependencies: ["TkzCore", "TkzPlatform", "TkzTerminalCore", "TkzTerminalView", "AgentBridge", "GitStatus", "Persistence"],
         path: "Sources/TkzApp"
     ),
 

@@ -18,9 +18,9 @@
 import AppKit
 import Foundation
 import TkzCore
+import TkzPlatform
 import TkzTerminalCore
 import UserNotifications
-import os
 
 // MARK: - Seams
 
@@ -97,7 +97,7 @@ public final class SystemPasteboardWriter: PasteboardWriting {
 public final class SystemNotificationPresenter:
     NSObject, NotificationPresenting, UNUserNotificationCenterDelegate
 {
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "notifications")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "notifications")
     private var authorization: Authorization = .unknown
     private var loggedUnavailable = false
     private var installedDelegate = false
@@ -213,7 +213,7 @@ public final class SystemNotificationPresenter:
     /// answered from the existing settings without bothering the user again. Every outcome is
     /// logged: a request that macOS never answers (seen 2026-09-15 with an ad-hoc build under a
     /// bundle id the system already knew as a Developer ID app) is invisible otherwise.
-    private static func authorize(_ center: UNUserNotificationCenter, logger: Logger) async -> Bool {
+    private static func authorize(_ center: UNUserNotificationCenter, logger: TkzLogger) async -> Bool {
         let settings = await center.notificationSettings()
         // `.notice`, not `.info`: `log show` hides info-level lines unless asked, and this is the
         // one line that explains a silent app ("denied" = System Settings → Notifications).

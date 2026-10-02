@@ -55,10 +55,10 @@ import Foundation
 import Persistence
 import Synchronization
 import TkzCore
+import TkzPlatform
 import TkzTerminalCore
 import TkzTerminalRender
 import TkzTerminalView
-import os
 
 // MARK: - The surface seam
 
@@ -218,8 +218,8 @@ public final class TerminalViewHost: TerminalHost {
     /// about (the mouse controller's pixel geometry, the window title).
     public var onDidShow: ((Set<TerminalID>) -> Void)?
 
-    private let signposter = OSSignposter(subsystem: "se.tkz.tkzmux", category: "terminalhost")
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "terminalhost")
+    private let signposter = TkzSignposter(subsystem: "se.tkz.tkzmux", category: "terminalhost")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "terminalhost")
 
     /// The most recent `show(_:)` durations in seconds, in call order. Diagnostics; see
     /// docs/perf.md.
@@ -955,7 +955,7 @@ public final class TerminalIdleCompressor: Sendable {
     private let stepBudget: Int
     /// Called before a session is compressed, on the timer queue. Returns the bytes written.
     private let saveSnapshot: (@Sendable (String, TerminalSession) -> Int)?
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "compress")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "compress")
 
     /// - Parameters:
     ///   - policy: the pure rule. Its `stepInterval` is *not* the tick interval: a due session is

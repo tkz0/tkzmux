@@ -17,9 +17,9 @@ import AgentBridge
 import Foundation
 import Persistence
 import TkzCore
+import TkzPlatform
 import TkzTerminalRender
 import TkzTerminalView
-import os
 
 /// Application delegate.
 @MainActor
@@ -35,7 +35,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var attention: AttentionNotifier?
     private var dockBadge: DockBadge?
     private var update: UpdateIntegration?
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "app")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "app")
 
     /// Milliseconds after launch to print engine diagnostics and quit. Development only: it is how
     /// `swift run tkzmux` can be driven headlessly enough to prove that a window opened, a session
@@ -205,11 +205,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             let report = try snapshots.housekeep(liveSessionIDs: ids)
             if !report.removed.isEmpty || report.temporaries > 0 {
-                Logger(subsystem: "se.tkz.tkzmux", category: "app")
+                TkzLogger(subsystem: "se.tkz.tkzmux", category: "app")
                     .info("snapshot housekeeping: removed \(report.removed.count) orphaned, \(report.temporaries) temp files, \(report.reclaimedBytes) bytes")
             }
         } catch {
-            Logger(subsystem: "se.tkz.tkzmux", category: "app")
+            TkzLogger(subsystem: "se.tkz.tkzmux", category: "app")
                 .error("snapshot housekeeping failed: \(String(describing: error), privacy: .public)")
         }
     }
@@ -219,14 +219,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     static func makeShimInstaller(directory: URL) -> ShimInstaller? {
         let hook = ShimInstaller.standardHookBinary()
         guard FileManager.default.isExecutableFile(atPath: hook.path) else {
-            Logger(subsystem: "se.tkz.tkzmux", category: "app")
+            TkzLogger(subsystem: "se.tkz.tkzmux", category: "app")
                 .warning("tkzmux-hook not found at \(hook.path, privacy: .public); shell integration disabled")
             return nil
         }
         do {
             return ShimInstaller(directory: directory, hookBinary: hook, resources: try ShimResources.bundled())
         } catch {
-            Logger(subsystem: "se.tkz.tkzmux", category: "app")
+            TkzLogger(subsystem: "se.tkz.tkzmux", category: "app")
                 .error("shim resources unavailable: \(String(describing: error), privacy: .public)")
             return nil
         }

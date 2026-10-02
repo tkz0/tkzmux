@@ -29,7 +29,7 @@ import AppKit
 import AgentBridge
 import Foundation
 import TkzCore
-import os
+import TkzPlatform
 
 @MainActor
 public final class AgentIntegration {
@@ -104,7 +104,7 @@ public final class AgentIntegration {
     }
 
     private var tick: DispatchSourceTimer?
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "agents")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "agents")
     private var started = false
 
     /// "Is the user looking at this session right now?" — the selected row in a key, visible

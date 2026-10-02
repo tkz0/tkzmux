@@ -5,7 +5,7 @@ import Dispatch
 import Foundation
 import Synchronization
 import TkzCore
-import os
+import TkzPlatform
 
 public enum HookServerError: Error, Sendable {
     case socketCreateFailed(Int32)
@@ -24,7 +24,7 @@ public final class HookServer: Sendable {
 
     private let onFrame: @Sendable (HookFrame) -> Void
     private let queue = DispatchQueue(label: "se.tkz.tkzmux.hookserver")
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "hookserver")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "hookserver")
     private let state: Mutex<State>
 
     /// Per-connection state: the growing read buffer plus its `DispatchSourceRead`. A value type
@@ -182,7 +182,7 @@ public final class HookServer: Sendable {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
             return []
         }
-        let logger = Logger(subsystem: "se.tkz.tkzmux", category: "hookserver")
+        let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "hookserver")
         var removed: [String] = []
         for name in names.sorted() where HookSocket.isInstanceSocket(name) {
             let url = directory.appending(path: name, directoryHint: .notDirectory)

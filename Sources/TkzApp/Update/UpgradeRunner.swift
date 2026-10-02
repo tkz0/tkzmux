@@ -25,7 +25,7 @@
 
 import Foundation
 import TkzCore
-import os
+import TkzPlatform
 
 @MainActor
 public final class UpgradeRunner {
@@ -56,7 +56,7 @@ public final class UpgradeRunner {
     private let runningVersion: AppVersion
     private let bundleURL: URL
     private let queue: DispatchQueue
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "update")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "update")
 
     public init(
         capability: UpgradeCapability,

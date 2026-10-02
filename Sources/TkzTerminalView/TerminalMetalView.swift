@@ -23,9 +23,9 @@ import Metal
 import QuartzCore
 import Synchronization
 import TkzCore
+import TkzPlatform
 import TkzTerminalCore
 import TkzTerminalRender
-import os
 
 // MARK: - Input seam
 
@@ -130,7 +130,7 @@ public final class TerminalMetalView: NSView {
     private var isTerminalFocused = false
     private var blinkTimer: (any DispatchSourceTimer)?
     private var observedWindow: NSWindow?
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "terminalview")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "terminalview")
 
     /// macOS default cursor blink half-period.
     private static let blinkInterval: Double = 0.53

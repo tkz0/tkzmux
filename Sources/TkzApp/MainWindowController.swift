@@ -31,10 +31,10 @@ import Foundation
 import GitStatus
 import Persistence
 import TkzCore
+import TkzPlatform
 import TkzTerminalCore
 import TkzTerminalRender
 import TkzTerminalView
-import os
 
 // MARK: - Split view controller
 
@@ -473,7 +473,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     private var lastReopenFailure: SessionLauncher.Failure?
     /// Internal rather than private so the width tests can read what layout actually got.
     var sidebarWidthConstraint: NSLayoutConstraint?
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "mainwindow")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "mainwindow")
 
     // MARK: Init
 

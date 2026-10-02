@@ -35,10 +35,10 @@
 import Foundation
 import Synchronization
 import TkzCore
-import os
+import TkzPlatform
 
 public enum UserPath {
-    private static let log = Logger(subsystem: "se.tkz.tkzmux", category: "user-path")
+    private static let log = TkzLogger(subsystem: "se.tkz.tkzmux", category: "user-path")
 
     /// Marks the line carrying the answer, so an rc file's own chatter on stdout cannot be mistaken
     /// for it. Deliberately not a plausible fragment of any real `PATH`.

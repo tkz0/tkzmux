@@ -40,17 +40,17 @@ import Foundation
 import Metal
 import Persistence
 import TkzCore
+import TkzPlatform
 import TkzTerminalCore
 import TkzTerminalRender
 import TkzTerminalView
-import os
 
 @MainActor
 public final class DevWindowController: NSObject, NSWindowDelegate {
     public let window: NSWindow
     public let terminalView: TerminalMetalView
     private let renderContext: TerminalRenderContext
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "devwindow")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "devwindow")
 
     /// The session table, the ptys, the snapshots and the idle compressor.
     public let host: TerminalViewHost

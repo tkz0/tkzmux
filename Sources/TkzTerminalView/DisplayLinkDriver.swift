@@ -15,7 +15,7 @@
 import AppKit
 import Foundation
 import QuartzCore
-import os
+import TkzPlatform
 
 // MARK: - Demand
 
@@ -108,7 +108,7 @@ public final class DisplayLinkDriver {
     public private(set) var transitions: [TransitionRecord] = []
 
     private var link: CADisplayLink?
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "displaylink")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "displaylink")
     private static let maxTransitions = 256
 
     public init() {}

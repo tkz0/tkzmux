@@ -18,7 +18,7 @@
 import AppKit
 import Foundation
 import TkzCore
-import os
+import TkzPlatform
 
 @MainActor
 public final class UpdateIntegration {
@@ -46,7 +46,7 @@ public final class UpdateIntegration {
     private var checkTask: Task<Void, Never>?
     private var started = false
     private let now: () -> Date
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "update")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "update")
 
     public init(
         store: AppStore,

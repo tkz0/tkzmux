@@ -40,8 +40,8 @@ import AppKit
 import Foundation
 import GhosttyVt
 import IOKit.hidsystem
+import TkzPlatform
 import TkzTerminalCore
-import os
 
 // MARK: - Mouse seam
 
@@ -124,7 +124,7 @@ public final class TerminalInputController: TerminalViewInputDelegate {
     /// Weak because the app owns the view; a stale one simply makes the insert inert.
     private weak var lastView: TerminalMetalView?
 
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "input")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "input")
 
     public init() {}
 

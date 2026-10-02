@@ -10,7 +10,7 @@ How one `Package.swift` builds the Mac app and the Linux port, which build syste
 
   | Array | Contents today | Grows in |
   |---|---|---|
-  | `shared` | `GhosttyVt`, `TkzCore`, `TkzCoreTests`; product `TkzCore` | WOR-304 to WOR-310, as targets compile on Linux |
+  | `shared` | `GhosttyVt`, `TkzPlatform`, `TkzCore`, `TkzPlatformTests`, `TkzCoreTests`; product `TkzCore` | WOR-304 to WOR-310, as targets compile on Linux |
   | `linuxOnly` | `TkzmuxLinux` (product `tkzmux`), `GhosttyVtSmokeTests` | WOR-311 to WOR-314 |
   | `macOnly` | everything else, as before | shrinks as targets move to `shared` |
 

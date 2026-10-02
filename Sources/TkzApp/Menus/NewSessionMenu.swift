@@ -17,7 +17,7 @@
 import AppKit
 import AgentBridge
 import TkzCore
-import os
+import TkzPlatform
 
 /// Builds and owns the group-scoped new-session menu.
 ///
@@ -193,7 +193,7 @@ public final class NewSessionMenu: NSObject, NSMenuDelegate {
     /// The last launch the menu resolved — the stub's record, and what tests read.
     public private(set) var lastLaunch: Launch?
 
-    private static let log = Logger(subsystem: "se.tkz.tkzmux", category: "new-session")
+    private static let log = TkzLogger(subsystem: "se.tkz.tkzmux", category: "new-session")
 
     public init(theme: Theme = .default) {
         self.theme = theme

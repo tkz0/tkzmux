@@ -20,7 +20,7 @@
 
 import Foundation
 import TkzCore
-import os
+import TkzPlatform
 
 @MainActor
 public final class StateAutosaver {
@@ -35,7 +35,7 @@ public final class StateAutosaver {
     /// the machine was busy — which for a persistence layer means the user's arrangement is not
     /// actually on disk when they think it is.
     private let queue = DispatchQueue(label: "se.tkz.tkzmux.state", qos: .userInitiated)
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "state")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "state")
 
     private var observer: AppStore.ObserverToken?
     private var debounceTask: Task<Void, Never>?

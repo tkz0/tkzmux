@@ -38,8 +38,8 @@ import Darwin
 import Foundation
 import GitStatus
 import TkzCore
+import TkzPlatform
 import TkzTerminalCore
-import os
 
 @MainActor
 public final class SessionLauncher {
@@ -83,7 +83,7 @@ public final class SessionLauncher {
     public var onRemoved: ((SessionID) -> Void)?
 
     private let fileManager: FileManager
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "launch")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "launch")
     private var pendingWorktreeRefresh: [String: Task<Void, Never>] = [:]
 
     public init(

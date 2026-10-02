@@ -48,7 +48,7 @@
 
 import Foundation
 import TkzCore
-import os
+import TkzPlatform
 
 @MainActor
 public final class AttentionNotifier {
@@ -65,7 +65,7 @@ public final class AttentionNotifier {
 
     private let store: AppStore
     private let presenter: any NotificationPresenting
-    private let logger = Logger(subsystem: "se.tkz.tkzmux", category: "notifications")
+    private let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "notifications")
 
     /// The last signal seen, per row that *has* live state.
     private var signals: [SessionID: Signal]
