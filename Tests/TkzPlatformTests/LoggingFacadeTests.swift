@@ -11,6 +11,8 @@ import TkzPlatform
     @Test func theFacadeAliasesTheOSTypes() {
         #expect(ObjectIdentifier(TkzLogger.self) == ObjectIdentifier(os.Logger.self))
         #expect(ObjectIdentifier(TkzSignposter.self) == ObjectIdentifier(OSSignposter.self))
+        #expect(ObjectIdentifier(TkzSignpostID.self) == ObjectIdentifier(OSSignpostID.self))
+        #expect(ObjectIdentifier(TkzSignpostIntervalState.self) == ObjectIdentifier(OSSignpostIntervalState.self))
     }
 
     /// The call shapes the app uses: a literal with `privacy:` fields, and a signpost interval.

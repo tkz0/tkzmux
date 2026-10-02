@@ -10,7 +10,7 @@
 // `os` is re-exported for the same reason: `OSSignpostID`, `OSSignpostIntervalState` and the
 // `OSLogMessage` interpolation types stay visible to every file that imports TkzPlatform. This is
 // the only `import os` in Sources/; everything else imports TkzPlatform. The Linux half
-// (a journald-backed struct with the same API) lives outside this folder.
+// (a journald-backed struct with the same API) lives in Linux/.
 
 #if canImport(Darwin)
 @_exported import os
@@ -20,4 +20,8 @@ public typealias TkzLogger = os.Logger
 
 /// The signposter every tkzmux module uses: `OSSignposter` on macOS.
 public typealias TkzSignposter = OSSignposter
+
+/// The names Linux gives its own signpost types; the same `os` types on macOS.
+public typealias TkzSignpostID = OSSignpostID
+public typealias TkzSignpostIntervalState = OSSignpostIntervalState
 #endif

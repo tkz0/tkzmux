@@ -5,7 +5,9 @@
 // other OS lacks lives in a per-OS folder (`Darwin/`), so the source hygiene tests can forbid those
 // imports everywhere else.
 //
-//   Darwin/Logging.swift   `TkzLogger` / `TkzSignposter`, aliases of `os.Logger` / `OSSignposter`
+//   Darwin/Logging.swift      `TkzLogger` / `TkzSignposter`, aliases of `os.Logger` / `OSSignposter`
+//   Linux/LinuxLogging.swift  `TkzLogger`: the same call shape, journald-backed (Linux/Journal.swift)
+//   Linux/Signposts.swift     `TkzSignposter`: a no-op, or Chrome trace JSON under `TKZMUX_TRACE`
 
 /// Module marker used by the smoke tests until the module has API on every OS.
 public enum TkzPlatformModule {
