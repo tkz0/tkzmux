@@ -224,17 +224,15 @@ final class SidebarOutlineView: NSOutlineView {
 
 // MARK: - Container
 
-/// Root view. Stacks, top to bottom, the fixed-height summary strip (under the toolbar, as
-/// artboard 2c draws it — moved there 2026-09-08), the scroll view, the "Update available" card
-/// when there is one and the "＋ New group" footer, and tells the controller when it
-/// changes window so occlusion notifications can follow. The strip starts at the top safe-area
-/// inset, so with the content extending under the titlebar the strip and the rows still start
-/// below it.
+/// Root view. Stacks, top to bottom, the fixed-height header (the "GROUPS" caption with the
+/// ready-sound bell and the folder button that makes a group), the scroll view and the "Update available" card when there is one, and
+/// tells the controller when it changes window so occlusion notifications can follow. The header
+/// starts at the top safe-area inset, so with the content extending under the titlebar the header
+/// and the rows still start below it.
 final class SidebarContainerView: NSView {
     var onWindowChange: (@MainActor (NSWindow?) -> Void)?
     var scrollView: NSScrollView?
-    var summaryStrip: SummaryStripView?
-    var newGroupFooter: NewGroupFooterView?
+    var header: SidebarHeaderView?
     var updateNotice: UpdateNoticeView?
 
     override var isFlipped: Bool { false }
@@ -246,23 +244,21 @@ final class SidebarContainerView: NSView {
 
     override func layout() {
         super.layout()
-        let footerHeight = CGFloat(SidebarMetrics.newGroupFooterHeight)
-        let stripHeight = CGFloat(SidebarMetrics.summaryStripHeight)
+        let headerHeight = CGFloat(SidebarMetrics.sidebarHeaderHeight)
         let topInset = safeAreaInsets.top
-        newGroupFooter?.frame = NSRect(x: 0, y: 0, width: bounds.width, height: footerHeight)
-        // Non-flipped: the card sits on the footer, and the list starts above the card — its
+        // Non-flipped: the card sits at the bottom, and the list starts above the card — its
         // origin moves up *and* its height shrinks, or the card would cover the last row.
-        var listBottom = footerHeight
+        var listBottom: CGFloat = 0
         if let updateNotice, !updateNotice.isHidden {
             let noticeHeight = CGFloat(SidebarMetrics.updateNoticeHeight)
-            updateNotice.frame = NSRect(x: 0, y: footerHeight, width: bounds.width, height: noticeHeight)
+            updateNotice.frame = NSRect(x: 0, y: 0, width: bounds.width, height: noticeHeight)
             listBottom += noticeHeight
         }
-        let stripY = max(listBottom, bounds.height - topInset - stripHeight)
-        summaryStrip?.frame = NSRect(x: 0, y: stripY, width: bounds.width, height: stripHeight)
+        let headerY = max(listBottom, bounds.height - topInset - headerHeight)
+        header?.frame = NSRect(x: 0, y: headerY, width: bounds.width, height: headerHeight)
         scrollView?.frame = NSRect(
             x: 0, y: listBottom, width: bounds.width,
-            height: max(0, stripY - listBottom))
+            height: max(0, headerY - listBottom))
     }
 }
 
@@ -276,9 +272,9 @@ public final class SidebarViewController: NSViewController {
     /// Invoked by a group header's `＋`. M2.4 replaces this with the new-session menu.
     public var onNewSession: (@MainActor (GroupID) -> Void)?
 
-    /// Invoked by the "＋ New group" footer. The assembler asks for the group's name.
+    /// Invoked by the header's folder button. The assembler asks for the group's name.
     public var onNewGroup: (@MainActor () -> Void)? {
-        didSet { footer.onNewGroup = onNewGroup }
+        didSet { header.onNewGroup = onNewGroup }
     }
 
     /// Builds the context menu for a right-clicked session row (M5.2). The assembler owns the
@@ -325,19 +321,16 @@ public final class SidebarViewController: NSViewController {
     /// for tests and for anyone who wants to feed the popover something else.
     public var lastMessageProvider: (@MainActor (SessionID) -> String?)?
 
-    /// The "＋ New group" footer beneath the summary strip.
-    public var newGroupFooter: NewGroupFooterView { footer }
+    /// The "GROUPS" caption, the bell and the new-group folder button above the list.
+    public var headerView: SidebarHeaderView { header }
 
     /// The list itself, for the split-view host (sizing, first responder, scrolling).
     public var outlineView: NSOutlineView { outline }
 
-    /// The "N working · N need you" strip beneath the list.
-    public var summaryStrip: SummaryStripView { strip }
-
     /// The scroll view the outline lives in; the split view sets its width constraints.
     public var scrollView: NSScrollView { scroll }
 
-    /// The "Update available" card between the list and the footer; hidden when there
+    /// The "Update available" card under the list; hidden when there
     /// is nothing to say.
     public var updateNoticeView: UpdateNoticeView { notice }
 
@@ -347,8 +340,7 @@ public final class SidebarViewController: NSViewController {
     private var theme: Theme
     private let outline = SidebarOutlineView()
     private let scroll = NSScrollView()
-    private let strip = SummaryStripView()
-    private let footer = NewGroupFooterView()
+    private let header = SidebarHeaderView()
     private let notice = UpdateNoticeView()
     /// Internal rather than private: `LastMessagePopoverTests` asserts `isShown` on this directly,
     /// since `showLastMessage(for:)` deliberately returns nothing to check against.
@@ -465,18 +457,19 @@ public final class SidebarViewController: NSViewController {
         scroll.wantsLayer = true
 
         container.addSubview(scroll)
-        container.addSubview(strip)
-        footer.configure(theme: theme)
-        footer.onNewGroup = onNewGroup
-        container.addSubview(footer)
+        header.configure(theme: theme)
+        header.onNewGroup = onNewGroup
+        header.onToggleSound = { [weak self] on in
+            self?.store.update { $0.setSoundOnReady(on) }
+        }
+        container.addSubview(header)
         notice.isHidden = true
         notice.configure(theme: theme)
         notice.onAction = onUpdateAction
         notice.onDismiss = { [weak self] in self?.dismissUpdateNotice() }
         container.addSubview(notice)
         container.scrollView = scroll
-        container.summaryStrip = strip
-        container.newGroupFooter = footer
+        container.header = header
         container.updateNotice = notice
         container.onWindowChange = { [weak self] window in self?.windowChanged(to: window) }
 
@@ -485,7 +478,7 @@ public final class SidebarViewController: NSViewController {
 
     public override func viewDidLoad() {
         super.viewDidLoad()
-        strip.configure(SidebarRowAdapter.summaryModel(for: store.state), theme: theme)
+        header.setSoundOn(store.state.soundOnReady)
         rebuild()
         applyUpdateNotice()
         store.addObserver { [weak self] change in self?.apply(change) }
@@ -497,8 +490,7 @@ public final class SidebarViewController: NSViewController {
         view.layer?.backgroundColor = theme.sidebarBackground.cgColor
         outline.backgroundColor = theme.sidebarBackground.nsColor
         scroll.backgroundColor = theme.sidebarBackground.nsColor
-        strip.configure(SidebarRowAdapter.summaryModel(for: store.state), theme: theme)
-        footer.configure(theme: theme)
+        header.configure(theme: theme)
         notice.configure(theme: theme)
         lastMessagePopover.close()
         lastMessagePopover = LastMessagePopover(theme: theme)
@@ -525,7 +517,6 @@ public final class SidebarViewController: NSViewController {
         }
         syncExpansion(for: shadowGroups)
         syncSelectionToOutline(scroll: false)
-        updateSummary()
     }
 
     // MARK: Change-set dispatch
@@ -561,8 +552,10 @@ public final class SidebarViewController: NSViewController {
 
         if change.usage { applyAccountLabels() }
         if change.selection { syncSelectionToOutline() }
-        if change.structure || !change.sessions.isEmpty { updateSummary() }
-        if change.chrome { applyUpdateNotice() }
+        if change.chrome {
+            applyUpdateNotice()
+            header.setSoundOn(store.state.soundOnReady)
+        }
         // The drag ended before its drop's change set arrived; now that the one-row `moveItem`
         // has run, the dragged group can have its rows back.
         if finishGroupDragAfterApply { finishGroupDrag() }
@@ -1001,10 +994,6 @@ public final class SidebarViewController: NSViewController {
         let rect = outline.rect(ofRow: row)
         guard outline.visibleRect.intersects(rect) else { return nil }
         return (rect, outline)
-    }
-
-    private func updateSummary() {
-        strip.configure(SidebarRowAdapter.summaryModel(for: store.state), theme: theme)
     }
 
     @objc private func outlineClicked() {

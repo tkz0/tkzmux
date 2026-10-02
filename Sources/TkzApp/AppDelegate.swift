@@ -131,9 +131,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 // The NEEDS YOU banner + ping. After the window, so the permission dialog
                 // it may raise lands on a visible app; after `claude`, whose hooks make the flips.
                 let notifier = AttentionNotifier(store: store)
+                // The sidebar bell's sound. "Glass" is a stock system sound, so nothing is bundled.
+                notifier.playReadySound = { NSSound(named: "Glass")?.play() }
                 controller.attention = notifier
                 attention = notifier
-                // The same NEEDS YOU count as the summary strip, on the Dock icon (TKZ-67).
+                // The NEEDS YOU count on the Dock icon (TKZ-67).
                 dockBadge = DockBadge(store: store)
                 // The sidebar's update card. Release builds only (a dev build checks
                 // when `TKZMUX_UPDATE_URL` points it at a feed); the first check is 15 s out.

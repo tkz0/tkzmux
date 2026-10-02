@@ -38,6 +38,13 @@
 // the badge is right to stay (the prompt is still up), the banner is not. Muting a row from its
 // context menu (`Session.notificationsMuted`) counts as the second: its banner goes at once, and
 // nothing is posted for it until it is unmuted.
+//
+// ## The ready sound
+//
+// With `AppState.soundOnReady` on (the bell in the sidebar header), the same transitions that post
+// a banner also play one sound per delivery — done and NEEDS YOU alike, since both mean "a session
+// is ready for you". It follows the same attended/muted rules as the banners but not the
+// `notifyOnDone` switch or macOS's notification permission: the bell is its own switch.
 
 import Foundation
 import TkzCore
@@ -78,6 +85,9 @@ public final class AttentionNotifier {
     /// wires this from the adapter registry, and the fallback is honest about not knowing rather
     /// than guessing at a product name.
     public var agentDisplayName: (AgentKind) -> String = { _ in "the agent" }
+
+    /// Plays the ready sound. The assembler wires the real one; tests count calls.
+    public var playReadySound: () -> Void = {}
 
     /// The user clicked a banner; the window reveals this row and comes to the front.
     public var onActivate: ((SessionID) -> Void)?
@@ -158,6 +168,9 @@ public final class AttentionNotifier {
             uniqueKeysWithValues: state.orderedSessions.enumerated().map { ($1.id, $0) })
         func sorted(_ ids: [SessionID]) -> [SessionID] {
             ids.sorted { (order[$0] ?? .max, $0.rawValue) < (order[$1] ?? .max, $1.rawValue) }
+        }
+        if state.soundOnReady, !(blocked.isEmpty && done.isEmpty) {
+            playReadySound()
         }
         if state.notifyOnDone {
             for id in sorted(done) { post(doneRequest(for: id, in: state), for: [id]) }

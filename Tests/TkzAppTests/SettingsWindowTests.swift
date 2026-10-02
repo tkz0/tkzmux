@@ -155,7 +155,7 @@ struct SettingsWindowTests {
         #expect(rows[.notifyOnDone]?.control == .toggle(isOn: false))
         #expect(rows[.badgeDockIcon]?.control == .toggle(isOn: false))
         #expect(rows[.sessionSpend]?.control == .toggle(isOn: false))
-        #expect(rows[.themePreset]?.control == .popup(titles: ["Midnight indigo", "Light"], selected: 1))
+        #expect(rows[.themePreset]?.control == .popup(titles: ["Midnight indigo", "Light", "Black"], selected: 1))
         #expect(rows[.removeShell]?.control == .button(title: "Remove\u{2026}", destructive: true))
         for row in rows.values {
             #expect(!row.detail.isEmpty, "\(row.id) has no sentence")
@@ -493,7 +493,7 @@ struct SettingsWindowTests {
         #expect(view.captionsForTesting == ["Theme"])
 
         let popup = try #require(view.controlForTesting(.themePreset) as? NSPopUpButton)
-        #expect(popup.itemTitles == ["Midnight indigo", "Light"])
+        #expect(popup.itemTitles == ["Midnight indigo", "Light", "Black"])
         #expect(popup.indexOfSelectedItem == 0)
 
         popup.selectItem(at: 1)

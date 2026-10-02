@@ -38,7 +38,6 @@ struct SidebarRowViewTests {
         view.layoutSubtreeIfNeeded()
         if let row = view as? SessionRowView { row.setContentsScale(scale) }
         if let row = view as? GroupRowView { row.setContentsScale(scale) }
-        if let strip = view as? SummaryStripView { strip.setContentsScale(scale) }
 
         let pixelsWide = Int((view.bounds.width * scale).rounded())
         let pixelsHigh = Int((view.bounds.height * scale).rounded())
@@ -295,12 +294,6 @@ struct SidebarRowViewTests {
         let views: [NSView] = [
             Self.sessionRow(Self.sample),
             Self.groupRow(SidebarGroupRowModel(name: "tkzmux", color: RGB(hex: 0x41c6a8))),
-            {
-                let strip = SummaryStripView(frame: NSRect(
-                    x: 0, y: 0, width: SidebarMetrics.sidebarWidth, height: SummaryStripView.height))
-                strip.configure(SidebarSummaryModel(working: 5, needAttention: 2), theme: .default)
-                return strip
-            }(),
         ]
         for view in views {
             #expect(view.window == nil)
@@ -762,43 +755,6 @@ struct SidebarRowViewTests {
                                   Self.components(lightGroup.nameTextLayer.foregroundColor)))
     }
 
-    @Test("The summary strip draws neutral words with a status-coloured dot before each count")
-    func summaryStripUsesTheDotsForColour() throws {
-        for theme in Theme.allPresets {
-            let strip = SummaryStripView(frame: NSRect(
-                x: 0, y: 0, width: SidebarMetrics.sidebarWidth, height: SummaryStripView.height))
-            strip.configure(SidebarSummaryModel(working: 5, needAttention: 2), theme: theme)
-            strip.layoutSubtreeIfNeeded()
-
-            #expect(Self.approxEqual(Self.components(strip.workingDotLayer.backgroundColor),
-                                     Self.components(theme.working.cgColor)), "\(theme.preset)")
-            #expect(Self.approxEqual(Self.components(strip.waitingDotLayer.backgroundColor),
-                                     Self.components(theme.waiting.cgColor)), "\(theme.preset)")
-            for label in [strip.workingTextLayer, strip.waitingTextLayer] {
-                let attributed = try #require(label.string as? NSAttributedString)
-                let color = try #require(
-                    attributed.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
-                #expect(Self.approxEqual(Self.components(color.cgColor),
-                                         Self.components(theme.summaryText.cgColor)), "\(theme.preset)")
-            }
-            #expect(strip.workingTextLayer.string as? NSAttributedString != nil)
-            #expect((strip.workingTextLayer.string as? NSAttributedString)?.string == "5 WORKING")
-            #expect((strip.waitingTextLayer.string as? NSAttributedString)?.string == "2 NEED YOU")
-
-            // 7 pt dots, each immediately before its words, both inside the strip.
-            let d = StatusDotLayer.diameter
-            #expect(strip.workingDotLayer.frame.size == CGSize(width: d, height: d))
-            #expect(strip.waitingDotLayer.frame.size == CGSize(width: d, height: d))
-            #expect(strip.workingDotLayer.frame.maxX < strip.workingTextLayer.frame.minX)
-            #expect(strip.workingTextLayer.frame.maxX < strip.waitingDotLayer.frame.minX)
-            #expect(strip.waitingDotLayer.frame.maxX < strip.waitingTextLayer.frame.minX)
-            #expect(strip.waitingTextLayer.frame.maxX <= strip.bounds.width)
-            #expect(strip.workingDotLayer.frame.minX >= 0)
-            // The spoken form is unchanged.
-            #expect(strip.summaryText == "5 working · 2 need you")
-        }
-    }
-
     // MARK: Group row
 
     @Test("The colour edge is transparent when the group has no colour, and tinted when it has one")
@@ -904,22 +860,6 @@ struct SidebarRowViewTests {
         #expect(row.addButton.frame.maxX <= row.bounds.width)
     }
 
-    // MARK: Summary strip
-
-    @Test("The summary strip reads 'N working · N need you' at 11 pt")
-    func summaryStripText() throws {
-        let strip = SummaryStripView(frame: NSRect(
-            x: 0, y: 0, width: SidebarMetrics.sidebarWidth, height: SummaryStripView.height))
-        strip.configure(SidebarSummaryModel(working: 5, needAttention: 2), theme: .default)
-        #expect(strip.summaryText == "5 working · 2 need you")
-        #expect(strip.accessibilityLabel() == "5 working · 2 need you")
-        #expect(Theme.Fonts.ui.body == 11)
-
-        strip.configure(SidebarSummaryModel(working: 0, needAttention: 0), theme: .default)
-        #expect(strip.summaryText == "0 working · 0 need you")
-        #expect(try Self.isNonBlank(Self.render(strip, scale: 2)))
-    }
-
     // MARK: Visual sanity artefact
 
     /// Renders a representative sidebar column to a PNG so a human (or the agent that wrote this)
@@ -961,11 +901,6 @@ struct SidebarRowViewTests {
         session(Self.wrappingSample)
         group(SidebarGroupRowModel(name: "acme-ledger", color: nil, isCollapsed: true))
         session(SidebarSessionRowModel(title: "restored session", branch: "develop", status: .idle))
-
-        let summary = SummaryStripView(frame: NSRect(
-            x: 0, y: 0, width: width, height: SummaryStripView.height))
-        summary.configure(SidebarSummaryModel(working: 1, needAttention: 1), theme: theme)
-        entries.append(Entry(view: summary, height: SummaryStripView.height))
 
         let total = entries.reduce(0) { $0 + $1.height }
         let scale: CGFloat = 2

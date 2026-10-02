@@ -5,7 +5,9 @@
 // dark/light toggle. 1b has since been redrawn as the *indigo* light aligned with the 2c family, and
 // the 4a–4f series gives it six feature screens (4a main, 4b changes, 4c/4d splits, 4e first prompt,
 // 4f search); `light` follows those. The file also holds 2a Graphite, 2b Warm charcoal and 1a Dark;
-// nothing reaches them, so they are not built here. Both presets are the same token set; nothing in
+// nothing reaches them, so they are not built here. A third preset, Black, is not from the design
+// file: it is the neutral near-black of a reference screenshot (2026-10-01) — grey surfaces with no
+// indigo cast. Every preset is the same token set; nothing in
 // the app may branch on the preset name. Extraction rule per token is listed next to the token;
 // `ThemeTests.printsDesignTable` prints the resulting values as one table.
 
@@ -14,6 +16,7 @@ public struct Theme: Hashable, Sendable {
     public enum Preset: String, CaseIterable, Hashable, Sendable {
         case midnightIndigo   // 2c
         case light            // 1b
+        case black            // neutral near-black, not from the design file
 
         /// The artboard's own name, for the Settings › Appearance popup. Data in this file, like
         /// ``Theme/toggled(_:)``, so no call site ever branches on a preset.
@@ -21,6 +24,7 @@ public struct Theme: Hashable, Sendable {
             switch self {
             case .midnightIndigo: "Midnight indigo"
             case .light: "Light"
+            case .black: "Black"
             }
         }
     }
@@ -120,7 +124,7 @@ public struct Theme: Hashable, Sendable {
     public let fontMono: Fonts.Mono
 
     public static let `default`: Theme = .midnightIndigo
-    public static let allPresets: [Theme] = [.midnightIndigo, .light]
+    public static let allPresets: [Theme] = [.midnightIndigo, .light, .black]
 
     public static func preset(_ preset: Preset) -> Theme {
         allPresets.first { $0.preset == preset }!
@@ -129,11 +133,11 @@ public struct Theme: Hashable, Sendable {
     /// The preset a light/dark toggle lands on from `preset`.
     ///
     /// The pairing is *data in this file* so that no call site ever names a preset — the rule in the
-    /// header. 2c and 1b are the only pair; a preset added later declares its twin here and nowhere
-    /// else.
+    /// header. 2c and 1b are the pair; Black toggles to Light too, and Light comes back to 2c — the
+    /// toggle cannot know which dark preset it came from without branching on state.
     public static func toggled(_ preset: Preset) -> Preset {
         switch preset {
-        case .midnightIndigo: .light
+        case .midnightIndigo, .black: .light
         case .light: .midnightIndigo
         }
     }
@@ -365,6 +369,75 @@ extension Theme {
                 )
             ),
             terminalMinContrast: 3,
+            fontUI: Fonts.ui, fontMono: Fonts.mono
+        )
+    }()
+
+    /// Black — a neutral near-black: grey surfaces with no indigo cast, the sidebar one step above
+    /// the terminal, and a neutral selection. Status colours are 2c's, so a dot means the same thing
+    /// in either dark preset.
+    public static let black: Theme = {
+        let fg = RGB(hex: 0xe8e8ea), termFg = RGB(hex: 0xd6d6da), dim = RGB(hex: 0x8a8a93)
+        let statusBar = RGB(hex: 0x18181a)
+        let working = RGB(hex: 0x4ade80), waiting = RGB(hex: 0xfbbf54), diffRemove = RGB(hex: 0xf28b8b)
+        let accent = RGB(hex: 0x8ea2ff)
+        return Theme(
+            preset: .black, isDark: true,
+            windowBackground: RGB(hex: 0x0e0e0f),
+            titlebar: RGB(rgb: 24, 24, 26, alpha: 0.95),
+            sidebarBackground: RGB(hex: 0x18181a),
+            terminalBackground: RGB(hex: 0x111113),
+            statusBarBackground: statusBar,
+            foreground: fg,
+            terminalForeground: termFg,
+            foregroundMuted: RGB(hex: 0xa2a2aa),
+            foregroundDim: dim,
+            groupHeaderText: RGB(hex: 0xd0d0d6),
+            summaryText: RGB(hex: 0xb2b2ba),
+            statusBarText: RGB(hex: 0xa6a6ae),
+            meterTrack: RGB(rgb: 255, 255, 255, alpha: 0.16),
+            contextMeter: working,
+            usageMeter: accent,
+            meterWarn: waiting,
+            meterDanger: diffRemove,
+            accent: accent,
+            accentText: RGB(hex: 0x0f1020),
+            selection: RGB(rgb: 255, 255, 255, alpha: 0.09),
+            working: working,
+            waiting: waiting,
+            idle: RGB(rgb: 255, 255, 255, alpha: 0.30),
+            needsYouText: RGB(hex: 0xfbbf54),
+            needsYouBackground: RGB(rgb: 251, 191, 84, alpha: 0.16),
+            searchMatchBackground: RGB(rgb: 251, 191, 84, alpha: 0.35),
+            searchMatchText: RGB(hex: 0xffe9c2),
+            wtText: RGB(hex: 0xc4ceff),
+            wtBackground: RGB(rgb: 142, 162, 255, alpha: 0.18),
+            rebaseText: waiting,
+            rebaseBackground: RGB(rgb: 251, 191, 84, alpha: 0.13),
+            rebaseBorder: RGB(rgb: 251, 191, 84, alpha: 0.35),
+            groupEdgeDefault: RGB(hex: 0x41c6a8),
+            diffAdd: working,
+            diffRemove: diffRemove,
+            border: RGB(rgb: 255, 255, 255, alpha: 0.07),
+            prOpen: RGB(hex: 0x3fb950),
+            prMerged: RGB(hex: 0xb48cff),
+            paneHeaderBackground: RGB(hex: 0x1d1d20),
+            paneHeaderBackgroundInactive: RGB(hex: 0x161618),
+            paneHeaderPath: RGB(hex: 0x9c9ca4),
+            paneHeaderPathInactive: dim,
+            focusRing: RGB(rgb: 142, 162, 255, alpha: 0.65),
+            dividerGrip: RGB(rgb: 142, 162, 255, alpha: 0.55),
+            dividerShade: RGB(rgb: 0, 0, 0, alpha: 0.40),
+            dividerHighlight: RGB(rgb: 255, 255, 255, alpha: 0.06),
+            terminalPalette16: palette16(
+                isDark: true, black: statusBar, white: termFg, brightBlack: dim, brightWhite: fg,
+                base: AnsiBase(
+                    red: diffRemove, green: working, yellow: waiting,
+                    blue: accent, magenta: RGB(hex: 0xc084fc), cyan: RGB(hex: 0x41c6a8)
+                )
+            ),
+            // Dark, like 2c: draw program colours as sent.
+            terminalMinContrast: 1,
             fontUI: Fonts.ui, fontMono: Fonts.mono
         )
     }()

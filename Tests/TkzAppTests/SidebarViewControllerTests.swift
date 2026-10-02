@@ -858,49 +858,49 @@ struct SidebarViewControllerTests {
         #expect(received == [groupID, groupID])
     }
 
-    // MARK: - Summary strip
+    // MARK: - Header
 
-    @Test("The summary strip is at the top, the ＋ New group footer at the bottom, the list between")
-    func newGroupFooter() {
+    @Test("The header sits at the top under the toolbar, the list fills the rest to the bottom")
+    func headerAtTheTop() {
         let harness = Self.makeHarness()
         harness.window.layoutIfNeeded()
         harness.controller.view.layoutSubtreeIfNeeded()
 
-        let footer = harness.controller.newGroupFooter
-        let strip = harness.controller.summaryStrip
+        let header = harness.controller.headerView
         let container = harness.controller.view
-        #expect(footer.superview === container)
-        #expect(footer.frame.height == CGFloat(SidebarMetrics.newGroupFooterHeight))
-        #expect(footer.frame.minY == 0, "the footer is the bottom-most strip")
-        // The strip moved to the top on 2026-09-08 (artboard 2c draws it under the toolbar).
+        #expect(header.superview === container)
+        #expect(header.frame.height == CGFloat(SidebarMetrics.sidebarHeaderHeight))
         let topInset = container.safeAreaInsets.top
-        #expect(abs(strip.frame.maxY - (container.bounds.height - topInset)) < 0.5, "the strip sits at the top, under the toolbar")
-        #expect(abs(harness.controller.scrollView.frame.maxY - strip.frame.minY) < 0.5, "the list starts right under it")
-        #expect(abs(harness.controller.scrollView.frame.minY - footer.frame.maxY) < 0.5, "and ends at the footer")
-        #expect(strip.summaryText.hasSuffix("need you"))
-        #expect(SummaryStripView.displayText(for: SidebarSummaryModel(working: 2, needAttention: 1)) == "2 WORKING · 1 NEED YOU")
-        #expect(footer.labelTextLayer.string as? String == NewGroupFooterView.title)
-        #expect(footer.dashedBorderLayer.path != nil)
-        #expect(footer.buttonFrame.height == NewGroupFooterView.buttonHeight)
+        #expect(abs(header.frame.maxY - (container.bounds.height - topInset)) < 0.5, "the header sits under the toolbar")
+        #expect(abs(harness.controller.scrollView.frame.maxY - header.frame.minY) < 0.5, "the list starts right under it")
+        #expect(harness.controller.scrollView.frame.minY == 0, "and runs to the bottom")
+        #expect(header.captionText == SidebarHeaderView.caption)
 
-        var clicks = 0
-        harness.controller.onNewGroup = { clicks += 1 }
-        footer.button.performClick(nil)
-        #expect(clicks == 1)
+        var groups = 0
+        harness.controller.onNewGroup = { groups += 1 }
+        header.newGroupButton.performClick(nil)
+        #expect(groups == 1)
+
+        // The caption's glyphs start where a group name's do.
+        #expect(header.captionFrame.minX + SidebarHeaderView.labelInset == SidebarHeaderView.captionLeft)
+        // The bell sits left of the folder.
+        #expect(header.soundButton.frame.maxX < header.newGroupButton.frame.minX)
     }
 
-    @Test("The summary strip counts NEEDS YOU badges and follows the change set")
-    func summaryStripFollowsTheStore() {
+    @Test("The bell toggles the ready sound in the store and follows it back")
+    func bellTogglesTheReadySound() {
         let harness = Self.makeHarness()
-        let counts = harness.store.state.summaryCounts
-        #expect(harness.controller.summaryStrip.summaryText == "\(counts.working) working · \(counts.needsYou) need you")
+        let header = harness.controller.headerView
+        #expect(!harness.store.state.soundOnReady)
+        #expect(!header.isSoundOn)
 
-        harness.mutate { state in
-            state.updateLive(Fixture.sessionID(0)) { $0.attention = true }
-        }
-        #expect(
-            harness.controller.summaryStrip.summaryText
-                == "\(counts.working) working · \(counts.needsYou + 1) need you")
+        header.soundButton.performClick(nil)
+        harness.store.flush()
+        #expect(harness.store.state.soundOnReady)
+        #expect(header.isSoundOn)
+
+        harness.mutate { $0.setSoundOnReady(false) }
+        #expect(!header.isSoundOn)
     }
 
     // MARK: - Occlusion
@@ -1070,16 +1070,6 @@ struct SidebarViewControllerTests {
         state.setAccount(Account(key: "codex-work", configDir: "/h/.codex-work", label: "codex-work", agent: .codex))
         state.sessions[codexDefault.id] = codexDefault
         #expect(SidebarRowAdapter.accountLabel(for: codexDefault, in: state) == "WORK")
-    }
-
-    @Test("The summary model counts badges, not waiting dots")
-    func summaryModelCountsBadges() {
-        let state = AppState.fixture
-        let model = SidebarRowAdapter.summaryModel(for: state)
-        let waitingDots = state.sessions.values.filter(\.status.isWaiting).count
-        #expect(model.needAttention == state.summaryCounts.needsYou)
-        #expect(model.needAttention <= waitingDots)
-        #expect(model.working == state.summaryCounts.working)
     }
 
     // MARK: - Headless render of the assembled sidebar

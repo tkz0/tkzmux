@@ -198,16 +198,15 @@ struct UpdateNoticeTests {
     func sidebarShowsAndDismisses() throws {
         let harness = SidebarViewControllerTests.makeHarness()
         let notice = harness.controller.updateNoticeView
-        let footer = harness.controller.newGroupFooter
         #expect(notice.isHidden)
         harness.window.layoutIfNeeded()
         let listBottomBefore = harness.controller.scrollView.frame.minY
-        #expect(abs(listBottomBefore - footer.frame.maxY) < 0.5)
+        #expect(listBottomBefore == 0)
 
         harness.mutate { $0.setAvailableUpdate(Self.update) }
         harness.controller.view.layoutSubtreeIfNeeded()
         #expect(!notice.isHidden)
-        #expect(abs(notice.frame.minY - footer.frame.maxY) < 0.5)
+        #expect(notice.frame.minY == 0)
         #expect(abs(notice.frame.height - SidebarMetrics.updateNoticeHeight) < 0.5)
         #expect(abs(harness.controller.scrollView.frame.minY - (listBottomBefore + SidebarMetrics.updateNoticeHeight)) < 0.5)
         #expect(notice.currentModel.title == "Update available \u{2014} v9.9.9")

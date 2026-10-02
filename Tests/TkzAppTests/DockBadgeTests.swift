@@ -91,8 +91,8 @@ struct DockBadgeTests {
         #expect(rig.tile.writes == ["1", "2", "1", nil])
     }
 
-    @Test("the badge is the summary strip's NEEDS YOU figure")
-    func matchesTheSummaryStrip() {
+    @Test("the badge is the store's NEEDS YOU figure")
+    func matchesTheNeedsYouCount() {
         let rig = Rig(count: 3)
         rig.prompt(rig.ids[0])
         rig.prompt(rig.ids[2], after: 1)
