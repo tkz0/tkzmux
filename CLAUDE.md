@@ -33,7 +33,8 @@ make clean                  # rm -rf .build build
 | `TkzTerminalCore` | Swift | `Pty`, `TerminalEnvironment`, `TerminalSession` (VT bridge, IO loop, snapshots) |
 | `TkzTerminalRender` | Swift | fonts, glyph atlas, `FrameBuilder`, Metal renderer |
 | `TkzTerminalView` | Swift | `TerminalMetalView`, keyboard/IME, mouse/selection |
-| `TkzPlatform` | Swift | OS seam below the UI: `TkzLogger`/`TkzSignposter` (aliases of `os.Logger`/`OSSignposter` on macOS; a journald-backed struct and a Chrome-trace signposter on Linux); the only `import os` lives in `Sources/TkzPlatform/Darwin/` |
+| `TkzPlatform` | Swift | OS seam below the UI: `TkzLogger`/`TkzSignposter` (aliases of `os.Logger`/`OSSignposter` on macOS; a journald-backed struct and a Chrome-trace signposter on Linux), `AppPaths`, `SHA256`, `Clocks`, `FileWatcher` (inotify/kqueue), `ProcessExitWatcher` (pidfd/kqueue); the only `import os` lives in `Sources/TkzPlatform/Darwin/` |
+| `TkzPlatformShim` | C | the pidfd system calls Swift's Glibc module cannot reach; empty on macOS |
 | `TkzCore` | Swift | models, `AppStore`/`ChangeSet`, status derivation, theme tokens — no AppKit |
 | `AgentBridge` | Swift | `AgentAdapter` seam, session watcher, hook server, shim installer, usage reader |
 | `Sources/AgentBridge/Codex/` | (in `AgentBridge`) | `CodexAdapter`, `CodexHooksInstaller`, `CodexTranscriptReader`, `CodexHookMapper` — everything Codex-specific, behind the same seam |

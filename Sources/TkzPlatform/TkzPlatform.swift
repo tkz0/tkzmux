@@ -11,6 +11,9 @@
 //   AppPaths.swift            `AppPaths`: home, support, cache and runtime directories (XDG on Linux)
 //   SHA256.swift              `SHA256`: FIPS 180-4 in plain Swift, CryptoKit's call shape, both OSes
 //   Clocks.swift              `Clocks`: monotonic (stops in sleep) and boot (counts sleep) nanoseconds
+//   FileWatcher.swift         `FileWatcher`: directory changes; inotify (Linux/), kqueue (Darwin/)
+//   ProcessExitWatcher.swift  `ProcessExitWatcher`: process exits, never reaping; pidfd (Linux/),
+//                             kqueue (Darwin/). The pidfd calls are in the C target TkzPlatformShim.
 
 /// Module marker used by the smoke tests until the module has API on every OS.
 public enum TkzPlatformModule {

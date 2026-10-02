@@ -46,7 +46,14 @@ let sharedTargets: [Target] = [  // hygiene-scan
     // Foundation only, never AppKit or GTK; nothing in tkzmux below it.
     .target(
         name: "TkzPlatform",
+        dependencies: ["TkzPlatformShim"],
         path: "Sources/TkzPlatform"
+    ),
+    // Its C half: the pidfd system calls Swift cannot make (Linux only; empty on macOS).
+    .target(
+        name: "TkzPlatformShim",
+        path: "Sources/TkzPlatformShim",
+        publicHeadersPath: "include"
     ),
 
     .target(

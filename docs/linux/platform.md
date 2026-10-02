@@ -1,6 +1,6 @@
 # TkzPlatform on Linux
 
-The OS seam below the UI (`Sources/TkzPlatform/`): one API per primitive, a back-end per OS. The Darwin back-ends live in `Darwin/` and the Linux ones in `Linux/`. Written in WOR-304 S2 (logging and signposts) and extended in WOR-304 S3 (paths) and S4 (SHA-256 and clocks); later WOR-304 sessions add the other primitives.
+The OS seam below the UI (`Sources/TkzPlatform/`): one API per primitive, a back-end per OS. The Darwin back-ends live in `Darwin/` and the Linux ones in `Linux/`. Written in WOR-304 S2 (logging and signposts) and extended in WOR-304 S3 (paths), S4 (SHA-256 and clocks) and S5 (file and process-exit watching); S6 adds the process table and listening ports.
 
 ## Logging: `TkzLogger`
 
@@ -130,3 +130,70 @@ So on Linux `AppPaths` resolves the table itself, from `ProcessInfo.processInfo.
 - `monotonicNanos` is the clock that `DispatchTime.now().uptimeNanoseconds` reads on both OSes, so intervals agree with Dispatch deadlines. The Linux signposter timestamps through it.
 - `bootNanos` counts suspend, so it is the one for start times and sleep/wake gaps (WOR-320). On Linux it agrees with `/proc/uptime`. Read after `monotonicNanos`, it is never smaller.
 - Neither is wall time, and neither carries across a reboot.
+
+## File watching: `FileWatcher`
+
+`FileWatcher` (`Sources/TkzPlatform/FileWatcher.swift`) reports changes to the entries of watched directories. One watcher holds many watches and calls one handler, on a queue its owner gives it. `SystemFileWatcher` is the back-end for the OS being built. ClaudeSessionWatcher, StatuslineReader and TranscriptWatch move onto it in WOR-306.
+
+- **Directories only.** A watch follows an inode, so a watch on a file would stay on the old file after an atomic rename-replace. The directory sees the rename instead. To watch one file, watch its directory with a name filter.
+- **Name filters.** Each watch has a filter, and only entries it accepts are reported. Filters run outside the watcher's lock, so a filter may call back into the watcher.
+- **Events.**
+
+  | Event | Meaning |
+  |---|---|
+  | `.changed(change)` | `change.name` was created (or renamed in, including a rename that replaces it), modified, had its attributes changed, or was removed (or renamed out). A nil name means "something in this directory changed: rescan it". |
+  | `.overflow` | The kernel dropped events. Rescan every watched directory; the watches are intact. |
+  | `.watchRemoved(id)` | The directory was deleted, renamed away or unmounted. The watch is gone; add it again once the directory is back. `remove(id)` does not produce this. |
+
+- **Errors** are typed (`FileWatcherError`): `.watchLimitReached` (ENOSPC), `.instanceLimitReached` (EMFILE/ENFILE), `.noSuchDirectory`, `.notADirectory`, `.permissionDenied`, `.alreadyWatched` (the same inode, whatever the path), `.cancelled` and `.system(errno)`.
+
+### Linux: inotify
+
+`InotifyFileWatcher` (`Linux/InotifyFileWatcher.swift`) uses one inotify fd per watcher (`IN_NONBLOCK|IN_CLOEXEC`), drained by a dispatch read source on the owner's queue. Each watch is added with `IN_ONLYDIR|IN_MASK_CREATE` (Linux 4.18) and this mask:
+
+| inotify event | Reported as |
+|---|---|
+| `IN_CREATE`, `IN_MOVED_TO` | `.created` |
+| `IN_MODIFY`, `IN_CLOSE_WRITE` | `.modified` (in-place rewrites need no per-file watch) |
+| `IN_ATTRIB` | `.attributes` |
+| `IN_DELETE`, `IN_MOVED_FROM` | `.removed` |
+| `IN_DELETE_SELF` | nothing; the `IN_IGNORED` that follows reports it |
+| `IN_MOVE_SELF` | the watch is removed, then `.watchRemoved`: the path no longer names the directory |
+| `IN_IGNORED` | `.watchRemoved`, unless `remove` asked for it |
+| `IN_Q_OVERFLOW` (`wd == -1`) | `.overflow` |
+
+- Records are variable length, so they are parsed with unaligned loads by a pure function that the tests feed synthetic buffers.
+- `IN_ISDIR` sets `change.isDirectory`.
+- The kernel limits are per user: `fs.inotify.max_user_watches` (524,288 on the reference machine) and `max_user_instances` (1,024 there, and 128 on many distributions). Share one watcher per owner rather than making one per directory.
+
+### macOS: kqueue
+
+`KqueueFileWatcher` (`Darwin/KqueueFileWatcher.swift`) keeps the vnode-source approach ClaudeSessionWatcher already uses:
+
+- one `O_EVTONLY` source on the directory, whose events are reported with a nil name. The watcher also rescans the directory itself and reports accepted names that appeared (`.created`) or vanished (`.removed`);
+- one `O_EVTONLY` source on every entry the filter accepts, because a directory vnode does not see a file rewritten in place. After an entry event the path is checked again: gone is `.removed`, a new inode (rename-replace) is `.created` and the source is re-opened on it, and anything else is `.modified` or `.attributes`.
+
+Every accepted entry costs one fd and one kqueue registration, so filters should be narrow.
+
+## Process exits: `ProcessExitWatcher`
+
+`ProcessExitWatcher` (`Sources/TkzPlatform/ProcessExitWatcher.swift`) calls a handler once, on the watcher's queue, when a process exits. A process that has already exited, whether a zombie or gone altogether, is reported straight away. `SystemProcessExitWatcher` is the back-end for the OS being built.
+
+- **It never reaps.** The owner calls `waitpid(pid, &status, WNOHANG)` in the exit handler, or its child stays a zombie. That keeps the exit status with the owner, and the watcher also works for processes that are not the owner's children.
+- **Foreign pids.** A pid that is not the owner's child can be reused once its parent reaps it. Check its start time (`ProcessTable`, WOR-304 S6) before trusting it.
+- **Linux** (`Linux/PidfdProcessExitWatcher.swift`): `pidfd_open` (Linux 5.3 or later; ENOSYS is `.unsupported`), wrapped in a dispatch read source. A pidfd stays readable after the exit, so the first event cancels the source, and its cancel handler closes the fd. ESRCH from `pidfd_open` means the process is already gone, which is reported as an exit.
+- **macOS** (`Darwin/KqueueProcessExitWatcher.swift`): a NOTE_EXIT process source. kqueue never reports a process that exited before the registration, so the queue checks once after it, as Pty does. `waitid(WNOWAIT)` sees an exited child without reaping it, and `kill(pid, 0)` failing with ESRCH sees any other process that no longer exists.
+- **Not for the pty child.** Pty keeps its own pidfd from `clone3` (WOR-305) and does not open a second one through here.
+
+### The C shim: `TkzPlatformShim`
+
+Swift's Glibc module has no `<sys/pidfd.h>`, and the variadic `syscall()` cannot be called from Swift. `Sources/TkzPlatformShim` therefore wraps `tkz_pidfd_open` and `tkz_pidfd_send_signal`. Both call `syscall()` directly, because the glibc wrappers need glibc 2.36, which is above the 2.35 floor. The target uses libc only, and it is empty on macOS. WOR-320 adds `tkz_spawn_clean` to it.
+
+### Measured
+
+On 2026-10-03, on the reference machine (Swift 6.3.3, debug build, `swift test --filter TkzPlatformTests`):
+
+- The exit event arrived a median of 0.03 ms after `kill(SIGKILL)`, and at most 0.1 ms over 20 kills. The test budget is 50 ms for CI runners, and the local target was under 5 ms. Pinned to one CPU (`taskset -c 0`), the maximum was 0.07 ms.
+- Holding the delivery queue while 9,192 files were created (18,384 events, against `max_queued_events` 16,384) produced `.overflow`, and the watch kept reporting afterwards.
+- 100 children, each reaped from its own exit event, left none behind in `/proc/self/task/*/children`. With the reap removed, the same check failed with 100 zombies.
+- The numbers of `anon_inode:inotify` and `anon_inode:[pidfd]` entries in `/proc/self/fd` were back at their starting values after 1,000 add/remove cycles, 1,000 whole watchers and 2,000 pidfd watches. The test counts these two kinds rather than every fd, so files opened by Swift Testing or by parallel suites do not move the count.
