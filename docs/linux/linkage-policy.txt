@@ -49,11 +49,11 @@
 [@glibc]
 allow libc.so.6              | glibc | libc6 | The C library. Every Linux binary needs it. The ABI floor is glibc 2.35 (ADR-0002).
 allow libm.so.6              | glibc | libc6 | glibc's libm. The libghostty-vt archive calls exp/expf/log/logf, and the Swift runtime also links -lm.
-allow ld-linux-x86-64.so.2   | glibc | libc6 | The glibc dynamic loader. It appears as NEEDED when a binary uses its TLS or dl symbols. | measured-by: WOR-300 S4
+allow ld-linux-x86-64.so.2   | glibc | libc6 | The glibc dynamic loader. Every -static-stdlib binary NEEDs it, for __tls_get_addr only (measured in WOR-300 S4, spikes.md).
 
 [@cxx-runtime]
-allow libstdc++.so.6         | libstdc++ | libstdc++6 | Expected to stay NEEDED after -static-stdlib, because the static Swift runtime is C++ and links it dynamically. | measured-by: WOR-300 S4
-allow libgcc_s.so.1          | libgcc    | libgcc-s1  | The unwinder and libgcc helpers that the Swift runtime and libstdc++ need. Expected to stay NEEDED after -static-stdlib. | measured-by: WOR-300 S4
+allow libstdc++.so.6         | libstdc++ | libstdc++6 | Stays NEEDED after -static-stdlib, because the static Swift runtime is C++ and links it dynamically. Measured in WOR-300 S4 (spikes.md), with and without Foundation.
+allow libgcc_s.so.1          | libgcc    | libgcc-s1  | The unwinder and libgcc helpers that the Swift runtime and libstdc++ need. Stays NEEDED after -static-stdlib (measured in WOR-300 S4, spikes.md).
 
 [@gtk]
 allow libgtk-4.so.1          | gtk4  | libgtk-4-1      | Linux platform shell (Option B): window, input, IME, clipboard, popups and frame clock. GTK never draws a visible pixel. The floor is 4.16, which noble's 4.14 does not meet.
@@ -128,6 +128,11 @@ runpath-deny */swiftly/*         | swiftly toolchain install. It moves or disapp
 
 # ===== Checkable sections =====================================================================
 
+# glibc-max 2.35 holds only if releases are linked with the ubuntu22.04 build of the pinned Swift on a
+# glibc <= 2.35 system: the static runtime of the ubuntu24.04 build needs GLIBC_2.38 wherever it is
+# linked (WOR-300 S4, spikes.md). WOR-323 S1 picks the release link; otherwise every glibc-max below
+# and ADR-0002 D1 go to 2.38.
+
 # The GTK app (`bin/tkzmux`). Its link mode is provisional: WOR-323 S2 makes the static-vs-dynamic
 # stdlib decision and edits this section. Static is the working assumption. It needs
 # per-product `-static-stdlib` linkerSettings, never the global `--static-swift-stdlib`.
@@ -145,7 +150,7 @@ runpath-allow $ORIGIN        | SwiftPM's default local rpath. Harmless, because 
 # Static Linux SDK (musl). A fully static binary has no NEEDED entries and passes here as it is.
 [tkzmux-hook]
 stdlib static
-status libstdc++/libgcc_s/ld-linux are provisional until WOR-300 S4 measures them
+status NEEDED measured in WOR-300 S4 (spikes.md); WOR-305 S6 decides between this glibc link and the musl Static Linux SDK
 glibc-max 2.35
 include @deny @no-toolchain-runpath @glibc @cxx-runtime
 deny libxkbcommon.so*        | The hook has no input handling.

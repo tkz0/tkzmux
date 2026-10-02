@@ -142,7 +142,7 @@ sudo pacman -S --needed zig vulkan-headers vulkan-tools vulkan-validation-layers
 | `zig` 0.16.x / ziglang.org tarball (no noble package) | WOR-302 | `zig version` |
 | `pkgconf` / `pkg-config` | all | `pkg-config` |
 | `binutils` / `binutils` | WOR-299, WOR-302 (`readelf`, `objcopy`, `objdump`, `nm`, `strings`); `ld.gold` is the toolchain's default linker | each command |
-| `lld` / `lld` | WOR-300 S4 (`-Xswiftc -use-ld=lld`; the form `-Xlinker -fuse-ld` is wrong) | system `ld.lld`; the toolchain's own copy does not count |
+| `lld` / `lld` | WOR-300 S4 (`-Xswiftc -use-ld=lld`; the form `-Xlinker -fuse-ld` is wrong). `-use-ld=lld` actually runs the toolchain's own `ld.lld`, which needs `libxml2.so.2` from `libxml2-legacy` ([spikes.md](spikes.md#link-matrix)) | system `ld.lld`; the toolchain's own copy does not count |
 | `shaderc` (glslc) / `glslc` | WOR-313 S2 | `glslc --version` equals the glslc pin |
 | `gtk4` / `libgtk-4-dev` | WOR-314 | `pkg-config gtk4` ≥ the gtk4 pin |
 | `pango` / `libpango1.0-dev` | WOR-317 (`pangoft2`, decision S6-1) | `pkg-config pangoft2` |
