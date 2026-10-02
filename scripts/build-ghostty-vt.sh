@@ -1,27 +1,114 @@
 #!/usr/bin/env bash
 # Vendor libghostty-vt as a prebuilt arm64 xcframework at a pinned commit (M1.1).
 #
+#   scripts/build-ghostty-vt.sh                              full vendor (macOS only)
+#   scripts/build-ghostty-vt.sh --terminfo-only [--out DIR]  recompile terminfo only
+#
 #   GHOSTTY_COMMIT   full sha to vendor (default: vendor/ghostty-vt/COMMIT)
 #   GHOSTTY_SRC      working checkout (default: $TMPDIR/ghostty-vt-src; zig caches are kept between runs)
 #
 # Writes: vendor/ghostty-vt/{ghostty-vt.xcframework,COMMIT,LICENSE,abi-types.json,ghostty.terminfo}
-#         Resources/terminfo/{78/xterm-ghostty,67/ghostty}
+#         Sources/TkzTerminalCore/Resources/terminfo/{78,x}/xterm-ghostty and {67,g}/ghostty
+#         (Resources/terminfo is a committed symlink to that directory and is never replaced)
+#
+# --terminfo-only recompiles the committed vendor/ghostty-vt/ghostty.terminfo with tic and does
+# nothing else: no fetch, and no zig, xcodebuild, swift or lipo. The committed bytes come from
+# macOS tic, so on any other OS it requires --out DIR (a new or empty directory) and is for
+# verification only: `infocmp -x -d -A <committed dir> -B DIR xterm-ghostty xterm-ghostty`.
 #
 # Why not Ghostty's own xcframework step: with -Demit-lib-vt it always lipo's arm64+x86_64
 # (-Dxcframework-target only affects GhosttyKit), and terminfo is only installed on the
 # app-executable path, so this script builds the arm64 static archive, wraps it itself, and
 # generates terminfo from src/terminfo/*.zig directly.
 set -euo pipefail
+CALLER_PWD="$PWD"
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 VENDOR="$ROOT/vendor/ghostty-vt"
-DEFAULT_COMMIT="82232ecde55405559dec29c5466cb9e39938cb41"
-GHOSTTY_COMMIT="${GHOSTTY_COMMIT:-$(cat "$VENDOR/COMMIT" 2>/dev/null || echo "$DEFAULT_COMMIT")}"
-GHOSTTY_SRC="${GHOSTTY_SRC:-${TMPDIR:-/tmp}/ghostty-vt-src}"
-GHOSTTY_REPO="https://github.com/ghostty-org/ghostty.git"
+TERMINFO_DEST="$ROOT/Sources/TkzTerminalCore/Resources/terminfo"
+SCRIPT_NAME="build-ghostty-vt.sh"
+# shellcheck source=scripts/lib/ghostty-vt-common.sh
+source "$ROOT/scripts/lib/ghostty-vt-common.sh"
 
-die()  { echo "build-ghostty-vt.sh: $*" >&2; exit 1; }
-need() { command -v "$1" >/dev/null 2>&1 || die "missing tool: $1${2:+ ($2)}"; }
+usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; }
+
+TERMINFO_ONLY=0
+TERMINFO_OUT=""
+while (($#)); do
+  case "$1" in
+    --terminfo-only) TERMINFO_ONLY=1 ;;
+    --out) [[ $# -ge 2 ]] || die "--out needs a directory"; TERMINFO_OUT="$2"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown argument: $1 (see --help)" ;;
+  esac
+  shift
+done
+[[ -z "$TERMINFO_OUT" || "$TERMINFO_ONLY" == 1 ]] || die "--out only applies to --terminfo-only"
+[[ -z "$TERMINFO_OUT" || "$TERMINFO_OUT" == /* ]] || TERMINFO_OUT="$CALLER_PWD/$TERMINFO_OUT"
+
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/ghostty-vt-stage.XXXXXX")"
+trap 'rm -rf "$STAGE"' EXIT
+
+# Compile <source.terminfo> with `tic -x` into a staging database, mirror it into both directory
+# layouts, then install it into <dest>. macOS ncurses names an entry's directory after the hex
+# of its first byte (78/xterm-ghostty); Linux ncurses uses the letter itself (x/xterm-ghostty)
+# and does not find the hex layout at all. Whichever one the host tic wrote, the other is a copy
+# of the same bytes, so the two layouts can never disagree (GhosttyVtTests.terminfoLayoutsByteIdentical).
+install_terminfo() {
+  local src="$1" dest="$2" db="$STAGE/terminfo-db" file entry letter hex dir
+  rm -rf "$db"
+  mkdir -p "$db"
+  tic -x -o "$db" "$src" 2>"$STAGE/tic.log" \
+    || { cat "$STAGE/tic.log" >&2; die "tic failed"; }
+  for file in "$db"/*/*; do
+    [[ -f "$file" ]] || die "tic wrote nothing into $db"
+    entry="${file##*/}"
+    letter="${entry:0:1}"
+    hex="$(printf '%02x' "'$letter")"
+    for dir in "$letter" "$hex"; do
+      if [[ ! -f "$db/$dir/$entry" ]]; then
+        mkdir -p "$db/$dir"
+        cp "$file" "$db/$dir/$entry"
+      fi
+    done
+  done
+  for entry in 78/xterm-ghostty x/xterm-ghostty 67/ghostty g/ghostty; do
+    [[ -f "$db/$entry" ]] || die "tic did not produce terminfo/$entry"
+  done
+  # Only ever the real directory. `rm -rf Resources/terminfo` would delete the committed symlink
+  # itself, and the `mkdir` after it would leave a plain directory where the symlink was.
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  cp -R "$db/." "$dest/"
+}
+
+# Checked before anything is written into the tree. A plain directory here was left by an older
+# version of this script, which ran `rm -rf` on the symlink.
+require_terminfo_symlink() {
+  [[ -L "$ROOT/Resources/terminfo" ]] \
+    || die "Resources/terminfo is not a symlink; restore it with: git checkout -- Resources/terminfo"
+}
+
+if [[ "$TERMINFO_ONLY" == 1 ]]; then
+  echo "==> preflight (terminfo only)"
+  need tic "ncurses"
+  [[ -s "$VENDOR/ghostty.terminfo" ]] || die "missing $VENDOR/ghostty.terminfo"
+  if [[ -n "$TERMINFO_OUT" ]]; then
+    if [[ -e "$TERMINFO_OUT" ]]; then
+      [[ -d "$TERMINFO_OUT" && -z "$(ls -A "$TERMINFO_OUT")" ]] || die "--out $TERMINFO_OUT must be a new or empty directory"
+    fi
+    dest="$TERMINFO_OUT"
+  else
+    [[ "$(uname -s)" == Darwin ]] \
+      || die "the committed terminfo comes from macOS tic; on $(uname -s) pass --out DIR to verify instead"
+    require_terminfo_symlink
+    dest="$TERMINFO_DEST"
+  fi
+  echo "==> terminfo (vendor/ghostty-vt/ghostty.terminfo → tic → $dest)"
+  install_terminfo "$VENDOR/ghostty.terminfo" "$dest"
+  echo "    terminfo        $(cd "$dest" && echo */*)"
+  exit 0
+fi
 
 echo "==> preflight"
 need zig "brew install zig"
@@ -30,22 +117,11 @@ need tic "macOS ncurses"
 need git
 need swift "Xcode toolchain"
 need lipo "Xcode"
-ZIG_VERSION="$(zig version)"
-[[ "$ZIG_VERSION" == 0.16.* ]] || die "zig 0.16.x required, found $ZIG_VERSION"
-[[ "$GHOSTTY_COMMIT" =~ ^[0-9a-f]{40}$ ]] || die "GHOSTTY_COMMIT must be a full 40-char sha (got '$GHOSTTY_COMMIT')"
+require_terminfo_symlink
+ghostty_check_zig
+ghostty_check_commit
 
-echo "==> fetching ghostty@${GHOSTTY_COMMIT:0:12} into $GHOSTTY_SRC"
-mkdir -p "$GHOSTTY_SRC"
-if [[ ! -d "$GHOSTTY_SRC/.git" ]]; then
-  git -C "$GHOSTTY_SRC" init -q
-  git -C "$GHOSTTY_SRC" remote add origin "$GHOSTTY_REPO"
-fi
-git -C "$GHOSTTY_SRC" fetch -q --depth 1 origin "$GHOSTTY_COMMIT"
-git -C "$GHOSTTY_SRC" checkout -q --detach FETCH_HEAD
-[[ "$(git -C "$GHOSTTY_SRC" rev-parse HEAD)" == "$GHOSTTY_COMMIT" ]] || die "checkout is not $GHOSTTY_COMMIT"
-for h in include/ghostty/vt.h include/ghostty/vt/render.h include/ghostty/vt/snapshot.h; do
-  [[ -f "$GHOSTTY_SRC/$h" ]] || die "$h missing at this commit"
-done
+ghostty_fetch
 
 echo "==> zig build -Demit-lib-vt (arm64, ReleaseFast)"
 build_start=$SECONDS
@@ -66,9 +142,6 @@ strip -S "$LIB"
 if strings -a "$LIB" | grep -q "$HOME"; then
   die "libghostty-vt.a still contains build-machine paths after strip -S"
 fi
-
-STAGE="$(mktemp -d "${TMPDIR:-/tmp}/ghostty-vt-stage.XXXXXX")"
-trap 'rm -rf "$STAGE"' EXIT
 
 echo "==> xcodebuild -create-xcframework"
 mkdir -p "$STAGE/headers"
@@ -105,11 +178,8 @@ pub fn main(init: std.process.Init) !void {
 EOF
 ( cd "$STAGE/terminfo" && zig run gen.zig ) > "$VENDOR/ghostty.terminfo"
 [[ -s "$VENDOR/ghostty.terminfo" ]] || die "terminfo source is empty"
-rm -rf "$ROOT/Resources/terminfo"
-mkdir -p "$ROOT/Resources/terminfo"
-tic -x -o "$ROOT/Resources/terminfo" "$VENDOR/ghostty.terminfo" 2>"$STAGE/tic.log" \
-  || { cat "$STAGE/tic.log" >&2; die "tic failed"; }
-[[ -f "$ROOT/Resources/terminfo/78/xterm-ghostty" ]] || die "tic did not produce Resources/terminfo/78/xterm-ghostty"
+install_terminfo "$VENDOR/ghostty.terminfo" "$TERMINFO_DEST"
+require_terminfo_symlink
 
 cp "$GHOSTTY_SRC/LICENSE" "$VENDOR/LICENSE"
 
@@ -130,5 +200,5 @@ echo "    zig build       ${build_seconds}s"
 echo "    libghostty-vt.a $lib_bytes bytes ($(( lib_bytes / 1024 / 1024 )) MiB), $(lipo -info "$LIB" | sed 's/.*: //')"
 echo "    xcframework     $(du -sh "$VENDOR/ghostty-vt.xcframework" | cut -f1)"
 echo "    std::__1 undefined symbols in .a: $cxx_undefined"
-echo "    terminfo        $(ls "$ROOT/Resources/terminfo"/*/ | tr '\n' ' ')"
+echo "    terminfo        $(cd "$TERMINFO_DEST" && echo */*)"
 echo "    $VERSION_LINE"

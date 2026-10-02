@@ -303,8 +303,10 @@ private func hostEnvironment(home: String, shell: String = "/bin/zsh") -> [Strin
         #expect(terminfo == dir.path)
         var isDir: ObjCBool = false
         #expect(FileManager.default.fileExists(atPath: terminfo, isDirectory: &isDir) && isDir.boolValue)
-        #expect(FileManager.default.fileExists(atPath: "\(terminfo)/78/xterm-ghostty"))
-        #expect(FileManager.default.fileExists(atPath: "\(terminfo)/67/ghostty"))
+        // Either layout: hex (macOS ncurses) or letter (Linux ncurses).
+        let exists = { (path: String) in FileManager.default.fileExists(atPath: "\(terminfo)/\(path)") }
+        #expect(exists("78/xterm-ghostty") || exists("x/xterm-ghostty"))
+        #expect(exists("67/ghostty") || exists("g/ghostty"))
     }
 
     @Test func missingTerminfoIsSurvivable() throws {

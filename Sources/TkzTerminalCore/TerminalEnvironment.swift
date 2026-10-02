@@ -47,8 +47,11 @@ public enum TerminalEnvironment {
     /// so the environment can choose the account.
     public static let strippedKeyPrefixes = ["CLAUDE_CODE_"]
 
-    /// The terminfo database shipped with tkzmux (`terminfo/78/xterm-ghostty`, `terminfo/67/ghostty`),
-    /// or nil if it is missing.
+    /// The terminfo database shipped with tkzmux, or nil if it is missing.
+    ///
+    /// The same compiled entries are committed in two directory layouts: hex (`78/xterm-ghostty`,
+    /// `67/ghostty`), which macOS ncurses reads, and letter (`x/xterm-ghostty`, `g/ghostty`), which
+    /// Linux ncurses reads. A directory with either layout is accepted. `make vendor` writes both.
     ///
     /// Two places are tried: the `TkzTerminalCore` resource bundle (what `swift run`/`swift test`
     /// see) and `Contents/Resources/terminfo` of the app bundle (what `make app` copies).
@@ -60,7 +63,9 @@ public enum TerminalEnvironment {
         for case let url? in candidates {
             var isDir: ObjCBool = false
             if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue,
-               FileManager.default.fileExists(atPath: url.appending(path: "78/xterm-ghostty").path) {
+               ["78/xterm-ghostty", "x/xterm-ghostty"].contains(where: {
+                   FileManager.default.fileExists(atPath: url.appending(path: $0).path)
+               }) {
                 return url
             }
         }

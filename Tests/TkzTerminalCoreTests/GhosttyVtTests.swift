@@ -62,8 +62,21 @@ private func lines(_ screen: String) -> [String] {
         #expect(vendored == live)
     }
 
-    @Test func terminfoVendored() {
-        let path = repoRoot.appending(path: "Resources/terminfo/78/xterm-ghostty").path
+    /// Both directory layouts: hex for macOS ncurses, letter for Linux ncurses.
+    @Test(arguments: ["78/xterm-ghostty", "67/ghostty", "x/xterm-ghostty", "g/ghostty"])
+    func terminfoVendored(entry: String) {
+        let path = repoRoot.appending(path: "Resources/terminfo/\(entry)").path
         #expect(FileManager.default.fileExists(atPath: path))
+    }
+
+    /// The letter layout is a copy of the hex one (scripts/build-ghostty-vt.sh mirrors whichever
+    /// layout the host tic wrote), so the two can never describe different terminals.
+    @Test(arguments: [("78/xterm-ghostty", "x/xterm-ghostty"), ("67/ghostty", "g/ghostty")])
+    func terminfoLayoutsByteIdentical(hex: String, letter: String) throws {
+        let terminfo = repoRoot.appending(path: "Resources/terminfo")
+        let hexBytes = try Data(contentsOf: terminfo.appending(path: hex))
+        let letterBytes = try Data(contentsOf: terminfo.appending(path: letter))
+        #expect(!hexBytes.isEmpty)
+        #expect(hexBytes == letterBytes)
     }
 }

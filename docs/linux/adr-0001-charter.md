@@ -128,7 +128,7 @@ The user explicitly accepts GTK's closure, about 112 shared objects on the devel
 | Bundled data | Inter (OFL), **Linux only** | Chrome text in place of SF Pro, which may not ship on non-Apple systems | WOR-312 S8 (pinned 4.x release, SHA-256 recorded) |
 | Bundled data | OFL symbol subset | Glyphs that JetBrains Mono and Inter lack | WOR-312 |
 | Bundled data | CC0 ready sound with its licence note | Ready sound. The Mac keeps `NSSound(named: "Glass")` (`Sources/TkzApp/AppDelegate.swift:135`), which cannot ship on Linux | WOR-320 |
-| Bundled data | terminfo (`xterm-ghostty`) | `TERM` for child shells | `Sources/TkzTerminalCore/Resources/terminfo/` (hex layout today; the letter layout for Linux ncurses comes in WOR-302) |
+| Bundled data | terminfo (`xterm-ghostty`) | `TERM` for child shells | `Sources/TkzTerminalCore/Resources/terminfo/`, in both the hex layout (`78/ 67/`, macOS ncurses) and the letter layout (`x/ g/`, Linux ncurses), byte-identical |
 
 A missing spawned tool or service turns the feature off and logs why. It never crashes the app, and it is never replaced by linking a library.
 
