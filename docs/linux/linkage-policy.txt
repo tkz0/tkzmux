@@ -1,0 +1,172 @@
+# linkage-policy.txt: which shared libraries each Linux ELF may name as a direct NEEDED entry.
+#
+# This file is the only allow/deny list for Linux binary checks. Other issues and scripts say
+# "per linkage-policy.txt" and never copy entries from it. scripts/linux/check-linkage.sh is the
+# only code that reads it. WOR-302's check-binary.sh delegates NEEDED checks to that script and
+# reads only the `glibc-max` lines below.
+# The decision record is docs/linux/adr-0002-platform-defaults.md (section "Linkage enforcement").
+# The dependency allow-list and its rationale are in docs/linux/adr-0001-charter.md.
+#
+# What is gated: `readelf -d` NEEDED and RUNPATH/RPATH entries only. The ldd closure (about 112
+# libraries through libgtk-4 on Arch) is printed for information. X11, systemd and dbus enter
+# the closure through GTK, so a closure gate would fail every build.
+#
+# ---------------------------------------------------------------------------------------------
+# Grammar. One directive per line. A line whose first non-blank character is `#` is a comment.
+# Columns are separated by `|`, and blanks around a column are trimmed.
+#
+#   [name]                  Starts a checkable section. Pass the name to check-linkage.sh.
+#   [@name]                 Starts a shared group. A group is never checked on its own.
+#   include @a @b ...       Adds the rules of these groups to the current section or group.
+#   stdlib static|dynamic   Required in every checkable section. It sets the Swift runtime mode:
+#                           static denies every pattern in [@swift-runtime], and dynamic allows
+#                           them. Deny rules still win, so FoundationNetworking stays denied.
+#   status <text>           Optional. A free-text note that the checker prints, such as
+#                           "provisional until WOR-323 S2".
+#   glibc-max <x.y>         Optional. The highest GLIBC_ symbol version allowed. check-binary.sh
+#                           (WOR-302 S4) enforces it. check-linkage.sh only prints it.
+#   allow  <glob> | <arch pkg> | <ubuntu 24.04 pkg> | <justification> [| <note>]
+#   deny   <glob> | <justification> [| <note>]
+#   runpath-allow <glob> | <justification> [| <note>]
+#   runpath-deny  <glob> | <justification> [| <note>]
+#
+# Globs are bash patterns (`*`, `?`, `[...]`) matched under LC_ALL=C against the whole NEEDED
+# soname, or against one colon-separated RUNPATH/RPATH entry. `$ORIGIN` is literal text.
+#
+# Verdict for each NEEDED entry, in order: a matching deny fails it; under `stdlib static`, a
+# match in [@swift-runtime] fails it; a matching allow passes it; anything else fails as "not
+# allowed". RUNPATH entries follow the same order, so a section with no runpath-allow lines
+# rejects every RUNPATH/RPATH entry.
+#
+# A <note> starting with `measured-by:` marks an entry that is provisional until that
+# measurement confirms it. The checker prints the note whenever the entry is used.
+# Every rule needs a non-empty justification, and the checker rejects the policy otherwise.
+# ---------------------------------------------------------------------------------------------
+
+
+# ===== Shared groups ==========================================================================
+
+[@glibc]
+allow libc.so.6              | glibc | libc6 | The C library. Every Linux binary needs it. The ABI floor is glibc 2.35 (ADR-0002).
+allow libm.so.6              | glibc | libc6 | glibc's libm. The libghostty-vt archive calls exp/expf/log/logf, and the Swift runtime also links -lm.
+allow ld-linux-x86-64.so.2   | glibc | libc6 | The glibc dynamic loader. It appears as NEEDED when a binary uses its TLS or dl symbols. | measured-by: WOR-300 S4
+
+[@cxx-runtime]
+allow libstdc++.so.6         | libstdc++ | libstdc++6 | Expected to stay NEEDED after -static-stdlib, because the static Swift runtime is C++ and links it dynamically. | measured-by: WOR-300 S4
+allow libgcc_s.so.1          | libgcc    | libgcc-s1  | The unwinder and libgcc helpers that the Swift runtime and libstdc++ need. Expected to stay NEEDED after -static-stdlib. | measured-by: WOR-300 S4
+
+[@gtk]
+allow libgtk-4.so.1          | gtk4  | libgtk-4-1      | Linux platform shell (Option B): window, input, IME, clipboard, popups and frame clock. GTK never draws a visible pixel. The floor is 4.16, which noble's 4.14 does not meet.
+allow libgobject-2.0.so.0    | glib2 | libglib2.0-0t64 | GObject: signals, refcounting, and the GObject subclasses in TkzLinuxShim. Already in GTK's closure.
+allow libglib-2.0.so.0       | glib2 | libglib2.0-0t64 | GLib main loop: the GSource that drains libdispatch's main queue, and g_* utilities. Already in GTK's closure.
+allow libgio-2.0.so.0        | glib2 | libglib2.0-0t64 | GIO: GApplication single instance, and GDBus for notifications, the systemd user manager and portals (it replaces libdbus/libsystemd). Already in GTK's closure.
+
+[@gpu-text]
+allow libvulkan.so.1         | vulkan-icd-loader | libvulkan1     | Vulkan loader. tkzmux draws every pixel with Vulkan 1.3. Already in GTK's closure (libgtk-4.so.1 NEEDs it for GSK's Vulkan renderer).
+allow libfreetype.so.6       | freetype2         | libfreetype6   | Glyph loading and rasterization: unhinted, with emboldening that emulates CG dilation (WOR-312). Already in GTK's closure.
+allow libharfbuzz.so.0       | harfbuzz          | libharfbuzz0b  | Text shaping for terminal and chrome text. Already in GTK's closure.
+allow libfontconfig.so.1     | fontconfig        | libfontconfig1 | Font discovery through a private FcConfig, with bundled faces first, so parity does not depend on desktop config. Already in GTK's closure.
+
+# Paragraph layout for chrome text (ADR-0002 D10, ratified in WOR-299 S6 on 2026-10-02): Pango does
+# itemization, line breaking, bidi and glyph positions only, on pangoft2 over the private FcConfig.
+# Rasterization stays in tkzmux (FreeType). pangocairo and cairo stay denied (see [@deny]).
+[@text-layout]
+allow libpango-1.0.so.0      | pango | libpango-1.0-0    | Itemization, UAX #14 line breaking, bidi and glyph positions for chrome paragraphs (WOR-317 S3). Positions only; tkzmux rasterizes. Already in GTK's closure.
+allow libpangoft2-1.0.so.0   | pango | libpangoft2-1.0-0 | The FreeType/fontconfig font map, bound to the private FcConfig with pango_fc_font_map_set_config. Already in GTK's closure.
+
+# Swift runtime libraries. They are allowed only in sections that say `stdlib dynamic`, and
+# denied in sections that say `stdlib static`. The toolchain ships them, not a distro package.
+[@swift-runtime]
+allow libswift*.so           | toolchain | toolchain | Swift runtime and overlays (libswiftCore, libswift_Concurrency, libswiftGlibc, ...), linked dynamically.
+allow libFoundation*.so      | toolchain | toolchain | swift-corelibs-foundation (Foundation, FoundationEssentials, FoundationInternationalization), linked dynamically.
+allow lib_FoundationICU.so   | toolchain | toolchain | The ICU data and code that FoundationInternationalization loads.
+allow libdispatch.so         | toolchain | toolchain | libdispatch: Dispatch and the main-queue GSource bridge.
+allow libBlocksRuntime.so    | toolchain | toolchain | The Blocks runtime that libdispatch needs.
+allow libXCTest.so           | toolchain | toolchain | The XCTest runtime that the Linux test runner links, even for Swift Testing.
+allow libTesting.so          | toolchain | toolchain | The Swift Testing runtime.
+allow lib_Testing*.so        | toolchain | toolchain | Swift Testing helper libraries (interop and the Foundation overlay).
+
+# Denied everywhere. The rationale for each entry is in ADR-0001 (charter); cairo and pangocairo
+# are also covered in ADR-0002 (D10, Text layout).
+[@deny]
+deny libcurl.so*             | FoundationNetworking/URLSession would pull it in. The update check spawns /usr/bin/curl instead (ADR-0001).
+deny libFoundationNetworking.so* | It links libcurl, and SE-0342 says it cannot be linked statically. The repo uses URLSession only in UpdateChecker, and that is replaced on Linux.
+deny libFoundationXML.so*    | It links libxml2. The code has no XMLParser use.
+deny libxml2.so*             | Only FoundationXML would bring it in. Arch ships libxml2.so.16 and Ubuntu ships libxml2.so.2, so it is also an ABI trap.
+deny libsystemd.so*          | The systemd user manager is reached over GDBus (GIO). sd-bus is not linked.
+deny libdbus-1.so*           | GDBus in GIO is the only D-Bus client.
+deny libcanberra*.so*        | Sounds are played by spawning pw-play/paplay, never through an in-process audio stack.
+deny libpulse*.so*           | Same reason as libcanberra: sound goes through a spawned pw-play/paplay.
+deny libpipewire-*.so*       | Same reason as libcanberra: sound goes through a spawned pw-play/paplay.
+deny libdecor-*.so*          | GTK owns the toplevel and tkzmux draws its own window controls (ADR-0005). No client-side decoration library.
+deny libX11*.so*             | No direct X11. X11 is not a target (GDK_BACKEND=wayland), and libX11 reaches the closure only through GTK.
+deny libxcb*.so*             | No direct X11, for the same reason as libX11.
+deny libX[a-z]*.so*          | No direct X11 extension libraries (Xi, Xext, Xrandr, Xcursor, ...). The pattern does not match libXCTest.
+deny libwayland-*.so*        | No direct Wayland client. GDK owns the connection, and WOR-313's `vtdump gpu` is headless.
+deny libadwaita-1.so*        | GTK is a shell only. No Adwaita widgets or styling.
+deny libnotify.so*           | Notifications use org.freedesktop.Notifications over GDBus directly.
+deny libSDL*.so*             | No second windowing or input toolkit.
+deny libsentry*.so*          | No telemetry or crash reporting (CLAUDE.md: no Sentry, telemetry).
+deny libcrashpad*.so*        | No telemetry or crash reporting.
+deny libbreakpad*.so*        | No telemetry or crash reporting.
+deny libpangocairo-*.so*     | Pango is allowed for layout only ([@text-layout]). Drawing through cairo is GTK's path, and tkzmux draws every pixel with Vulkan. `pkg-config --libs gtk4` lists it, so CGtk links with --as-needed (ADR-0002 D10).
+deny libpangoxft-*.so*       | X11 text rendering. No X11, and Pango is used for layout only.
+deny libcairo*.so*           | 2D drawing library. GTK may use it internally, but tkzmux never draws through it. `pkg-config --libs gtk4` lists it (ADR-0002 D10).
+deny libheif.so*             | HEIC decodes through GdkTexture and glycin at runtime, never through a direct link (ADR-0001 section 8).
+deny librsvg-*.so*           | SVG decodes through GdkTexture and glycin at runtime, never through a direct link (ADR-0001 section 8).
+deny libtiff.so*             | TIFF decodes through GdkTexture at runtime, never through a direct link (ADR-0001 section 8).
+
+# Shipped binaries must not point at the toolchain or the build tree. A Swift toolchain install
+# can move (for example `mise upgrade`), and the hook is copied to $XDG_DATA_HOME/tkzmux/bin.
+[@no-toolchain-runpath]
+runpath-deny */usr/lib/swift*    | Toolchain runtime directory. Shipped binaries carry the Swift runtime statically.
+runpath-deny */lib/swift/linux*  | Toolchain runtime directory, wherever the toolchain is installed.
+runpath-deny */.build/*          | SwiftPM build tree. It does not exist on an installed system.
+runpath-deny */mise/installs/*   | mise toolchain install. It moves or disappears on upgrade.
+runpath-deny */swiftly/*         | swiftly toolchain install. It moves or disappears on upgrade.
+
+
+# ===== Checkable sections =====================================================================
+
+# The GTK app (`bin/tkzmux`). Its link mode is provisional: WOR-323 S2 makes the static-vs-dynamic
+# stdlib decision and edits this section. Static is the working assumption. It needs
+# per-product `-static-stdlib` linkerSettings, never the global `--static-swift-stdlib`.
+[tkzmux]
+stdlib static
+status provisional: WOR-323 S2 decides the stdlib mode and edits this section
+glibc-max 2.35
+include @deny @no-toolchain-runpath @glibc @cxx-runtime @gtk @gpu-text @text-layout
+deny libxkbcommon.so*        | The app takes keyvals and modifiers from GDK events. libxkbcommon is test-only (ADR-0001, [tests]).
+runpath-allow $ORIGIN        | SwiftPM's default local rpath. Harmless, because nothing is installed beside bin/tkzmux.
+
+# The hook relay (`bin/tkzmux-hook`, copied to $XDG_DATA_HOME/tkzmux/bin). It is Foundation-free,
+# links the stdlib statically and starts in under 20 ms. It must run under `env -i` from its copied
+# location, so it may have no RUNPATH at all. If the hook must be libc-only, WOR-305 S6 adopts the
+# Static Linux SDK (musl). A fully static binary has no NEEDED entries and passes here as it is.
+[tkzmux-hook]
+stdlib static
+status libstdc++/libgcc_s/ld-linux are provisional until WOR-300 S4 measures them
+glibc-max 2.35
+include @deny @no-toolchain-runpath @glibc @cxx-runtime
+deny libxkbcommon.so*        | The hook has no input handling.
+deny libgtk-4.so*            | The hook is a socket relay. Linking GTK would break the 20 ms budget.
+
+# The headless record/replay/render tool. It is built and run in-tree by scripts and CI, and is
+# never installed, so it keeps SwiftPM's default dynamic stdlib and toolchain RUNPATH.
+[tkzmux-vtdump]
+stdlib dynamic
+status in-tree tool, never installed
+include @deny @glibc @cxx-runtime @gpu-text
+deny libgtk-4.so*            | vtdump is headless (WOR-313's `vtdump gpu` renders offscreen through Vulkan). It must not need a display.
+deny libxkbcommon.so*        | vtdump has no input handling.
+runpath-allow $ORIGIN        | SwiftPM's default local rpath.
+runpath-allow */usr/lib/swift/linux | The toolchain runtime directory. Acceptable for an in-tree tool that runs only where the toolchain is installed.
+
+# The Linux test runner (`.build/<config>/tkzmuxPackageTests.xctest`). It runs only in-tree.
+[tests]
+stdlib dynamic
+status the swift-runtime set is provisional until WOR-303 S2's first Linux `swift test`
+include @deny @glibc @cxx-runtime @gtk @gpu-text @text-layout
+allow libxkbcommon.so.0      | libxkbcommon | libxkbcommon0 | Test-only, ratified in WOR-299 S6 (2026-10-02). WOR-315 S1's CXKBCommon layout-fixture generator links it to compile `us` and `se` keymaps headlessly. It is already in GTK's closure, and it is denied in every shipped section.
+runpath-allow $ORIGIN        | SwiftPM's default local rpath.
+runpath-allow */usr/lib/swift/linux | The toolchain runtime directory. Tests run only where the toolchain is installed.

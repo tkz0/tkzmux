@@ -51,6 +51,15 @@ Tests: one target per Swift library module under `Tests/<Module>Tests`, using Sw
 - **A runaway `swift test` is billed to tkzmux, not to itself.** Anything started from a tkzmux pty shares tkzmux's process coalition, and macOS charges a coalition to its leader — so a test process eating 40 GB shows up as "tkzmux: 40 GB" in Activity Monitor and takes the machine down with it. One unfiltered `swift test` was enough on 2026-09-09. Use `scripts/test-memory-probe.sh` when a run looks suspicious, and see docs/perf.md → *Session process memory* before blaming the app for a memory figure.
 - No SwiftUI on hot paths; no `@Observable` for the store (explicit change sets).
 - No third-party dependencies beyond libghostty-vt. No Sparkle, Sentry, telemetry.
-- **Never copy code from cmux** (GPL-3). Ghostty (MIT) may be read for reference; libghostty-vt is used only through its public C API, never forked or patched.
+- **Never copy code from cmux or Kitty** (both GPL-3). Ghostty (MIT) may be read for reference; libghostty-vt is used only through its public C API, never forked or patched.
 - No personal names or account labels in code; they come from config.
 - Keep `tkzmux-hook` free of Foundation.
+
+## Linux port
+
+A Linux build is in progress (Linear WOR-299 to WOR-325): GTK4 is the platform shell only, and tkzmux draws every pixel with Vulkan and its own FreeType/HarfBuzz text. Read the charter before changing anything Linux-related.
+
+- Tracked Linux docs live in `docs/linux/`; start at [docs/linux/README.md](docs/linux/README.md). `docs/perf.md` stays local-only; Linux budgets go in `docs/linux/perf-budgets.md`.
+- [ADR-0001](docs/linux/adr-0001-charter.md) charter and dependency policy · [ADR-0002](docs/linux/adr-0002-platform-defaults.md) platform defaults · [ADR-0003](docs/linux/adr-0003-parity.md) parity · [ADR-0004](docs/linux/adr-0004-keys-input.md) keys and input · [ADR-0005](docs/linux/adr-0005-window-controls.md) window controls · [decisions.md](docs/linux/decisions.md) user decisions and open items.
+- `docs/linux/linkage-policy.txt` is the only allow/deny list for linked libraries; check binaries with `scripts/linux/check-linkage.sh`, never with a copied list.
+- The Mac app does not change for Linux: Mac goldens stay byte-identical, and Linux-only gaps are documented, not fixed on the Mac.
