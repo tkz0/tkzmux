@@ -139,7 +139,8 @@ public enum GhosttyVtInfo {
     }
 
     /// The ABI manifest (struct layouts, enum values, offsets) as a JSON document.
-    /// Snapshotted in `vendor/ghostty-vt/abi-types.json`; diffed on every upgrade.
+    /// Snapshotted per OS in `vendor/ghostty-vt/abi-types.<arch>-<os>.json` (aarch64-macos,
+    /// x86_64-linux-gnu); diffed on every upgrade, and the two may differ only in `abi`.
     public static var abiManifestJSON: String { String(cString: ghostty_type_json()) }
 
     private static func bool(_ key: GhosttyBuildInfo) -> Bool {

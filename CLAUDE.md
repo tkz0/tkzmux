@@ -28,7 +28,7 @@ make clean                  # rm -rf .build build
 |---|---|---|
 | `TkzPtyShim` | C | fork/exec in the child, no Swift after `fork()` |
 | `TkzShaderTypes` | C header | structs shared by Swift and Metal shaders |
-| `GhosttyVt` | binary | `vendor/ghostty-vt/ghostty-vt.xcframework` (arm64 static, committed), commit pinned in `vendor/ghostty-vt/COMMIT`, ABI snapshot in `abi-types.json` |
+| `GhosttyVt` | binary | `vendor/ghostty-vt/ghostty-vt.xcframework` (arm64 static, committed), commit pinned in `vendor/ghostty-vt/COMMIT`, ABI snapshots per OS in `abi-types.aarch64-macos.json` / `abi-types.x86_64-linux-gnu.json` |
 | `TkzTerminalCore` | Swift | `Pty`, `TerminalEnvironment`, `TerminalSession` (VT bridge, IO loop, snapshots) |
 | `TkzTerminalRender` | Swift | fonts, glyph atlas, `FrameBuilder`, Metal renderer |
 | `TkzTerminalView` | Swift | `TerminalMetalView`, keyboard/IME, mouse/selection |

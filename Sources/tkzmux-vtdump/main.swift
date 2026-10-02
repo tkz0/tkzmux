@@ -81,14 +81,10 @@ func fail(_ message: String, code: Int32) -> Never {
 }
 
 /// `vendor/ghostty-vt/COMMIT` relative to this source file (a dev tool; the repo path is compile-time).
-func vendoredCommit() -> String? {
-    let repoRoot = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-    let file = repoRoot.appending(path: "vendor/ghostty-vt/COMMIT")
-    guard let text = try? String(contentsOf: file, encoding: .utf8) else { return nil }
-    let commit = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    return commit.isEmpty ? nil : commit
-}
+/// Resolved here rather than in AbiCommand.swift, which is also compiled outside the repo.
+let vendoredCommitFile = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    .appending(path: "vendor/ghostty-vt/COMMIT")
 
 // MARK: - Tiny argument parser
 
@@ -619,24 +615,14 @@ do {
         try FrameBenchCommand.run(Array(argv.dropFirst()))
 
     case "abi":
-        let raw = GhosttyVtInfo.abiManifestJSON
-        guard let object = try? JSONSerialization.jsonObject(with: Data(raw.utf8)),
-              let pretty = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
-              let text = String(data: pretty, encoding: .utf8)
-        else {
-            print(raw)
+        guard let text = AbiCommand.prettyManifest() else {
+            print(AbiCommand.rawManifest)
             fail("tkzmux-vtdump: ghostty_type_json() is not valid JSON", code: 1)
         }
         print(text)
 
     case "version":
-        var line = "libghostty-vt \(GhosttyVtInfo.versionString)"
-            + "  simd=\(GhosttyVtInfo.simd)"
-            + " kitty-graphics=\(GhosttyVtInfo.kittyGraphics)"
-            + " tmux-control-mode=\(GhosttyVtInfo.tmuxControlMode)"
-            + " optimize=\(GhosttyVtInfo.optimizeName)"
-        if let commit = vendoredCommit() { line += "  commit=\(commit)" }
-        print(line)
+        print(AbiCommand.versionLine(commitFile: vendoredCommitFile))
 
     case "state-churn":
         // M5.1 — the SIGKILL harness for state.json; see scripts/state-crash-test.sh.

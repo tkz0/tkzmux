@@ -3,13 +3,16 @@
 #
 #   scripts/build-ghostty-vt-linux.sh                   build at vendor/ghostty-vt/COMMIT (Linux x86_64 only)
 #   scripts/build-ghostty-vt-linux.sh --update-lists    also rewrite the two symbol lists below
+#   scripts/build-ghostty-vt-linux.sh --probe DIR       keep the ABI probe package in DIR (see below)
 #
 #   GHOSTTY_COMMIT   must equal vendor/ghostty-vt/COMMIT; this script never moves the pin
 #   GHOSTTY_SRC      working checkout (default: $TMPDIR/ghostty-vt-src; zig caches are kept between runs)
 #   GLIBC_LIBDIR     directory holding the host's libc.so.6 and libm.so.6 (default: probed)
+#   SWIFT_EXEC       swiftc for the probe builds (SwiftPM's own override; see the probe below)
 #
 # Writes: vendor/ghostty-vt/ghostty-vt-linux.artifactbundle/{info.json,BUILDINFO,include/**,
 #           x86_64-unknown-linux-gnu/libghostty-vt.a}
+#         vendor/ghostty-vt/abi-types.x86_64-linux-gnu.json
 #         with --update-lists also vendor/ghostty-vt/{linux-localize-symbols,linux-expected-undefined}.txt
 #
 # Bump order: the macOS `make vendor` moves COMMIT and writes the headers first; this script then
@@ -34,17 +37,33 @@
 #     which may never name the C++ runtime (_Znw*, __cxa_*), arc4random* or __isoc23_* (glibc
 #     > 2.35). No .debug_* section and no R_X86_64_32/32S relocation may survive. At most 5 MiB.
 #
+# ABI probe: before anything is written into the tree, a throwaway SwiftPM package links the staged
+# bundle (a copy, as `.binaryTarget`, plus `.linkedLibrary("m")` for the libm names localization
+# leaves undefined) with Sources/tkzmux-vtdump/AbiCommand.swift and a tiny main.swift. It is built
+# with both `--build-system native` and `--build-system swiftbuild`, `swift package describe` must
+# list the bundle as a binary target, and both binaries must print the same `abi` manifest, which
+# becomes abi-types.x86_64-linux-gnu.json. The probe lives in the stage directory and is deleted
+# with it, unless --probe DIR (a new or empty directory, or an earlier probe) keeps it, e.g. for
+# scripts/linux/check-binary.sh. If swiftbuild's link fails with "swiftc: error while loading
+# shared libraries": Swift Build does not pass LD_LIBRARY_PATH on to its tasks, so a toolchain that
+# needs it to start (an Ubuntu build on another distro) needs SWIFT_EXEC set to a wrapper that
+# exports it, as usr/bin/swiftc inside a symlinked copy of the toolchain (Swift Build insists on
+# that layout).
+#
 # --update-lists regenerates both lists from this build: the localize list is every member's
 # defined globals intersected with `nm -D --defined-only` of libc.so.6 and libm.so.6, the
 # expected list is the archive's undefined symbols minus the ones it defines itself. Review the
 # diff before committing it; the forbidden-name gates apply either way.
 set -euo pipefail
 export LC_ALL=C   # one sort order for the committed lists and every comm(1) below
+CALLER_PWD="$PWD"
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 VENDOR="$ROOT/vendor/ghostty-vt"
 BUNDLE="$VENDOR/ghostty-vt-linux.artifactbundle"
 XCF_HEADERS="$VENDOR/ghostty-vt.xcframework/macos-arm64/Headers"
+LINUX_MANIFEST="$VENDOR/abi-types.x86_64-linux-gnu.json"
+ABI_COMMAND="$ROOT/Sources/tkzmux-vtdump/AbiCommand.swift"
 LOCALIZE_LIST="$VENDOR/linux-localize-symbols.txt"
 EXPECTED_UNDEFINED="$VENDOR/linux-expected-undefined.txt"
 SCRIPT_NAME="build-ghostty-vt-linux.sh"
@@ -57,6 +76,7 @@ ZIG_TARGET="x86_64-linux-gnu.$GLIBC_FLOOR"
 ZIG_CPU="x86_64_v3"             # not znver5/native: GitHub's x64 fleet is mixed, AVX-512 would SIGILL
 ZIG_OPTIMIZE="ReleaseFast"
 MAX_BYTES=$((5 * 1024 * 1024))
+PROBE_NAME="ghostty-vt-abi-probe"
 # Undefined references the archive may never carry: the C++ runtime (SE-0482 bundles are
 # libc-only), and glibc symbols newer than the 2.35 floor.
 FORBIDDEN_UNDEFINED='^(_Znw|_Zna|_Zdl|_Zda|_ZNSt3__1|__cxa_|__gxx_personality|arc4random|__isoc23_)'
@@ -64,14 +84,17 @@ FORBIDDEN_UNDEFINED='^(_Znw|_Zna|_Zdl|_Zda|_ZNSt3__1|__cxa_|__gxx_personality|ar
 usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; }
 
 UPDATE_LISTS=0
+PROBE_DIR=""
 while (($#)); do
   case "$1" in
     --update-lists) UPDATE_LISTS=1 ;;
+    --probe) [[ $# -ge 2 && -n "$2" ]] || die "--probe needs a directory"; PROBE_DIR="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1 (see --help)" ;;
   esac
   shift
 done
+[[ -z "$PROBE_DIR" || "$PROBE_DIR" == /* ]] || PROBE_DIR="$CALLER_PWD/$PROBE_DIR"
 
 # Symbol names of a list file: objcopy's own format, one per line, `#` comments.
 list_names() { grep -v -e '^#' -e '^[[:space:]]*$' "$1" | sort -u; }
@@ -92,6 +115,7 @@ need git
 need llvm-ar "ships with the Swift toolchain"
 for tool in ar nm objcopy strip readelf strings; do need "$tool" "GNU binutils"; done
 need sha256sum "coreutils"
+need swift "swift.org toolchain; builds the ABI probe"
 ghostty_check_zig
 ghostty_check_commit
 [[ -s "$VENDOR/COMMIT" ]] || die "missing $VENDOR/COMMIT"
@@ -99,6 +123,12 @@ PINNED="$(cat "$VENDOR/COMMIT")"
 [[ "$GHOSTTY_COMMIT" == "$PINNED" ]] \
   || die "GHOSTTY_COMMIT=$GHOSTTY_COMMIT but COMMIT pins $PINNED; bump with the macOS \`make vendor\` first (docs/linux/vendoring.md)"
 [[ -f "$XCF_HEADERS/module.modulemap" ]] || die "missing $XCF_HEADERS; the bundle's headers are checked against the xcframework's"
+[[ -f "$ABI_COMMAND" ]] || die "missing ${ABI_COMMAND#"$ROOT/"}; the ABI probe compiles it"
+if [[ -n "$PROBE_DIR" && -e "$PROBE_DIR" ]]; then
+  [[ -d "$PROBE_DIR" ]] || die "--probe $PROBE_DIR is not a directory"
+  [[ -z "$(ls -A "$PROBE_DIR")" ]] || grep -q "name: \"$PROBE_NAME\"" "$PROBE_DIR/Package.swift" 2>/dev/null \
+    || die "--probe $PROBE_DIR must be a new or empty directory, or an earlier probe"
+fi
 if ((!UPDATE_LISTS)); then
   [[ -s "$LOCALIZE_LIST" ]] || die "missing ${LOCALIZE_LIST#"$ROOT/"} (generate it with --update-lists)"
   [[ -s "$EXPECTED_UNDEFINED" ]] || die "missing ${EXPECTED_UNDEFINED#"$ROOT/"} (generate it with --update-lists)"
@@ -262,9 +292,87 @@ optimize=$ZIG_OPTIMIZE
 glibc_floor=$GLIBC_FLOOR
 sha256=$lib_sha
 EOF
+
+echo "==> ABI probe (staged bundle + AbiCommand.swift; native and swiftbuild)"
+PROBE="${PROBE_DIR:-$STAGE/probe}"
+mkdir -p "$PROBE"
+# The build dirs go too: Swift Build does not relink when only a binary target's archive changes,
+# so a reused probe would otherwise vouch for the previous archive.
+rm -rf "$PROBE/Package.swift" "$PROBE/Sources" "$PROBE/ghostty-vt-linux.artifactbundle" \
+  "$PROBE/.build-native" "$PROBE/.build-swiftbuild"
+cp -R "$OUT" "$PROBE/ghostty-vt-linux.artifactbundle"
+mkdir -p "$PROBE/Sources/$PROBE_NAME"
+cp "$ABI_COMMAND" "$PROBE/Sources/$PROBE_NAME/AbiCommand.swift"
+cat > "$PROBE/Package.swift" <<EOF
+// swift-tools-version: 6.2
+// Generated by scripts/build-ghostty-vt-linux.sh: links a copy of the Linux libghostty-vt bundle
+// and prints its ABI manifest through Sources/tkzmux-vtdump/AbiCommand.swift.
+import PackageDescription
+
+let package = Package(
+    name: "$PROBE_NAME",
+    targets: [
+        .binaryTarget(name: "GhosttyVt", path: "ghostty-vt-linux.artifactbundle"),
+        .executableTarget(
+            name: "$PROBE_NAME",
+            dependencies: ["GhosttyVt"],
+            path: "Sources/$PROBE_NAME",
+            // compiler_rt's exp/log/... are localized, so the archive's references resolve to libm.
+            linkerSettings: [.linkedLibrary("m")]
+        ),
+    ]
+)
+EOF
+cat > "$PROBE/Sources/$PROBE_NAME/main.swift" <<'EOF'
+// ghostty-vt-abi-probe abi | version [COMMIT file]; generated by scripts/build-ghostty-vt-linux.sh.
+import Foundation
+
+let argv = Array(CommandLine.arguments.dropFirst())
+switch argv.first {
+case "abi":
+    guard let text = AbiCommand.prettyManifest() else {
+        print(AbiCommand.rawManifest)
+        FileHandle.standardError.write(Data("ghostty-vt-abi-probe: ghostty_type_json() is not valid JSON\n".utf8))
+        exit(1)
+    }
+    print(text)
+case "version":
+    print(AbiCommand.versionLine(commitFile: argv.count > 1 ? URL(fileURLWithPath: argv[1]) : nil))
+default:
+    FileHandle.standardError.write(Data("usage: ghostty-vt-abi-probe abi | version [COMMIT file]\n".utf8))
+    exit(2)
+}
+EOF
+# SwiftPM drops its lock files into $TMPDIR, named after the scratch path; keep them in the stage.
+probe_swift() { TMPDIR="$STAGE/swift-tmp" swift "$@"; }
+mkdir -p "$STAGE/swift-tmp"
+# A wrong info.json (schemaVersion, paths) shows up here first, with a clearer error than a build's.
+probe_swift package --package-path "$PROBE" describe --type json >"$STAGE/describe.json" 2>"$STAGE/describe.log" \
+  || { cat "$STAGE/describe.log" >&2; die "swift package describe failed on the probe"; }
+grep -q '"module_type" : "BinaryTarget"' "$STAGE/describe.json" \
+  || { cat "$STAGE/describe.json" >&2; die "swift package describe does not list GhosttyVt as a binary target"; }
+for build_system in native swiftbuild; do
+  scratch="$PROBE/.build-$build_system"
+  probe_swift build --package-path "$PROBE" --scratch-path "$scratch" --build-system "$build_system" \
+    >"$STAGE/probe-$build_system.log" 2>&1 \
+    || { cat "$STAGE/probe-$build_system.log" >&2; die "the probe does not build with --build-system $build_system (see --help: ABI probe)"; }
+  bin="$(probe_swift build --package-path "$PROBE" --scratch-path "$scratch" --build-system "$build_system" --show-bin-path)/$PROBE_NAME"
+  "$bin" abi > "$STAGE/abi-$build_system.json" || die "the $build_system probe failed to print the ABI manifest"
+  "$bin" version "$VENDOR/COMMIT" > "$STAGE/version-$build_system" || die "the $build_system probe failed to print its version"
+done
+cmp -s "$STAGE/abi-native.json" "$STAGE/abi-swiftbuild.json" \
+  || die "the native and swiftbuild probes print different ABI manifests"
+cmp -s "$STAGE/version-native" "$STAGE/version-swiftbuild" \
+  || die "the native and swiftbuild probes print different version lines"
+VERSION_LINE="$(cat "$STAGE/version-native")"
+[[ "$VERSION_LINE" == *" commit=$GHOSTTY_COMMIT" ]] || die "the probe's version line lacks commit=$GHOSTTY_COMMIT: $VERSION_LINE"
+grep -q '"os" : "linux"' "$STAGE/abi-native.json" || die "the probe's ABI manifest does not report os linux"
+
+# Only now, once the probe has linked it, does the bundle replace the committed one.
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE"
 cp -R "$OUT/." "$BUNDLE/"
+cp "$STAGE/abi-native.json" "$LINUX_MANIFEST"
 
 cxx_undefined="$(grep -c -E '^(_ZNSt3__1|_Znwm)' "$STAGE/undefined" || true)"
 echo "==> vendored libghostty-vt (Linux)"
@@ -275,3 +383,5 @@ echo "    sha256          $lib_sha"
 echo "    localized       $(list_names "$LOCALIZE_LIST" | wc -l) names in ${localized[*]}"
 echo "    undefined       $(wc -l < "$STAGE/undefined") external symbols, _ZNSt3__1/_Znwm: $cxx_undefined"
 echo "    bundle          $(du -sh "$BUNDLE" | cut -f1)"
+echo "    abi manifest    ${LINUX_MANIFEST#"$ROOT/"} (probe linked with native + swiftbuild${PROBE_DIR:+, kept in $PROBE_DIR})"
+echo "    $VERSION_LINE"

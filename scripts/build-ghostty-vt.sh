@@ -7,7 +7,7 @@
 #   GHOSTTY_COMMIT   full sha to vendor (default: vendor/ghostty-vt/COMMIT)
 #   GHOSTTY_SRC      working checkout (default: $TMPDIR/ghostty-vt-src; zig caches are kept between runs)
 #
-# Writes: vendor/ghostty-vt/{ghostty-vt.xcframework,COMMIT,LICENSE,abi-types.json,ghostty.terminfo}
+# Writes: vendor/ghostty-vt/{ghostty-vt.xcframework,COMMIT,LICENSE,abi-types.aarch64-macos.json,ghostty.terminfo}
 #         Sources/TkzTerminalCore/Resources/terminfo/{78,x}/xterm-ghostty and {67,g}/ghostty
 #         (Resources/terminfo is a committed symlink to that directory and is never replaced)
 #
@@ -183,10 +183,10 @@ require_terminfo_symlink
 
 cp "$GHOSTTY_SRC/LICENSE" "$VENDOR/LICENSE"
 
-echo "==> swift build tkzmux-vtdump → abi-types.json"
+echo "==> swift build tkzmux-vtdump → abi-types.aarch64-macos.json"
 swift build --product tkzmux-vtdump
 BIN="$(swift build --product tkzmux-vtdump --show-bin-path)"
-"$BIN/tkzmux-vtdump" abi > "$VENDOR/abi-types.json"
+"$BIN/tkzmux-vtdump" abi > "$VENDOR/abi-types.aarch64-macos.json"
 VERSION_LINE="$("$BIN/tkzmux-vtdump" version)"
 
 # Written last so a failed run never advances the pin.
