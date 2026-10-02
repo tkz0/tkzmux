@@ -35,6 +35,7 @@ PATTERNS=(
   # This machine and this person.
   '/Users/thomaskrantz'               # the author's home directory
   '/Users/thomas([/"[:space:]]|$)'    # a shortened form that leaked into test fixtures
+  '/home/[a-z_][a-z0-9_-]*([/"[:space:]]|$)'  # any Linux home directory (not the /home/.claude fixtures)
   'thomas@tkz\.se'                    # the author's email
   'Thomas|thomaskrantz|Krantz'        # the author's name (LICENSE is excluded below)
   '//tkz\.se'                         # the author's personal domain (se.tkz.tkzmux is the app id)

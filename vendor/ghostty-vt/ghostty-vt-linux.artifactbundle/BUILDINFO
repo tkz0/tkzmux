@@ -1,0 +1,7 @@
+commit=82232ecde55405559dec29c5466cb9e39938cb41
+zig=0.16.0
+target=x86_64-linux-gnu.2.35
+cpu=x86_64_v3
+optimize=ReleaseFast
+glibc_floor=2.35
+sha256=5042c26a73ca2702154a8f768daba8b2337a0e8844c12011318d53d9dfad1d36

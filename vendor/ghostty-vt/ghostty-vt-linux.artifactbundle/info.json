@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1.0",
+  "artifacts": {
+    "GhosttyVt": {
+      "type": "staticLibrary",
+      "version": "82232ecde55405559dec29c5466cb9e39938cb41",
+      "variants": [
+        {
+          "path": "x86_64-unknown-linux-gnu/libghostty-vt.a",
+          "supportedTriples": ["x86_64-unknown-linux-gnu"],
+          "staticLibraryMetadata": {
+            "headerPaths": ["include"],
+            "moduleMapPath": "include/module.modulemap"
+          }
+        }
+      ]
+    }
+  }
+}

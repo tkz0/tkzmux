@@ -10,7 +10,7 @@
 SIGN_IDENTITY ?= -
 NOTARY_PROFILE ?= tkzmux-notary
 
-.PHONY: all build test app vendor run clean notarize dist
+.PHONY: all build test app vendor vendor-linux run clean notarize dist
 
 all: build
 
@@ -25,6 +25,11 @@ app:
 
 vendor:
 	scripts/build-ghostty-vt.sh
+
+# Linux x86_64 only: rebuilds vendor/ghostty-vt/ghostty-vt-linux.artifactbundle at the COMMIT the
+# macOS `make vendor` pinned (docs/linux/vendoring.md).
+vendor-linux:
+	scripts/build-ghostty-vt-linux.sh
 
 run:
 	swift run tkzmux
