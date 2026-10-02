@@ -49,7 +49,7 @@ Each question below needs no user input, unless it says so. The facts behind the
   - `shm_open` has been in libc since 2.34.
   - The floor avoids `arc4random*` (2.36) and the `__isoc23_*` redirects (2.38).
   - It also covers Ubuntu 22.04 and `swift:*-jammy`.
-- **The ceiling is a recorded number, not a hope.** `glibc-max 2.35` is set per section in [linkage-policy.txt](linkage-policy.txt). WOR-302's `check-binary.sh` enforces it on the final ELF, not on the archive: the archive carries no symbol versions, so the real floor is set at the Swift link. If the pinned toolchain's static runtime pulls in a newer `GLIBC_` version, WOR-300 S4 records it, and this ADR and the policy raise the number to the measured value. Running the GTK app also needs a distro with GTK ≥ 4.16 (D3).
+- **The ceiling is a recorded number, not a hope.** `glibc-max 2.35` is set per section in [linkage-policy.txt](linkage-policy.txt). WOR-302's `check-binary.sh` enforces it on the final ELF, not on the archive: the archive carries no symbol versions, so the real floor is set at the Swift link. If the pinned toolchain's static runtime pulls in a newer `GLIBC_` version, WOR-300 S4 records it, and this ADR and the policy raise the number to the measured value. WOR-300 S4 measured it ([spikes.md](spikes.md#glibc-ceiling)): the static runtime of the ubuntu24.04 build of 6.3.3 needs 2.38 (`__isoc23_*`, `strlcpy`, `strlcat`) wherever it is linked, and the ubuntu22.04 build of the same version needs nothing newer than 2.35. The number stays 2.35 only if WOR-323 S1 links releases with the ubuntu22.04 build on a glibc ≤ 2.35 system; otherwise it becomes 2.38 here and in the policy. Running the GTK app also needs a distro with GTK ≥ 4.16 (D3).
 - **CPU `x86_64_v3`** (AVX2, BMI2, FMA) for the archive and for C targets. WOR-323 S1 adds `-march=x86-64-v3` to `TkzPtyShim`/`TkzLinuxShim` cSettings in the Linux branch only.
 - **znver5 is a WOR-323 S6 experiment only.** With `avx512f`, Zig's `std.simd.suggestVectorLength` produces 512-bit `@Vector` code. That code gets SIGILL on CI runners and other machines without AVX-512. The highway/simdutf kernels gain nothing, because they are capped at AVX2. WOR-323 S1's `check-binary.sh --no-avx512` keeps release binaries free of `zmm`/EVEX code.
 
@@ -152,7 +152,7 @@ Why each row is where it is:
   Shared groups hold glibc, the C++ runtime, GTK/GLib, Vulkan and text, Pango for paragraph layout (D10), the Swift runtime, and the deny list.
 - **What the policy encodes.**
   - Every rule carries a justification, and every allow line also names its Arch and Ubuntu 24.04 package.
-  - `libstdc++.so.6`, `libgcc_s.so.1` and `ld-linux-x86-64.so.2` carry `measured-by: WOR-300 S4` until the `-static-stdlib` NEEDED measurement confirms them.
+  - `libstdc++.so.6`, `libgcc_s.so.1` and `ld-linux-x86-64.so.2` carried `measured-by: WOR-300 S4` until the `-static-stdlib` NEEDED measurement confirmed them. WOR-300 S4 measured them and removed the marks ([spikes.md](spikes.md#needed-pt_interp-and-runpath)).
   - `libwayland-*` is denied everywhere.
   - Toolchain and build-tree RUNPATHs are denied in shipped binaries.
   - If the hook must be libc-only, WOR-305 S6 adopts the Static Linux SDK (musl). A fully static hook has no NEEDED entries and passes `[tkzmux-hook]` unchanged.

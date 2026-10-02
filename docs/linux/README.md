@@ -24,8 +24,8 @@ Docs that do not exist yet are listed by file name and become links when they ar
 
 | Document | Topic | Created by |
 |---|---|---|
-| `dev.md` | Toolchain on Omarchy/Arch, container tag and digest, pacman and apt package table | WOR-300 S1 |
-| `spikes.md` | GtkApplication, libdispatch, @MainActor and Swift Testing spike results; go/no-go | WOR-300 S2 |
+| [dev.md](dev.md) | Toolchain on Omarchy/Arch, container tag and digest, pacman and apt package table | WOR-300 S1 |
+| [spikes.md](spikes.md) | GtkApplication, libdispatch, @MainActor and Swift Testing spike results; libghostty-vt link matrix, NEEDED table and glibc ceiling; go/no-go | WOR-300 S2-S4 |
 | `spike-presentation.md` | Vulkan dmabuf → GdkDmabufTexture → GraphicsOffload spike, offload debug variable | WOR-301 S1 |
 | [vendoring.md](vendoring.md) | libghostty-vt for Linux: artifact bundle, compiler_rt localization, ABI files, terminfo, binary checks | WOR-302 S4 |
 | `build.md` | Two-platform Package.swift, build-system choice, resource lookup, version stamping | WOR-303 S1 |
@@ -55,6 +55,7 @@ Docs that do not exist yet are listed by file name and become links when they ar
 | Script | Role | Created by |
 |---|---|---|
 | `scripts/linux/check-linkage.sh <elf> <section>` | The only NEEDED check; reads [linkage-policy.txt](linkage-policy.txt) | WOR-299 S2 |
+| `scripts/linux/dev-env.sh [--smoke] [--container]` | Read-only host check against [dev.md](dev.md): toolchain pin, every package later issues rely on, each gap with its install command | WOR-300 S1 |
 | `scripts/linux/check-binary.sh` | compiler_rt `@plt`, GLIBC symbol ceiling and GNU_STACK checks; calls `check-linkage.sh` | WOR-302 S4 |
 
 ## Rules that apply to every Linux change
