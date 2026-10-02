@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import Metal
 import Testing
+import TkzRenderCore
 @testable import TkzTerminalRender
 
 @Suite("BoxSprites")

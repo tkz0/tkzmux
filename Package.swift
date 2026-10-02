@@ -62,8 +62,9 @@ let sharedTargets: [Target] = [  // hygiene-scan
         publicHeadersPath: "include"
     ),
 
-    // The device-free half of the renderer, shared by Metal and Vulkan (WOR-311). Empty until
-    // WOR-311 S2-S5 move CellMetrics, the atlas packer, FrameBuilder and the box-sprite geometry in.
+    // The device-free half of the renderer, shared by Metal and Vulkan (WOR-311): the font seam
+    // and CellMetrics so far; WOR-311 S3-S5 move the atlas packer, FrameBuilder and the box-sprite
+    // geometry in.
     .target(name: "TkzRenderCore", dependencies: ["TkzShaderTypes"], path: "Sources/TkzRenderCore"),
     .testTarget(name: "TkzRenderCoreTests", dependencies: ["TkzRenderCore", "TkzShaderTypes"], path: "Tests/TkzRenderCoreTests"),
 ]
@@ -148,13 +149,13 @@ let macOnlyTargets: [Target] = [
     ),
     .target(
         name: "TkzTerminalRender",
-        dependencies: ["TkzCore", "TkzTerminalCore", "TkzShaderTypes"],
+        dependencies: ["TkzCore", "TkzTerminalCore", "TkzShaderTypes", "TkzRenderCore"],
         path: "Sources/TkzTerminalRender",
         resources: [.copy("Resources/Fonts"), .copy("Resources/Shaders")]
     ),
     .target(
         name: "TkzTerminalView",
-        dependencies: ["TkzCore", "TkzTerminalCore", "TkzTerminalRender"],
+        dependencies: ["TkzCore", "TkzTerminalCore", "TkzTerminalRender", "TkzRenderCore"],
         path: "Sources/TkzTerminalView"
     ),
 
@@ -193,7 +194,7 @@ let macOnlyTargets: [Target] = [
     ),
     .executableTarget(
         name: "tkzmux-vtdump",
-        dependencies: ["TkzTerminalCore", "TkzTerminalRender", "Persistence"],
+        dependencies: ["TkzTerminalCore", "TkzTerminalRender", "TkzRenderCore", "Persistence"],
         path: "Sources/tkzmux-vtdump"
     ),
     .executableTarget(
@@ -203,7 +204,7 @@ let macOnlyTargets: [Target] = [
 
     // MARK: Tests (one per Swift library module; Swift Testing)
     .testTarget(name: "TkzTerminalCoreTests", dependencies: ["TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalCoreTests", resources: [.copy("Fixtures")]),
-    .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "GhosttyVt", "TkzPNG"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
+    .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "TkzRenderCore", "GhosttyVt", "TkzPNG"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
     .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
     // TkzTerminalCore + GhosttyVt for the shell-integration harness, which spawns each login
     // shell on a real `Pty`, like PersistenceTests does for snapshots.

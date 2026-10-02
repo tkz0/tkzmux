@@ -13,6 +13,7 @@
 
 import Foundation
 import Metal
+import TkzRenderCore
 import TkzTerminalCore
 import TkzTerminalRender
 

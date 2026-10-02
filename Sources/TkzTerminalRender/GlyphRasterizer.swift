@@ -17,27 +17,10 @@ import CoreGraphics
 import CoreText
 import Foundation
 import ImageIO
+import TkzRenderCore
 import UniformTypeIdentifiers
 
-/// A rasterized grapheme: pixels plus everything needed to place them.
-///
-/// `bearingX` / `bearingTop` are device pixels from the pen origin (baseline, left edge of the
-/// cluster) to the bitmap's left and top edges, y positive up. To draw at cell origin `(cx, cy)`
-/// with baseline `b`: `x = cx + bearingX`, `y = cy + b - bearingTop`.
-public struct RasterizedGlyph: Sendable, Equatable {
-    public let width: Int
-    public let height: Int
-    public let bytesPerRow: Int
-    public let bytesPerPixel: Int
-    public let bearingX: Int
-    public let bearingTop: Int
-    public let isColor: Bool
-    /// Uniform scale applied to fit the cell box (1.0 when the glyph fitted as drawn).
-    public let appliedScale: CGFloat
-    public let pixels: [UInt8]
-
-    public var isEmpty: Bool { width == 0 || height == 0 }
-}
+// `RasterizedGlyph` lives in TkzRenderCore (GlyphSource.swift), shared with the Linux backend.
 
 /// Draws shaped graphemes into CPU bitmaps.
 ///

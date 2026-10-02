@@ -7,8 +7,8 @@
 // check that.
 //
 // WOR-311 fills it in:
-//   S2  `FontFace`/`GlyphID`/`GlyphSource` and the CellMetrics formulas over raw font tables
+//   S2  `FontFace`/`GlyphID`/`GlyphSource` (GlyphSource.swift) and the CellMetrics formulas, from
+//       pixel values or raw font tables (CellMetrics.swift, FontTables.swift)
 //   S3  the glyph-atlas packer (staging buffer, dirty bbox, grow generation) and `GlyphCache`
 //   S4  `FrameBuilder` and `TerminalSurface`
 //   S5  the box-sprite geometry and the pure-Swift box-sprite rasterizer
-// Until then the target only pins the shader layout through its test target.

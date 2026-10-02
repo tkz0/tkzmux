@@ -15,6 +15,7 @@
 
 import CoreGraphics
 import Foundation
+import TkzRenderCore
 
 /// Draws the box-drawing and block-element ranges as cell-exact bitmaps.
 ///

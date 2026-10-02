@@ -10,6 +10,7 @@
 
 import CoreText
 import Foundation
+import TkzRenderCore
 
 /// One positioned glyph inside a shaped grapheme. Offsets are device pixels from the cluster's pen
 /// origin (baseline left), y positive up.

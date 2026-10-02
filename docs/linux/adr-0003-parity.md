@@ -12,7 +12,7 @@
 The user's goal for the Linux build is "as close to full pixel parity with the Mac as possible", and every later Linux issue closes against that goal. So it has to be measurable. Six facts limit what parity can mean:
 
 1. **The two platforms run at different scales.** The Mac renders at a backing scale of 2.0. The target Hyprland output runs at a fractional scale of 1.6 (192/120 through `wp_fractional_scale_v1`). At 2.0 every half-point edge lands on a whole device pixel. At 1.6, a 1 pt border is 1.6 px, the 1.5 pt focus ring is 2.4 px, a 44 pt row is 70.4 px and the 36 pt status bar is 57.6 px.
-2. **Terminal cells are whole device pixels** (`Sources/TkzTerminalRender/CellMetrics.swift:52-59`). JetBrains Mono at 14 pt (`Sources/TkzCore/Theme.swift:178`) is 17×37 px at 2.0 (8.5×18.5 pt) and 14×30 px at 1.6 (8.75×18.75 pt). The column counts therefore differ by design, and Linux@1.6 cannot be compared with the Mac at 2.0.
+2. **Terminal cells are whole device pixels** (`Sources/TkzRenderCore/CellMetrics.swift:62-67`). JetBrains Mono at 14 pt (`Sources/TkzCore/Theme.swift:178`) is 17×37 px at 2.0 (8.5×18.5 pt) and 14×30 px at 1.6 (8.75×18.75 pt). The column counts therefore differ by design, and Linux@1.6 cannot be compared with the Mac at 2.0.
 3. **The Mac does not agree with itself byte for byte.** The committed terminal goldens differ from the GitHub runner's output on 0.526 % and 0.529 % of pixels, against a 0.2 % tolerance. CI therefore skips the per-pixel check (`Tests/TkzTerminalRenderTests/TerminalRendererTests.swift:112-115,157-171`). The fact-check traces the drift to CoreGraphics/OS differences rather than the GPU: the atlas is rasterized on the CPU and sampled nearest, 1:1 (`Sources/TkzTerminalRender/Resources/Shaders/Terminal.metal:327-330`).
 4. **Some Mac pixels cannot be reproduced on Linux.** SF Pro and SF Symbols cannot be used outside Apple platforms. NSVisualEffectView materials have no published parameters. Traffic lights, NSAlert, NSSegmentedControl capsules and system colours are drawn by AppKit, not by tkzmux.
 5. **The Mac app does not change** (user decision 2). Mac goldens stay byte-identical. Linux-only gaps are documented, never closed on the Mac.
@@ -26,7 +26,7 @@ The user's goal for the Linux build is "as close to full pixel parity with the M
 
 - **Parity is measured in logical points, with each OS at its native scale.** Geometry is compared in points. Pixels are compared only between renders made at the same scale.
 - **The Linux@1.6 reference is the Mac renderer drawing offscreen at 1.6**, never the Mac at 2.0 resampled. The Linux@2.0 reference is the Mac at 2.0. Both scales are gated.
-- **Expected terminal cells.** JetBrains Mono 14 pt is expected to be 14×30 px at 1.6 (22.4 px: width ⌈13.44⌉ = 14, height round(29.568) = 30, baseline round(22.848) = 23) and 17×37 px at 2.0 (28 px: ⌈16.8⌉ = 17, round(36.96) = 37, baseline 29). This uses hhea 1020/−300/0 and advance 600 at 1000 upem. WOR-312 confirms the figures with its `fontmetrics` dump. Cell width keeps the Mac's `.rounded(.up)` (`CellMetrics.swift:58`), and every other metric keeps `.rounded()`.
+- **Expected terminal cells.** JetBrains Mono 14 pt is expected to be 14×30 px at 1.6 (22.4 px: width ⌈13.44⌉ = 14, height round(29.568) = 30, baseline round(22.848) = 23) and 17×37 px at 2.0 (28 px: ⌈16.8⌉ = 17, round(36.96) = 37, baseline 29). This uses hhea 1020/−300/0 and advance 600 at 1000 upem. WOR-312 confirms the figures with its `fontmetrics` dump. Cell width keeps the Mac's `.rounded(.up)` (`Sources/TkzRenderCore/CellMetrics.swift:67`), and every other metric keeps `.rounded()`.
 - **Colour parity means equal gamma-encoded sRGB bytes**, not a colorimetric match:
   - Linux renders to a UNORM target (not `_SRGB`), with premultiplied alpha and gamma-space blending, exactly as Metal does with `bgra8Unorm` (`TerminalMetalView.swift:166`).
   - On the Mac, bytes are read per surface. Chrome comes from an sRGB bitmap context. The terminal comes from the raw render target, before any colour matching.
@@ -54,7 +54,7 @@ There is one policy, implemented once in the Linux toolkit (`Snapper(scale:)`, W
 | `.points(n)` | Each edge is converted on its own: `px = (edge_pt × s).rounded()`. Never origin plus rounded size. | Layout frames: rows, bars, sidebar, panes, dividers, cards, hit areas. |
 | `.mark(d)` | The origin snaps as an edge. The extent is `max(1, (d × s).rounded())`, whatever the position. | Fixed-size marks whose shape must not depend on where they land: status dots, close boxes, badge capsules' height, icon boxes. |
 | Strokes | Width is `max(1, (w × s).rounded())`, drawn inside the snapped rect. | Axis-aligned borders, focus rings and rules. |
-| Baselines | `baseline_px = (baseline_pt × s).rounded()`. Glyph pen x stays subpixel and is quantized only by WOR-312's atlas key. | All UI text. Terminal baselines are already whole pixels (`CellMetrics.swift:57`). |
+| Baselines | `baseline_px = (baseline_pt × s).rounded()`. Glyph pen x stays subpixel and is quantized only by WOR-312's atlas key. | All UI text. Terminal baselines are already whole pixels (`Sources/TkzRenderCore/CellMetrics.swift:66`). |
 | Vector paths | Drawn antialiased at `w × s`, not rounded. | The chevron (`StatusDotView.swift:244-262`), PR and merge glyphs, and the SF Symbol replacements. |
 
 `.mark` is an addition to the two kinds named in WOR-307 and WOR-316 (see [Open items](#open-items)). Without it, per-edge rounding draws a 7 pt dot as 11×11 px on some rows and 11×12 px on others (worked example 3).
@@ -278,7 +278,7 @@ Each item has an owner issue; [decisions.md](decisions.md) carries the same list
 
 - Repository:
   - `Tests/TkzTerminalRenderTests/TerminalRendererTests.swift:110-171`: foreign-hardware skip, tolerances and the 0.5 % drift record.
-  - `Sources/TkzTerminalRender/CellMetrics.swift:50-72`: metric rounding.
+  - `Sources/TkzRenderCore/CellMetrics.swift:53-75`: metric rounding (moved from TkzTerminalRender by WOR-311 S2).
   - `Sources/TkzTerminalRender/Resources/Shaders/Terminal.metal:327-330`: nearest, 1:1 atlas sampling.
   - `Sources/TkzTerminalView/TerminalMetalView.swift:162-174`: no colorspace; `framebufferOnly`.
   - `Sources/TkzApp/StatusBar/StatusBarView.swift:168,676-677`: 36 pt bar and the device-pixel hairline.

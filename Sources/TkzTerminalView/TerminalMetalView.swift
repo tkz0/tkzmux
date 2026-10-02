@@ -23,6 +23,7 @@ import Metal
 import QuartzCore
 import Synchronization
 import TkzCore
+import TkzRenderCore
 import TkzTerminalCore
 import TkzTerminalRender
 import os

@@ -9,6 +9,7 @@ import AppKit
 import Foundation
 import Metal
 import TkzCore
+import TkzRenderCore
 import TkzTerminalRender
 
 /// Module marker used by the smoke tests.
