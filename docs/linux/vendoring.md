@@ -37,7 +37,7 @@ What it does, and what fails the run, is listed in the script header. In short:
 
 A second run at the same `COMMIT` reproduces the archive bit for bit: sha256 `5042c26a…1d36` at `82232ecd`, 3,264,766 bytes, also from cold zig caches.
 
-Swift Build does not pass `LD_LIBRARY_PATH` on to the tasks it runs. If the toolchain needs it to start (an Ubuntu toolchain on Arch, for example), the swiftbuild probe fails with `swiftc: error while loading shared libraries`. Set `SWIFT_EXEC` to a wrapper that exports it and execs the real `swiftc`, placed as `usr/bin/swiftc` in a symlinked copy of the toolchain, because Swift Build insists on that layout.
+Swift Build does not pass `LD_LIBRARY_PATH` on to the tasks it runs, so the toolchain must start without it. An Ubuntu toolchain on Arch does once its compat libraries sit in the toolchain's RUNPATH directory ([dev.md](dev.md#compat-libraries)); then both probe builds run as they are, with no wrapper. A toolchain that still needs `LD_LIBRARY_PATH` fails the swiftbuild probe with `swiftc: error while loading shared libraries`, and `scripts/linux/dev-env.sh` reports it as a gap.
 
 ## Drift tests
 

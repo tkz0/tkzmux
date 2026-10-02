@@ -5,23 +5,32 @@
 #                   identity additionally turns on the hardened runtime + secure timestamp.
 #   NOTARY_PROFILE  `xcrun notarytool store-credentials` keychain profile name.
 #   VERSION         override the version derived from `git describe` (see scripts/make-app.sh).
+#   SWIFT_FLAGS     extra flags for `swift build`/`test`/`run`, e.g. `-c release`. Never a target
+#                   selection: see the cross-compile refusal below.
 #
 # Release runbook: docs/release.md.
+#
+# Two hosts, one Makefile: `build`, `test` and `run` work on macOS and Linux; `app`, `notarize` and
+# `dist` are macOS-only and fail fast on Linux. Written for GNU Make 3.81 (what macOS ships): plain
+# ifeq/else/endif, no `else ifeq`, no .ONESHELL.
 SIGN_IDENTITY ?= -
 NOTARY_PROFILE ?= tkzmux-notary
+SWIFT_FLAGS ?=
+
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+
+# Package.swift picks its target graph with `#if os(Linux)`, evaluated on the machine that runs
+# SwiftPM, so a cross-compile would silently build the wrong graph (docs/linux/build.md). Only
+# native builds are supported.
+CROSS_FLAGS := --triple --swift-sdk --sdk --destination --arch
+ifneq ($(filter $(CROSS_FLAGS) $(addsuffix =%,$(CROSS_FLAGS)),$(SWIFT_FLAGS)),)
+$(error cross-compiling is not supported: Package.swift branches on the host OS, so build on the target machine and drop $(filter $(CROSS_FLAGS) $(addsuffix =%,$(CROSS_FLAGS)),$(SWIFT_FLAGS)) from SWIFT_FLAGS)
+endif
 
 .PHONY: all build test app vendor vendor-linux run clean notarize dist
 
 all: build
-
-build:
-	swift build
-
-test:
-	swift test
-
-app:
-	SIGN_IDENTITY="$(SIGN_IDENTITY)" VERSION="$(VERSION)" scripts/make-app.sh
 
 vendor:
 	scripts/build-ghostty-vt.sh
@@ -31,11 +40,40 @@ vendor:
 vendor-linux:
 	scripts/build-ghostty-vt-linux.sh
 
-run:
-	swift run tkzmux
+ifeq ($(UNAME_S),Linux)
+ifneq ($(UNAME_M),x86_64)
+$(error Linux builds are x86_64 only: vendor/ghostty-vt/ghostty-vt-linux.artifactbundle has no $(UNAME_M) variant)
+endif
+# Linux: the native build system, passed explicitly (ADR-0002 D2), so a toolchain bump cannot
+# switch backends. Tests run serially (docs/linux/build.md).
+SWIFT_BUILD_SYSTEM := --build-system native
 
-clean:
-	rm -rf .build build
+build:
+	swift build $(SWIFT_BUILD_SYSTEM) $(SWIFT_FLAGS)
+
+test:
+	swift test $(SWIFT_BUILD_SYSTEM) --no-parallel $(SWIFT_FLAGS)
+
+run:
+	swift run $(SWIFT_BUILD_SYSTEM) $(SWIFT_FLAGS) tkzmux
+
+app notarize dist:
+	@echo "make $@: macOS only (it assembles, signs or notarizes build/tkzmux.app)." >&2; \
+	echo "  On Linux use make build, make test or make run; Linux packaging is WOR-324." >&2; \
+	exit 1
+else
+# macOS: as before, plus SWIFT_FLAGS.
+build:
+	swift build $(SWIFT_FLAGS)
+
+test:
+	swift test $(SWIFT_FLAGS)
+
+run:
+	swift run $(SWIFT_FLAGS) tkzmux
+
+app:
+	SIGN_IDENTITY="$(SIGN_IDENTITY)" VERSION="$(VERSION)" scripts/make-app.sh
 
 # Submit the already-built build/tkzmux.app to Apple's notary service, staple the ticket, and
 # prove Gatekeeper accepts the result. Requires `make app` with a real SIGN_IDENTITY first.
@@ -90,3 +128,7 @@ notarize:
 # is set. See docs/release.md.
 dist:
 	SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" scripts/make-dist.sh
+endif
+
+clean:
+	rm -rf .build build

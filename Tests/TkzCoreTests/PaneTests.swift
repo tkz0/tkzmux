@@ -1,6 +1,8 @@
 // Panes and tabs — the tree, its geometry, its wire form and its reducers.
 
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 import Testing
 

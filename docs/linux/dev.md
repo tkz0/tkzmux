@@ -72,35 +72,31 @@ Some toolchain binaries are linked against Ubuntu sonames that Arch does not shi
 
 The built binaries do not need any of these. A `--static-swift-stdlib` executable needs only `libstdc++.so.6`, `libm.so.6`, `libgcc_s.so.1`, `libc.so.6` and `ld-linux-x86-64.so.2`.
 
-**Recommended route: put the links in the toolchain's RUNPATH directory.** `swift-driver`, `swift-package` and `swift-build` carry `RUNPATH $ORIGIN/../lib/swift/linux`, so links placed there are found without any environment variable:
+**The route: put the compat libraries in the toolchain's RUNPATH directory.** `swift-driver`, `swift-package` and `swift-build` carry `RUNPATH $ORIGIN/../lib/swift/linux`, so libraries placed there are found without any environment variable. This is what the reference machine runs (applied 2026-10-02):
 
 ```sh
-sudo pacman -S --needed libxml2-legacy
 lib="$HOME/.local/share/swift/6.3.3/usr/lib/swift/linux"
 for l in ncurses form panel; do ln -sf "/usr/lib/lib${l}w.so.6" "$lib/lib$l.so.6"; done
+# libxml2.so.2: the shared object from Arch's libxml2-legacy package (2.13.9-2, links Arch's
+# ICU 78), unpacked without installing the package, so no root is needed. The package file comes
+# from an Arch mirror (extra/x86_64/libxml2-legacy-2.13.9-2-x86_64.pkg.tar.zst).
+tmp="$(mktemp -d)"
+tar -xf libxml2-legacy-2.13.9-2-x86_64.pkg.tar.zst -C "$tmp" usr/lib/libxml2.so.2 usr/lib/libxml2.so.2.13.9
+cp -P "$tmp"/usr/lib/libxml2.so.2* "$lib/"
 ```
 
-```sh
-# $HOME/.local/share/swift/env.sh, recommended route
-export PATH="$HOME/.local/share/swift/6.3.3/usr/bin:$PATH"
-```
-
-Verified on 2026-10-02 against a copy of the toolchain with the three links and the `libxml2-legacy` 2.13.9 shared object in that directory, with `LD_LIBRARY_PATH` unset: `swift build` with both `--build-system native` and `--build-system swiftbuild`, each with and without `--static-swift-stdlib`, built and ran a hello world. Nothing in these steps is specific to this host, so the `archlinux` CI container (ADR-0002 D5) can use them as written; WOR-303 confirms that.
-
-**Route as first installed on the reference machine: a compat directory on `LD_LIBRARY_PATH`.** It works for `--build-system native` but not for `--build-system swiftbuild`, so it is superseded by the route above.
+`sudo pacman -S --needed libxml2-legacy` works too: the toolchain then finds `/usr/lib/libxml2.so.2` through the default search path, and nothing needs copying.
 
 ```sh
-# $HOME/.local/share/swift/env.sh, as first installed
-# Compat libs in $HOME/.local/lib/swift-compat:
-#   libncurses/form/panel.so.6 -> Arch's *w.so.6 (symlinks)
-#   libxml2.so.2 + libicu{uc,data,i18n}.so.74 from Ubuntu noble .debs (SwiftPM's swift-build needs them)
+# $HOME/.local/share/swift/env.sh
 export PATH="$HOME/.local/share/swift/6.3.3/usr/bin:$PATH"   # plus zig 0.16.0 and shellcheck when installed through mise
-export LD_LIBRARY_PATH="$HOME/.local/lib/swift-compat${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ```
 
-- The noble `libxml2.so.2` (2.9.14) needs `libicuuc.so.74`, which is why the ICU 74 libraries came along from the noble `.deb`s. `libxml2-legacy` links Arch's ICU 78 and makes them unnecessary.
-- **The swiftbuild backend drops `LD_LIBRARY_PATH`** for the compiler and linker it spawns. Under this route, `swift build --build-system swiftbuild` compiles and then fails at the link step: `swiftc: error while loading shared libraries: libncurses.so.6: cannot open shared object file`. `--build-system native` keeps the environment and works. `dev-env.sh` reports this as a gap because WOR-300 S4 and WOR-303 S1 run both backends.
-- The noble `.deb`s cannot simply move into the RUNPATH directory either: RUNPATH applies only to an object's direct dependencies, and the noble `libxml2.so.2` has no RUNPATH of its own to find ICU 74.
+- No `LD_LIBRARY_PATH` and no `SWIFT_EXEC` wrapper. Both build systems work as installed: `swift build`, `swift test` and `swift package describe` with `--build-system native` and with `--build-system swiftbuild` (WOR-303 S1 on this repo; [build.md](build.md)), and `--static-swift-stdlib` hello worlds with both (`dev-env.sh --smoke`).
+- **The toolchain's `ld.lld` is the exception.** It carries `RUNPATH $ORIGIN/../lib` (that is `usr/lib`, not `usr/lib/swift/linux`), so the copy above does not reach it and `ldd usr/bin/ld.lld` still reports `libxml2.so.2 => not found` on the reference machine. `-use-ld=lld` needs the installed `libxml2-legacy` package ([spikes.md](spikes.md#link-matrix)). The default linker is gold, so nothing in the build needs lld today.
+- Nothing in these steps is specific to this host, so the `archlinux` CI container (ADR-0002 D5) can use them as written (WOR-303 S2).
+
+**Superseded: a compat directory on `LD_LIBRARY_PATH`.** The reference machine first ran with the ncurses links plus Ubuntu noble's `libxml2.so.2` 2.9.14 and its ICU 74 libraries in a separate directory on `LD_LIBRARY_PATH`. That works for `--build-system native` only. **The swiftbuild backend drops `LD_LIBRARY_PATH`** for the compiler and linker it spawns, so `swift build --build-system swiftbuild` compiled and then failed at the link step: `swiftc: error while loading shared libraries: libncurses.so.6: cannot open shared object file`. The noble `.deb`s could not move into the RUNPATH directory either: RUNPATH applies only to an object's direct dependencies, and the noble `libxml2.so.2` has no RUNPATH of its own to find ICU 74. `libxml2-legacy` links Arch's own ICU, which is why it replaced them. Nothing needs `LD_LIBRARY_PATH` or a `SWIFT_EXEC` wrapper any more; `dev-env.sh` reports a toolchain that still does as a gap.
 
 ### Debugging
 
@@ -187,7 +183,7 @@ scripts/linux/dev-env.sh --container  # also check podman, or docker with docker
 - The toolchain's `lldb` is a warning, never a gap.
 - `--smoke` writes only to a `mktemp -d` directory and removes it.
 - `DEV_ENV_SYSROOT` prefixes the file probes, so the script can be tested against a fake tree.
-- On 2026-10-02 the reference machine reports 15 gaps with `--smoke --container`: the packages in the install line above, the toolchain's `LD_LIBRARY_PATH` dependency, the failing `swiftbuild` smoke cell, and docker-group access. With the recommended compat route and stub packages it exits 0, and with one package removed it exits 1, naming that package.
+- On 2026-10-02 the reference machine first reported 15 gaps with `--smoke --container`: the packages in the install line above, the toolchain's `LD_LIBRARY_PATH` dependency, the failing `swiftbuild` smoke cell, and docker-group access. With the compat route applied, `--smoke` reports 12 gaps, all of them packages from the install line (`lld valgrind lldb vulkan-headers vulkan-validation-layers vulkan-swrast vulkan-tools wayland-utils sway zsh fish podman`): the toolchain probe and both smoke cells are `ok`. With stub packages it exits 0, and with one package removed it exits 1, naming that package.
 
 ## Container route (reference, not used for daily work)
 

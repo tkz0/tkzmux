@@ -28,7 +28,7 @@ Docs that do not exist yet are listed by file name and become links when they ar
 | [spikes.md](spikes.md) | GtkApplication, libdispatch, @MainActor and Swift Testing spike results; libghostty-vt link matrix, NEEDED table and glibc ceiling; go/no-go | WOR-300 S2-S4 |
 | `spike-presentation.md` | Vulkan dmabuf → GdkDmabufTexture → GraphicsOffload spike, offload debug variable | WOR-301 S1 |
 | [vendoring.md](vendoring.md) | libghostty-vt for Linux: artifact bundle, compiler_rt localization, ABI files, terminfo, binary checks | WOR-302 S4 |
-| `build.md` | Two-platform Package.swift, build-system choice, resource lookup, version stamping | WOR-303 S1 |
+| [build.md](build.md) | Two-platform Package.swift, build-system choice, resource lookup, version stamping | WOR-303 S1; extended by WOR-303 S3, S4 |
 | `platform.md` | TkzPlatform path table (XDG) and platform back-ends | WOR-304 S3 |
 | `hook.md` | `tkzmux-hook` on Linux: timing results and linkage choice | WOR-305 S6 |
 | `agents.md` | AgentBridge on Linux, real-agent probe traces, dotfile-sync collisions | WOR-306 S1 |

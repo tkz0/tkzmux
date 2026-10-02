@@ -1,7 +1,11 @@
 // TkzCore — colour value type shared by the theme, the renderer and the sidebar.
 // No AppKit/Foundation: conversion to NSColor/MTLClearColor lives in the consuming module.
 
+#if canImport(Darwin)
 import Darwin  // pow
+#else
+import Glibc  // pow
+#endif
 
 /// An sRGB colour with straight (non-premultiplied) alpha, components in 0…1.
 public struct RGB: Hashable, Sendable {

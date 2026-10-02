@@ -9,7 +9,9 @@
 // `LiveSessionState.paneCwds` / `panePids` and are rebuilt at launch, keeping the 2026-09-08
 // decision that a shell's working directory is process state (see `LiveSessionState.shellCwd`).
 
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 
 // MARK: - Identifiers

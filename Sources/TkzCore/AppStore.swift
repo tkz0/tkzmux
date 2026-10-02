@@ -5,7 +5,13 @@
 // rather than 40 row re-renders. So every mutation is diffed into a `ChangeSet`, and the change
 // sets produced within one run-loop turn are unioned and delivered **once**.
 
+#if os(Linux)
+// swift-corelibs-libdispatch does not mark `DispatchSourceUserDataAdd` Sendable (Darwin's Dispatch
+// does), so `deinit` could not cancel `signal`. Cancelling a source is thread-safe on both.
+@preconcurrency import Dispatch
+#else
 import Dispatch
+#endif
 import Foundation
 
 // MARK: - ChangeSet

@@ -8,7 +8,6 @@
 #   GHOSTTY_COMMIT   must equal vendor/ghostty-vt/COMMIT; this script never moves the pin
 #   GHOSTTY_SRC      working checkout (default: $TMPDIR/ghostty-vt-src; zig caches are kept between runs)
 #   GLIBC_LIBDIR     directory holding the host's libc.so.6 and libm.so.6 (default: probed)
-#   SWIFT_EXEC       swiftc for the probe builds (SwiftPM's own override; see the probe below)
 #
 # Writes: vendor/ghostty-vt/ghostty-vt-linux.artifactbundle/{info.json,BUILDINFO,include/**,
 #           x86_64-unknown-linux-gnu/libghostty-vt.a}
@@ -45,10 +44,9 @@
 # becomes abi-types.x86_64-linux-gnu.json. The probe lives in the stage directory and is deleted
 # with it, unless --probe DIR (a new or empty directory, or an earlier probe) keeps it, e.g. for
 # scripts/linux/check-binary.sh. If swiftbuild's link fails with "swiftc: error while loading
-# shared libraries": Swift Build does not pass LD_LIBRARY_PATH on to its tasks, so a toolchain that
-# needs it to start (an Ubuntu build on another distro) needs SWIFT_EXEC set to a wrapper that
-# exports it, as usr/bin/swiftc inside a symlinked copy of the toolchain (Swift Build insists on
-# that layout).
+# shared libraries": Swift Build does not pass LD_LIBRARY_PATH on to its tasks, so the toolchain
+# must start without it; docs/linux/dev.md (Compat libraries) puts an Ubuntu build's compat
+# libraries in its RUNPATH directory instead.
 #
 # --update-lists regenerates both lists from this build: the localize list is every member's
 # defined globals intersected with `nm -D --defined-only` of libc.so.6 and libm.so.6, the

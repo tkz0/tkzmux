@@ -9,7 +9,9 @@
 // Everything that describes a running process — `LiveSessionState` and everything it holds —
 // is rebuilt at launch, never written to disk, hence `Session.live` is excluded from `Codable`.
 
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 
 // MARK: - Identifiers

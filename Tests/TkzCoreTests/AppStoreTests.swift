@@ -336,7 +336,13 @@ import Testing
 
     /// M2.1 acceptance: three updates in one run-loop turn deliver **one** change set,
     /// containing the union of all three.
-    @Test func threeUpdatesInOneTurnDeliverOneChangeSet() async {
+    ///
+    /// This and the next test wait on the main queue draining, which on Linux depends on the
+    /// async-main `dispatch_main()` (docs/linux/spikes.md, S3). The time limit turns a main queue
+    /// that never drains into a failure instead of a hung run, until WOR-304 brings the rest of
+    /// TkzCore's main-queue users over.
+    @Test(.timeLimit(.minutes(1)))
+    func threeUpdatesInOneTurnDeliverOneChangeSet() async {
         let probe = Probe()
         let store = probe.store
         var received: [ChangeSet] = []
@@ -357,7 +363,8 @@ import Testing
         #expect(store.deliveryCount == 1)
     }
 
-    @Test func changesInASecondTurnDeliverASecondChangeSet() async {
+    @Test(.timeLimit(.minutes(1)))
+    func changesInASecondTurnDeliverASecondChangeSet() async {
         let probe = Probe()
         let store = probe.store
         var counts: [Int] = []
