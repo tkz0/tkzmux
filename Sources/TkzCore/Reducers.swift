@@ -484,6 +484,12 @@ extension AppState {
         badgeDockIcon = enabled
     }
 
+    /// The "sound when a session is ready" switch — the bell in the sidebar header. Read by
+    /// `AttentionNotifier` and the bell itself, both on `ChangeSet.chrome`.
+    public mutating func setSoundOnReady(_ enabled: Bool) {
+        soundOnReady = enabled
+    }
+
     /// The global on/off for token usage/spend (design: enable/disable, all sessions). Turning it
     /// off clears every session's already-summed `live.usage` right away, rather than leaving a
     /// stale figure on screen until the next hook fires; turning it back on needs a fresh read,

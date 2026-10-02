@@ -222,7 +222,8 @@ struct PaneHeaderViewTests {
 
         #expect(!chrome.isHeaderVisible)
         #expect(chrome.header.isHidden)
-        #expect(content.frame == NSRect(x: 0, y: 0, width: 300, height: 200))
+        #expect(content.frame == NSRect(
+            x: PaneChromeView.contentInsetX, y: PaneChromeView.contentInsetTop, width: 300 - 2 * PaneChromeView.contentInsetX, height: 200 - PaneChromeView.contentInsetTop))
         #expect(chrome.ringWidth == 0)
         #expect(abs(content.alphaValue - PaneHeaderMetrics.inactiveContentAlpha) < 0.001)
 
@@ -236,8 +237,8 @@ struct PaneHeaderViewTests {
         chrome.layoutSubtreeIfNeeded()
         #expect(!chrome.header.isHidden)
         #expect(chrome.header.frame.height == PaneHeaderMetrics.height)
-        #expect(content.frame.minY == PaneHeaderMetrics.height)
-        #expect(content.frame.height == 200 - PaneHeaderMetrics.height)
+        #expect(content.frame.minY == PaneHeaderMetrics.height + PaneChromeView.contentInsetTop)
+        #expect(content.frame.height == 200 - PaneHeaderMetrics.height - PaneChromeView.contentInsetTop)
 
         chrome.setFocused(true)
         #expect(chrome.ringWidth == PaneHeaderMetrics.focusRingWidth)

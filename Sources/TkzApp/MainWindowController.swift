@@ -2,7 +2,7 @@
 //
 // An `NSSplitViewController` with the sidebar on the left (300 pt,
 // min 240, collapsible), the single terminal surface on the right, the 30 pt status strip along the
-// bottom and the unified 48 pt toolbar in the title bar. This file is the **assembler**: every
+// bottom and the compact unified toolbar in the title bar. This file is the **assembler**: every
 // piece it puts together (sidebar, toolbar, status bar, palette, new-session menu, terminal host)
 // was built by its own ticket and knows nothing about the others.
 //
@@ -733,7 +733,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // the transparent titlebar but nothing translucent behind it, so it read as a flat strip.
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
-        window.toolbarStyle = .unified
+        // Compact: the bar is the traffic lights' height plus a little, not the 52 pt a
+        // `.unified` toolbar takes — the terminal gets the rows back.
+        window.toolbarStyle = .unifiedCompact
         window.tabbingMode = .disallowed
         window.isReleasedWhenClosed = false
         window.minSize = Self.minimumContentSize

@@ -693,7 +693,7 @@ struct MainWindowControllerTests {
         let lone = try #require(container.chrome(for: first))
         #expect(!lone.isHeaderVisible)
         #expect(lone.header.isHidden)
-        #expect(lone.content.frame.height == lone.frame.height, "a lone pane loses no height")
+        #expect(lone.content.frame.height == lone.frame.height - PaneChromeView.contentInsetTop, "a lone pane loses only its inset")
         #expect(lone.ringWidth == 0, "2c.1: a lone pane is not ringed")
         #expect(lone.content.alphaValue == 1)
 
@@ -708,7 +708,7 @@ struct MainWindowControllerTests {
         #expect(a === lone, "the existing pane keeps its chrome")
         #expect(a.isHeaderVisible && b.isHeaderVisible)
         #expect(a.header.frame.height == PaneHeaderMetrics.height)
-        #expect(a.content.frame.minY == PaneHeaderMetrics.height)
+        #expect(a.content.frame.minY == PaneHeaderMetrics.height + PaneChromeView.contentInsetTop)
         #expect(harness.store.state.sessions[id]?.focusedTerminalID == other)
         #expect(b.isFocused && !a.isFocused)
         #expect(b.ringWidth == PaneHeaderMetrics.focusRingWidth)
@@ -868,11 +868,11 @@ struct MainWindowControllerTests {
         #expect(abs(detail.terminalContainer.frame.maxY - (detail.view.bounds.height - inset)) < 1)
         // The empty state rides inside the container, so it is inset by construction.
         #expect(detail.emptyState.frame.height == detail.terminalContainer.frame.height)
-        // The sidebar's column stops there too: the summary strip is its top-most piece (since
-        // 2026-09-08) and the list starts under the strip.
+        // The sidebar's column stops there too: the header (bell, new group) is its top-most
+        // piece and the list starts under it.
         let sidebar = harness.controller.sidebar
-        #expect(abs(sidebar.summaryStrip.frame.maxY - (sidebar.view.bounds.height - inset)) < 1)
-        #expect(abs(sidebar.scrollView.frame.maxY - sidebar.summaryStrip.frame.minY) < 1)
+        #expect(abs(sidebar.headerView.frame.maxY - (sidebar.view.bounds.height - inset)) < 1)
+        #expect(abs(sidebar.scrollView.frame.maxY - sidebar.headerView.frame.minY) < 1)
         // And the header backdrop is exactly that strip, above both columns.
         let backdrop = harness.controller.chrome.headerBackdrop
         #expect(abs(backdrop.frame.height - inset) < 1)
@@ -908,13 +908,13 @@ struct MainWindowControllerTests {
         #expect(abs(harness.controller.detail.terminalContainer.frame.minY - bar.frame.maxY) < 0.5)
     }
 
-    @Test("The window wears the unified toolbar with no title")
+    @Test("The window wears the compact unified toolbar with no title")
     func toolbarAttached() {
         let harness = Self.makeHarness()
         defer { harness.tearDown() }
 
         #expect(harness.window.toolbar === harness.controller.toolbarController.toolbar)
-        #expect(harness.window.toolbarStyle == .unified)
+        #expect(harness.window.toolbarStyle == .unifiedCompact)
         #expect(harness.window.titleVisibility == .hidden)
         // Transparent titlebar over full-size content: the glass behind the toolbar items is
         // `ChromeViewController`'s own backdrop (see `terminalRespectsTheSafeArea`), which also
@@ -1173,12 +1173,12 @@ struct MainWindowControllerTests {
         #expect(harness.store.state.groups.count == before + 1, "an empty name creates nothing")
     }
 
-    @Test("The sidebar's ＋ New group footer reaches the window controller")
-    func newGroupFooterIsWired() {
+    @Test("The sidebar header's folder button reaches the window controller")
+    func sidebarHeaderIsWired() {
         let harness = Self.makeHarness()
         defer { harness.tearDown() }
         #expect(harness.controller.sidebar.onNewGroup != nil)
-        #expect(harness.controller.sidebar.newGroupFooter.onNewGroup != nil)
+        #expect(harness.controller.sidebar.headerView.onNewGroup != nil)
     }
 
     // MARK: - Chrome persistence
@@ -1314,7 +1314,7 @@ struct MainWindowControllerTests {
 
         // What the picture shows: the status strip, the window/terminal grounds, and — since the
         // sidebar became a plain split item — the sidebar column itself, rows, summary strip and
-        // the ＋ New group footer included. (The old `sidebarWithViewController:` flavour wrapped
+        // the header's new-group button included. (The old `sidebarWithViewController:` flavour wrapped
         // it in an `NSVisualEffectView`, which has no offscreen content and painted a flat
         // fallback.) The titlebar and its material are not part of the content view, so they are
         // never in this picture; the user is the verifier for those.

@@ -185,12 +185,13 @@ struct StartupOverlayTests {
         chrome.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
         chrome.layout()
         #expect(chrome.startupOverlay.frame == content.frame)
-        #expect(chrome.startupOverlay.frame == NSRect(x: 0, y: 0, width: 600, height: 400))
+        #expect(chrome.startupOverlay.frame == NSRect(
+            x: PaneChromeView.contentInsetX, y: PaneChromeView.contentInsetTop, width: 600 - 2 * PaneChromeView.contentInsetX, height: 400 - PaneChromeView.contentInsetTop))
 
         chrome.setHeaderVisible(true)
         chrome.layout()
         #expect(chrome.startupOverlay.frame == content.frame)
-        #expect(chrome.startupOverlay.frame.minY == PaneHeaderMetrics.height)
+        #expect(chrome.startupOverlay.frame.minY == PaneHeaderMetrics.height + PaneChromeView.contentInsetTop)
 
         // Above the terminal in the subview order: what the split container arranges is the
         // chrome, and the overlay must composite over its content.

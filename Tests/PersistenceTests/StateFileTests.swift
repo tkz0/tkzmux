@@ -175,6 +175,23 @@ private func makeState() -> AppState {
     #expect(fresh.badgeDockIcon == true)
 }
 
+@Test func theReadySoundSwitchRoundTripsAndDefaultsOff() throws {
+    var state = makeState()
+    state.setSoundOnReady(true)
+    let data = try StateFile.encode(StateDocument(state: PersistedState(state)))
+    var restored = AppState()
+    try StateFile.decode(data).state.apply(to: &restored)
+    #expect(restored.soundOnReady == true)
+
+    // Missing from a file written before the bell existed ⇒ off: a sound must be a choice.
+    var object = try JSONDecoder().decode([String: JSONValue].self, from: data)
+    object["preferences"] = .object(["notifyOnDone": .bool(false)])
+    var fresh = AppState()
+    fresh.setSoundOnReady(true)
+    try StateFile.decode(JSONEncoder().encode(object)).state.apply(to: &fresh)
+    #expect(fresh.soundOnReady == false)
+}
+
 @Test func theOriginCheckSwitchRoundTripsAndDefaultsOff() throws {
     var state = makeState()
     state.setCheckOriginPeriodically(true)

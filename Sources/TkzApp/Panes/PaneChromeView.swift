@@ -106,12 +106,23 @@ public final class PaneChromeView: NSView {
 
     // MARK: Layout
 
+    /// Breathing room between the pane's edges and the terminal grid, so the first column does not
+    /// sit hard against the sidebar or a divider (2026-10-01). The renderer pins the grid to its
+    /// view's top-left pixel, so the room is made here, by insetting the view: the chrome's own
+    /// background is the terminal background, which makes the margin read as part of the terminal,
+    /// and the grid geometry the mouse and selection code rely on stays untouched.
+    static let contentInsetX: CGFloat = 8
+    static let contentInsetTop: CGFloat = 4
+
     public override func layout() {
         super.layout()
         let headerHeight = headerVisible ? PaneHeaderMetrics.height : 0
         header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
+        let top = headerHeight + Self.contentInsetTop
         content.frame = CGRect(
-            x: 0, y: headerHeight, width: bounds.width, height: max(0, bounds.height - headerHeight))
+            x: Self.contentInsetX, y: top,
+            width: max(0, bounds.width - Self.contentInsetX * 2),
+            height: max(0, bounds.height - top))
         startupOverlay.frame = content.frame
     }
 

@@ -2,7 +2,7 @@
 //
 // `Sidebar/SidebarRowModels.swift` deliberately contains no `TkzCore` model types, so the row views
 // can be built and tested against literals. This file is the bridge: `Session`/`Group`/`AppState`
-// in, `SidebarSessionRowModel`/`SidebarGroupRowModel`/`SidebarSummaryModel` out. Everything here is
+// in, `SidebarSessionRowModel`/`SidebarGroupRowModel` out. Everything here is
 // a pure `static` function over value types — no view, no store, no clock — which is what makes the
 // keyboard-selection commands (⌘1–⌘9, ⇧⌘U, ↑/↓) testable without an `NSOutlineView`.
 //
@@ -145,13 +145,6 @@ public enum SidebarRowAdapter {
             color: group.color,
             isCollapsed: group.isCollapsed
         )
-    }
-
-    /// "N working · N need you". `needAttention` counts `NEEDS YOU` **badges**, not `.waiting` dots
-    /// — which is exactly what `AppState.summaryCounts` already computes.
-    public static func summaryModel(for state: AppState) -> SidebarSummaryModel {
-        let counts = state.summaryCounts
-        return SidebarSummaryModel(working: counts.working, needAttention: counts.needsYou)
     }
 
     // MARK: - Update card

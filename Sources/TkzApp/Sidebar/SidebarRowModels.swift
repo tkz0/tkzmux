@@ -210,20 +210,6 @@ public struct SidebarGroupRowModel: Hashable, Sendable {
     }
 }
 
-/// The "N working · N need you" strip under the session list.
-public struct SidebarSummaryModel: Hashable, Sendable {
-    /// Sessions whose status is `.working`.
-    public var working: Int
-    /// Sessions with `needsAttention` — i.e. the ones showing a `NEEDS YOU` badge. This is a count
-    /// of *badges*, not of `.waiting` dots; the two differ when a permission prompt is fresh.
-    public var needAttention: Int
-
-    public init(working: Int = 0, needAttention: Int = 0) {
-        self.working = working
-        self.needAttention = needAttention
-    }
-}
-
 // MARK: - Update card
 
 /// What a click on the update card's second line asks the owner to do.
@@ -281,11 +267,10 @@ public enum SidebarMetrics {
     /// A session row whose detail line wrapped to two (`…/dir` above `⎇ branch [WT]`): one more
     /// 15 pt detail line. Never taller — two lines is the cap.
     public static let sessionRowWrappedHeight: Double = 59
-    /// Summary strip height, in points.
-    public static let summaryStripHeight: Double = 26
-    /// The "＋ New group" footer strip: a 26 pt dashed button with 2 pt above and 10 pt below.
-    public static let newGroupFooterHeight: Double = 38
-    /// The "Update available" card above the footer: a 40 pt card with 2 pt above and
+    /// The header above the list: 4 pt margin, the 22 pt "GROUPS" caption row with its bell and
+    /// folder buttons, and 2 pt below.
+    public static let sidebarHeaderHeight: Double = 28
+    /// The "Update available" card under the list: a 40 pt card with 2 pt above and
     /// 6 pt below. Only laid out while a card is showing.
     public static let updateNoticeHeight: Double = 48
     /// How far a session row's content sits inside its group header's.
