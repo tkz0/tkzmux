@@ -217,9 +217,10 @@ public final class AgentIntegration {
         let box = WeakBox()
         // One socket per running instance (`HookSocket`): the same name `TerminalEnvironment`
         // exports as `TKZMUX_SOCKET` for this pid, so a pane's frames reach the instance that
-        // spawned it and a second tkzmux no longer fails to bind.
+        // spawned it and a second tkzmux no longer fails to bind. In the directory
+        // `TerminalEnvironment` uses too: `directory` on macOS, the runtime directory on Linux.
         hookServer = HookServer(
-            socketPath: HookSocket.url(in: directory, pid: instancePID)
+            socketPath: HookSocket.url(in: HookSocket.directory(support: directory), pid: instancePID)
         ) { frame in
             DispatchQueue.main.async { MainActor.assumeIsolated { box.value?.handle(frame) } }
         }
@@ -348,7 +349,8 @@ public final class AgentIntegration {
         }
         // Sockets of instances that crashed or were killed are named after pids nobody reuses
         // on purpose; sweep them before adding ours. A live sibling survives its probe.
-        HookServer.sweepStaleInstanceSockets(in: directory, except: hookServer.socketPath)
+        HookServer.sweepStaleInstanceSockets(
+            in: HookSocket.directory(support: directory), except: hookServer.socketPath)
         do {
             try hookServer.start()
         } catch {

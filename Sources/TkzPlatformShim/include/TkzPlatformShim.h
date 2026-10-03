@@ -3,7 +3,8 @@
 // Swift's Glibc module has no <sys/pidfd.h>, and the variadic `syscall()` cannot be called from
 // Swift, so the pidfd system calls are wrapped here. They go through `syscall()` rather than the
 // glibc wrappers, which need glibc 2.36, above the 2.35 floor. pidfds need Linux 5.3 or later; on
-// an older kernel the calls fail with ENOSYS.
+// an older kernel the calls fail with ENOSYS. accept4 (glibc 2.10) is here because the Glibc module
+// hides it: glibc declares it only under _GNU_SOURCE (WOR-306 S1).
 //
 // Dependency-free: libc only. Everything here is Linux-only, so on macOS this target is empty.
 // WOR-320 adds `tkz_spawn_clean` here.
@@ -24,6 +25,11 @@ int tkz_pidfd_open(pid_t pid, unsigned int flags);
 /// pidfd_send_signal(2) with no siginfo: sends `sig` to the process `pidfd` refers to, which
 /// cannot be a recycled pid. Returns 0, or -1 and sets errno (ESRCH once the process has exited).
 int tkz_pidfd_send_signal(int pidfd, int sig, unsigned int flags);
+
+/// accept4(2) without the peer address: accepts a connection on `fd` with `flags`
+/// (SOCK_NONBLOCK, SOCK_CLOEXEC) set atomically. Swift's Glibc module does not see accept4,
+/// which glibc declares only under _GNU_SOURCE. Returns the new fd, or -1 and sets errno.
+int tkz_accept4(int fd, int flags);
 
 #ifdef __cplusplus
 }

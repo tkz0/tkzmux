@@ -76,14 +76,14 @@ On macOS `TkzSignposter` is `OSSignposter`. On Linux it is a struct with the sam
 | `home` | – | `$HOME` if absolute, otherwise `pw_dir` from `getpwuid` (`/` if neither is absolute) | `NSHomeDirectory()` |
 | `support` | user data: `state.json`, `sessions/`, `usage/`, `statusline/`, `bin/`, `zsh/`, `terminfo/` | `$XDG_DATA_HOME/tkzmux`, default `~/.local/share/tkzmux` | `.applicationSupportDirectory/tkzmux`, falling back to `~/Library/Application Support/tkzmux` |
 | `cache` | regenerable files | `$XDG_CACHE_HOME/tkzmux`, default `~/.cache/tkzmux` | `.cachesDirectory/tkzmux` (`~/Library/Caches/tkzmux`) |
-| `runtime` | per-login files (the hook socket moves here in WOR-305) | `$XDG_RUNTIME_DIR/tkzmux`, created 0700; `support` if that is unavailable | `support` |
+| `runtime` | per-login files: the hook socket ([agents.md](agents.md#hook-socket), WOR-306 S1) | `$XDG_RUNTIME_DIR/tkzmux`, created 0700; `support` if that is unavailable | `support` |
 
 - **Ignored XDG values.** An XDG variable that is unset, empty or relative is ignored, as the Base Directory spec requires, and the default applies. Each variable is judged on its own.
 - **No `state` root.** `$XDG_STATE_HOME` is not used. If WOR-320 wants it for `update.log`, WOR-320 adds the root and names the file.
 - **Disjoint from the install tree.** `support` never overlaps the installed read-only tree, `<prefix>/lib/tkzmux/` (ResourceLocator). That holds even with `PREFIX=$HOME/.local`, so `make install` and `ShimInstaller` never write each other's `terminfo/` or `bin/`.
-- **The runtime directory is private.** `runtime` is created with `mkdir(…, 0700)`. An existing entry must be a real directory (not a symlink) owned by the effective uid, and it is narrowed to 0700. `$XDG_RUNTIME_DIR` itself is never created. Anything else falls back to `support`, which matches the Mac.
+- **The runtime directory is private.** `runtime` is created with `mkdir(…, 0700)`. An existing entry must be a real directory (not a symlink) owned by the effective uid, and it is narrowed to 0700. It must also be writable (`access(W_OK|X_OK)`, which catches a read-only mount). `$XDG_RUNTIME_DIR` itself is never created. Anything else falls back to `support`, which matches the Mac. `privateRuntimeDirectory(environment:)` is the same check for a given environment, returning nil instead of falling back; `HookSocket.directory` uses it (WOR-306 S1).
 - **Tilde abbreviation.** `AppPaths.abbreviatingHome(_:)` replaces `NSString.abbreviatingWithTildeInPath`, which corelibs Foundation does not have. On the Mac it still calls that method, so the output is the same as before. On Linux it writes `~` for `home` and `~/…` for paths under it, and leaves every other path unchanged.
-- **Who routes through it.** `StateFile.standard()` and `SnapshotStore.standard()` take `support` (their `applicationSupport:` injection is unchanged). The tilde sites in `MainWindowController` use `abbreviatingHome`. The rest of the support-directory users, the socket and the hook's Foundation-free mirror of this table move in WOR-305 and WOR-306.
+- **Who routes through it.** `StateFile.standard()` and `SnapshotStore.standard()` take `support` (their `applicationSupport:` injection is unchanged). The tilde sites in `MainWindowController` use `abbreviatingHome`. The hook's Foundation-free mirror of this table moved in WOR-305 S5, and the socket in WOR-306 S1 (`HookSocket.directory`). The rest of the support-directory users move in WOR-306.
 - **`TKZMUX_SUPPORT_DIR`.** `AppPaths` does not read it, because the Mac app never has. It is still the hook's override (`Sources/tkzmux-hook/StatuslineCommand.swift`).
 
 ### Why not `FileManager` and `NSHomeDirectory()` on Linux
@@ -187,7 +187,7 @@ Every accepted entry costs one fd and one kqueue registration, so filters should
 
 ### The C shim: `TkzPlatformShim`
 
-Swift's Glibc module has no `<sys/pidfd.h>`, and the variadic `syscall()` cannot be called from Swift. `Sources/TkzPlatformShim` therefore wraps `tkz_pidfd_open` and `tkz_pidfd_send_signal`. Both call `syscall()` directly, because the glibc wrappers need glibc 2.36, which is above the 2.35 floor. The target uses libc only, and it is empty on macOS. WOR-320 adds `tkz_spawn_clean` to it.
+Swift's Glibc module has no `<sys/pidfd.h>`, and the variadic `syscall()` cannot be called from Swift. `Sources/TkzPlatformShim` therefore wraps `tkz_pidfd_open` and `tkz_pidfd_send_signal`. Both call `syscall()` directly, because the glibc wrappers need glibc 2.36, which is above the 2.35 floor. It also wraps `tkz_accept4` for `HookServer` (WOR-306 S1): glibc declares `accept4` only under `_GNU_SOURCE`, so the Glibc module does not see it. The target uses libc only, and it is empty on macOS. WOR-320 adds `tkz_spawn_clean` to it.
 
 ### Measured
 

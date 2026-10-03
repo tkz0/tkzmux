@@ -136,15 +136,22 @@ let sharedTargets: [Target] = [  // hygiene-scan
 
 // MARK: - Linux only
 
-// Linux's AgentBridgeTests compiles only the hook's tests until AgentBridge joins the Linux graph
-// (WOR-306); neither file imports AgentBridge. The rest of the directory is excluded, listed here
-// so SwiftPM does not warn about it, and the Mac's AgentBridgeTests compiles all of it.
-let agentBridgeHookTests = ["HookHygieneTests.swift", "HookSupportPathTests.swift"]
+// AgentBridge joins the Linux graph a file at a time (WOR-306): Linux builds only the sources
+// ported so far and runs only the tests that cover them (plus the hook's own tests, which import
+// no AgentBridge). Each session adds to both lists; AgentBridge moves to the shared targets once
+// every file builds. The rest of each directory is excluded, listed here so SwiftPM does not warn
+// about it, and the Mac's targets compile all of it.
+let agentBridgeLinuxSources = ["HookFrame.swift", "HookServer.swift"]
+let agentBridgeLinuxTests = ["HookHygieneTests.swift", "HookSupportPathTests.swift", "HookServerTests.swift"]
 #if os(Linux)
-let agentBridgeTestsMacOnly = ((try? FileManager.default.contentsOfDirectory(
-    atPath: Context.packageDirectory + "/Tests/AgentBridgeTests")) ?? [])
-    .filter { !agentBridgeHookTests.contains($0) }.sorted()
+func linuxExcludes(_ directory: String, keeping kept: [String]) -> [String] {
+    ((try? FileManager.default.contentsOfDirectory(atPath: Context.packageDirectory + "/" + directory)) ?? [])
+        .filter { !kept.contains($0) }.sorted()
+}
+let agentBridgeMacOnly = linuxExcludes("Sources/AgentBridge", keeping: agentBridgeLinuxSources)
+let agentBridgeTestsMacOnly = linuxExcludes("Tests/AgentBridgeTests", keeping: agentBridgeLinuxTests)
 #else
+let agentBridgeMacOnly: [String] = []
 let agentBridgeTestsMacOnly: [String] = []
 #endif
 
@@ -181,13 +188,21 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
     // them, and neither is in the Linux graph yet (WOR-304 S3).
     .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzCore"], path: "Tests/PersistenceTests"),
 
-    // The hook's tests only (see agentBridgeHookTests above).
+    // The ported part of AgentBridge and its tests (see agentBridgeLinuxSources above). No
+    // resources yet: ModuleResources.swift is not ported. TkzPlatformShim for accept4.
+    .target(
+        name: "AgentBridge",
+        dependencies: ["TkzCore", "TkzPlatform", "TkzPlatformShim"],
+        path: "Sources/AgentBridge",
+        exclude: agentBridgeMacOnly,
+        sources: agentBridgeLinuxSources
+    ),
     .testTarget(
         name: "AgentBridgeTests",
-        dependencies: ["TkzPlatform"],
+        dependencies: ["AgentBridge", "TkzCore", "TkzPlatform", "TkzTerminalCore"],
         path: "Tests/AgentBridgeTests",
         exclude: agentBridgeTestsMacOnly,
-        sources: agentBridgeHookTests
+        sources: agentBridgeLinuxTests
     ),
 
     .testTarget(

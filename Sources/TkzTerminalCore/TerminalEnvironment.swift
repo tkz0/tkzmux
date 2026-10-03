@@ -123,8 +123,10 @@ public enum TerminalEnvironment {
     ///     `CLAUDE_CONFIG_DIR` from `ClaudeAdapter.environment(configDir:)` for a non-primary Claude
     ///     account, empty for the primary account (where Claude Code's own default wins) or for a
     ///     plain shell with no agent at all. Merged in last, so it wins over anything inherited.
-    ///   - tkzmuxDir: tkzmux's application-support directory; `zsh/`, `bin/` and this instance's
-    ///     hook socket inside it are handed to the shell.
+    ///   - tkzmuxDir: tkzmux's application-support directory; `zsh/`, `bin/` and (on macOS, or on
+    ///     Linux without a runtime directory) this instance's hook socket inside it are handed to
+    ///     the shell. On Linux the socket is under `$XDG_RUNTIME_DIR/tkzmux` from `baseEnvironment`
+    ///     (`HookSocket.directory`).
     ///   - instancePID: the running app's pid, which names the hook socket (`HookSocket`): every
     ///     instance listens on its own, so a pane's frames come back to the instance that spawned
     ///     it and never to another tkzmux sharing the directory.
@@ -191,7 +193,10 @@ public enum TerminalEnvironment {
             env["PATH"] = ([bin] + rest).joined(separator: ":")
         }
         env["TKZMUX_BIN"] = bin
-        env["TKZMUX_SOCKET"] = HookSocket.url(in: tkzmuxDir, pid: instancePID).path
+        // The directory comes from the environment the pane inherits, which in the app is the
+        // process environment the hook server resolved the same directory from (`HookSocket`).
+        let socketDirectory = HookSocket.directory(support: tkzmuxDir, environment: baseEnvironment)
+        env["TKZMUX_SOCKET"] = HookSocket.url(in: socketDirectory, pid: instancePID).path
         env["TKZMUX_SESSION_ID"] = sessionID
 
         // Whatever the row's chosen agent needs to find its account, merged in last so it wins over

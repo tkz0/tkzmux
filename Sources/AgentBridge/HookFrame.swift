@@ -1,6 +1,10 @@
 // The parsed form of one NDJSON frame received by `HookServer`. See the wire protocol in the M3.2
 // ticket.
+#if os(macOS)
 import Darwin
+#elseif os(Linux)
+import Glibc
+#endif
 import Foundation
 import TkzCore
 

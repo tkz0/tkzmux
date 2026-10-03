@@ -97,11 +97,28 @@ public enum AppPaths {
     /// user, `support`. macOS: `support`, as before.
     public static var runtime: URL {
         #if os(Linux)
-        let layout = currentLayout()
-        if let runtime = layout.runtime, makePrivateDirectory(atPath: runtime.path) { return runtime }
-        return layout.support
+        return privateRuntimeDirectory(environment: ProcessInfo.processInfo.environment)
+            ?? currentLayout().support
         #else
         return support
+        #endif
+    }
+
+    /// The Linux runtime directory `environment` names, `$XDG_RUNTIME_DIR/tkzmux`, made private to
+    /// this user (`makePrivateDirectory`), or nil: when the variable is unset, empty or relative, or
+    /// the directory cannot be made private or is not writable (a read-only mount). The caller
+    /// picks the fallback (`runtime` takes `support`; so does `HookSocket.directory`). macOS has no
+    /// runtime directory and always answers nil.
+    public static func privateRuntimeDirectory(environment: [String: String]) -> URL? {
+        #if os(Linux)
+        // `runtime` does not depend on the home directory.
+        guard let runtime = xdgLayout(environment: environment, home: "/").runtime,
+            makePrivateDirectory(atPath: runtime.path),
+            access(runtime.path, W_OK | X_OK) == 0
+        else { return nil }
+        return runtime
+        #else
+        return nil
         #endif
     }
 

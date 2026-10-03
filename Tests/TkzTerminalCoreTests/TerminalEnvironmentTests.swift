@@ -188,6 +188,36 @@ private func hostEnvironment(home: String, shell: String = "/bin/zsh") -> [Strin
         #expect(spawn.environment["TKZMUX_SOCKET"] == a["TKZMUX_SOCKET"])
     }
 
+    /// Linux: the socket a pane is told about is in `$XDG_RUNTIME_DIR/tkzmux`, as the inherited
+    /// environment names it, so the pane's own `$XDG_RUNTIME_DIR` and `TKZMUX_SOCKET` agree; with
+    /// no runtime directory (unset, empty, relative) it is in the support directory, as on the Mac.
+    /// macOS: always the support directory, whatever `XDG_RUNTIME_DIR` says.
+    @Test func hookSocketDirectoryFollowsTheRuntimeDirectory() throws {
+        let home = try tempDir("socketdir")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let support = home.appending(path: "support")
+        let runtime = home.appending(path: "run")
+        try FileManager.default.createDirectory(at: runtime, withIntermediateDirectories: true)
+
+        func socketPath(_ extra: [String: String]) -> String? {
+            var base = hostEnvironment(home: home.path)
+            for (key, value) in extra { base[key] = value }
+            return TerminalEnvironment.make(
+                sessionID: "S1", tkzmuxDir: support, baseEnvironment: base, home: home.path,
+                instancePID: 4242)["TKZMUX_SOCKET"]
+        }
+        let inSupport = support.appending(path: "tkzmux-4242.sock").path
+        #if os(Linux)
+        let withRuntime = socketPath(["XDG_RUNTIME_DIR": runtime.path])
+        #expect(withRuntime == "\(runtime.path)/tkzmux/tkzmux-4242.sock")
+        #else
+        #expect(socketPath(["XDG_RUNTIME_DIR": runtime.path]) == inSupport)
+        #endif
+        #expect(socketPath([:]) == inSupport)
+        #expect(socketPath(["XDG_RUNTIME_DIR": ""]) == inSupport)
+        #expect(socketPath(["XDG_RUNTIME_DIR": "run"]) == inSupport)
+    }
+
     /// The ZDOTDIR trio is zsh's mechanism. Set for a bash or fish session, a nested
     /// `zsh` started from it would read tkzmux's wrappers. Everything else in the contract stays.
     @Test func bashAndFishGetNoZdotdir() throws {

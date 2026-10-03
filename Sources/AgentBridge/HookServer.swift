@@ -1,11 +1,18 @@
 // HookServer — the app-side half of the tkzmux-hook wire protocol. See Sources/tkzmux-hook for
 // the client. M3.2.
+#if os(macOS)
 import Darwin
+#elseif os(Linux)
+import Glibc
+#endif
 import Dispatch
 import Foundation
 import Synchronization
 import TkzCore
 import TkzPlatform
+#if os(Linux)
+import TkzPlatformShim
+#endif
 
 public enum HookServerError: Error, Sendable {
     case socketCreateFailed(Int32)
@@ -29,9 +36,10 @@ public final class HookServer: Sendable {
 
     /// Per-connection state: the growing read buffer plus its `DispatchSourceRead`. A value type
     /// (not a class, unlike `Connection`-style designs) so `State` — and therefore everything the
-    /// `Mutex` protects — stays a plain Sendable struct, matching the pattern `Pty.State` uses for
-    /// its own `DispatchSource` fields.
-    private struct ConnectionState: Sendable {
+    /// `Mutex` protects — stays a plain struct, matching the pattern `Pty.State` uses for its own
+    /// `DispatchSource` fields. Not declared `Sendable`: corelibs Dispatch (Linux) does not mark
+    /// sources Sendable, so they are created and resumed under the lock, as in `Pty`.
+    private struct ConnectionState {
         var readSource: (any DispatchSourceRead)?
         var buffer: [UInt8] = []
     }
@@ -85,13 +93,17 @@ public final class HookServer: Sendable {
 
         removeStaleSocketIfNeeded(at: path)
 
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        let fd = HookServer.makeStreamSocket()
         guard fd >= 0 else { throw HookServerError.socketCreateFailed(errno) }
 
         var addr = HookServer.makeSockaddr(path: path)
         let bindResult = withUnsafePointer(to: &addr) { p -> Int32 in
             p.withMemoryRebound(to: sockaddr.self, capacity: 1) { sp in
+                #if os(macOS)
                 Darwin.bind(fd, sp, socklen_t(MemoryLayout<sockaddr_un>.size))
+                #elseif os(Linux)
+                Glibc.bind(fd, sp, socklen_t(MemoryLayout<sockaddr_un>.size))
+                #endif
             }
         }
         guard bindResult == 0 else {
@@ -100,29 +112,38 @@ public final class HookServer: Sendable {
             throw HookServerError.bindFailed(e)
         }
 
+        // The access boundary: owner-only here, and on Linux also the 0700 runtime directory it
+        // sits in (`HookSocket.directory`). No peer-credential check (docs/linux/agents.md).
         chmod(path, 0o600)
 
-        guard Darwin.listen(fd, 16) == 0 else {
+        #if os(macOS)
+        let listenResult = Darwin.listen(fd, 16)
+        #elseif os(Linux)
+        let listenResult = Glibc.listen(fd, 16)
+        #endif
+        guard listenResult == 0 else {
             let e = errno
             close(fd)
             unlink(path)
             throw HookServerError.listenFailed(e)
         }
 
-        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
-        source.setEventHandler { [weak self] in
-            self?.acceptConnection(listenFD: fd)
-        }
-        source.setCancelHandler {
-            close(fd)
-        }
-
+        // Created and resumed under the lock (see `ConnectionState`). resume() never runs a
+        // handler synchronously, and the handlers run on `queue`, which this block is already on,
+        // so nothing re-enters the lock.
         state.withLock { s in
+            let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
+            source.setEventHandler { [weak self] in
+                self?.acceptConnection(listenFD: fd)
+            }
+            source.setCancelHandler {
+                close(fd)
+            }
             s.listenFD = fd
             s.acceptSource = source
             s.running = true
+            source.resume()
         }
-        source.resume()
     }
 
     private func stopOnQueue() {
@@ -157,7 +178,7 @@ public final class HookServer: Sendable {
     @discardableResult
     static func removeIfStale(at path: String) -> Bool {
         guard FileManager.default.fileExists(atPath: path) else { return false }
-        let probeFD = socket(AF_UNIX, SOCK_STREAM, 0)
+        let probeFD = makeStreamSocket()
         guard probeFD >= 0 else { return false }
         defer { close(probeFD) }
 
@@ -196,24 +217,30 @@ public final class HookServer: Sendable {
     }
 
     private func acceptConnection(listenFD: Int32) {
+        #if os(macOS)
         let clientFD = accept(listenFD, nil, nil)
         guard clientFD >= 0 else { return }
 
         let flags = fcntl(clientFD, F_GETFL, 0)
         _ = fcntl(clientFD, F_SETFL, flags | O_NONBLOCK)
-
-        let readSource = DispatchSource.makeReadSource(fileDescriptor: clientFD, queue: queue)
-        readSource.setEventHandler { [weak self] in
-            self?.readAvailable(fd: clientFD)
-        }
-        readSource.setCancelHandler {
-            close(clientFD)
-        }
+        #elseif os(Linux)
+        // Non-blocking and close-on-exec in the same call, so a pane spawned meanwhile never
+        // inherits the connection.
+        let clientFD = tkz_accept4(listenFD, Int32(SOCK_NONBLOCK.rawValue | SOCK_CLOEXEC.rawValue))
+        guard clientFD >= 0 else { return }
+        #endif
 
         state.withLock { s in
+            let readSource = DispatchSource.makeReadSource(fileDescriptor: clientFD, queue: queue)
+            readSource.setEventHandler { [weak self] in
+                self?.readAvailable(fd: clientFD)
+            }
+            readSource.setCancelHandler {
+                close(clientFD)
+            }
             s.connections[clientFD] = ConnectionState(readSource: readSource, buffer: [])
+            readSource.resume()
         }
-        readSource.resume()
     }
 
     private func readAvailable(fd: Int32) {
@@ -413,7 +440,19 @@ public final class HookServer: Sendable {
 
     // MARK: - sockaddr_un helpers
 
-    private static let sunPathCapacity = 104 // sizeof(sockaddr_un.sun_path)
+    /// `sizeof(sockaddr_un.sun_path)`: 104 on macOS, 108 on Linux.
+    private static let sunPathCapacity = MemoryLayout.size(ofValue: sockaddr_un().sun_path)
+
+    /// An `AF_UNIX` stream socket. On Linux it is close-on-exec from the start, so the listener
+    /// (and a stale-socket probe) never leaks into a pane spawned on another thread; Glibc imports
+    /// `SOCK_*` as an enum, hence `rawValue`. macOS is unchanged.
+    private static func makeStreamSocket() -> Int32 {
+        #if os(macOS)
+        socket(AF_UNIX, SOCK_STREAM, 0)
+        #elseif os(Linux)
+        socket(AF_UNIX, Int32(SOCK_STREAM.rawValue | SOCK_CLOEXEC.rawValue), 0)
+        #endif
+    }
 
     private static func makeSockaddr(path: String) -> sockaddr_un {
         var addr = sockaddr_un()

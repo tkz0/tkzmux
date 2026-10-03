@@ -66,7 +66,9 @@ private let sessionVariables = [
     "HYPRLAND_INSTANCE_SIGNATURE": "abc_1700000000_123",
     "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
     "SSH_AUTH_SOCK": "/run/user/1000/ssh-agent.socket",
-    "XDG_RUNTIME_DIR": "/run/user/1000",
+    // A uid nobody has: `make` derives the hook socket from it (`HookSocket.directory`), which
+    // would create `<XDG_RUNTIME_DIR>/tkzmux` in a real runtime directory.
+    "XDG_RUNTIME_DIR": "/run/user/4294967294",
     "XDG_SESSION_TYPE": "wayland",
     "XDG_SESSION_ID": "2",
     "XDG_SESSION_CLASS": "user",

@@ -1,7 +1,11 @@
+#ifdef __linux__
+#define _GNU_SOURCE // accept4
+#endif
 #include "TkzPlatformShim.h"
 
 #ifdef __linux__
 #include <stddef.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -20,6 +24,10 @@ int tkz_pidfd_open(pid_t pid, unsigned int flags) {
 
 int tkz_pidfd_send_signal(int pidfd, int sig, unsigned int flags) {
     return (int)syscall(SYS_pidfd_send_signal, pidfd, sig, NULL, flags);
+}
+
+int tkz_accept4(int fd, int flags) {
+    return accept4(fd, NULL, NULL, flags);
 }
 #else
 // Nothing on macOS: kqueue covers what the pidfd calls do on Linux. An empty translation unit
