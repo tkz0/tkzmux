@@ -31,7 +31,6 @@
 import Foundation
 import GhosttyVt
 import TkzCore
-import TkzRenderCore
 import TkzShaderTypes
 import TkzTerminalCore
 
@@ -627,7 +626,7 @@ func pack(_ color: RGB) -> UInt32 {
 
 extension RGB {
     /// The inverse of `pack(_: RGB)`.
-    init(packed: UInt32) {
+    public init(packed: UInt32) {
         self.init(
             r: Double(packed & 0xFF) / 255,
             g: Double((packed >> 8) & 0xFF) / 255,

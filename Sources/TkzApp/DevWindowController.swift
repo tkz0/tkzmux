@@ -41,6 +41,7 @@ import Metal
 import Persistence
 import TkzCore
 import TkzPlatform
+import TkzRenderCore
 import TkzTerminalCore
 import TkzTerminalRender
 import TkzTerminalView

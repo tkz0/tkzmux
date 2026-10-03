@@ -118,10 +118,14 @@ let sharedTargets: [Target] = [  // hygiene-scan
     ),
 
     // The device-free half of the renderer, shared by Metal and Vulkan (WOR-311): the font seam,
-    // CellMetrics, the atlas packer and GlyphCache so far; WOR-311 S4-S5 move FrameBuilder and the
-    // box-sprite geometry in.
-    .target(name: "TkzRenderCore", dependencies: ["TkzShaderTypes"], path: "Sources/TkzRenderCore"),
-    .testTarget(name: "TkzRenderCoreTests", dependencies: ["TkzRenderCore", "TkzShaderTypes"], path: "Tests/TkzRenderCoreTests"),
+    // CellMetrics, the atlas packer and GlyphCache, TerminalSurface and FrameBuilder (which read
+    // libghostty's render state, hence TkzTerminalCore); WOR-311 S5 moves the box-sprite geometry in.
+    .target(
+        name: "TkzRenderCore",
+        dependencies: ["TkzShaderTypes", "TkzCore", "TkzTerminalCore", "GhosttyVt"],
+        path: "Sources/TkzRenderCore"
+    ),
+    .testTarget(name: "TkzRenderCoreTests", dependencies: ["TkzRenderCore", "TkzShaderTypes", "TkzCore", "TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzRenderCoreTests"),
 
     // The hook relay: libc only (Darwin, Glibc or Musl), never Foundation (WOR-305 S5). On Linux
     // it carries the Swift runtime statically, per product and never through the global
@@ -195,7 +199,7 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
     ),
     // Fixtures/ (the generated COLRv1 test font) is read through #filePath; TkzPNG decodes the Mac
     // reference atlases.
-    .testTarget(name: "TkzFontsFTTests", dependencies: ["TkzFontsFT", "TkzRenderCore", "TkzPlatform", "CFreeType", "TkzPNG"],
+    .testTarget(name: "TkzFontsFTTests", dependencies: ["TkzFontsFT", "TkzRenderCore", "TkzPlatform", "CFreeType", "TkzPNG", "TkzTerminalCore"],
                 path: "Tests/TkzFontsFTTests", exclude: ["Fixtures"]),
 
     // The Mac's PersistenceTests also lists TkzTerminalCore and GhosttyVt; nothing in it imports
@@ -263,7 +267,7 @@ let macOnlyTargets: [Target] = [
     ),
     .target(
         name: "TkzApp",
-        dependencies: ["TkzCore", "TkzPlatform", "TkzTerminalCore", "TkzTerminalView", "AgentBridge", "GitStatus", "Persistence"],
+        dependencies: ["TkzCore", "TkzPlatform", "TkzTerminalCore", "TkzRenderCore", "TkzTerminalView", "AgentBridge", "GitStatus", "Persistence"],
         path: "Sources/TkzApp"
     ),
 
@@ -282,13 +286,13 @@ let macOnlyTargets: [Target] = [
 
     // MARK: Tests (one per Swift library module; Swift Testing)
     .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "TkzRenderCore", "GhosttyVt", "TkzPNG"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
-    .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
+    .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "TkzTerminalCore", "TkzRenderCore", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
     // TkzTerminalCore + GhosttyVt for the shell-integration harness, which spawns each login
     // shell on a real `Pty`, like PersistenceTests does for snapshots.
     .testTarget(name: "AgentBridgeTests", dependencies: ["AgentBridge", "TkzTerminalCore", "GhosttyVt"], path: "Tests/AgentBridgeTests", resources: [.copy("Fixtures")]),
     .testTarget(name: "GitStatusTests", dependencies: ["GitStatus"], path: "Tests/GitStatusTests"),
     .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzTerminalCore", "GhosttyVt"], path: "Tests/PersistenceTests"),
-    .testTarget(name: "TkzAppTests", dependencies: ["TkzApp"], path: "Tests/TkzAppTests"),
+    .testTarget(name: "TkzAppTests", dependencies: ["TkzApp", "TkzRenderCore"], path: "Tests/TkzAppTests"),
 ]
 
 // MARK: - Package

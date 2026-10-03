@@ -30,6 +30,7 @@ import Persistence
 import Synchronization
 import Testing
 import TkzCore
+import TkzRenderCore
 import TkzTerminalCore
 import TkzTerminalRender
 import TkzTerminalView
