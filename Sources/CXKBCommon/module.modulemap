@@ -1,0 +1,9 @@
+// libxkbcommon as a Swift module, for tests only (WOR-315 S1; decision S6-3, ADR-0001 §9). Linux
+// only: Package.swift declares this target in the Linux branch, and only LinuxKeymapTests depends
+// on it, so libxkbcommon is NEEDED by the test runner and never by the app. Flags come from
+// `pkg-config xkbcommon`.
+module CXKBCommon [system] {
+    header "shim.h"
+    link "xkbcommon"
+    export *
+}
