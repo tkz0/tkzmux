@@ -44,11 +44,24 @@ import Testing
         #endif
     }
 
-    @Test func readsAPositiveNumber() {
+    /// Under AddressSanitizer every allocation goes to ASan's own allocator, which glibc's
+    /// mallinfo2 does not see (asan-valgrind job, WOR-314 S2). The sanitized build exports its
+    /// runtime's entry point.
+    static let addressSanitizer: Bool = {
+        #if os(Linux)
+        return dlsym(nil, "__asan_init") != nil
+        #else
+        return false
+        #endif
+    }()
+
+    @Test(.enabled(if: !addressSanitizer, "mallinfo2 does not see AddressSanitizer's allocator"))
+    func readsAPositiveNumber() {
         #expect(Self.inUse(HeapStats.sample()) > 0)
     }
 
-    @Test func followsLiveAllocationsUpAndDown() throws {
+    @Test(.enabled(if: !addressSanitizer, "mallinfo2 does not see AddressSanitizer's allocator"))
+    func followsLiveAllocationsUpAndDown() throws {
         let before = Self.inUse(HeapStats.sample())
         var blocks: [UnsafeMutableRawPointer] = []
         blocks.reserveCapacity(Self.blockCount)

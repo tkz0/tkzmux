@@ -1,0 +1,12 @@
+# AddressSanitizer suppressions for the asan-valgrind job (WOR-314 S2, scripts/linux/asan-valgrind.sh).
+#
+# Only errors that are not tkzmux's, each named as narrowly as ASan allows (`interceptor_via_fun`
+# matches the function that called the intercepted libc routine).
+
+# Swift 6.3.3: a `#expect(a == b)` on `UInt64?` operands goes through a compiler-generated
+# reabstraction thunk that hands `_convertToAnyHashable` an 8-byte stack slot for the 9-byte
+# `Optional<UInt64>`, and its memcpy reads one byte past it (stack-buffer-overflow, READ of size 9;
+# seen in TkzPlatformTests.ProcessMetricsTests). Toolchain code, not tkzmux's: recheck on each
+# toolchain bump. (The symbol is `$ss21_convertToAnyHashable…`; `$` is an anchor in this file, and
+# an unanchored pattern matches anywhere in the name.)
+interceptor_via_fun:ss21_convertToAnyHashableys0cD0VxSHRzlF

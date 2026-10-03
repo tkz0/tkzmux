@@ -28,6 +28,16 @@
 #                (which links GTK) cannot build there, but the per-target builds still check the
 #                non-GTK code against glibc 2.39 and noble's older Vulkan, FreeType and HarfBuzz
 #                headers, which the Arch image cannot (ADR-0002 D5).
+#   asan-valgrind  REQUIRED (WOR-314 S2). The `arch` image, snapshot and toolchain, plus sway,
+#                valgrind and dbus. scripts/linux/asan-valgrind.sh, inside a headless sway
+#                (WLR_BACKENDS=headless, WLR_RENDERER=pixman; scripts/linux/headless-sway.sh) and a
+#                private session bus (dbus-run-session): the whole suite under AddressSanitizer with
+#                TKZMUX_REQUIRE_DISPLAY=1, so CanvasCycleTests opens and closes 100 windows, then
+#                Memcheck on `tkzmux --canvas-cycle-check --cycles 100`. Both fail on any memory error
+#                in Tkz frames or leak owned by Tkz code, and list third-party leaks. Valgrind runs through a
+#                current glibc + glibc-debug pair from scripts/linux/fetch-glibc-debug.sh, because the
+#                snapshot's glibc-debug is gone from the mirrors. No Vulkan driver: the GPU tests
+#                skip here and run in `arch`. The reports are uploaded when it fails.
 #   arch-latest  Scheduled, NOT required: archlinux:latest with live mirrors, same steps as `arch`,
 #                to catch rolling-release breakage before the pin is bumped.
 #
@@ -133,11 +143,13 @@ jobs:
       - name: Fetch the parity fonts
         run: scripts/fetch-parity-fonts.sh
 
-      - name: Read the Swift pin
+      - &swift-pin
+        name: Read the Swift pin
         id: pin
         run: echo "swift=$(awk '$1 == "pin" && $2 == "swift" { print $3; exit }' docs/linux/dev.md)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache the Swift toolchain tarball
+      - &swift-tarball-cache
+        name: Cache the Swift toolchain tarball
         uses: actions/cache@v5
         with:
           path: ~/.cache/swift-download
@@ -146,7 +158,8 @@ jobs:
       # docs/linux/dev.md, "Toolchain": the swift.org Ubuntu 24.04 tarball, signature-checked,
       # unpacked per user, with the ncurses compat links in the toolchain's RUNPATH directory.
       # libxml2.so.2 comes from the libxml2-legacy package installed above.
-      - name: Install Swift ${{ steps.pin.outputs.swift }}
+      - &swift-install
+        name: Install Swift ${{ steps.pin.outputs.swift }}
         env:
           PIN: ${{ steps.pin.outputs.swift }}
         run: |
@@ -169,7 +182,8 @@ jobs:
           "$root/usr/bin/swift" --version 2>&1 | tee "$RUNNER_TEMP/swift-version"
           grep -qF "Swift version $PIN (swift-$PIN-RELEASE)" "$RUNNER_TEMP/swift-version"
 
-      - name: Cache .build
+      - &build-cache
+        name: Cache .build
         if: env.ARCH_SNAPSHOT != ''
         uses: actions/cache@v5
         with:
@@ -385,6 +399,58 @@ jobs:
 
       # No `swift test` here (WOR-314 S1): the test bundle links every test target, TkzGtkShellTests
       # included, and noble's GTK 4.14 is below the floor. The `arch` job runs the tests.
+
+  asan-valgrind:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container:
+      # The `arch` image and snapshot; bump them together.
+      image: archlinux:base-20260927.0.600689@sha256:b21322c663be387c0ed9cbc7bbbfe18e41633ad4e7b7c77cfad45f128be20040
+    env:
+      ARCH_SNAPSHOT: '2026/09/27'
+    steps:
+      - name: Install system packages
+        run: |
+          if [ -n "$ARCH_SNAPSHOT" ]; then
+            echo "Server = https://archive.archlinux.org/repos/$ARCH_SNAPSHOT/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist
+          fi
+          # The `arch` job's build set without the Vulkan driver and layer, plus sway (the headless
+          # compositor), valgrind and dbus (dbus-run-session).
+          pacman -Syu --noconfirm --needed \
+            git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
+            gnupg zstd pkgconf freetype2 harfbuzz fontconfig zsh \
+            vulkan-icd-loader vulkan-headers gtk4 sway valgrind dbus
+          pacman -Q glibc gtk4 sway valgrind dbus
+
+      - uses: actions/checkout@v5
+
+      - *swift-pin
+      - *swift-tarball-cache
+      - *swift-install
+      - *build-cache
+
+      # Valgrind needs symbols for ld.so, which Arch ships only in the current glibc-debug.
+      - name: Fetch glibc with debug symbols for Valgrind
+        run: |
+          scripts/linux/fetch-glibc-debug.sh "$RUNNER_TEMP/glibc"
+          echo "TKZMUX_VALGRIND_GLIBC=$RUNNER_TEMP/glibc/usr/lib" >> "$GITHUB_ENV"
+
+      - name: swift test --sanitize=address (headless sway)
+        run: scripts/linux/headless-sway.sh dbus-run-session -- scripts/linux/asan-valgrind.sh asan
+
+      - name: Valgrind, 100 canvas open/close cycles (headless sway)
+        run: scripts/linux/headless-sway.sh dbus-run-session -- scripts/linux/asan-valgrind.sh valgrind 100
+
+      - name: Upload the sanitizer reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: asan-valgrind-reports
+          path: |
+            .build/asan-reports
+            .build/valgrind-canvas-cycle.log
+          if-no-files-found: ignore
 
   arch-latest:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

@@ -5,7 +5,8 @@
 //   - type-checked cast wrappers and the macros Swift cannot import (S1);
 //   - `tkz_signal_connect`, a `g_signal_connect_data` whose destroy-notify is the only release of
 //     the Swift closure box (S1);
-//   - `tkz_gtk_symbol`, the runtime gate for every API newer than 4.16 (S1, ADR-0002 D4).
+//   - `tkz_gtk_symbol`, the runtime gate for every API newer than 4.16 (S1, ADR-0002 D4);
+//   - `TkzCanvas`, the one GtkWidget subclass, whose vfuncs forward to a C vtable (S2).
 //
 // Every function here is called on the GTK (process main) thread unless it says otherwise.
 #pragma once
@@ -62,6 +63,57 @@ void *tkz_gtk_symbol(const char *name, unsigned minor);
 /// GTK.
 void tkz_gtk_force_minor_version(int minor);
 
+// MARK: - TkzCanvas
+
+// The GtkWidget every tkzmux pixel goes through (ADR-0001: GTK never draws a visible pixel of its
+// own). A plain G_DEFINE_TYPE subclass of GtkWidget with CSS name `tkzcanvas` and no children. Its
+// vfuncs do nothing themselves: each forwards to the matching entry of the vtable it was created
+// with, passing the `ctx` it was created with, and a NULL entry (or a released context) falls back
+// to GtkWidget's own behaviour.
+typedef struct _TkzCanvas TkzCanvas;
+
+/// What a forwarded vfunc with a fallback answers: the parent's behaviour, false or true.
+#define TKZ_CANVAS_DEFAULT (-1)
+
+typedef struct {
+    /// `GtkWidgetClass.snapshot`: append the frame to `snapshot`.
+    void (*snapshot)(gpointer ctx, GtkWidget *canvas, GtkSnapshot *snapshot);
+    /// `GtkWidgetClass.measure`: set `*minimum` and `*natural` (both already 0) and return TRUE,
+    /// or return FALSE for GtkWidget's measurement. Baselines are always -1.
+    gboolean (*measure)(gpointer ctx, GtkWidget *canvas, GtkOrientation orientation, int for_size,
+                        int *minimum, int *natural);
+    /// `GtkWidgetClass.size_allocate`, after the parent's.
+    void (*size_allocate)(gpointer ctx, GtkWidget *canvas, int width, int height, int baseline);
+    /// `GtkWidgetClass.realize`, after the parent's: the widget has its native and surface.
+    void (*realize)(gpointer ctx, GtkWidget *canvas);
+    /// `GtkWidgetClass.unrealize`, before the parent's: the surface is still there.
+    void (*unrealize)(gpointer ctx, GtkWidget *canvas);
+    /// `GtkWidgetClass.focus`: TRUE, FALSE, or TKZ_CANVAS_DEFAULT for GtkWidget's keyboard
+    /// navigation.
+    int (*focus)(gpointer ctx, GtkWidget *canvas, GtkDirectionType direction);
+    /// The accessibility slot (WOR-325): `GtkAccessibleInterface.get_first_accessible_child`,
+    /// transfer full. NULL falls back to GtkWidget's (a canvas has no child widgets, so none).
+    GtkAccessible *(*first_accessible_child)(gpointer ctx, GtkWidget *canvas);
+    /// Releases `ctx`. Called exactly once, when the widget is disposed (after the parent's
+    /// dispose, so an unrealize during it still reaches `ctx`); no entry is called after it.
+    void (*destroy)(gpointer ctx);
+} TkzCanvasVTable;
+
+GType tkz_canvas_get_type(void);
+
+/// A new canvas, floating like every fresh GtkWidget. `vtable` is copied; `ctx` is owned by the
+/// canvas from here on and released through `vtable->destroy`.
+GtkWidget *tkz_canvas_new(const TkzCanvasVTable *vtable, gpointer ctx);
+
+/// The `ctx` a canvas was created with, or NULL once it has been released.
+gpointer tkz_canvas_get_context(GtkWidget *canvas);
+
+/// How many TkzCanvas instances exist (created and not yet finalized). A diagnostic for the
+/// open/close-cycle checks (S2); any thread.
+guint tkz_canvas_live_count(void);
+
+static inline gboolean tkz_is_canvas(gpointer p) { return G_TYPE_CHECK_INSTANCE_TYPE(p, tkz_canvas_get_type()); }
+
 // MARK: - Casts and macros
 
 // The G_TYPE_CHECK_INSTANCE_CAST macros (GTK_WIDGET(), G_OBJECT(), …) do not import into Swift.
@@ -78,6 +130,7 @@ static inline GdkSurface *tkz_surface(gpointer p) { return GDK_SURFACE(p); }
 static inline GdkToplevel *tkz_toplevel(gpointer p) { return GDK_TOPLEVEL(p); }
 static inline GdkPaintable *tkz_paintable(gpointer p) { return GDK_PAINTABLE(p); }
 static inline GdkTexture *tkz_texture(gpointer p) { return GDK_TEXTURE(p); }
+static inline GtkAccessible *tkz_accessible(gpointer p) { return GTK_ACCESSIBLE(p); }
 
 /// `G_IS_OBJECT(p)`: whether `p` points at a live GObject instance (a debugging aid; a freed
 /// instance can still pass).

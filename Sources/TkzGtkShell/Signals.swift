@@ -10,11 +10,10 @@
 // GSource, so the C trampolines enter the handlers with `MainActor.assumeIsolated` (a trap, not a
 // race, if a signal ever arrives on another thread).
 //
-// `liveBoxes` counts the boxes that exist: the open/close-cycle tests (S2) check that it returns
-// to its baseline.
+// `liveBoxes` counts the boxes that exist (ClosureBoxes): the open/close-cycle checks (S2) show
+// it back at its baseline.
 
 import CGtk
-import Synchronization
 import TkzLinuxShim
 
 /// A connected handler's id, as `g_signal_connect_data` returns it; 0 when the connection failed.
@@ -23,7 +22,7 @@ public typealias SignalHandlerID = gulong
 @MainActor
 public enum Signals {
     /// The number of signal closure boxes alive in the process, across every connection.
-    public nonisolated static var liveBoxes: Int { SignalBox.live.load(ordering: .relaxed) }
+    public nonisolated static var liveBoxes: Int { ClosureBoxes.live(.signal) }
 
     /// Connects `handler` to a signal whose C handler is `void (*)(instance, user_data)`, such as
     /// GApplication `activate` or GtkWidget `realize`.
@@ -77,17 +76,15 @@ final class SignalBox {
         case boolean(@MainActor () -> Bool)
     }
 
-    static let live = Atomic<Int>(0)
-
     let handler: Handler
 
     init(_ handler: Handler) {
         self.handler = handler
-        Self.live.add(1, ordering: .relaxed)
+        ClosureBoxes.created(.signal)
     }
 
     deinit {
-        Self.live.subtract(1, ordering: .relaxed)
+        ClosureBoxes.destroyed(.signal)
     }
 
     static func from(_ data: UnsafeMutableRawPointer?) -> SignalBox {

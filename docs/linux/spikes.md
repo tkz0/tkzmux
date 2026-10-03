@@ -294,6 +294,6 @@ The libghostty-vt archive needs nothing newer than 2.34 (`shm_open`). So:
 
 ## Still open
 
-- **Headless sway.** S3's GTK-in-a-test check under `WLR_BACKENDS=headless` sway is not done (sway was not installed). WOR-314 S2 needs the same setup.
+- **Headless sway.** *Closed by WOR-314 S2:* GTK windows run under sway 1.12 with `WLR_BACKENDS=headless` and `WLR_RENDERER=pixman` (`scripts/linux/headless-sway.sh`), in a `tkzmux` subprocess that owns the main thread, as S3 concluded: 100 open/close cycles of a TkzCanvas window in 0.5 s ([build.md](build.md#linux-ci), Sanitizers).
 - **A release link on glibc ≤ 2.35.** Not run, because there is no container runtime on the reference machine yet (podman is in the [dev.md](dev.md#packages) install line). The ubuntu22.04 result above comes from symbol analysis of its static runtime, not from a link. WOR-323 S1.
 - **Swift Build's lld support** through anything other than per-target `unsafeFlags` (for example a future `--linker` option). Recheck on each toolchain bump.
