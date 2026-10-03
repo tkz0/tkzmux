@@ -8,7 +8,7 @@ are what the Linux canvas views are measured against (ADR-0003, layers L0 and L5
 - `<component>@<preset>@<scale>.json` is its `LayoutDump` (frames in logical points, top-left
   origin; text runs, masks, frozen animations), as canonical compact JSON. `jq -S .` reads one.
 - `manifest.json` names the reference machine, lists every file's size and sha256, sums them
-  against WOR-307's 4 MiB share of ADR-0003's budget, and lists the edges off the 0.5 pt grid.
+  against WOR-307's 4.5 MiB share of ADR-0003's budget, and lists the edges off the 0.5 pt grid.
 
 Never edit or regenerate these by hand, and never in a commit that also changes the app: a
 changed golden in a refactor means the refactor changed what the Mac draws. Regenerate on the
