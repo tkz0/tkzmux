@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#elseif os(Linux)
+import Glibc
+#endif
 import Dispatch
 import Foundation
 import Synchronization

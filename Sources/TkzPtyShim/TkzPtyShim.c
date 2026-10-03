@@ -38,6 +38,16 @@ static int tkz_set_cloexec(int fd) {
     return fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 }
 
+#ifdef __linux__
+// The kernel's `struct sigaction` for rt_sigaction(2), not glibc's (whose sa_mask is 128 bytes).
+struct tkz_kernel_sigaction {
+    void (*handler)(int);
+    unsigned long flags;
+    void (*restorer)(void);
+    uint64_t mask;
+};
+#endif
+
 // Everything below runs in the forked child: async-signal-safe calls only, and it must never
 // return — either execve() replaces the image or we _exit() after reporting errno.
 __attribute__((noreturn))
@@ -59,6 +69,22 @@ static void tkz_child_exec(const tkz_pty_spawn_options *opts, int slave, int mas
         close(master);
 
         // A pristine signal environment: no inherited mask, no inherited handlers.
+#ifdef __linux__
+        // Bare system calls, not the glibc wrappers: glibc's sigaction(SIGABRT) write-locks the
+        // abort lock (a pthread_rwlock), which posix_spawn() in another thread holds for reading
+        // while it clones. A raw clone3() child inherits that lock as it was and would block
+        // before exec forever (PtyTests.spawnsWhileAnotherThreadPosixSpawns). These also reach
+        // 32/33, which glibc reserves and refuses; resetting them before exec is harmless.
+        uint64_t empty_mask = 0;
+        syscall(SYS_rt_sigprocmask, SIG_SETMASK, &empty_mask, NULL, sizeof(empty_mask));
+        struct tkz_kernel_sigaction ksa;
+        memset(&ksa, 0, sizeof(ksa));
+        ksa.handler = SIG_DFL;
+        for (int sig = 1; sig < NSIG; sig++) {
+            if (sig == SIGKILL || sig == SIGSTOP) continue;
+            syscall(SYS_rt_sigaction, sig, &ksa, NULL, sizeof(ksa.mask));
+        }
+#else
         sigset_t empty;
         sigemptyset(&empty);
         sigprocmask(SIG_SETMASK, &empty, NULL);
@@ -70,6 +96,7 @@ static void tkz_child_exec(const tkz_pty_spawn_options *opts, int slave, int mas
             if (sig == SIGKILL || sig == SIGSTOP) continue;
             sigaction(sig, &sa, NULL);
         }
+#endif
 
         // A stale worktree must not make the session unlaunchable: keep the inherited cwd instead.
         if (opts->cwd != NULL) (void)chdir(opts->cwd);
@@ -117,7 +144,7 @@ struct tkz_clone_args {
 //
 // The child of a raw clone3() skips glibc's atfork handlers and keeps the parent thread's TCB
 // (stale tid): it must stay on tkz_child_exec's syscall-only path, with no pthread_*, raise()
-// or abort().
+// or abort(), and no glibc wrapper that locks internally (sigaction() does, for SIGABRT).
 static pid_t tkz_clone3_pidfd(int *pidfd) {
     struct tkz_clone_args args;
     memset(&args, 0, sizeof(args));

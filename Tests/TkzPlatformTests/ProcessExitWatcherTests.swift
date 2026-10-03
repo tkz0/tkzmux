@@ -134,7 +134,9 @@ extension WatcherTests {
             let children = currentChildren()
             let ours = children.intersection(pids)
             #expect(ours.isEmpty, "still children: \(ours.sorted())")
-            let zombies = children.filter { processState($0) == "Z" }
+            // Only our own pids: a parallel suite (PtyTests) has short-lived zombies of its own
+            // between a child's exit and its reap.
+            let zombies = ours.filter { processState($0) == "Z" }
             #expect(zombies.isEmpty, "zombie children: \(zombies.sorted())")
             #expect(watcher.watchCount == 0)
         }
@@ -145,7 +147,7 @@ extension WatcherTests {
                 kill(pid, SIGKILL)
                 reapBlocking(pid)
             }
-            let before = watcherDescriptorCounts().pidfd
+            let before = pidfdCount(for: pid)
             let watcher = SystemProcessExitWatcher(queue: queue)
             for _ in 0..<1_000 {
                 let id = try watcher.watch(pid: pid) {}
@@ -159,10 +161,10 @@ extension WatcherTests {
             }
             #expect(watcher.watchCount == 0)
             let deadline = ContinuousClock.now + .seconds(5)
-            while watcherDescriptorCounts().pidfd != before, ContinuousClock.now < deadline {
+            while pidfdCount(for: pid) != before, ContinuousClock.now < deadline {
                 try await Task.sleep(for: .milliseconds(10))
             }
-            #expect(watcherDescriptorCounts().pidfd == before)
+            #expect(pidfdCount(for: pid) == before)
         }
 
         /// The shim's pidfd_send_signal reaches the process its pidfd names.

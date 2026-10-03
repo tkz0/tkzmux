@@ -1,6 +1,11 @@
 // Pty — fork/exec a shell on a pty (via TkzPtyShim) and pump it from a dedicated IO queue.
-// M1.2.
+// M1.2. On Linux (WOR-305) the child's exit arrives through a pidfd instead of a kqueue process
+// source; Pty owns that pidfd, and `onExit` is the one exit event everything else subscribes to.
+#if canImport(Darwin)
 import Darwin
+#elseif os(Linux)
+import Glibc
+#endif
 import Dispatch
 import Foundation
 import Synchronization
@@ -39,6 +44,9 @@ public struct PtySpawn: Sendable {
     /// child (it execs from the inherited directory) rather than failing the spawn.
     public var cwd: String?
     public var size: TerminalSize
+    /// Test seam: `TKZ_PTY_SPAWN_*` bits for the shim. `TKZ_PTY_SPAWN_FORCE_FORK` makes Linux take
+    /// the fork() + pidfd_open() path that a kernel without clone3 or Docker's seccomp filter forces.
+    var shimFlags: UInt32 = 0
 
     public init(
         executablePath: String,
@@ -109,11 +117,22 @@ public struct ForegroundProcess: Equatable, Sendable {
 /// source and the exit source are all scheduled there, so `onData` and `onExit` are delivered
 /// serialized on that queue and `write(_:)` may only be called from it.
 public final class Pty: Sendable {
+    #if os(Linux)
+    /// swift-corelibs-libdispatch compiles `makeProcessSource` out on Linux: the exit source is a
+    /// read source on the child's pidfd instead.
+    private typealias ExitSource = any DispatchSourceRead
+    #else
+    private typealias ExitSource = any DispatchSourceProcess
+    #endif
+
     /// pid of the child (also its process group id and session id — it is a session leader).
     public let pid: pid_t
     public let ioQueue: DispatchQueue
 
     private let masterFD: Int32
+    /// Linux: the child's pidfd from the shim, owned by the exit source (closed by its cancel
+    /// handler). -1 on macOS and on a kernel without pidfds. Internal for the tests only.
+    let pidFD: Int32
     private let onData: @Sendable (Data) -> Void
     private let onExit: @Sendable (PtyExit) -> Void
     private let state: Mutex<State>
@@ -121,7 +140,7 @@ public final class Pty: Sendable {
     private struct State {
         var readSource: (any DispatchSourceRead)?
         var writeSource: (any DispatchSourceWrite)?
-        var procSource: (any DispatchSourceProcess)?
+        var procSource: ExitSource?
         var exitPoll: (any DispatchSourceTimer)?
         var pendingWrites: [UInt8] = []
         var size: TerminalSize
@@ -159,7 +178,7 @@ public final class Pty: Sendable {
                         cols: spawn.size.cols,
                         cell_width_px: spawn.size.cellWidthPx,
                         cell_height_px: spawn.size.cellHeightPx,
-                        flags: 0
+                        flags: spawn.shimFlags
                     )
                     return tkz_pty_spawn(&opts, &result)
                 }
@@ -173,6 +192,7 @@ public final class Pty: Sendable {
 
         self.pid = result.pid
         self.masterFD = result.master_fd
+        self.pidFD = result.pidfd
         self.ioQueue = ioQueue
         self.onData = onData
         self.onExit = onExit
@@ -185,7 +205,7 @@ public final class Pty: Sendable {
         // Safe to drop at any time: cancel the sources (the read source's cancel handler closes the
         // master fd), hang the child up and reap it on a detached queue so no zombie is left.
         let leftovers: (read: (any DispatchSourceRead)?, write: (any DispatchSourceWrite)?,
-                        proc: (any DispatchSourceProcess)?, poll: (any DispatchSourceTimer)?,
+                        proc: ExitSource?, poll: (any DispatchSourceTimer)?,
                         reaped: Bool) = state.withLock { s in
             s.shuttingDown = true
             defer {
@@ -218,32 +238,58 @@ public final class Pty: Sendable {
 
     private func start() {
         let fd = masterFD
-        let read = DispatchSource.makeReadSource(fileDescriptor: fd, queue: ioQueue)
-        read.setEventHandler { [weak self] in self?.drain(bounded: true) }
-        read.setCancelHandler { [weak self] in
-            // The fd is closed exactly once, from here, so nothing can still be watching it.
-            let shouldClose: Bool = self?.state.withLock { s in
-                if s.fdClosed { return false }
-                s.fdClosed = true
-                return true
-            } ?? true
-            if shouldClose { close(fd) }
-        }
-
-        let proc = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: ioQueue)
-        proc.setEventHandler { [weak self] in self?.reapIfNeeded() }
-
+        // Created and resumed under the lock: corelibs Dispatch (Linux) does not mark sources
+        // Sendable, so one built out here could not be moved into the state. resume() never runs a
+        // handler synchronously, so nothing re-enters the lock.
         state.withLock { s in
+            let read = DispatchSource.makeReadSource(fileDescriptor: fd, queue: ioQueue)
+            read.setEventHandler { [weak self] in self?.drain(bounded: true) }
+            read.setCancelHandler { [weak self] in
+                // The fd is closed exactly once, from here, so nothing can still be watching it.
+                let shouldClose: Bool = self?.state.withLock { s in
+                    if s.fdClosed { return false }
+                    s.fdClosed = true
+                    return true
+                } ?? true
+                if shouldClose { close(fd) }
+            }
+
+            #if os(Linux)
+            let proc = makePidfdSource()
+            #else
+            let proc = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: ioQueue)
+            proc.setEventHandler { [weak self] in self?.reapIfNeeded() }
+            #endif
+
             s.readSource = read
             s.procSource = proc
+            read.resume()
+            #if os(Linux)
+            proc?.resume()
+            #else
+            proc.resume()
+            #endif
         }
-        read.resume()
-        proc.resume()
 
         // The child can die between fork() and this resume(); kqueue NOTE_EXIT never fires for a
         // process that is already gone, so poll once here. `reapIfNeeded` is idempotent.
         ioQueue.async { [weak self] in self?.reapIfNeeded() }
     }
+
+    #if os(Linux)
+    /// A read source on the pidfd, which polls readable once the child has exited (reaped or not)
+    /// and stays readable: the first event reaps, and `reapIfNeeded` cancels the source. The cancel
+    /// handler is the only place the pidfd is closed. nil without a pidfd (kernel < 5.3), which
+    /// leaves the hangup + `waitpid` poll as the exit path.
+    private func makePidfdSource() -> ExitSource? {
+        let fd = pidFD
+        guard fd >= 0 else { return nil }
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: ioQueue)
+        source.setEventHandler { [weak self] in self?.reapIfNeeded() }
+        source.setCancelHandler { close(fd) }
+        return source
+    }
+    #endif
 
     // MARK: - Reading
 
@@ -257,7 +303,11 @@ public final class Pty: Sendable {
             if bounded && chunks >= Pty.maxChunksPerWakeup { return }
             if state.withLock({ $0.fdClosed || $0.sawEOF }) { return }
             let n = buffer.withUnsafeMutableBytes { raw in
+                #if canImport(Darwin)
                 Darwin.read(masterFD, raw.baseAddress, Pty.readChunk)
+                #elseif os(Linux)
+                Glibc.read(masterFD, raw.baseAddress, Pty.readChunk)
+                #endif
             }
             if n > 0 {
                 chunks += 1
@@ -313,7 +363,7 @@ public final class Pty: Sendable {
             status = 0  // already reaped elsewhere; report a clean exit
         }
 
-        let proceed: (any DispatchSourceProcess)?
+        let proceed: ExitSource?
         let poll: (any DispatchSourceTimer)?
         let deliver: Bool = state.withLock { s in
             if s.reaped { return false }
@@ -403,7 +453,11 @@ public final class Pty: Sendable {
         var offset = 0
         while offset < bytes.count {
             let n = bytes.withUnsafeBytes { raw -> Int in
+                #if canImport(Darwin)
                 Darwin.write(masterFD, raw.baseAddress!.advanced(by: offset), bytes.count - offset)
+                #elseif os(Linux)
+                Glibc.write(masterFD, raw.baseAddress!.advanced(by: offset), bytes.count - offset)
+                #endif
             }
             if n > 0 {
                 offset += n

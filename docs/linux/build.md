@@ -10,7 +10,7 @@ How one `Package.swift` builds the Mac app and the Linux port, which build syste
 
   | Array | Contents today | Grows in |
   |---|---|---|
-  | `shared` | `GhosttyVt`, `TkzPlatform`, `TkzPlatformShim`, `TkzPtyShim`, `TkzCore`, `Persistence`, `TkzPlatformTests`, `TkzCoreTests`; product `TkzCore` | WOR-304 to WOR-310, as targets compile on Linux |
+  | `shared` | `GhosttyVt`, `TkzPlatform`, `TkzPlatformShim`, `TkzPtyShim`, `TkzCore`, `TkzTerminalCore`, `Persistence`, `TkzPlatformTests`, `TkzCoreTests`, `TkzTerminalCoreTests`; products `TkzCore`, `TkzTerminalCore` | WOR-304 to WOR-310, as targets compile on Linux |
   | `linuxOnly` | `TkzmuxLinux` (product `tkzmux`), `GhosttyVtSmokeTests`, and the Linux `PersistenceTests`, which depends only on `Persistence` and `TkzCore` (the Mac entry also lists `TkzTerminalCore` and `GhosttyVt`, which none of its files import) | WOR-311 to WOR-314 |
   | `macOnly` | everything else, as before | shrinks as targets move to `shared` |
 

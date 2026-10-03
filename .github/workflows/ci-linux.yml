@@ -84,10 +84,11 @@ jobs:
           # gcc: crt objects and libstdc++ for the toolchain's clang; binutils: ld.gold (the
           # default linker), readelf, nm, objdump; sqlite, curl, util-linux-libs, zlib, icu: the
           # toolchain binaries' own libraries; ncurses + libxml2-legacy: the compat sonames from
-          # docs/linux/dev.md ("Compat libraries").
+          # docs/linux/dev.md ("Compat libraries"); zsh: the interactive-shell PtyTests, which skip
+          # without it (WOR-305).
           pacman -Syu --noconfirm --needed \
             git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
-            gnupg zstd pkgconf
+            gnupg zstd pkgconf zsh
           pacman -Q glibc gcc binutils
 
       - uses: actions/checkout@v5
@@ -200,7 +201,7 @@ jobs:
       # Every non-GTK target, one `swift build --target` each. GhosttyVt is a binary target and
       # cannot be built on its own; its dependents cover it. A target that joins the Linux graph
       # without GTK is added here (WOR-304 onwards).
-      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPlatformTests TkzCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzShadersSPIRVTests
+      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzShadersSPIRVTests
     steps:
       - name: Install system packages
         run: |

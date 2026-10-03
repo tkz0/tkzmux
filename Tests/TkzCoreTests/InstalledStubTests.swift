@@ -24,9 +24,24 @@ struct InstalledStubTests {
 
     /// Runs the installed copy with no `TKZMUX_RESOURCE_DIR`, from inside the temporary tree, so
     /// nothing on the lookup path points into the repo or `.build`.
+    ///
+    /// Retried on ETXTBSY: a fork in a parallel suite (a Pty spawn) inherits the copy's write
+    /// descriptor and holds it until its child execs or exits, which makes exec of the copy fail.
     static func runInstalled(_ executable: URL, _ argument: String, root: URL) throws -> ScriptSupport.Output {
-        try ScriptSupport.run(
-            executable, [argument], environment: ["PATH": "/usr/bin:/bin", "HOME": root.path], directory: root)
+        var attempt = 0
+        while true {
+            do {
+                return try ScriptSupport.run(
+                    executable, [argument], environment: ["PATH": "/usr/bin:/bin", "HOME": root.path],
+                    directory: root)
+            } catch {
+                let busy = ((error as NSError).userInfo[NSUnderlyingErrorKey] as? NSError)
+                    .map { $0.domain == NSPOSIXErrorDomain && $0.code == Int(ETXTBSY) } ?? false
+                attempt += 1
+                guard busy, attempt < 100 else { throw error }
+                usleep(20_000)
+            }
+        }
     }
 
     @Test func relocatedInstallReportsItsVersionAndResolvesEveryBundle() throws {

@@ -4,8 +4,10 @@
 // Every suite that opens inotify fds or pidfds, or spawns children, is nested in `WatcherTests`,
 // which is serialized: the descriptor-count and zombie checks below read process-wide state
 // (/proc/self/fd, /proc/self/task/*/children) and must not see another watcher test's fds or
-// children. That includes the ProcessTable and ListeningPorts suites (S6), which spawn children;
-// no suite outside `WatcherTests` opens those fds or spawns processes.
+// children. That includes the ProcessTable and ListeningPorts suites (S6), which spawn children.
+// Outside this module, TkzTerminalCoreTests' PtyTests (WOR-305) spawn children and hold pidfds in
+// the same test process during a parallel run, so the pidfd and zombie checks only count fds and
+// children that belong to the test's own pids.
 
 import Dispatch
 import Foundation
@@ -133,6 +135,22 @@ func watcherDescriptorCounts() -> (inotify: Int, pidfd: Int) {
         if target == "anon_inode:[pidfd]" { pidfd += 1 }
     }
     return (inotify, pidfd)
+}
+
+/// How many of this process's pidfds refer to `pid`, from the `Pid:` line of /proc/self/fdinfo.
+/// The pidfd total is not enough for a leak check: Pty spawns in TkzTerminalCoreTests hold pidfds
+/// of their own while a parallel run goes on.
+func pidfdCount(for pid: pid_t) -> Int {
+    let entries = (try? FileManager.default.contentsOfDirectory(atPath: "/proc/self/fd")) ?? []
+    var count = 0
+    for entry in entries {
+        guard (try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/fd/\(entry)"))
+                == "anon_inode:[pidfd]",
+            let info = try? String(contentsOfFile: "/proc/self/fdinfo/\(entry)", encoding: .utf8)
+        else { continue }
+        if info.split(separator: "\n").contains("Pid:\t\(pid)") { count += 1 }
+    }
+    return count
 }
 
 /// The pids in /proc/self/task/*/children: every child of every thread of this process.

@@ -29,6 +29,7 @@ let ghosttyVtPath = "vendor/ghostty-vt/ghostty-vt.xcframework"
 
 let sharedProducts: [Product] = [
     .library(name: "TkzCore", targets: ["TkzCore"]),
+    .library(name: "TkzTerminalCore", targets: ["TkzTerminalCore"]),
 ]
 
 let sharedTargets: [Target] = [  // hygiene-scan
@@ -69,6 +70,25 @@ let sharedTargets: [Target] = [  // hygiene-scan
         dependencies: ["TkzPlatform"],
         path: "Sources/TkzCore"
     ),
+
+    // MARK: Terminal engine
+    .target(
+        name: "TkzTerminalCore",
+        dependencies: [
+            "TkzCore",
+            "TkzPtyShim",
+            "GhosttyVt",
+        ],
+        path: "Sources/TkzTerminalCore",
+        // The files live under the target (Sources/<target>/Resources), so `Bundle.module` works
+        // for `swift test` / `swift run`; the repo-root Resources/* entries are symlinks to them.
+        // make-app.sh copies the .bundle into the .app.
+        resources: [.copy("Resources/terminfo")],
+        // libghostty-vt's vendored simdutf/highway are built without libc++ (verified M1.1):
+        // no linkerSettings: [.linkedLibrary("c++")] needed. Linux needs libm (see GhosttyVt).
+        linkerSettings: [.linkedLibrary("m", .when(platforms: [.linux]))]
+    ),
+    .testTarget(name: "TkzTerminalCoreTests", dependencies: ["TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalCoreTests", resources: [.copy("Fixtures")]),
 
     .target(
         name: "Persistence",
@@ -149,7 +169,6 @@ let macOnlyProducts: [Product] = [
     .executable(name: "tkzmux", targets: ["tkzmux"]),
     .executable(name: "tkzmux-vtdump", targets: ["tkzmux-vtdump"]),
     .executable(name: "tkzmux-hook", targets: ["tkzmux-hook"]),
-    .library(name: "TkzTerminalCore", targets: ["TkzTerminalCore"]),
     .library(name: "TkzTerminalRender", targets: ["TkzTerminalRender"]),
     .library(name: "TkzTerminalView", targets: ["TkzTerminalView"]),
     .library(name: "AgentBridge", targets: ["AgentBridge"]),
@@ -160,21 +179,6 @@ let macOnlyProducts: [Product] = [
 
 let macOnlyTargets: [Target] = [
     // MARK: Terminal engine
-    .target(
-        name: "TkzTerminalCore",
-        dependencies: [
-            "TkzCore",
-            "TkzPtyShim",
-            "GhosttyVt",
-        ],
-        path: "Sources/TkzTerminalCore",
-        // The files live under the target (Sources/<target>/Resources), so `Bundle.module` works
-        // for `swift test` / `swift run`; the repo-root Resources/* entries are symlinks to them.
-        // make-app.sh copies the .bundle into the .app.
-        resources: [.copy("Resources/terminfo")]
-        // libghostty-vt's vendored simdutf/highway are built without libc++ (verified M1.1):
-        // no linkerSettings: [.linkedLibrary("c++")] needed.
-    ),
     .target(
         name: "TkzTerminalRender",
         dependencies: ["TkzCore", "TkzTerminalCore", "TkzShaderTypes", "TkzRenderCore"],
@@ -226,7 +230,6 @@ let macOnlyTargets: [Target] = [
     ),
 
     // MARK: Tests (one per Swift library module; Swift Testing)
-    .testTarget(name: "TkzTerminalCoreTests", dependencies: ["TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalCoreTests", resources: [.copy("Fixtures")]),
     .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "TkzRenderCore", "GhosttyVt", "TkzPNG"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
     .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
     // TkzTerminalCore + GhosttyVt for the shell-integration harness, which spawns each login
