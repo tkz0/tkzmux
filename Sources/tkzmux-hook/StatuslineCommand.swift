@@ -1,5 +1,5 @@
 // `tkzmux-hook statusline` — the `statusLine` command tkzmux installs into the user's
-// `settings.json`. `Darwin` only, like the rest of this target.
+// `settings.json`. libc only, like the rest of this target.
 //
 // Claude Code hands rate limits and context usage to the statusline command on stdin and nowhere
 // else — they never reach disk on their own. This mode reads that payload once, mirrors the parts
@@ -15,7 +15,13 @@
 // crash, an unparseable payload, a full disk or an unwritable directory must never blank the user's
 // statusline. Nothing here is inside `tkzmux-hook`'s "< 20 ms" hook budget — this mode parses JSON,
 // occasionally reads the (large) identity file, and spawns a child.
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 /// Both sidecars skip a write when the file on disk is younger than this and unchanged.
 private let writeThrottleSeconds = 30.0
@@ -33,10 +39,12 @@ private let childStdinCap = 64 * 1024
 
 // MARK: - Where things live
 
-/// `~/Library/Application Support/tkzmux`.
+/// `~/Library/Application Support/tkzmux` on macOS, `$XDG_DATA_HOME/tkzmux` (by default
+/// `~/.local/share/tkzmux`) on Linux.
 ///
 /// Installed, this binary is `<support>/bin/tkzmux-hook`, so the directory is two levels up. The
-/// `bin` check keeps a binary run straight out of `.build/debug` from resolving to `.build`.
+/// `bin` check keeps a binary run straight out of `.build/debug` from resolving to `.build`; on
+/// Linux a system prefix (`/usr/bin`, `/usr/local/bin`, `/bin`) is never a support directory either.
 /// `TKZMUX_SUPPORT_DIR` overrides both — the seam the tests drive this through.
 func statuslineSupportDirectory() -> String {
     if let override = envString("TKZMUX_SUPPORT_DIR"), !override.isEmpty { return override }
@@ -45,11 +53,55 @@ func statuslineSupportDirectory() -> String {
         let binDirectory = parentPath(argv0)
         if lastPathComponent(binDirectory) == "bin" {
             let support = parentPath(binDirectory)
-            if !support.isEmpty { return support }
+            if !support.isEmpty, !isSystemPrefix(support) { return support }
         }
     }
+    #if os(Linux)
+    return xdgSupportDirectory()
+    #else
     return (envString("HOME") ?? "") + "/Library/Application Support/tkzmux"
+    #endif
 }
+
+/// A prefix a package manager installs into, whose `bin` holds the hook without being ours.
+private func isSystemPrefix(_ path: String) -> Bool {
+    #if os(Linux)
+    return path == "/usr" || path == "/usr/local" || path == "/"
+    #else
+    return false
+    #endif
+}
+
+#if os(Linux)
+/// A Foundation-free copy of TkzPlatform's `AppPaths.support` on Linux: `$XDG_DATA_HOME/tkzmux`
+/// when the variable is absolute, else `<home>/.local/share/tkzmux`; an unset, empty or relative
+/// `XDG_DATA_HOME` counts as unset (XDG Base Directory spec). `<home>` is `$HOME` when absolute,
+/// else the account database's, else `/`. Tests/AgentBridgeTests/HookSupportPathTests.swift keeps
+/// the two equal.
+private func xdgSupportDirectory() -> String {
+    if let data = envString("XDG_DATA_HOME"), data.hasPrefix("/") {
+        return joinPath(data, "tkzmux")
+    }
+    return joinPath(joinPath(homeDirectory(), ".local/share"), "tkzmux")
+}
+
+private func homeDirectory() -> String {
+    if let home = envString("HOME"), home.hasPrefix("/") { return home }
+    if let entry = getpwuid(getuid()), let directory = entry.pointee.pw_dir {
+        let home = String(cString: directory)
+        if home.hasPrefix("/") { return home }
+    }
+    return "/"
+}
+
+/// `base/component`, without doubling a trailing slash of `base` (so a home of `/` gives
+/// `/.local/share`, as `URL.appending(path:)` does in AppPaths).
+private func joinPath(_ base: String, _ component: String) -> String {
+    var base = base
+    while base.hasSuffix("/") { base.removeLast() }
+    return base + "/" + component
+}
+#endif
 
 /// `<support>/statusline` — the one directory tkzmux watches for these files.
 func statuslineDirectory() -> String { statuslineSupportDirectory() + "/statusline" }
@@ -521,7 +573,12 @@ private func shouldWrite(_ path: String, _ candidate: JSONValue) -> Bool {
     guard stat(path, &info) == 0 else { return true }
     var tv = timeval()
     gettimeofday(&tv, nil)
-    let age = Double(tv.tv_sec) - Double(info.st_mtimespec.tv_sec)
+    #if canImport(Darwin)
+    let modified = info.st_mtimespec.tv_sec
+    #else
+    let modified = info.st_mtim.tv_sec
+    #endif
+    let age = Double(tv.tv_sec) - Double(modified)
     if age < 0 || age > writeThrottleSeconds { return true }
     guard let bytes = readFile(path) else { return true }
     var parser = JSONParser(bytes: bytes)
@@ -567,7 +624,11 @@ private func handOff(command: String, stdinBytes: [UInt8]) -> Never {
     let readEnd = fds[0]
     let writeEnd = fds[1]
 
+    #if canImport(Darwin)
     var actions = posix_spawn_file_actions_t(bitPattern: 0)
+    #else
+    var actions = posix_spawn_file_actions_t()
+    #endif
     posix_spawn_file_actions_init(&actions)
     posix_spawn_file_actions_adddup2(&actions, readEnd, STDIN_FILENO)
     posix_spawn_file_actions_addclose(&actions, readEnd)

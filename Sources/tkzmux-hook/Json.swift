@@ -1,7 +1,13 @@
 // A small hand-written JSON value, parser and serializer for `settings-merge` (and the string
 // escaping used elsewhere in this target). No Foundation: `String(decoding:as:)`, `String(cString:)`
 // and `print` are Swift standard library, not Foundation, so this stays inside the hygiene rule.
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 /// An ordered JSON object/array representation. Object keys keep insertion order (the contract
 /// allows key order to change on merge, but preserving it keeps diffs small and merge logic simple).

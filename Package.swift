@@ -18,6 +18,9 @@
 // checked for RunLoop/Timer APIs, which never fire under the Linux main loop. A target moved into
 // `shared` or `linuxOnly` is covered without touching the test.
 import PackageDescription
+#if os(Linux)
+import Foundation
+#endif
 
 // MARK: - Shared (macOS and Linux)
 
@@ -30,6 +33,7 @@ let ghosttyVtPath = "vendor/ghostty-vt/ghostty-vt.xcframework"
 let sharedProducts: [Product] = [
     .library(name: "TkzCore", targets: ["TkzCore"]),
     .library(name: "TkzTerminalCore", targets: ["TkzTerminalCore"]),
+    .executable(name: "tkzmux-hook", targets: ["tkzmux-hook"]),
 ]
 
 let sharedTargets: [Target] = [  // hygiene-scan
@@ -118,9 +122,27 @@ let sharedTargets: [Target] = [  // hygiene-scan
     // geometry in.
     .target(name: "TkzRenderCore", dependencies: ["TkzShaderTypes"], path: "Sources/TkzRenderCore"),
     .testTarget(name: "TkzRenderCoreTests", dependencies: ["TkzRenderCore", "TkzShaderTypes"], path: "Tests/TkzRenderCoreTests"),
+
+    // The hook relay: libc only (Darwin, Glibc or Musl), never Foundation (WOR-305 S5).
+    .executableTarget(
+        name: "tkzmux-hook",
+        path: "Sources/tkzmux-hook"
+    ),
 ]
 
 // MARK: - Linux only
+
+// Linux's AgentBridgeTests compiles only the hook's tests until AgentBridge joins the Linux graph
+// (WOR-306); neither file imports AgentBridge. The rest of the directory is excluded, listed here
+// so SwiftPM does not warn about it, and the Mac's AgentBridgeTests compiles all of it.
+let agentBridgeHookTests = ["HookHygieneTests.swift", "HookSupportPathTests.swift"]
+#if os(Linux)
+let agentBridgeTestsMacOnly = ((try? FileManager.default.contentsOfDirectory(
+    atPath: Context.packageDirectory + "/Tests/AgentBridgeTests")) ?? [])
+    .filter { !agentBridgeHookTests.contains($0) }.sorted()
+#else
+let agentBridgeTestsMacOnly: [String] = []
+#endif
 
 let linuxOnlyProducts: [Product] = [
     // Same product name as the Mac app, so the binary is `tkzmux` on both OSes.
@@ -155,6 +177,15 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
     // them, and neither is in the Linux graph yet (WOR-304 S3).
     .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzCore"], path: "Tests/PersistenceTests"),
 
+    // The hook's tests only (see agentBridgeHookTests above).
+    .testTarget(
+        name: "AgentBridgeTests",
+        dependencies: ["TkzPlatform"],
+        path: "Tests/AgentBridgeTests",
+        exclude: agentBridgeTestsMacOnly,
+        sources: agentBridgeHookTests
+    ),
+
     .testTarget(
         name: "GhosttyVtSmokeTests",
         dependencies: ["GhosttyVt"],
@@ -168,7 +199,6 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
 let macOnlyProducts: [Product] = [
     .executable(name: "tkzmux", targets: ["tkzmux"]),
     .executable(name: "tkzmux-vtdump", targets: ["tkzmux-vtdump"]),
-    .executable(name: "tkzmux-hook", targets: ["tkzmux-hook"]),
     .library(name: "TkzTerminalRender", targets: ["TkzTerminalRender"]),
     .library(name: "TkzTerminalView", targets: ["TkzTerminalView"]),
     .library(name: "AgentBridge", targets: ["AgentBridge"]),
@@ -223,10 +253,6 @@ let macOnlyTargets: [Target] = [
         name: "tkzmux-vtdump",
         dependencies: ["TkzTerminalCore", "TkzTerminalRender", "TkzRenderCore", "Persistence"],
         path: "Sources/tkzmux-vtdump"
-    ),
-    .executableTarget(
-        name: "tkzmux-hook",
-        path: "Sources/tkzmux-hook"
     ),
 
     // MARK: Tests (one per Swift library module; Swift Testing)

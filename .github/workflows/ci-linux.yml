@@ -140,6 +140,13 @@ jobs:
       - name: Lint the linkage policy
         run: scripts/linux/check-linkage.sh --lint
 
+      # CLAUDE.md: tkzmux-hook imports libc only (Darwin/Glibc/Musl), never Foundation. Also
+      # checked by HookHygieneTests; this fails before anything is built (WOR-305 S5). The `!`
+      # line must stay last: errexit ignores a negated command, so only the step's status counts.
+      - name: tkzmux-hook imports no Foundation
+        run: |
+          ! grep -rnE '^[[:space:]]*(@_exported[[:space:]]+)?import[[:space:]]+(Foundation|FoundationEssentials|Dispatch|os)' Sources/tkzmux-hook
+
       - name: swift build
         run: swift build --build-system native
 
@@ -201,7 +208,7 @@ jobs:
       # Every non-GTK target, one `swift build --target` each. GhosttyVt is a binary target and
       # cannot be built on its own; its dependents cover it. A target that joins the Linux graph
       # without GTK is added here (WOR-304 onwards).
-      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzShadersSPIRVTests
+      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzShadersSPIRVTests tkzmux-hook AgentBridgeTests
     steps:
       - name: Install system packages
         run: |

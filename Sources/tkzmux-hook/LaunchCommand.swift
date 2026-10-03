@@ -1,6 +1,12 @@
 // `tkzmux-hook launch --pid <N> --cwd <DIR> --config-dir <DIR> [--agent <KIND>] -- <argv…>`.
-// `Darwin` only.
+// libc only.
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 /// Parses and sends the `launch` frame. Always returns normally (exit 0 on every path is handled
 /// by the caller) — a malformed invocation just sends nothing.

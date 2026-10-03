@@ -1,6 +1,12 @@
 // `tkzmux-hook notify-argv '<json>'` — Codex's legacy `notify = [...]` config hands its payload as
-// one JSON string in argv rather than on stdin the way every other hook event does. `Darwin` only.
+// one JSON string in argv rather than on stdin the way every other hook event does. libc only.
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 /// Parses Codex's notify payload and sends it as an ordinary `hook` frame — `HookServer` needs no
 /// second frame shape for this. The frame's `event` is the payload's own `"type"`

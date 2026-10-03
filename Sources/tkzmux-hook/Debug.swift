@@ -1,5 +1,11 @@
-// Small helpers shared by the rest of the target. `Darwin` only — see main.swift header.
+// Small helpers shared by the rest of the target. libc only — see main.swift header.
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 /// Reads an environment variable, returning nil when unset (matches `getenv`'s NULL semantics).
 func envString(_ name: String) -> String? {

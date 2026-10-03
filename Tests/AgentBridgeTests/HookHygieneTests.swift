@@ -1,10 +1,9 @@
 // Guards the tkzmux-hook rule CLAUDE.md states directly: "Keep tkzmux-hook free of Foundation."
-// The ticket further restricts it to `import Darwin` only. Mirrors the pattern in
-// Tests/TkzCoreTests/SourceHygieneTests.swift (locate the module by #filePath, not the cwd).
+// The ticket further restricts it to libc only: `Darwin`, `Glibc` or `Musl` (WOR-305). Mirrors the
+// pattern in Tests/TkzCoreTests/SourceHygieneTests.swift (locate the module by #filePath, not the
+// cwd). Imports nothing from AgentBridge, so it also runs on Linux (Package.swift).
 import Foundation
 import Testing
-
-@testable import AgentBridge
 
 @Suite struct HookHygieneTests {
     static var moduleDirectory: URL {
@@ -28,43 +27,50 @@ import Testing
         #expect(names.count >= 4)
     }
 
-    /// Every import statement in Sources/tkzmux-hook must be `import Darwin` — no Foundation, no
-    /// anything else. `tkzmux-hook` must stay tiny and fast (< 20 ms) and never pull in Foundation's
-    /// startup cost.
-    @Test func onlyImportsDarwin() throws {
+    /// The C library module of each OS the hook builds on; musl is the fully static Linux build.
+    static let allowedModules: Set<String> = ["Darwin", "Glibc", "Musl"]
+
+    /// Every import statement in Sources/tkzmux-hook must import the C library — no Foundation
+    /// (nor FoundationEssentials), no anything else. `tkzmux-hook` must stay tiny and fast (< 20 ms)
+    /// and never pull in Foundation's startup cost.
+    @Test func onlyImportsLibc() throws {
         let pattern = try NSRegularExpression(pattern: #"^\s*(@_exported\s+)?import\s+(\S+)"#)
         var offences: [String] = []
         for url in try Self.swiftSources() {
             let text = try String(contentsOf: url, encoding: .utf8)
-            for (number, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+            for (number, substring) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+                // A String, not a Substring: corelibs Foundation has no `Range(_:in:)` for Substring.
+                let line = String(substring)
                 let range = NSRange(line.startIndex..<line.endIndex, in: line)
-                guard let match = pattern.firstMatch(in: String(line), range: range) else { continue }
+                guard let match = pattern.firstMatch(in: line, range: range) else { continue }
                 guard let moduleRange = Range(match.range(at: 2), in: line) else { continue }
                 let module = String(line[moduleRange])
-                if module != "Darwin" {
+                if !Self.allowedModules.contains(module) {
                     offences.append("\(url.lastPathComponent):\(number + 1): import \(module)")
                 }
             }
         }
-        #expect(offences.isEmpty, "Sources/tkzmux-hook must only import Darwin: \(offences)")
+        #expect(offences.isEmpty, "Sources/tkzmux-hook must only import Darwin, Glibc or Musl: \(offences)")
     }
 
     /// The regex is only worth something if it can actually see an offending line.
     @Test func theImportCheckWouldCatchAnOffender() throws {
         let pattern = try NSRegularExpression(pattern: #"^\s*(@_exported\s+)?import\s+(\S+)"#)
-        for line in ["import Foundation", "  import Dispatch", "@_exported import os"] {
+        for line in [
+            "import Foundation", "import FoundationEssentials", "  import Dispatch", "@_exported import os",
+        ] {
             let range = NSRange(line.startIndex..., in: line)
             let match = pattern.firstMatch(in: line, range: range)
             #expect(match != nil)
             if let match, let moduleRange = Range(match.range(at: 2), in: line) {
-                #expect(String(line[moduleRange]) != "Darwin")
+                #expect(!Self.allowedModules.contains(String(line[moduleRange])))
             }
         }
-        for line in ["import Darwin", "// import Foundation in a comment"] {
+        for line in ["import Darwin", "import Glibc", "  import Musl", "// import Foundation in a comment"] {
             let range = NSRange(line.startIndex..., in: line)
             if let match = pattern.firstMatch(in: line, range: range),
                let moduleRange = Range(match.range(at: 2), in: line) {
-                #expect(String(line[moduleRange]) == "Darwin")
+                #expect(Self.allowedModules.contains(String(line[moduleRange])))
             }
         }
     }

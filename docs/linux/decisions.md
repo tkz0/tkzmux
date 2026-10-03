@@ -102,7 +102,7 @@ Every item has an owner issue. Items marked *resolved* only need the owner to up
 | GTK inspector bindings never fire before tkzmux's capture-phase match | Test | WOR-315 S2 |
 | GNOME and KDE cells marked *inferred* | Non-gating smoke | WOR-314 S6 |
 | SUPER+SHIFT+comma becomes a claim once `reloadConfig` has a handler | Bypassed until then | WOR-324 S5 (audit) |
-| Rewording of the `tkzmux-hook` row in CLAUDE.md for Glibc | Unchanged until then | WOR-305 S5 |
+| Rewording of the `tkzmux-hook` row in CLAUDE.md for Glibc | *Resolved:* "libc only (Darwin/Glibc/Musl), never Foundation"; HookHygieneTests and a ci-linux grep enforce it | WOR-305 S5 |
 | Two-platform rewrite of CLAUDE.md and README (macOS-only wording at `CLAUDE.md:3`) | Unchanged until then | WOR-324 |
 | Inter tracking calibration | Pinned Inter 4.x, tracking fitted to NSFont dumps | WOR-312 S8 |
 | Folder picker without a FileChooser portal | Fall back to a tkzmux-drawn `DialogSpec` and log the reason | WOR-320 S4 |

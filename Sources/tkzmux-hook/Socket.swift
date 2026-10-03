@@ -1,11 +1,18 @@
-// Sends one NDJSON frame to the app over `AF_UNIX`. `Darwin` only.
+// Sends one NDJSON frame to the app over `AF_UNIX`. libc only (see main.swift).
 //
 // Every failure here is silent and non-fatal: `TKZMUX_SOCKET` unset/empty, no listener, a slow or
 // wedged app, `sun_path` too long — all just skip the send. The hook binary always exits 0.
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 private let connectAndWritePollMillis: Int32 = 200
-private let sunPathCapacity = 104 // sizeof(sockaddr_un.sun_path)
+/// `sizeof(sockaddr_un.sun_path)`: 104 on macOS, 108 on Linux.
+private let sunPathCapacity = MemoryLayout.size(ofValue: sockaddr_un().sun_path)
 
 func sendFrame(_ frame: [UInt8]) {
     guard let socketPath = envString("TKZMUX_SOCKET"), !socketPath.isEmpty else {
@@ -17,16 +24,26 @@ func sendFrame(_ frame: [UInt8]) {
         return
     }
 
+    #if canImport(Darwin)
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+    #elseif canImport(Glibc)
+    // Glibc imports `SOCK_*` as an enum, hence `rawValue`; musl's are plain macros.
+    let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue | SOCK_CLOEXEC.rawValue), 0)
+    #else
+    let fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0)
+    #endif
     guard fd >= 0 else {
         debugLog("socket() failed: errno \(errno)")
         return
     }
     defer { close(fd) }
 
-    // Never die to SIGPIPE if the server closes the connection mid-write.
+    // Never die to SIGPIPE if the server closes the connection mid-write. Linux has no
+    // `SO_NOSIGPIPE`; the write below passes `MSG_NOSIGNAL` instead.
+    #if canImport(Darwin)
     var one: Int32 = 1
     _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
+    #endif
 
     let flags = fcntl(fd, F_GETFL, 0)
     _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
@@ -72,7 +89,11 @@ func sendFrame(_ frame: [UInt8]) {
             return
         }
         let n = frame.withUnsafeBytes { buf -> Int in
+            #if canImport(Darwin)
             write(fd, buf.baseAddress!.advanced(by: offset), frame.count - offset)
+            #else
+            send(fd, buf.baseAddress!.advanced(by: offset), frame.count - offset, Int32(MSG_NOSIGNAL))
+            #endif
         }
         if n < 0 {
             if errno == EAGAIN || errno == EWOULDBLOCK { continue }
