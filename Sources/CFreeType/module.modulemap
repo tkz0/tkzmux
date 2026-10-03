@@ -1,0 +1,8 @@
+// FreeType 2 as a Swift module (WOR-312). Linux only: Package.swift declares this target in the
+// Linux branch, so a Homebrew freetype on a Mac can never turn it on. Flags come from
+// `pkg-config freetype2`.
+module CFreeType [system] {
+    header "shim.h"
+    link "freetype"
+    export *
+}

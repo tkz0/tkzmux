@@ -60,6 +60,7 @@ ADR-0002 D2 recommends `--build-system native`, passed explicitly so that a tool
 
 - **Default: native.** `make build`, `make test` and `make run` pass `--build-system native` on Linux. Plain `swift build` also picks native on 6.3.3, but only because 6.3 still defaults to it.
 - **Summary-line guard ([Linux CI](#linux-ci)).** Under Swift Build there is one `Test run with N tests` line per test target, so a guard that reads only the first line sees a partial count, and with `--filter` a target the filter empties prints `N = 0`. CI runs native, which prints one line; the guard still reads every line and requires each `N > 0`.
+- **`warning: prohibited flag(s): -pthread`** (WOR-312) is printed on a fresh build: `pkg-config --cflags harfbuzz` carries glib's `-pthread`, and SwiftPM drops it from `CHarfBuzz`'s flags. Harmless; libpthread is part of glibc.
 - `swift package describe` works on Linux and lists `GhosttyVt` as a `BinaryTarget` at the artifact bundle path.
 - No AppKit, Metal or CoreText module is compiled on Linux: the build directory holds only `TkzCore`, `TkzCoreTests`, `TkzmuxLinux`, `GhosttyVtSmokeTests` and the test runner.
 
@@ -108,7 +109,7 @@ Verified on the reference machine on 2026-10-03 by running each job's `run:` ste
 
 ## Resource lookup
 
-`Sources/TkzCore/ResourceLocator.swift` (WOR-303 S3) is the one place that knows where read-only resources live outside `Bundle.module`. The three `ModuleResources.swift` files (`TkzTerminalCore`, `TkzTerminalRender`, `AgentBridge`) call `ResourceLocator.current.bundleURL(forModule:)` and fall back to `Bundle.module` last. `TerminalEnvironment.bundledTerminfoDirectory` probes the `TkzTerminalCore` bundle and then every candidate directory with `ResourceLocator.terminfoDirectory(in:)`, which accepts `<dir>/terminfo` holding `78/xterm-ghostty` or `x/xterm-ghostty`.
+`Sources/TkzCore/ResourceLocator.swift` (WOR-303 S3) is the one place that knows where read-only resources live outside `Bundle.module`. The three `ModuleResources.swift` files (`TkzTerminalCore`, `TkzTerminalRender`, `AgentBridge`), and the Linux-only `TkzFontsFT`'s in `BundledFonts.swift` (WOR-312), call `ResourceLocator.current.bundleURL(forModule:)` and fall back to `Bundle.module` last. `TerminalEnvironment.bundledTerminfoDirectory` probes the `TkzTerminalCore` bundle and then every candidate directory with `ResourceLocator.terminfoDirectory(in:)`, which accepts `<dir>/terminfo` holding `78/xterm-ghostty` or `x/xterm-ghostty`.
 
 | | Candidate directories, in order | Bundle names tried in each |
 |---|---|---|

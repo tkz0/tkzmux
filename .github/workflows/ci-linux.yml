@@ -84,11 +84,12 @@ jobs:
           # gcc: crt objects and libstdc++ for the toolchain's clang; binutils: ld.gold (the
           # default linker), readelf, nm, objdump; sqlite, curl, util-linux-libs, zlib, icu: the
           # toolchain binaries' own libraries; ncurses + libxml2-legacy: the compat sonames from
-          # docs/linux/dev.md ("Compat libraries").
+          # docs/linux/dev.md ("Compat libraries"); freetype2, harfbuzz, fontconfig: TkzFontsFT's
+          # system libraries (WOR-312).
           pacman -Syu --noconfirm --needed \
             git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
-            gnupg zstd pkgconf
-          pacman -Q glibc gcc binutils
+            gnupg zstd pkgconf freetype2 harfbuzz fontconfig
+          pacman -Q glibc gcc binutils freetype2 harfbuzz fontconfig
 
       - uses: actions/checkout@v5
 
@@ -198,16 +199,21 @@ jobs:
       image: swift:6.3.3-noble@sha256:cd45c27b3abc42310c33cfaf3008b18156cbdc9187834c9617e8f43a26d2675c
     env:
       # Every non-GTK target, one `swift build --target` each. GhosttyVt is a binary target and
-      # cannot be built on its own; its dependents cover it. A target that joins the Linux graph
-      # without GTK is added here (WOR-304 onwards).
-      NON_GTK_TARGETS: TkzPlatformShim TkzPlatform TkzCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPlatformTests TkzCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzShadersSPIRVTests
+      # cannot be built on its own; its dependents cover it, and so do TkzFontsFT's for the
+      # system-library targets CFreeType, CHarfBuzz and CFontconfig. A target that joins the Linux
+      # graph without GTK is added here (WOR-304 onwards).
+      NON_GTK_TARGETS: TkzPlatformShim TkzPlatform TkzCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPlatformTests TkzCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzShadersSPIRVTests TkzFontsFT TkzFontsFTTests
     steps:
       - name: Install system packages
         run: |
           apt-get update -q
           # iproute2: `ss`, which ListeningPortsTests compares against (Arch has it in `base`).
+          # libfreetype-dev, libharfbuzz-dev, libfontconfig-dev: TkzFontsFT's system libraries
+          # (WOR-312).
           DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
-            zsh fish git python3 ncurses-bin binutils pkg-config iproute2
+            zsh fish git python3 ncurses-bin binutils pkg-config iproute2 \
+            libfreetype-dev libharfbuzz-dev libfontconfig-dev
+          dpkg-query -W libfreetype-dev libharfbuzz-dev libfontconfig-dev
 
       - uses: actions/checkout@v5
 

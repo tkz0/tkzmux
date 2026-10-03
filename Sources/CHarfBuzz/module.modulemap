@@ -1,0 +1,8 @@
+// HarfBuzz as a Swift module (WOR-312). Linux only, like CFreeType. Only libharfbuzz is linked:
+// never harfbuzz-subset (hb-subset runs at dev time only) or harfbuzz-raster (COLRv1 rendering
+// waits for a WOR-299 allow-list decision). Flags come from `pkg-config harfbuzz`.
+module CHarfBuzz [system] {
+    header "shim.h"
+    link "harfbuzz"
+    export *
+}

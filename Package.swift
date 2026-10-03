@@ -123,6 +123,23 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
         path: "Tests/TkzShadersSPIRVTests"
     ),
 
+    // MARK: Font stack (WOR-312). System libraries from pkg-config, declared only in this branch:
+    // a `canImport` check would turn on with Homebrew's freetype on a Mac. Their module maps are
+    // on SwiftPM's default path, Sources/<name> (no Swift in them for the hygiene scan to read).
+    .systemLibrary(name: "CFreeType", pkgConfig: "freetype2", providers: [.apt(["libfreetype-dev"])]),
+    .systemLibrary(name: "CHarfBuzz", pkgConfig: "harfbuzz", providers: [.apt(["libharfbuzz-dev"])]),
+    .systemLibrary(name: "CFontconfig", pkgConfig: "fontconfig", providers: [.apt(["libfontconfig-dev"])]),
+    // FreeType faces and metrics, HarfBuzz shaping and the private fontconfig fallback behind the
+    // TkzRenderCore font seam. Resources/Fonts is a byte-identical copy of TkzTerminalRender's
+    // (Tests/TkzFontsFTTests guards it).
+    .target(
+        name: "TkzFontsFT",
+        dependencies: ["CFreeType", "CHarfBuzz", "CFontconfig", "TkzRenderCore", "TkzCore"],
+        path: "Sources/TkzFontsFT",
+        resources: [.copy("Resources/Fonts")]
+    ),
+    .testTarget(name: "TkzFontsFTTests", dependencies: ["TkzFontsFT", "TkzRenderCore", "TkzPlatform", "CFreeType"], path: "Tests/TkzFontsFTTests"),
+
     // The Mac's PersistenceTests also lists TkzTerminalCore and GhosttyVt; nothing in it imports
     // them, and neither is in the Linux graph yet (WOR-304 S3).
     .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzCore"], path: "Tests/PersistenceTests"),
