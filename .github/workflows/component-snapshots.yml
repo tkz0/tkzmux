@@ -1,5 +1,6 @@
 # Regenerates the component snapshot goldens (WOR-307 S2) on the reference runner: the macos-26
-# image with Xcode 26.1, the same runner class and toolchain as ci.yml (ADR-0003 §5). Manual only:
+# image with Xcode 26.1, the same runner class and toolchain as ci.yml (ADR-0003 §5). Manual only
+# (dispatch, or a deliberately pushed mac-refs/* branch):
 # macOS minutes cost, and a golden set is committed by a person in a reviewed PR, never by CI.
 #
 # The update renders every case twice in one process and refuses to write a render that is not
@@ -16,6 +17,11 @@ name: Component snapshots
 
 on:
   workflow_dispatch:
+  # A workflow that is not on the default branch cannot be dispatched, so while the Linux port
+  # lives on its own branch the regeneration is started by pushing a `mac-refs/<name>` branch
+  # (still deliberate: CI never pushes one).
+  push:
+    branches: ['mac-refs/**']
 
 permissions:
   contents: read
