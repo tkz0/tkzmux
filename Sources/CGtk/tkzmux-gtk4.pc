@@ -1,0 +1,14 @@
+# CGtk's pkg-config file (WOR-314 S1). Package.swift names it by absolute path, so it needs no
+# PKG_CONFIG_PATH.
+#
+# `pkg-config --libs gtk4` also lists pangocairo, pango, harfbuzz, cairo, cairo-gobject,
+# gdk_pixbuf, vulkan and graphene, and SwiftPM puts those -l flags ahead of every linker flag a
+# target can add, so a `--as-needed` from Package.swift comes too late to keep them out of NEEDED.
+# Requiring gtk4 privately instead gives its full --cflags and none of its --libs; Libs names
+# the four libraries tkzmux calls directly (linkage-policy.txt [@gtk], ADR-0002 D10). The 4.16
+# floor is enforced by CGtk.h.
+Name: tkzmux-gtk4
+Description: GTK 4 headers for tkzmux, linking only gtk-4, gio, gobject and glib
+Version: 4.16
+Requires.private: gtk4 >= 4.16
+Libs: -lgtk-4 -lgio-2.0 -lgobject-2.0 -lglib-2.0

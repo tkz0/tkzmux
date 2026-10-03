@@ -70,7 +70,7 @@ import Testing
     /// guards do not hide an import from this, by design: WOR-303's temporary CoreGraphics guards
     /// are gone and must not come back.
     static let platformImport =
-        #"^\s*(@_exported\s+)?import\s+(Gtk|Gdk|CGtk|Vulkan|FreeType|HarfBuzz|Fontconfig|CoreGraphics|os|CryptoKit)\b"#
+        #"^\s*(@_exported\s+)?import\s+(Gtk|Gdk|CGtk|TkzLinuxShim|TkzGtkShell|Vulkan|FreeType|HarfBuzz|Fontconfig|CoreGraphics|os|CryptoKit)\b"#
 
     static let coreGraphicsImport = #"^\s*(@_exported\s+)?import\s+CoreGraphics\b"#
 
@@ -140,7 +140,8 @@ import Testing
         let offenders = [
             "import CoreGraphics", "  import CoreGraphics", "@_exported import os", "import os",
             "import CryptoKit", "import Gtk", "import CGtk", "import Vulkan", "import HarfBuzz",
-            "import FreeType", "import Fontconfig", "import Gdk",
+            "import FreeType", "import Fontconfig", "import Gdk", "import TkzLinuxShim",
+            "@_exported import TkzGtkShell",
         ]
         for line in offenders {
             #expect(pattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil, "\(line)")
@@ -151,6 +152,30 @@ import Testing
             "import TkzPlatform",
         ]
         for line in fine {
+            #expect(pattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) == nil, "\(line)")
+        }
+    }
+
+    // MARK: GTK shell (WOR-314 S1)
+
+    /// `@unchecked Sendable` would hide exactly the races the GTK shell must not have: GObject
+    /// pointers are main-thread state, so its handles stay non-Sendable and main-actor isolated
+    /// (CLAUDE.md). Comment lines are skipped.
+    static let uncheckedSendable = #"^(?!\s*//).*@unchecked\s+Sendable"#
+
+    @Test func noUncheckedSendableInTheGtkShell() throws {
+        let files = try Self.swiftSources(under: "Sources/TkzGtkShell")
+        #expect(files.contains { $0.lastPathComponent == "GObjectRef.swift" })
+        let offences = try Self.offences(of: Self.uncheckedSendable, in: files)
+        #expect(offences.isEmpty, "TkzGtkShell keeps handles non-Sendable: \(offences)")
+    }
+
+    @Test func theUncheckedSendableCheckWouldCatchAnOffender() throws {
+        let pattern = try NSRegularExpression(pattern: Self.uncheckedSendable)
+        for line in ["final class Box: @unchecked Sendable {", "extension GObjectRef: @unchecked  Sendable {}"] {
+            #expect(pattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil, "\(line)")
+        }
+        for line in ["// never @unchecked Sendable", "final class Box: Sendable {", "    /// no @unchecked Sendable"] {
             #expect(pattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) == nil, "\(line)")
         }
     }

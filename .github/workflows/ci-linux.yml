@@ -20,9 +20,14 @@
 #                the bootstrap and its clear + readback, `vtdump render` and `bench-frame` draw
 #                through Vulkan (S6); the SPIR-V drift check regenerates the
 #                committed shaders with the pinned shaderc (scripts/build-shaders-linux.sh --fetch).
+#                GTK (WOR-314 S1): gtk4 is installed, `tkzmux --main-loop-check` runs on the
+#                release build, and TkzGtkShellTests run headless (no display: GLib only).
 #   ubuntu       ubuntu-24.04 + the pinned swift:<pin>-noble image (never the runner's own Swift):
-#                one `swift build --target` per non-GTK target, then the tests. WOR-314 S1
-#                restricts the list or retires the job once a GTK target exists (noble has GTK 4.14).
+#                one `swift build --target` per non-GTK target, and no tests. Restricted, not
+#                retired, by WOR-314 S1: noble's GTK 4.14 is below the floor, so the test bundle
+#                (which links GTK) cannot build there, but the per-target builds still check the
+#                non-GTK code against glibc 2.39 and noble's older Vulkan, FreeType and HarfBuzz
+#                headers, which the Arch image cannot (ADR-0002 D5).
 #   arch-latest  Scheduled, NOT required: archlinux:latest with live mirrors, same steps as `arch`,
 #                to catch rolling-release breakage before the pin is bumped.
 #
@@ -104,29 +109,28 @@ jobs:
           # system libraries (WOR-312); zsh: the interactive-shell PtyTests, which skip without it
           # (WOR-305); vulkan-icd-loader, vulkan-headers: CVulkan (WOR-313); vulkan-swrast
           # (lavapipe) and vulkan-validation-layers: the device and the layer the GPU tests
-          # require here. No shaderc: the drift check fetches its own pinned build.
+          # require here; gtk4: CGtk (WOR-314; headers and libraries, floor 4.16). No shaderc:
+          # the drift check fetches its own pinned build.
           pacman -Syu --noconfirm --needed \
             git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
             gnupg zstd pkgconf freetype2 harfbuzz fontconfig zsh \
-            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers
+            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4
           pacman -Q glibc gcc binutils freetype2 harfbuzz fontconfig \
-            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers
+            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4
 
       - uses: actions/checkout@v5
 
       # WOR-312 S4: the pinned parity fonts (Tests/Parity/Fonts/fonts.lock.json), downloaded once
       # per lockfile and SHA-256-checked by the script, into the directory the tests read
-      # ($HOME/.cache/tkzmux/parity-fonts). Parity mode resolves fallback faces from them alone, so
-      # this job and `ubuntu` must pin the same faces (ParityFontsTests).
-      - &parity-fonts-cache
-        name: Cache the parity fonts
+      # ($HOME/.cache/tkzmux/parity-fonts). Parity mode resolves fallback faces from them alone
+      # (ParityFontsTests).
+      - name: Cache the parity fonts
         uses: actions/cache@v5
         with:
           path: ~/.cache/tkzmux/parity-fonts
           key: parity-fonts-${{ hashFiles('Tests/Parity/Fonts/fonts.lock.json') }}
 
-      - &parity-fonts-fetch
-        name: Fetch the parity fonts
+      - name: Fetch the parity fonts
         run: scripts/fetch-parity-fonts.sh
 
       - name: Read the Swift pin
@@ -198,19 +202,20 @@ jobs:
       - name: swift build
         run: swift build --build-system native
 
-      # The summary-line guard, shared by every job (see the header). --no-parallel is required:
+      # The summary-line guard, shared by the testing jobs (see the header). --no-parallel is required:
       # ci.yml explains why, and docs/linux/build.md ("Tests on Linux").
       # The arch job runs this step twice: the whole suite here, and once more after the release
-      # build, with TKZMUX_BIN set, for InstalledStubTests against the release stub (a relocated
-      # <prefix>/bin + <prefix>/lib/tkzmux tree; without TKZMUX_TEST_STUB it uses the debug stub).
+      # build, with TKZMUX_BIN set, for the tests that run the `tkzmux` binary against the
+      # release stub: InstalledStubTests (a relocated <prefix>/bin + <prefix>/lib/tkzmux tree) and
+      # MainLoopBridgeTests (`--main-loop-check`). Without TKZMUX_TEST_STUB they use the debug one.
       - &swift-test
-        name: swift test${{ env.TKZMUX_BIN && ' (InstalledStubTests, release stub)' || '' }}
+        name: swift test${{ env.TKZMUX_BIN && ' (InstalledStubTests, MainLoopBridgeTests, release stub)' || '' }}
         env:
           TKZMUX_TEST_STUB: ${{ env.TKZMUX_BIN }}
         run: |
           log="$RUNNER_TEMP/swift-test.log"
           filter=()
-          if [ -n "$TKZMUX_TEST_STUB" ]; then filter=(--filter InstalledStubTests); fi
+          if [ -n "$TKZMUX_TEST_STUB" ]; then filter=(--filter 'InstalledStubTests|MainLoopBridgeTests'); fi
           swift test --build-system native --no-parallel "${filter[@]}" 2>&1 | tee "$log"
           # Exit status 0 is not enough (header; scripts/test-memory-probe.sh): one
           # "Test run with N tests ..." line per finished run, every N > 0.
@@ -236,6 +241,7 @@ jobs:
           echo "TKZMUX_BIN=$bin" >> "$GITHUB_ENV"
           "$bin" --version
           [ "$("$bin" --vt-smoke)" = "hello" ]
+          "$bin" --main-loop-check
 
       - *swift-test
 
@@ -333,26 +339,25 @@ jobs:
       # Every non-GTK target, one `swift build --target` each. GhosttyVt is a binary target and
       # cannot be built on its own; its dependents cover it, and so do TkzFontsFT's for the
       # system-library targets CFreeType, CHarfBuzz and CFontconfig. A target that joins the Linux
-      # graph without GTK is added here (WOR-304 onwards).
-      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPNG TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzPNGTests TkzShadersSPIRVTests tkzmux-hook AgentBridgeTests TkzFontsFT TkzFontsFTTests TkzRenderVK TkzRenderVKTests tkzmux-vtdump
-      TKZMUX_REQUIRE_PARITY_FONTS: '1'
+      # graph without GTK is added here (WOR-304 onwards). Never CGtk, TkzLinuxShim, TkzGtkShell
+      # or anything that depends on them: TkzmuxLinux (the `tkzmux` entry) left the list when it
+      # started linking TkzGtkShell (WOR-314 S1). SwiftPM warns that gtk4's .pc is missing; that
+      # is expected here.
+      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzShaderTypes TkzRenderCore TkzPNG TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzPNGTests TkzShadersSPIRVTests tkzmux-hook AgentBridgeTests TkzFontsFT TkzFontsFTTests TkzRenderVK TkzRenderVKTests tkzmux-vtdump
     steps:
       - name: Install system packages
         run: |
           apt-get update -q
-          # iproute2: `ss`, which ListeningPortsTests compares against (Arch has it in `base`).
-          # libfreetype-dev, libharfbuzz-dev, libfontconfig-dev: TkzFontsFT's system libraries
-          # (WOR-312). curl, ca-certificates: scripts/fetch-parity-fonts.sh. libvulkan-dev: CVulkan
-          # (WOR-313); no driver is installed, so the GPU tests skip here and run in `arch`.
+          # Build-only since WOR-314 S1, so the test-only packages (shells, iproute2, the parity
+          # font download) are gone. libfreetype-dev, libharfbuzz-dev, libfontconfig-dev:
+          # TkzFontsFT's system libraries (WOR-312). libvulkan-dev: CVulkan (WOR-313). Never
+          # libgtk-4-dev: 4.14, below the floor.
           DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
-            zsh fish git python3 ncurses-bin binutils pkg-config iproute2 \
-            libfreetype-dev libharfbuzz-dev libfontconfig-dev libvulkan-dev curl ca-certificates
+            git binutils pkg-config \
+            libfreetype-dev libharfbuzz-dev libfontconfig-dev libvulkan-dev
           dpkg-query -W libfreetype-dev libharfbuzz-dev libfontconfig-dev libvulkan-dev
 
       - uses: actions/checkout@v5
-
-      - *parity-fonts-cache
-      - *parity-fonts-fetch
 
       - name: Read the Swift pin
         id: pin
@@ -378,8 +383,8 @@ jobs:
             echo "::endgroup::"
           done
 
-      # While the Linux graph has no GTK target, `swift test` builds and runs all of it.
-      - *swift-test
+      # No `swift test` here (WOR-314 S1): the test bundle links every test target, TkzGtkShellTests
+      # included, and noble's GTK 4.14 is below the floor. The `arch` job runs the tests.
 
   arch-latest:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

@@ -89,7 +89,7 @@ Two other groups are allowed only conditionally, and only through linkage-policy
 | SDL (`libSDL2-2.0.so.0`, `libSDL3.so.0`) | A second platform layer next to GTK. | `sdl2-compat`, `sdl3` | `libsdl2-2.0-0`; SDL3 is not packaged in noble |
 | Telemetry and crash reporting (Sentry, analytics SDKs, any phone-home library) | Forbidden on both platforms (`CLAUDE.md:53`). | none (must stay absent) | none (must stay absent) |
 | Image codecs: `libheif.so.1`, `librsvg-2.so.2`, `libtiff.so.6` (direct) | Images decode through GdkTexture at runtime (section 8). | `libheif`, `librsvg`, `libtiff` | `libheif1`, `librsvg2-2`, `libtiff6` |
-| `libcairo.so.2`, `libcairo-gobject.so.2`, `libpangocairo-1.0.so.0` (direct) | 2D drawing. GTK may use cairo internally, but tkzmux draws every pixel with Vulkan, and Pango is allowed for layout only. `pkg-config --libs gtk4` lists all three, so the CGtk link uses `--as-needed` (ADR-0002 D10). | `cairo`, `pango` | `libcairo2`, `libcairo-gobject2`, `libpangocairo-1.0-0` |
+| `libcairo.so.2`, `libcairo-gobject.so.2`, `libpangocairo-1.0.so.0` (direct) | 2D drawing. GTK may use cairo internally, but tkzmux draws every pixel with Vulkan, and Pango is allowed for layout only. `pkg-config --libs gtk4` lists all three, so CGtk links through its own `.pc`, which leaves them out (ADR-0002 D10; WOR-314 S1 found `--as-needed` ineffective under SwiftPM). | `cairo`, `pango` | `libcairo2`, `libcairo-gobject2`, `libpangocairo-1.0-0` |
 
 ### 5. GTK's transitive closure is accepted
 

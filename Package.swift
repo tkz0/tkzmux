@@ -178,14 +178,38 @@ let linuxOnlyProducts: [Product] = [
 ]
 
 let linuxOnlyTargets: [Target] = [  // hygiene-scan
-    // The Linux entry point: `--version` and a libghostty-vt smoke check until WOR-314 brings the
-    // GTK application.
+    // The Linux entry point: `--version`, a libghostty-vt smoke check and the main-loop self-check
+    // until WOR-314 brings the GTK application.
     .executableTarget(
         name: "TkzmuxLinux",
-        dependencies: ["TkzCore", "GhosttyVt"],
+        dependencies: ["TkzCore", "GhosttyVt", "TkzGtkShell"],
         path: "Sources/tkzmux-linux",
         linkerSettings: [.linkedLibrary("m")]
     ),
+
+    // MARK: GTK platform shell (WOR-314). GTK 4.16+ from pkg-config, declared only in this branch;
+    // its headers reach TkzLinuxShim, TkzGtkShell and the app, never TkzPlatform or tkzmux-hook.
+    // The .pc is CGtk's own, by absolute path: gtk4's cflags, but only the four libraries tkzmux
+    // calls, so pangocairo, cairo, gdk_pixbuf and graphene never become NEEDED (see the file).
+    .systemLibrary(name: "CGtk", pkgConfig: Context.packageDirectory + "/Sources/CGtk/tkzmux-gtk4.pc",
+                   providers: [.apt(["libgtk-4-dev"])]),
+    // The C glue: the libdispatch main-queue GSource (libdispatch.so exports its SPI), casts,
+    // signal connection and the runtime symbol gate for APIs above 4.16.
+    .target(
+        name: "TkzLinuxShim",
+        dependencies: ["CGtk"],
+        path: "Sources/TkzLinuxShim",
+        publicHeadersPath: "include",
+        linkerSettings: [.linkedLibrary("dispatch")]
+    ),
+    // GObjectRef, signal closures, the main-queue bridge and the runtime GTK gate.
+    .target(
+        name: "TkzGtkShell",
+        dependencies: ["CGtk", "TkzLinuxShim"],
+        path: "Sources/TkzGtkShell"
+    ),
+    .testTarget(name: "TkzGtkShellTests", dependencies: ["TkzGtkShell", "TkzLinuxShim", "CGtk"],
+                path: "Tests/TkzGtkShellTests"),
 
     // Committed SPIR-V for the Vulkan renderer (WOR-313 S2); regenerate with
     // scripts/build-shaders-linux.sh.
