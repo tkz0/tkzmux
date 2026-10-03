@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 import Synchronization
 import Testing
@@ -496,11 +500,205 @@ struct ClaudeSessionWatcherTests {
         }
         #expect(watcher.snapshot()[key] == nil)
     }
+
+    #if os(Linux)
+    /// WOR-306 S2: on Linux each change to a descriptor is one inotify record (or a short burst of
+    /// them) on the directory watch, and every burst must settle into exactly one event after the
+    /// debounce — not one per record, and not one per watch.
+    @Test("create, in-place rewrite, rename-replace and delete each yield exactly one event")
+    func eachChangeYieldsExactlyOneEvent() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let liveness = FakeLiveness()
+        liveness.setAlive(321, true)
+        let collector = EventCollector()
+        let debounce = 40
+        let watcher = ClaudeSessionWatcher(
+            configDirs: [fixture.configDir.path], liveness: liveness,
+            debounce: .milliseconds(debounce), sweepInterval: .seconds(60),
+            onEvent: collector.callback)
+        watcher.start()
+        defer { watcher.stop() }
+        let path = fixture.descriptorPath(pid: 321)
+
+        /// Waits for the n-th event, then for several more debounce windows, and returns how many
+        /// events arrived in all.
+        func settled(after n: Int) -> Int {
+            #expect(collector.wait(forAtLeast: n))
+            Thread.sleep(forTimeInterval: Double(debounce * 5) / 1000)
+            return collector.count
+        }
+
+        // Create (not atomically: create, then write, then close — three records).
+        fixture.write(pid: 321, status: "idle")
+        #expect(settled(after: 1) == 1)
+
+        // In-place rewrite: same inode, truncate and write.
+        let fd = open(path.path, O_WRONLY | O_TRUNC)
+        #expect(fd >= 0)
+        Data(#"{"pid":321,"sessionId":"sid-321","cwd":"/tmp","status":"busy"}"#.utf8)
+            .withUnsafeBytes { _ = write(fd, $0.baseAddress, $0.count) }
+        close(fd)
+        #expect(settled(after: 2) == 2)
+
+        // Rename-replace: a temp file the filter ignores, renamed over the descriptor.
+        let temporary = fixture.sessionsDir.appendingPathComponent("321.json.tmp")
+        try Data(#"{"pid":321,"sessionId":"sid-321","cwd":"/tmp","status":"idle","name":"x"}"#.utf8)
+            .write(to: temporary)
+        #expect(rename(temporary.path, path.path) == 0)
+        #expect(settled(after: 3) == 3)
+
+        // Delete.
+        try FileManager.default.removeItem(at: path)
+        #expect(settled(after: 4) == 4)
+
+        let events = collector.all
+        guard events.count == 4 else { return }
+        let statuses = events.prefix(3).compactMap { event -> ClaudeSessionInfo.Status? in
+            if case .updated(let info, _) = event { return info.status }
+            return nil
+        }
+        #expect(statuses == [.idle, .busy, .idle])
+        guard case .removed(let key) = events[3] else {
+            Issue.record("expected .removed, got \(events[3])")
+            return
+        }
+        #expect(key.pid == 321)
+    }
+
+    /// The Linux twin of the fd-retention test: there is nothing per descriptor to retain. One
+    /// inotify watch covers the `sessions` directory however many sessions it holds, alive or long
+    /// dead, and the kernel agrees (`/proc/self/fdinfo` lists the watches of an inotify fd).
+    @Test("one inotify watch per sessions directory, whatever the number of sessions")
+    func watchCountDoesNotDependOnSessionCount() throws {
+        let fixture = try Fixture()
+        let other = try Fixture(account: "other")
+        defer {
+            fixture.cleanup()
+            other.cleanup()
+        }
+        let liveness = FakeLiveness()
+        let collector = EventCollector()
+        let watcher = ClaudeSessionWatcher(
+            configDirs: [fixture.configDir.path, other.configDir.path], liveness: liveness,
+            debounce: .milliseconds(20), sweepInterval: .milliseconds(50), deadWatchGrace: 0,
+            onEvent: collector.callback)
+        for pid in 1...3 {
+            liveness.setAlive(pid_t(pid), true)
+            fixture.write(pid: pid_t(pid))
+        }
+        watcher.start()
+        defer { watcher.stop() }
+        #expect(collector.wait(forAtLeast: 3))
+        let sessionsInode = try #require(inode(of: fixture.sessionsDir))
+        #expect(watcher.directoryWatchCount == 2)
+        #expect(inotifyWatches(onInodeOf: sessionsInode) == 2)
+
+        for pid in 4...200 {
+            liveness.setAlive(pid_t(pid), true)
+            fixture.write(pid: pid_t(pid))
+        }
+        #expect(collector.wait(forAtLeast: 200, timeout: 5))
+        #expect(watcher.snapshot().count == 200)
+        #expect(watcher.directoryWatchCount == 2)
+        #expect(inotifyWatches(onInodeOf: sessionsInode) == 2)
+
+        // Every process dies and leaves its file behind, as a crash does: the descriptors are
+        // released (no longer tracked) but stay in the snapshot, and the watch count is unchanged.
+        for pid in 1...200 { liveness.setAlive(pid_t(pid), false) }
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline, watcher.openWatchCount > 0 {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        #expect(watcher.openWatchCount == 0)
+        #expect(watcher.snapshot().count == 200)
+        #expect(watcher.directoryWatchCount == 2)
+        #expect(inotifyWatches(onInodeOf: sessionsInode) == 2)
+
+        // A rewrite of a released descriptor is not followed (as on macOS, where its watch is
+        // gone), but its deletion still clears it.
+        let before = collector.count
+        fixture.write(pid: 7, status: "busy")
+        Thread.sleep(forTimeInterval: 0.2)
+        #expect(collector.count == before)
+        try FileManager.default.removeItem(at: fixture.descriptorPath(pid: 7))
+        let key = DescriptorKey(configDir: fixture.configDir.path, pid: 7)
+        let gone = Date().addingTimeInterval(2)
+        while Date() < gone, watcher.snapshot()[key] != nil {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        #expect(watcher.snapshot()[key] == nil)
+
+        // `stop` gives the inotify instance back (its fd closes once the read source's
+        // cancellation has run on the queue).
+        watcher.stop()
+        #expect(watcher.directoryWatchCount == 0)
+        let closed = Date().addingTimeInterval(2)
+        while Date() < closed, inotifyWatches(onInodeOf: sessionsInode) != nil {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        #expect(inotifyWatches(onInodeOf: sessionsInode) == nil)
+    }
+
+    /// The sessions directory going away (an account's config dir deleted) drops its descriptors,
+    /// and the sweep watches it again once it is back.
+    @Test func aRemovedSessionsDirectoryIsWatchedAgainWhenItReturns() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanup() }
+        let liveness = FakeLiveness()
+        liveness.setAlive(55, true)
+        liveness.setAlive(56, true)
+        let collector = EventCollector()
+        let watcher = ClaudeSessionWatcher(
+            configDirs: [fixture.configDir.path], liveness: liveness,
+            debounce: .milliseconds(20), sweepInterval: .milliseconds(50),
+            onEvent: collector.callback)
+        fixture.write(pid: 55)
+        watcher.start()
+        defer { watcher.stop() }
+        #expect(collector.wait(forAtLeast: 1))
+
+        try FileManager.default.removeItem(at: fixture.sessionsDir)
+        #expect(collector.wait(forAtLeast: 2))
+        if case .removed(let key) = collector.all.last { #expect(key.pid == 55) } else {
+            Issue.record("expected .removed")
+        }
+
+        try FileManager.default.createDirectory(at: fixture.sessionsDir, withIntermediateDirectories: true)
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline, watcher.directoryWatchCount == 0 {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        #expect(watcher.directoryWatchCount == 1)
+        fixture.write(pid: 56)
+        #expect(collector.wait(forAtLeast: 3))
+        if case .updated(let info, _) = collector.all.last { #expect(info.pid == 56) } else {
+            Issue.record("expected .updated")
+        }
+    }
+    #endif
 }
 
+#if os(Linux)
+/// How many watches the inotify instance watching `inode` holds, from the `inotify wd:` lines of
+/// /proc/self/fdinfo; nil when no inotify fd of this process watches it.
+private func inotifyWatches(onInodeOf inode: ino_t) -> Int? {
+    let hex = "ino:" + String(UInt64(inode), radix: 16) + " "
+    let entries = (try? FileManager.default.contentsOfDirectory(atPath: "/proc/self/fdinfo")) ?? []
+    for entry in entries {
+        guard let info = try? String(contentsOfFile: "/proc/self/fdinfo/\(entry)", encoding: .utf8)
+        else { continue }
+        let watches = info.split(separator: "\n").filter { $0.hasPrefix("inotify wd:") }
+        if watches.contains(where: { $0.contains(hex) }) { return watches.count }
+    }
+    return nil
+}
+#endif
+
 /// Mirrors the `proc_pid_rusage`-based CPU accounting used elsewhere in the app
-/// (`Sources/TkzApp/TerminalHost.swift`).
+/// (`Sources/TkzApp/TerminalHost.swift`); `getrusage(RUSAGE_SELF)` on Linux.
 private func processCPUSeconds() -> Double {
+    #if canImport(Darwin)
     var info = rusage_info_v4()
     let result = withUnsafeMutablePointer(to: &info) { pointer in
         pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
@@ -508,8 +706,14 @@ private func processCPUSeconds() -> Double {
         }
     }
     if result == 0 { return Double(info.ri_user_time + info.ri_system_time) / 1e9 }
+    #endif
     var usage = rusage()
-    guard getrusage(RUSAGE_SELF, &usage) == 0 else { return 0 }
+    #if canImport(Glibc)
+    let who = Int32(RUSAGE_SELF.rawValue)  // a C enum in Glibc
+    #else
+    let who = RUSAGE_SELF
+    #endif
+    guard getrusage(who, &usage) == 0 else { return 0 }
     return Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1e6
         + Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1e6
 }

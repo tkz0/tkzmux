@@ -65,8 +65,16 @@ extension StatuslineEvent {
         // swapping under a path it is already watching.
         let temporary = directory.appendingPathComponent(".\(name).tmp")
         try Data(json.utf8).write(to: temporary)
+        #if os(Linux)
+        // corelibs' `replaceItemAt` fails while the destination does not exist yet; rename(2) is
+        // the producer's own call anyway.
+        guard rename(temporary.path, directory.appendingPathComponent(name).path) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        #else
         _ = try FileManager.default.replaceItemAt(
             directory.appendingPathComponent(name), withItemAt: temporary)
+        #endif
     }
 
     private func usageJSON(
@@ -164,6 +172,38 @@ extension StatuslineEvent {
         let events = collector.wait { $0.compactMap(\.usage).contains { $0.sevenDay?.usedPercentage == 55 } }
         #expect(events.compactMap(\.usage).last?.sevenDay?.usedPercentage == 55)
     }
+
+    #if os(Linux)
+    /// With the production debounce (100 ms), an update published by rename reaches the reader in
+    /// under 200 ms (WOR-306 S2: one inotify watch on the directory, no per-file watch). The median
+    /// of several updates, so one scheduling hiccup under a parallel `swift test` does not decide it.
+    @Test func anUpdateArrivesWithin200Milliseconds() throws {
+        let directory = try directory("latency")
+        func context(_ percent: Int) -> String {
+            #"{"updated_at":"\#(ISO8601DateFormatter().string(from: Date()))","session_id":"s1","context_used_percentage":\#(percent)}"#
+        }
+        try write(context(10), "context-s1.json", in: directory)
+
+        let collector = EventCollector()
+        let reader = StatuslineReader(directory: directory.path) { collector.record($0) }
+        reader.start()
+        defer { reader.stop() }
+        _ = collector.wait { $0.contains { $0.context != nil } }
+
+        var latencies: [Duration] = []
+        for percent in 11...17 {
+            let started = ContinuousClock.now
+            try write(context(percent), "context-s1.json", in: directory)
+            let events = collector.wait {
+                $0.compactMap(\.context).contains { $0.contextUsedPercentage == Double(percent) }
+            }
+            #expect(events.compactMap(\.context).last?.contextUsedPercentage == Double(percent))
+            latencies.append(ContinuousClock.now - started)
+        }
+        let median = latencies.sorted()[latencies.count / 2]
+        #expect(median < .milliseconds(200), "latencies: \(latencies)")
+    }
+    #endif
 
     /// The account key is the filename, never `account.key` inside the document: the filename is
     /// what the reader and `AppState.usage` agree on, and a mismatched inner key would otherwise

@@ -7,7 +7,8 @@
 // children. That includes the ProcessTable and ListeningPorts suites (S6), which spawn children.
 // Outside this module, TkzTerminalCoreTests' PtyTests (WOR-305) spawn children and hold pidfds in
 // the same test process during a parallel run, so the pidfd and zombie checks only count fds and
-// children that belong to the test's own pids.
+// children that belong to the test's own pids. Likewise AgentBridgeTests' watchers (WOR-306) hold
+// inotify fds, so the inotify check only counts fds watching the test's own directories.
 
 import Dispatch
 import Foundation
@@ -122,19 +123,25 @@ func reapBlocking(_ pid: pid_t) -> pid_t {
 }
 
 #if os(Linux)
-/// How many of this process's fds are inotify instances and pidfds, from /proc/self/fd. Counted
-/// by kind rather than in total, so files that Swift Testing or a parallel suite opens do not move it.
-func watcherDescriptorCounts() -> (inotify: Int, pidfd: Int) {
+/// How many of this process's inotify fds hold a watch on the directory at `path`, from the
+/// `inotify wd:` lines of /proc/self/fdinfo. The inotify total is not enough for a leak check:
+/// AgentBridge's watchers (WOR-306) hold inotify fds of their own while a parallel run goes on.
+func inotifyDescriptorCount(watching path: String) -> Int {
+    var st = stat()
+    guard stat(path, &st) == 0 else { return 0 }
+    let inode = "ino:" + String(UInt64(st.st_ino), radix: 16) + " "
     let entries = (try? FileManager.default.contentsOfDirectory(atPath: "/proc/self/fd")) ?? []
-    var inotify = 0
-    var pidfd = 0
+    var count = 0
     for entry in entries {
-        guard let target = try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/fd/\(entry)")
+        guard (try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/fd/\(entry)"))
+                == "anon_inode:inotify",
+            let info = try? String(contentsOfFile: "/proc/self/fdinfo/\(entry)", encoding: .utf8)
         else { continue }
-        if target == "anon_inode:inotify" { inotify += 1 }
-        if target == "anon_inode:[pidfd]" { pidfd += 1 }
+        if info.split(separator: "\n").contains(where: { $0.hasPrefix("inotify wd:") && $0.contains(inode) }) {
+            count += 1
+        }
     }
-    return (inotify, pidfd)
+    return count
 }
 
 /// How many of this process's pidfds refer to `pid`, from the `Pid:` line of /proc/self/fdinfo.

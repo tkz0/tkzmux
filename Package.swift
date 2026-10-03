@@ -141,12 +141,31 @@ let sharedTargets: [Target] = [  // hygiene-scan
 // no AgentBridge). Each session adds to both lists; AgentBridge moves to the shared targets once
 // every file builds. The rest of each directory is excluded, listed here so SwiftPM does not warn
 // about it, and the Mac's targets compile all of it.
-let agentBridgeLinuxSources = ["HookFrame.swift", "HookServer.swift"]
-let agentBridgeLinuxTests = ["HookHygieneTests.swift", "HookSupportPathTests.swift", "HookServerTests.swift"]
+let agentBridgeLinuxSources = [
+    "HookFrame.swift", "HookServer.swift",
+    // S2: the watchers, and what they need to build.
+    "AgentAdapter.swift", "ClaudeSessionWatcher.swift", "StatuslineReader.swift", "TranscriptWatch.swift",
+    "ProcessLiveness.swift", "QuotaReconciler.swift", "TranscriptReader.swift", "TranscriptSearch.swift",
+    "TranscriptUsageReader.swift", "PromptCommand.swift", "Claude/ClaudeSessionInfo.swift",
+    "Codex/CodexUsageExtractor.swift",
+]
+let agentBridgeLinuxTests = [
+    "HookHygieneTests.swift", "HookSupportPathTests.swift", "HookServerTests.swift",
+    "ClaudeSessionWatcherTests.swift", "StatuslineReaderTests.swift",
+    "StatuslineTestSupport.swift", "TranscriptWatchTests.swift",
+]
 #if os(Linux)
+/// Every path under `directory` that is not kept: whole entries, or the other entries of a
+/// subdirectory that holds a kept file (`Claude/ClaudeSessionInfo.swift`).
 func linuxExcludes(_ directory: String, keeping kept: [String]) -> [String] {
     ((try? FileManager.default.contentsOfDirectory(atPath: Context.packageDirectory + "/" + directory)) ?? [])
-        .filter { !kept.contains($0) }.sorted()
+        .flatMap { entry -> [String] in
+            if kept.contains(entry) { return [] }
+            let inside = kept.filter { $0.hasPrefix(entry + "/") }
+                .map { String($0.dropFirst(entry.count + 1)) }
+            if inside.isEmpty { return [entry] }
+            return linuxExcludes(directory + "/" + entry, keeping: inside).map { entry + "/" + $0 }
+        }.sorted()
 }
 let agentBridgeMacOnly = linuxExcludes("Sources/AgentBridge", keeping: agentBridgeLinuxSources)
 let agentBridgeTestsMacOnly = linuxExcludes("Tests/AgentBridgeTests", keeping: agentBridgeLinuxTests)

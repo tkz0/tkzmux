@@ -1,5 +1,6 @@
 // The macOS `FileWatcher` (WOR-304 S5): kqueue vnode sources, the way ClaudeSessionWatcher and
-// StatuslineReader have always watched (they move onto this type in WOR-306).
+// StatuslineReader have always watched (they keep their own sources on macOS; WOR-306 S2 moved
+// only their Linux side onto `FileWatcher`).
 //
 // A directory vnode fires when an entry is added, removed or renamed, but says neither which entry
 // nor anything about a file rewritten in place. So each watch holds:

@@ -17,8 +17,8 @@
 //
 // `SystemFileWatcher` names the back-end for the OS being built.
 //
-// Consumers: ClaudeSessionWatcher, StatuslineReader and TranscriptWatch move onto it in WOR-306,
-// the repo watcher later.
+// Consumers: on Linux, AgentBridge's ClaudeSessionWatcher, StatuslineReader and TranscriptWatch
+// (WOR-306 S2; on macOS they keep their own kqueue sources), and GitStatus's repo watcher later.
 
 import Dispatch
 

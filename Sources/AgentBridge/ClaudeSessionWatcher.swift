@@ -5,11 +5,20 @@
 // descriptor gets its own per-file `DispatchSource` in addition to the directory-level one that
 // catches new/removed files. A sibling `<pid>.<hash>.key` file exists next to each descriptor and
 // must never be read — only `*.json` whose basename (minus extension) is an integer pid qualifies.
+//
+// On Linux (WOR-306) none of the per-file machinery is needed: one inotify watch on each `sessions`
+// directory (TkzPlatform's `FileWatcher`) names the entry behind every create, in-place write,
+// rename-replace and delete, so the watch count is one per account whatever the number of
+// sessions, and each named event feeds the same debounce → settle → `readAndApply` path the
+// per-file sources feed on macOS. The macOS kqueue sources, with their inode re-open, are unchanged.
 
 import Dispatch
 import Foundation
 import Synchronization
 import TkzCore
+#if !os(macOS)
+import TkzPlatform
+#endif
 
 /// Identifies one descriptor: which account's config dir it came from, and its pid.
 public struct DescriptorKey: Hashable, Sendable {
@@ -68,13 +77,23 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
 
     private struct Storage {
         var configDirs: [String] = []
+        #if os(macOS)
         var dirSources: [String: DispatchSourceFileSystemObject] = [:]
+        #else
+        /// One inotify instance behind every account's `sessions` directory; made on first use,
+        /// released by `stop`.
+        var fileWatcher: (any FileWatcher)?
+        var dirWatches: [String: FileWatchID] = [:]
+        /// The last error adding each directory's watch, so the sweep's retries log it once.
+        var dirWatchErrors: [String: FileWatcherError] = [:]
+        #endif
         var files: [DescriptorKey: FileWatch] = [:]
         var snapshot: [DescriptorKey: DescriptorState] = [:]
         var sweepTimer: DispatchSourceTimer?
         var started = false
     }
 
+    #if os(macOS)
     /// Per-descriptor watch state: the open fd, its `DispatchSource`, and the debounce timer.
     private final class FileWatch {
         var fd: Int32 = -1
@@ -96,6 +115,21 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
             fd = -1
         }
     }
+    #else
+    /// Per-descriptor state: just the debounce timer. The directory watch names every entry, so
+    /// nothing is opened per file; being in `files` still means "tracked" (see `releaseWatch`).
+    private final class FileWatch {
+        var debounceTimer: DispatchSourceTimer?
+        var path: String
+
+        init(path: String) { self.path = path }
+
+        func cancel() {
+            debounceTimer?.cancel()
+            debounceTimer = nil
+        }
+    }
+    #endif
 
     public init(
         configDirs: [String],
@@ -116,7 +150,11 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
     deinit {
         storage.withLock { s in
             for (_, watch) in s.files { watch.cancel() }
+            #if os(macOS)
             for (_, source) in s.dirSources { source.cancel() }
+            #else
+            s.fileWatcher?.cancel()
+            #endif
             s.sweepTimer?.cancel()
         }
     }
@@ -146,8 +184,15 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
                 s.started = false
                 for (_, watch) in s.files { watch.cancel() }
                 s.files.removeAll()
+                #if os(macOS)
                 for (_, source) in s.dirSources { source.cancel() }
                 s.dirSources.removeAll()
+                #else
+                s.fileWatcher?.cancel()
+                s.fileWatcher = nil
+                s.dirWatches.removeAll()
+                s.dirWatchErrors.removeAll()
+                #endif
                 s.sweepTimer?.cancel()
                 s.sweepTimer = nil
             }
@@ -160,10 +205,18 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
 
     /// How many descriptor file watches are currently open — one `O_EVTONLY` fd and one kqueue
     /// registration each. Lower than `snapshot().count` once dead descriptors have been released;
-    /// see ``releaseWatch(key:_:)``.
+    /// see ``releaseWatch(key:_:)``. On Linux, how many descriptors are tracked: none of them costs
+    /// a watch of its own (see ``directoryWatchCount``).
     public var openWatchCount: Int {
         storage.withLock { $0.files.count }
     }
+
+    #if !os(macOS)
+    /// How many inotify watches this watcher holds: one per watched `sessions` directory.
+    public var directoryWatchCount: Int {
+        storage.withLock { $0.fileWatcher?.watchCount ?? 0 }
+    }
+    #endif
 
     public func setConfigDirs(_ dirs: [String]) {
         let events = queue.sync {
@@ -198,8 +251,13 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
 
     /// No `.removed` events: `setConfigDirs` dropping an account simply stops reporting it.
     private func stopWatchingConfigDir(_ configDir: String, _ s: inout Storage) -> [DescriptorEvent] {
+        #if os(macOS)
         s.dirSources[configDir]?.cancel()
         s.dirSources[configDir] = nil
+        #else
+        if let watch = s.dirWatches.removeValue(forKey: configDir) { s.fileWatcher?.remove(watch) }
+        s.dirWatchErrors[configDir] = nil
+        #endif
         for key in s.files.keys where key.configDir == configDir {
             s.files[key]?.cancel()
             s.files[key] = nil
@@ -208,6 +266,7 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
         return []
     }
 
+    #if os(macOS)
     /// Opens the directory `DispatchSource` for `configDir`'s `sessions` directory, idempotently —
     /// a no-op if already open (fixes a prior bug where `start()` would open it twice, leaking a
     /// source and its fd) or if the directory does not exist yet. A missing directory is retried by
@@ -233,6 +292,80 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
         let events = storage.withLock { s in scanConfigDir(configDir, &s) }
         events.forEach(onEvent)
     }
+    #else
+    /// Adds `configDir`'s `sessions` directory to the shared inotify instance, idempotently — a
+    /// no-op if already watched or if the directory does not exist yet (the sweep retries).
+    private func openDirSource(for configDir: String, _ s: inout Storage) {
+        guard s.dirWatches[configDir] == nil else { return }
+        guard s.configDirs.contains(configDir) else { return }
+        do throws(FileWatcherError) {
+            if s.fileWatcher == nil {
+                s.fileWatcher = try SystemFileWatcher(queue: queue) { [weak self] event in
+                    self?.onWatchEvent(event)
+                }
+            }
+            s.dirWatches[configDir] = try s.fileWatcher?.add(
+                directory: sessionsDir(for: configDir),
+                filter: { Self.descriptorPid(fromName: $0) != nil })
+            s.dirWatchErrors[configDir] = nil
+        } catch .noSuchDirectory {
+            // Not created yet: Claude Code makes it on first run.
+        } catch {
+            // Degraded, not broken: the sweep lists the directory every `sweepInterval` until the
+            // watch can be added (new and removed descriptors are still seen, in-place rewrites
+            // are not).
+            if s.dirWatchErrors.updateValue(error, forKey: configDir) != error {
+                let dir = sessionsDir(for: configDir)
+                Self.logger.warning(
+                    "cannot watch \(dir, privacy: .private): \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
+    private static let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "sessionwatcher")
+
+    /// Every event of the shared directory watcher, on `queue`. A named descriptor event only arms
+    /// that descriptor's debounce, so a create, an in-place rewrite, a rename-replace or a delete
+    /// each settles into one `readAndApply` (or one removal).
+    private func onWatchEvent(_ event: FileWatchEvent) {
+        let events = storage.withLock { s -> [DescriptorEvent] in
+            switch event {
+            case .overflow:
+                // The kernel dropped events: list every directory again and re-read every tracked
+                // descriptor. `applyUpdate` reports only what actually changed.
+                var events: [DescriptorEvent] = []
+                for dir in s.configDirs { events += scanConfigDir(dir, &s) }
+                for (key, watch) in s.files {
+                    if let event = readAndApply(key: key, watch: watch, &s) { events.append(event) }
+                }
+                return events
+            case .watchRemoved(let id):
+                // The sessions directory was deleted or moved away: drop what was in it, and let
+                // the sweep watch it again once it is back.
+                guard let dir = s.dirWatches.first(where: { $0.value == id })?.key else { return [] }
+                s.dirWatches[dir] = nil
+                return scanConfigDir(dir, &s)
+            case .changed(let change):
+                guard let dir = s.dirWatches.first(where: { $0.value == change.watch })?.key else { return [] }
+                guard let name = change.name, let pid = Self.descriptorPid(fromName: name) else {
+                    // The directory itself changed.
+                    return scanConfigDir(dir, &s)
+                }
+                let key = DescriptorKey(configDir: dir, pid: pid)
+                if s.files[key] == nil {
+                    // A long-dead descriptor stays untracked, as on macOS, where it has no watch
+                    // left to fire; only its deletion still has to clear the snapshot.
+                    guard change.kind == .removed || descriptorIsWatchable(key: key, s) else { return [] }
+                    s.files[key] = FileWatch(
+                        path: (sessionsDir(for: dir) as NSString).appendingPathComponent(name))
+                }
+                if let watch = s.files[key] { armDebounce(key: key, watch: watch) }
+                return []
+            }
+        }
+        events.forEach(onEvent)
+    }
+    #endif
 
     /// Lists `<configDir>/sessions`, opening watches for any new descriptor files and dropping
     /// watches for ones that vanished (the directory source doesn't tell us *which* file changed).
@@ -244,16 +377,16 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
         var events: [DescriptorEvent] = []
         var seenPids = Set<pid_t>()
         for name in entries {
-            guard name.hasSuffix(".json") else { continue }
-            let base = String(name.dropLast(".json".count))
-            guard !base.isEmpty, base.allSatisfy({ $0.isNumber }), let pid = pid_t(base) else { continue }
+            guard let pid = Self.descriptorPid(fromName: name) else { continue }
             seenPids.insert(pid)
             let key = DescriptorKey(configDir: configDir, pid: pid)
             // A descriptor long since concluded dead keeps no watch — see `releaseWatch`.
             if s.files[key] == nil, descriptorIsWatchable(key: key, s) {
                 let watch = FileWatch(path: (dir as NSString).appendingPathComponent(name))
                 s.files[key] = watch
+                #if os(macOS)
                 openFileSource(for: key, watch: watch, &s)
+                #endif
                 if let event = readAndApply(key: key, watch: watch, &s) { events.append(event) }
             }
         }
@@ -278,6 +411,7 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
     // analysis (it cannot prove the non-`Sendable` `FileWatch` isn't retained past the lock). Every
     // handler instead re-looks-up `s.files[key]` from *inside* the lock it already holds.
 
+    #if os(macOS)
     private func openFileSource(for key: DescriptorKey, watch: FileWatch, _ s: inout Storage) {
         let fd = open(watch.path, O_EVTONLY)
         guard fd >= 0 else { return }
@@ -300,6 +434,7 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
             armDebounce(key: key, watch: watch)
         }
     }
+    #endif
 
     private func armDebounce(key: DescriptorKey, watch: FileWatch) {
         watch.debounceTimer?.cancel()
@@ -326,6 +461,7 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
         guard FileManager.default.fileExists(atPath: watch.path) else {
             return removeDescriptor(key: key, &s)
         }
+        #if os(macOS)
         // Re-open unconditionally: a rename-replace swaps the inode under the same path, and our
         // fd (opened O_EVTONLY on the old inode) would otherwise keep firing on the *old* file only.
         let newFD = open(watch.path, O_EVTONLY)
@@ -348,6 +484,7 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
                 close(newFD)
             }
         }
+        #endif
         return readAndApply(key: key, watch: watch, &s)
     }
 
@@ -424,10 +561,17 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
     private func sweep(_ s: inout Storage) -> [DescriptorEvent] {
         var events: [DescriptorEvent] = []
         // A sessions dir that didn't exist at start (or when last added) may exist now.
+        #if os(macOS)
         for dir in s.configDirs where s.dirSources[dir] == nil {
             openDirSource(for: dir, &s)
             events += scanConfigDir(dir, &s)
         }
+        #else
+        for dir in s.configDirs where s.dirWatches[dir] == nil {
+            openDirSource(for: dir, &s)
+            events += scanConfigDir(dir, &s)
+        }
+        #endif
         for (key, current) in s.snapshot {
             let alive = liveness.isAlive(pid: current.info.pid, startedAt: current.info.startedAt)
             guard alive != current.alive else {
@@ -454,11 +598,22 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
 
     // MARK: - Helpers
 
+    /// The pid a descriptor file is named after: `<pid>.json` with an all-digit pid. Anything else
+    /// (the `<pid>.<hash>.key` sibling, a temp file) is not a descriptor.
+    static func descriptorPid(fromName name: String) -> pid_t? {
+        guard name.hasSuffix(".json") else { return nil }
+        let base = String(name.dropLast(".json".count))
+        guard !base.isEmpty, base.allSatisfy({ $0.isNumber }), let pid = pid_t(base) else { return nil }
+        return pid
+    }
+
+    #if os(macOS)
     private static func inode(ofFD fd: Int32) -> ino_t? {
         var st = stat()
         guard fstat(fd, &st) == 0 else { return nil }
         return st.st_ino
     }
+    #endif
 
     // MARK: - Pure snapshot helpers
 

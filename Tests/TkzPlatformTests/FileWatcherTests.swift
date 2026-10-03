@@ -365,36 +365,44 @@ extension WatcherTests {
 
         @Test(.timeLimit(.minutes(1))) func descriptorsDoNotLeakOverAThousandCycles() async throws {
             let directory = try ScratchDirectory()
-            defer { directory.remove() }
-            let before = watcherDescriptorCounts().inotify
+            // Keeps one watch on the shared instance, so its fd can be told apart from the
+            // inotify fds other suites hold during a parallel run.
+            let anchor = try ScratchDirectory()
+            defer {
+                directory.remove()
+                anchor.remove()
+            }
 
             // Watches on one instance: kernel objects, no fds.
             let shared = try InotifyFileWatcher(queue: queue) { _ in }
+            try shared.add(directory: anchor.path)
             for _ in 0..<1_000 {
                 let id = try shared.add(directory: directory.path)
                 shared.remove(id)
             }
-            #expect(shared.watchCount == 0)
-            #expect(watcherDescriptorCounts().inotify == before + 1)
+            #expect(shared.watchCount == 1)
+            #expect(inotifyDescriptorCount(watching: anchor.path) == 1)
+            #expect(inotifyDescriptorCount(watching: directory.path) == 0)
             shared.cancel()
 
-            // Whole watchers: each holds an inotify fd until its source's cancel handler runs.
-            // fs.inotify.max_user_instances (often 128 or 1,024) counts every instance this user
-            // has open, so let the closes catch up every 50 cycles.
+            // Whole watchers: each holds an inotify fd, and with it its watch on `directory`,
+            // until its source's cancel handler runs. fs.inotify.max_user_instances (often 128 or
+            // 1,024) counts every instance this user has open, so let the closes catch up every
+            // 50 cycles.
             for cycle in 1...1_000 {
                 let watcher = try InotifyFileWatcher(queue: queue) { _ in }
                 try watcher.add(directory: directory.path)
                 if cycle.isMultiple(of: 2) { watcher.cancel() }  // the rest cancel in deinit
-                if cycle.isMultiple(of: 50) { try await Self.settle(to: before) }
+                if cycle.isMultiple(of: 50) { try await Self.settle(watching: directory.path) }
             }
-            try await Self.settle(to: before)
-            #expect(watcherDescriptorCounts().inotify == before)
+            try await Self.settle(watching: directory.path)
+            #expect(inotifyDescriptorCount(watching: directory.path) == 0)
         }
 
-        /// Waits up to 5 s for this process's inotify fd count to return to `count`.
-        private static func settle(to count: Int) async throws {
+        /// Waits up to 5 s for every inotify fd watching `path` to close.
+        private static func settle(watching path: String) async throws {
             let deadline = ContinuousClock.now + .seconds(5)
-            while watcherDescriptorCounts().inotify != count, ContinuousClock.now < deadline {
+            while inotifyDescriptorCount(watching: path) != 0, ContinuousClock.now < deadline {
                 try await Task.sleep(for: .milliseconds(2))
             }
         }

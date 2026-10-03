@@ -4,8 +4,16 @@
 // reused: a descriptor's `startedAt` (ms since epoch) is compared against the live process's actual
 // start time (`PROC_PIDTBSDINFO.pbi_start_tvsec`) so a reused pid reads as dead rather than alive.
 // The comparison is one-sided — see `SystemProcessLiveness.startTimeMatches`.
+//
+// On Linux the start time comes from TkzPlatform's `ProcessTable` (/proc); `ProcessTree` is
+// macOS-only until WOR-306 S3 moves the macOS callers too and deletes it.
 
+#if os(macOS)
 import Darwin
+#else
+import Glibc
+import TkzPlatform
+#endif
 import Foundation
 
 /// Abstraction over "is this pid alive" so the watcher's liveness sweep is testable without real
@@ -28,7 +36,12 @@ public struct SystemProcessLiveness: ProcessLiveness {
             // pid-reuse guard below when we can, otherwise assume alive.
         }
         guard let startedAt else { return true }
-        guard let actualStart = ProcessTree.startTime(of: pid) else {
+        #if os(macOS)
+        let actualStart = ProcessTree.startTime(of: pid)
+        #else
+        let actualStart = ProcessTable.startTime(of: pid)
+        #endif
+        guard let actualStart else {
             // Could not read start time (process gone between the kill() and the pidinfo call, or
             // no permission) — do not claim aliveness we cannot verify.
             return false
@@ -53,6 +66,7 @@ public struct SystemProcessLiveness: ProcessLiveness {
     }
 }
 
+#if os(macOS)
 /// `libproc`-backed helpers for walking the process tree — used to locate a Claude Code session's
 /// child/descendant processes and to read start times for the pid-reuse guard.
 public enum ProcessTree {
@@ -138,3 +152,4 @@ public enum ProcessTree {
         return pid_t(info.pbi_ppid)
     }
 }
+#endif

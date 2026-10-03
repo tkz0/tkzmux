@@ -13,6 +13,10 @@
 // exist yet, an unconditional re-open on settle so a rename-replace cannot leave the source watching
 // the old inode, and last-good-value semantics so a torn read emits nothing.
 //
+// On Linux (WOR-306) the per-file sources are not needed: one inotify watch on the directory
+// (TkzPlatform's `FileWatcher`) names the sidecar behind every write, rename and delete, and each
+// named event arms that file's debounce, which settles through the same `readAndApply`.
+//
 // Quota goes through `QuotaReconciler` on the way out — see that file for why a raw reading is not
 // trustworthy. Context sidecars need no reconciliation; they are simply joined on `sessionId`.
 
@@ -20,6 +24,9 @@ import Dispatch
 import Foundation
 import Synchronization
 import TkzCore
+#if !os(macOS)
+import TkzPlatform
+#endif
 
 /// One change to what the statusline sidecars say.
 public enum StatuslineEvent: Sendable {
@@ -47,7 +54,14 @@ public final class StatuslineReader: Sendable {
     private let storage: Mutex<Storage>
 
     private struct Storage {
+        #if os(macOS)
         var dirSource: DispatchSourceFileSystemObject?
+        #else
+        /// The inotify instance with the directory's one watch; nil while it is not watched.
+        var fileWatcher: (any FileWatcher)?
+        /// The last error adding the watch, so the sweep's retries log it once.
+        var watchError: FileWatcherError?
+        #endif
         var files: [String: FileWatch] = [:]
         var quota: [String: AccountQuotaState] = [:]
         var usage: [String: UsageSnapshot] = [:]
@@ -82,6 +96,7 @@ public final class StatuslineReader: Sendable {
         }
     }
 
+    #if os(macOS)
     private final class FileWatch {
         var fd: Int32 = -1
         var source: DispatchSourceFileSystemObject?
@@ -105,6 +120,24 @@ public final class StatuslineReader: Sendable {
             fd = -1
         }
     }
+    #else
+    /// Just the debounce: the directory watch names every sidecar, so nothing is opened per file.
+    private final class FileWatch {
+        var debounceTimer: DispatchSourceTimer?
+        var path: String
+        let kind: Kind
+
+        init(path: String, kind: Kind) {
+            self.path = path
+            self.kind = kind
+        }
+
+        func cancel() {
+            debounceTimer?.cancel()
+            debounceTimer = nil
+        }
+    }
+    #endif
 
     public init(
         directory: String,
@@ -124,7 +157,11 @@ public final class StatuslineReader: Sendable {
     deinit {
         storage.withLock { s in
             for (_, watch) in s.files { watch.cancel() }
+            #if os(macOS)
             s.dirSource?.cancel()
+            #else
+            s.fileWatcher?.cancel()
+            #endif
             s.sweepTimer?.cancel()
         }
     }
@@ -158,8 +195,14 @@ public final class StatuslineReader: Sendable {
                 s.started = false
                 for (_, watch) in s.files { watch.cancel() }
                 s.files.removeAll()
+                #if os(macOS)
                 s.dirSource?.cancel()
                 s.dirSource = nil
+                #else
+                s.fileWatcher?.cancel()
+                s.fileWatcher = nil
+                s.watchError = nil
+                #endif
                 s.sweepTimer?.cancel()
                 s.sweepTimer = nil
             }
@@ -171,6 +214,7 @@ public final class StatuslineReader: Sendable {
 
     // MARK: - Directory watching
 
+    #if os(macOS)
     private func openDirSource(_ s: inout Storage) {
         guard s.dirSource == nil else { return }
         let fd = open(directory, O_EVTONLY)
@@ -187,6 +231,67 @@ public final class StatuslineReader: Sendable {
         let events = storage.withLock { s in scan(&s) }
         events.forEach(onEvent)
     }
+    #else
+    /// Watches the directory, unless it already is or does not exist yet (the sweep retries).
+    private func openDirSource(_ s: inout Storage) {
+        guard s.fileWatcher == nil else { return }
+        do throws(FileWatcherError) {
+            let watcher = try SystemFileWatcher(queue: queue) { [weak self] event in
+                self?.onWatchEvent(event)
+            }
+            do throws(FileWatcherError) {
+                try watcher.add(directory: directory, filter: { Kind.of($0) != nil })
+            } catch {
+                watcher.cancel()
+                throw error
+            }
+            s.fileWatcher = watcher
+            s.watchError = nil
+        } catch .noSuchDirectory {
+            // Normal until the user consents to the status line integration.
+        } catch {
+            // The sweep keeps listing the directory, so sidecars appearing and vanishing are
+            // still seen; rewrites of known ones are not.
+            if s.watchError != error {
+                s.watchError = error
+                let directory = self.directory
+                Self.logger.warning(
+                    "cannot watch \(directory, privacy: .private): \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
+    private static let logger = TkzLogger(subsystem: "se.tkz.tkzmux", category: "statusline")
+
+    /// Every event of the directory watch, on `queue`. A named sidecar event arms that file's
+    /// debounce, which settles into one `readAndApply` (or one removal).
+    private func onWatchEvent(_ event: FileWatchEvent) {
+        let events = storage.withLock { s -> [StatuslineEvent] in
+            switch event {
+            case .overflow:
+                // Dropped events: list the directory again and re-read every sidecar; the apply
+                // functions report only what changed.
+                var events = scan(&s)
+                for (name, watch) in s.files { events += readAndApply(name: name, watch: watch, &s) }
+                return events
+            case .watchRemoved:
+                // The directory went away: drop its sidecars and let the sweep watch it again.
+                s.fileWatcher?.cancel()
+                s.fileWatcher = nil
+                return scan(&s)
+            case .changed(let change):
+                guard let name = change.name, let kind = Kind.of(name) else { return scan(&s) }
+                if s.files[name] == nil {
+                    s.files[name] = FileWatch(
+                        path: (directory as NSString).appendingPathComponent(name), kind: kind)
+                }
+                if let watch = s.files[name] { armDebounce(name: name, watch: watch) }
+                return []
+            }
+        }
+        events.forEach(onEvent)
+    }
+    #endif
 
     private func scan(_ s: inout Storage) -> [StatuslineEvent] {
         let entries = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
@@ -199,7 +304,9 @@ public final class StatuslineReader: Sendable {
             let watch = FileWatch(
                 path: (directory as NSString).appendingPathComponent(name), kind: kind)
             s.files[name] = watch
+            #if os(macOS)
             openFileSource(name: name, watch: watch)
+            #endif
             events += readAndApply(name: name, watch: watch, &s)
         }
         for name in s.files.keys where !seen.contains(name) {
@@ -213,6 +320,7 @@ public final class StatuslineReader: Sendable {
     // As in `ClaudeSessionWatcher`, handler closures capture only the `Sendable` file name and
     // re-look-up the (non-`Sendable`) `FileWatch` inside the lock they already hold.
 
+    #if os(macOS)
     private func openFileSource(name: String, watch: FileWatch) {
         let fd = open(watch.path, O_EVTONLY)
         guard fd >= 0 else { return }
@@ -229,13 +337,18 @@ public final class StatuslineReader: Sendable {
     private func onFileEvent(name: String) {
         storage.withLock { s in
             guard let watch = s.files[name] else { return }
-            watch.debounceTimer?.cancel()
-            let timer = DispatchSource.makeTimerSource(queue: queue)
-            timer.schedule(deadline: .now() + debounce.dispatchInterval)
-            timer.setEventHandler { [weak self] in self?.onDebounceFired(name: name) }
-            watch.debounceTimer = timer
-            timer.resume()
+            armDebounce(name: name, watch: watch)
         }
+    }
+    #endif
+
+    private func armDebounce(name: String, watch: FileWatch) {
+        watch.debounceTimer?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + debounce.dispatchInterval)
+        timer.setEventHandler { [weak self] in self?.onDebounceFired(name: name) }
+        watch.debounceTimer = timer
+        timer.resume()
     }
 
     private func onDebounceFired(name: String) {
@@ -250,6 +363,7 @@ public final class StatuslineReader: Sendable {
         guard FileManager.default.fileExists(atPath: watch.path) else {
             return remove(name: name, &s)
         }
+        #if os(macOS)
         // Re-open unconditionally: the producer publishes by rename, so the path keeps pointing at a
         // new inode while our fd still watches the old one.
         let newFD = open(watch.path, O_EVTONLY)
@@ -270,6 +384,7 @@ public final class StatuslineReader: Sendable {
                 close(newFD)
             }
         }
+        #endif
         return readAndApply(name: name, watch: watch, &s)
     }
 
@@ -392,10 +507,17 @@ public final class StatuslineReader: Sendable {
         let events = storage.withLock { s -> [StatuslineEvent] in
             // The directory may not have existed when we started.
             var events: [StatuslineEvent] = []
+            #if os(macOS)
             if s.dirSource == nil {
                 openDirSource(&s)
                 events += scan(&s)
             }
+            #else
+            if s.fileWatcher == nil {
+                openDirSource(&s)
+                events += scan(&s)
+            }
+            #endif
             // Re-run the reconcile for every account even when no file changed: a high-water mark
             // whose window has expired, or which nothing has re-confirmed, has to age out on time
             // rather than at the next write.
@@ -425,11 +547,13 @@ public final class StatuslineReader: Sendable {
 
     // MARK: - Helpers
 
+    #if os(macOS)
     private static func inode(ofFD fd: Int32) -> ino_t? {
         var info = stat()
         guard fstat(fd, &info) == 0 else { return nil }
         return info.st_ino
     }
+    #endif
 
     private static func age(ofFile path: String, now: Date) -> TimeInterval? {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
