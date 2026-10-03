@@ -8,23 +8,10 @@
 
 import CoreText
 import Foundation
+import TkzRenderCore
 
-/// The four faces a terminal draws with.
-public enum FontStyle: UInt8, CaseIterable, Sendable, Hashable {
-    case regular, bold, italic, boldItalic
-
-    public var isBold: Bool { self == .bold || self == .boldItalic }
-    public var isItalic: Bool { self == .italic || self == .boldItalic }
-
-    public init(bold: Bool, italic: Bool) {
-        switch (bold, italic) {
-        case (false, false): self = .regular
-        case (true, false): self = .bold
-        case (false, true): self = .italic
-        case (true, true): self = .boldItalic
-        }
-    }
-
+// `FontStyle` itself lives in TkzRenderCore (GlyphSource.swift); this is its CoreText side.
+extension FontStyle {
     var symbolicTraits: CTFontSymbolicTraits {
         var traits: CTFontSymbolicTraits = []
         if isBold { traits.insert(.boldTrait) }

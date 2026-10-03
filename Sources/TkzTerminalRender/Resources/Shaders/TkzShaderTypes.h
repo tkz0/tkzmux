@@ -29,9 +29,10 @@
 // Layout rules
 // - Every field is a fixed-width integer, a float, or a `simd` vector type. No `int`/`long`/`bool`.
 // - `_Static_assert`s at the bottom pin `sizeof`, `alignof` and every `offsetof`. They are compiled
-//   by the C compiler AND by both Metal compilers, and `Tests/TkzTerminalRenderTests/
-//   ShaderCompileTests.swift` asserts the very same literals through `MemoryLayout`. A layout
-//   divergence between Swift, C and Metal is therefore a build/test failure, never a corrupt frame.
+//   by the C compiler AND by both Metal compilers, and `Tests/TkzRenderCoreTests/
+//   ShaderLayoutTests.swift` asserts the very same literals through `MemoryLayout`, on macOS and on
+//   Linux. A layout divergence between Swift, C and Metal is therefore a build/test failure, never
+//   a corrupt frame.
 // - Colours are packed `uint32_t`, byte order R,G,B,A from the low byte (see `tkz_unpack_rgba`
 //   in Terminal.metal; Swift builds them with `r | g << 8 | b << 16 | a << 24`).
 //   They are *straight* (non-premultiplied) sRGB-encoded 8-bit values — exactly what
@@ -50,7 +51,19 @@
 #ifndef TKZ_SHADER_TYPES_H
 #define TKZ_SHADER_TYPES_H
 
+// Darwin (C and both Metal compilers) has <simd/simd.h>. Elsewhere (Linux) the four vector types
+// this header uses are declared directly, with the same `ext_vector_type` attribute simd.h uses, so
+// size, alignment and the Swift import (`SIMD2<Float>`, `SIMD2<UInt32>`, `SIMD2<UInt16>`,
+// `SIMD2<Int16>`) are the same on both. Add a typedef here before using another simd type.
+#if __has_include(<simd/simd.h>)
 #include <simd/simd.h>
+#else
+#include <stdint.h>
+typedef float vector_float2 __attribute__((ext_vector_type(2)));
+typedef unsigned int vector_uint2 __attribute__((ext_vector_type(2)));
+typedef unsigned short vector_ushort2 __attribute__((ext_vector_type(2)));
+typedef short vector_short2 __attribute__((ext_vector_type(2)));
+#endif
 
 #ifdef __METAL_VERSION__
 #include <metal_stdlib>
@@ -275,7 +288,7 @@ typedef struct {
 
 // MARK: - Layout assertions
 //
-// These literals are duplicated in ShaderCompileTests.swift. Change one, change all.
+// These literals are duplicated in ShaderLayoutTests.swift. Change one, change all.
 
 TKZ_STATIC_ASSERT(sizeof(TkzUniforms) == 80, "TkzUniforms size");
 TKZ_STATIC_ASSERT(TKZ_ALIGNOF(TkzUniforms) == 8, "TkzUniforms align");

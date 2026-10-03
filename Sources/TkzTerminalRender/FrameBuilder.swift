@@ -31,6 +31,7 @@
 import Foundation
 import GhosttyVt
 import TkzCore
+import TkzRenderCore
 import TkzShaderTypes
 import TkzTerminalCore
 

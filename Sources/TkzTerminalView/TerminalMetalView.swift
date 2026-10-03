@@ -24,6 +24,7 @@ import QuartzCore
 import Synchronization
 import TkzCore
 import TkzPlatform
+import TkzRenderCore
 import TkzTerminalCore
 import TkzTerminalRender
 

@@ -76,6 +76,20 @@ let sharedTargets: [Target] = [  // hygiene-scan
     // into the app; the Mac renderer keeps ImageIO.
     .target(name: "TkzPNG", path: "Sources/TkzPNG"),
     .testTarget(name: "TkzPNGTests", dependencies: ["TkzPNG"], path: "Tests/TkzPNGTests"),
+
+    // The Swift/C/Metal (and, through TkzShadersSPIRV, Vulkan) struct contract. Header-only; the
+    // header falls back to `ext_vector_type` typedefs where <simd/simd.h> is absent (WOR-311 S1).
+    .target(
+        name: "TkzShaderTypes",
+        path: "Sources/TkzShaderTypes",
+        publicHeadersPath: "include"
+    ),
+
+    // The device-free half of the renderer, shared by Metal and Vulkan (WOR-311): the font seam
+    // and CellMetrics so far; WOR-311 S3-S5 move the atlas packer, FrameBuilder and the box-sprite
+    // geometry in.
+    .target(name: "TkzRenderCore", dependencies: ["TkzShaderTypes"], path: "Sources/TkzRenderCore"),
+    .testTarget(name: "TkzRenderCoreTests", dependencies: ["TkzRenderCore", "TkzShaderTypes"], path: "Tests/TkzRenderCoreTests"),
 ]
 
 // MARK: - Linux only
@@ -96,13 +110,17 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
     ),
 
     // Committed SPIR-V for the Vulkan renderer (WOR-313 S2); regenerate with
-    // scripts/build-shaders-linux.sh. TkzShadersSPIRVTests joins once TkzShaderTypes.h is portable
-    // (WOR-311 S1).
+    // scripts/build-shaders-linux.sh.
     .target(
         name: "TkzShadersSPIRV",
         path: "Sources/TkzShadersSPIRV",
         exclude: ["glsl", "generated"],
         publicHeadersPath: "include"
+    ),
+    .testTarget(
+        name: "TkzShadersSPIRVTests",
+        dependencies: ["TkzShadersSPIRV", "TkzShaderTypes"],
+        path: "Tests/TkzShadersSPIRVTests"
     ),
 
     // The Mac's PersistenceTests also lists TkzTerminalCore and GhosttyVt; nothing in it imports
@@ -139,11 +157,6 @@ let macOnlyTargets: [Target] = [
         path: "Sources/TkzPtyShim",
         publicHeadersPath: "include"
     ),
-    .target(
-        name: "TkzShaderTypes",
-        path: "Sources/TkzShaderTypes",
-        publicHeadersPath: "include"
-    ),
 
     // MARK: Terminal engine
     .target(
@@ -163,13 +176,13 @@ let macOnlyTargets: [Target] = [
     ),
     .target(
         name: "TkzTerminalRender",
-        dependencies: ["TkzCore", "TkzTerminalCore", "TkzShaderTypes"],
+        dependencies: ["TkzCore", "TkzTerminalCore", "TkzShaderTypes", "TkzRenderCore"],
         path: "Sources/TkzTerminalRender",
         resources: [.copy("Resources/Fonts"), .copy("Resources/Shaders")]
     ),
     .target(
         name: "TkzTerminalView",
-        dependencies: ["TkzCore", "TkzPlatform", "TkzTerminalCore", "TkzTerminalRender"],
+        dependencies: ["TkzCore", "TkzPlatform", "TkzTerminalCore", "TkzTerminalRender", "TkzRenderCore"],
         path: "Sources/TkzTerminalView"
     ),
 
@@ -203,7 +216,7 @@ let macOnlyTargets: [Target] = [
     ),
     .executableTarget(
         name: "tkzmux-vtdump",
-        dependencies: ["TkzTerminalCore", "TkzTerminalRender", "Persistence"],
+        dependencies: ["TkzTerminalCore", "TkzTerminalRender", "TkzRenderCore", "Persistence"],
         path: "Sources/tkzmux-vtdump"
     ),
     .executableTarget(
@@ -213,7 +226,7 @@ let macOnlyTargets: [Target] = [
 
     // MARK: Tests (one per Swift library module; Swift Testing)
     .testTarget(name: "TkzTerminalCoreTests", dependencies: ["TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalCoreTests", resources: [.copy("Fixtures")]),
-    .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "GhosttyVt", "TkzPNG"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
+    .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "TkzRenderCore", "GhosttyVt", "TkzPNG"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
     .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
     // TkzTerminalCore + GhosttyVt for the shell-integration harness, which spawns each login
     // shell on a real `Pty`, like PersistenceTests does for snapshots.

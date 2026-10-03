@@ -1,6 +1,7 @@
 import CoreText
 import Foundation
 import Testing
+import TkzRenderCore
 @testable import TkzTerminalRender
 
 @Suite("CellMetrics")
@@ -87,5 +88,70 @@ struct CellMetricsTests {
         let widths = Set(advances.map { ($0.width * 100).rounded() })
         #expect(widths.count == 1)
         #expect(CellMetrics.maxASCIIAdvance(of: font) == advances[0].width)
+    }
+
+    // MARK: - Raw tables vs CoreText (WOR-311 S2)
+
+    /// The four bundled faces, measured both ways: CoreText's accessors (`init(font:scale:)`) and
+    /// the raw head/hhea/post/OS/2/hmtx values through the shared formula (`init(tables:…)`), which
+    /// is what Linux uses. 15 and 35 px are tie sizes (descent 4.5 and 10.5, and at 35 px the
+    /// advance is 21.000000000000004 or 21 depending on the operation order), so if this fails only
+    /// there, `FontTables.pixelsPerUnit` has the wrong order for CoreText.
+    @Test("the raw-table formula equals the CoreText path for every bundled face",
+          arguments: [15, 22.4, 25, 28, 35] as [CGFloat])
+    func rawTablesMatchCoreText(pixelSize: CGFloat) throws {
+        let fonts = FontSet(pointSize: pixelSize, scale: 1)
+        try #require(fonts.resolvedFamily == "JetBrains Mono")
+        #expect(!fonts.needsSyntheticBold)
+        #expect(!fonts.needsSyntheticItalic)
+        for style in FontStyle.allCases {
+            let font = fonts.font(for: style)
+            let name = fonts.postScriptName(for: style)
+            #expect(name.hasPrefix("JetBrainsMono"))
+            #expect(CTFontGetSize(font) == pixelSize)
+            let tables = try rawTables(of: font)
+            let raw = try #require(CellMetrics(tables: tables, pixelSize: CTFontGetSize(font),
+                                               scale: 1))
+            #expect(raw == CellMetrics(font: font, scale: 1), "\(name) at \(pixelSize) px")
+        }
+    }
+
+    /// The raw table values of `font`, read from its table bytes rather than CoreText's accessors.
+    private func rawTables(of font: CTFont) throws -> FontTables {
+        func table(_ tag: CTFontTableTag) throws -> [UInt8] {
+            let data = try #require(CTFontCopyTable(font, tag, []))
+            return [UInt8](data as Data)
+        }
+        func uint16(_ bytes: [UInt8], _ offset: Int) -> Int {
+            Int(bytes[offset]) << 8 | Int(bytes[offset + 1])
+        }
+        func int16(_ bytes: [UInt8], _ offset: Int) -> Int {
+            Int(Int16(bitPattern: UInt16(uint16(bytes, offset))))
+        }
+        let head = try table(CTFontTableTag(kCTFontTableHead))
+        let hhea = try table(CTFontTableTag(kCTFontTableHhea))
+        let post = try table(CTFontTableTag(kCTFontTablePost))
+        let os2 = try table(CTFontTableTag(kCTFontTableOS2))
+        let hmtx = try table(CTFontTableTag(kCTFontTableHmtx))
+
+        // hmtx: numberOfHMetrics (hhea byte 34) long metrics of {advance, lsb}; glyphs past the
+        // last one repeat its advance.
+        let numberOfHMetrics = uint16(hhea, 34)
+        let chars: [UniChar] = (0x20...0x7E).map { UniChar($0) }
+        var glyphs = [CGGlyph](repeating: 0, count: chars.count)
+        #expect(CTFontGetGlyphsForCharacters(font, chars, &glyphs, chars.count))
+        let maxAdvance = glyphs
+            .map { uint16(hmtx, 4 * min(Int($0), numberOfHMetrics - 1)) }
+            .max() ?? 0
+
+        return FontTables(unitsPerEm: uint16(head, 18),
+                          ascender: int16(hhea, 4),
+                          descender: int16(hhea, 6),
+                          lineGap: int16(hhea, 8),
+                          underlinePosition: int16(post, 8),
+                          underlineThickness: int16(post, 10),
+                          strikeout: OS2Strikeout(os2Table: os2),
+                          xHeight: int16(os2, 86),
+                          maxASCIIAdvance: maxAdvance)
     }
 }

@@ -1,17 +1,20 @@
 // ShaderCompileTests — the shader half of M1.5, verified without a renderer.
 //
 // Three things are proven here:
-//   1. Swift's view of TkzShaderTypes.h matches, field for field, the `_Static_assert`s the C and
-//      Metal compilers check. Swift, C and Metal cannot silently disagree about a struct layout.
+//   1. The bundled copy of TkzShaderTypes.h is the canonical header, and Terminal.metal guards its
+//      include for the runtime-source path.
 //   2. `Resources/Shaders/Terminal.metal` compiles at *runtime* through
 //      `device.makeLibrary(source:)` — the fallback path taken when a hand-built
 //      `default.metallib` is absent (`swift run`, `swift test`) — and every entry point exists.
 //   3. All three pipelines build with the real pixel format and blend state, and the background
 //      pipeline actually rasterises the grid correctly into an offscreen `.bgra8Unorm` texture.
 //
+// Swift's view of the struct layout is checked on both OSes by
+// Tests/TkzRenderCoreTests/ShaderLayoutTests.swift.
+//
 // Every test creates its own `MTLDevice` (no shared state under strict concurrency) and returns
 // early when there is no GPU. Swift Testing has no "skip", so a headless machine reports these as
-// passing-but-empty; the layout tests below need no device and always run.
+// passing-but-empty; the resource tests need no device and always run.
 
 import Foundation
 import Metal
@@ -61,89 +64,6 @@ func tkzTerminalShaderSource(in bundle: Bundle) throws -> String {
     let header = try resourceText("TkzShaderTypes.h", in: bundle)
     let shader = try resourceText("Terminal.metal", in: bundle)
     return header + "\n#line 1 \"Terminal.metal\"\n" + shader
-}
-
-// MARK: - Layout
-
-@Suite("Shader struct layout")
-struct ShaderLayoutTests {
-    // The literals below are duplicated from the TKZ_STATIC_ASSERTs at the bottom of
-    // TkzShaderTypes.h. If one side changes, this fails before anything renders.
-
-    @Test func uniformsLayoutMatchesTheCHeader() {
-        #expect(MemoryLayout<TkzUniforms>.size == 80)
-        #expect(MemoryLayout<TkzUniforms>.stride == 80)
-        #expect(MemoryLayout<TkzUniforms>.alignment == 8)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.viewportSizePx) == 0)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.cellSizePx) == 8)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.gridOriginPx) == 16)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.grayscaleAtlasSizePx) == 24)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.colorAtlasSizePx) == 32)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.gridSize) == 40)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.defaultBackground) == 48)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.defaultForeground) == 52)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.cursorColor) == 56)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.cursorTextColor) == 60)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.minContrast) == 64)
-        #expect(MemoryLayout<TkzUniforms>.offset(of: \.reserved0) == 68)
-    }
-
-    @Test func bgCellLayoutMatchesTheCHeader() {
-        #expect(MemoryLayout<TkzBgCell>.size == 4)
-        #expect(MemoryLayout<TkzBgCell>.stride == 4)
-        #expect(MemoryLayout<TkzBgCell>.alignment == 4)
-        #expect(MemoryLayout<TkzBgCell>.offset(of: \.color) == 0)
-    }
-
-    @Test func glyphInstanceLayoutMatchesTheCHeader() {
-        #expect(MemoryLayout<TkzGlyphInstance>.size == 32)
-        #expect(MemoryLayout<TkzGlyphInstance>.stride == 32)
-        #expect(MemoryLayout<TkzGlyphInstance>.alignment == 4)
-        #expect(MemoryLayout<TkzGlyphInstance>.offset(of: \.gridPos) == 0)
-        #expect(MemoryLayout<TkzGlyphInstance>.offset(of: \.offsetPx) == 4)
-        #expect(MemoryLayout<TkzGlyphInstance>.offset(of: \.sizePx) == 8)
-        #expect(MemoryLayout<TkzGlyphInstance>.offset(of: \.atlasPos) == 12)
-        #expect(MemoryLayout<TkzGlyphInstance>.offset(of: \.color) == 16)
-        #expect(MemoryLayout<TkzGlyphInstance>.offset(of: \.bgColor) == 20)
-        #expect(MemoryLayout<TkzGlyphInstance>.offset(of: \.flags) == 24)
-        #expect(MemoryLayout<TkzGlyphInstance>.offset(of: \.reserved0) == 28)
-    }
-
-    @Test func rectInstanceLayoutMatchesTheCHeader() {
-        #expect(MemoryLayout<TkzRectInstance>.size == 32)
-        #expect(MemoryLayout<TkzRectInstance>.stride == 32)
-        #expect(MemoryLayout<TkzRectInstance>.alignment == 8)
-        #expect(MemoryLayout<TkzRectInstance>.offset(of: \.originPx) == 0)
-        #expect(MemoryLayout<TkzRectInstance>.offset(of: \.sizePx) == 8)
-        #expect(MemoryLayout<TkzRectInstance>.offset(of: \.color) == 16)
-        #expect(MemoryLayout<TkzRectInstance>.offset(of: \.style) == 20)
-        #expect(MemoryLayout<TkzRectInstance>.offset(of: \.thicknessPx) == 24)
-        #expect(MemoryLayout<TkzRectInstance>.offset(of: \.reserved0) == 28)
-    }
-
-    /// The binding contract and the flag bits are part of the header, so pin them here too: a
-    /// renumbering would otherwise only show up as a blank terminal.
-    @Test func bindingContractIsStable() {
-        #expect(TKZ_BUFFER_INDEX_UNIFORMS == 0)
-        #expect(TKZ_BUFFER_INDEX_INSTANCES == 1)
-        #expect(TKZ_TEXTURE_INDEX_GRAYSCALE == 0)
-        #expect(TKZ_TEXTURE_INDEX_COLOR == 1)
-
-        #expect(TKZ_GLYPH_FLAG_COLOR == 1)
-        #expect(TKZ_GLYPH_FLAG_UNDER_CURSOR == 2)
-        #expect(TKZ_GLYPH_FLAG_MIN_CONTRAST == 4)
-        #expect(TKZ_GLYPH_FLAG_WIDE == 8)
-
-        #expect(TKZ_RECT_STYLE_SOLID == 0)
-        #expect(TKZ_RECT_STYLE_HOLLOW == 1)
-        #expect(TKZ_RECT_STYLE_UNDERLINE_SINGLE == 2)
-        #expect(TKZ_RECT_STYLE_UNDERLINE_DOUBLE == 3)
-        #expect(TKZ_RECT_STYLE_UNDERLINE_CURLY == 4)
-        #expect(TKZ_RECT_STYLE_UNDERLINE_DOTTED == 5)
-        #expect(TKZ_RECT_STYLE_UNDERLINE_DASHED == 6)
-        #expect(TKZ_RECT_STYLE_STRIKETHROUGH == 7)
-        #expect(TKZ_RECT_STYLE_COUNT == 8)
-    }
 }
 
 // MARK: - Source integrity

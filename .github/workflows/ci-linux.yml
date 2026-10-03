@@ -200,7 +200,7 @@ jobs:
       # Every non-GTK target, one `swift build --target` each. GhosttyVt is a binary target and
       # cannot be built on its own; its dependents cover it. A target that joins the Linux graph
       # without GTK is added here (WOR-304 onwards).
-      NON_GTK_TARGETS: TkzPlatformShim TkzPlatform TkzCore Persistence TkzmuxLinux TkzPlatformTests TkzCoreTests PersistenceTests GhosttyVtSmokeTests
+      NON_GTK_TARGETS: TkzPlatformShim TkzPlatform TkzCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPlatformTests TkzCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzShadersSPIRVTests
     steps:
       - name: Install system packages
         run: |

@@ -1,45 +1,15 @@
-// CellMetrics — integer terminal cell geometry in device pixels (M1.4).
+// CellMetrics from CoreText (M1.4).
 //
-// Everything here is device pixels at the `FontSet`'s scale, because `FontSet` builds its `CTFont`s
-// at `pointSize * scale`. All values are integral and deterministic for a given (family, size, scale),
-// so a regression in font handling shows up as a changed number rather than a blurry frame.
-//
-// Vertical convention: y grows *downward* (screen space). `baseline` is the distance from the top of
-// the cell to the text baseline. Decoration offsets are relative to the baseline, positive downward —
-// so `underlineOffset` is positive (below the baseline) and `strikethroughOffset` is negative.
+// The struct and its formulas live in TkzRenderCore (CellMetrics.swift there), shared with the
+// Linux font backend. This file only reads the CoreText values and hands them to the shared
+// formula. Everything is device pixels at the `FontSet`'s scale, because `FontSet` builds its
+// `CTFont`s at `pointSize * scale`.
 
 import CoreText
 import Foundation
+import TkzRenderCore
 
-public struct CellMetrics: Sendable, Equatable, Hashable {
-    /// Cell width: the widest advance over printable ASCII, rounded up.
-    public let width: Int
-    /// Cell height: `round(ascent + descent + leading)`.
-    public let height: Int
-    /// Rounded font ascent.
-    public let ascent: Int
-    /// Rounded font descent.
-    public let descent: Int
-    /// Rounded font leading (line gap).
-    public let leading: Int
-    /// Distance from the top of the cell down to the baseline.
-    public let baseline: Int
-    /// Underline centre, relative to the baseline, positive downward.
-    public let underlineOffset: Int
-    /// Underline thickness, at least 1 px.
-    public let underlineThickness: Int
-    /// Strikethrough centre, relative to the baseline, positive downward (normally negative).
-    public let strikethroughOffset: Int
-    /// Strikethrough thickness, at least 1 px.
-    public let strikethroughThickness: Int
-    /// Backing scale the metrics were measured at.
-    public let scale: CGFloat
-
-    /// Width of a double-width (wide) grapheme's box.
-    public var wideWidth: Int { width * 2 }
-
-    // MARK: - Measurement
-
+extension CellMetrics {
     /// Measures the regular face of `fontSet`.
     public init(fontSet: FontSet) {
         self.init(font: fontSet.font(for: .regular), scale: fontSet.scale)
@@ -47,29 +17,18 @@ public struct CellMetrics: Sendable, Equatable, Hashable {
 
     /// Measures a `CTFont` that is already sized in device pixels.
     public init(font: CTFont, scale: CGFloat) {
-        let ascentF = CTFontGetAscent(font)
-        let descentF = CTFontGetDescent(font)
-        let leadingF = CTFontGetLeading(font)
-
-        self.ascent = Int(ascentF.rounded())
-        self.descent = Int(descentF.rounded())
-        self.leading = Int(leadingF.rounded())
-        self.height = max(1, Int((ascentF + descentF + leadingF).rounded()))
-        self.baseline = Int(ascentF.rounded())
-        self.width = max(1, Int(CellMetrics.maxASCIIAdvance(of: font).rounded(.up)))
-        self.scale = scale
-
         // Underline: CoreText reports position relative to the baseline, positive *up*.
-        let underlinePos = CTFontGetUnderlinePosition(font)
-        let underlineThick = CTFontGetUnderlineThickness(font)
-        self.underlineThickness = max(1, Int(underlineThick.rounded()))
-        self.underlineOffset = Int((-underlinePos).rounded())
-
-        // Strikethrough: CoreText has no accessor, so read OS/2 (`yStrikeoutSize` at byte 26,
-        // `yStrikeoutPosition` at 28, both big-endian int16 in font units, positive up).
+        // Strikethrough: CoreText has no accessor, so read OS/2 (`strikeout(of:)`).
         let strike = CellMetrics.strikeout(of: font)
-        self.strikethroughThickness = max(1, Int(strike.thickness.rounded()))
-        self.strikethroughOffset = Int((-strike.position).rounded())
+        self.init(ascent: CTFontGetAscent(font),
+                  descent: CTFontGetDescent(font),
+                  leading: CTFontGetLeading(font),
+                  maxAdvance: CellMetrics.maxASCIIAdvance(of: font),
+                  underlinePosition: CTFontGetUnderlinePosition(font),
+                  underlineThickness: CTFontGetUnderlineThickness(font),
+                  strikeoutPosition: strike.position,
+                  strikeoutThickness: strike.thickness,
+                  scale: scale)
     }
 
     /// Max horizontal advance over printable ASCII (U+0020…U+007E).
@@ -89,25 +48,22 @@ public struct CellMetrics: Sendable, Equatable, Hashable {
         return advances.reduce(CGFloat(0)) { max($0, $1.width) }
     }
 
-    /// Strikeout size and position in device pixels, positive up. Falls back to half the x-height
-    /// and the underline thickness when the font has no usable OS/2 table.
+    /// Strikeout size and position in device pixels, positive up, from the OS/2 table through the
+    /// shared parser (`OS2Strikeout`). Falls back to half the x-height and the underline thickness
+    /// when the font has no usable OS/2 table.
     static func strikeout(of font: CTFont) -> (position: CGFloat, thickness: CGFloat) {
         let fallback = (position: CTFontGetXHeight(font) / 2,
                         thickness: max(1, CTFontGetUnderlineThickness(font)))
         guard let table = CTFontCopyTable(font, CTFontTableTag(kCTFontTableOS2), []) else {
             return fallback
         }
-        let length = CFDataGetLength(table)
-        guard length >= 30, let bytes = CFDataGetBytePtr(table) else { return fallback }
-        func int16(at offset: Int) -> Int16 {
-            Int16(bitPattern: UInt16(bytes[offset]) << 8 | UInt16(bytes[offset + 1]))
+        let parsed = withExtendedLifetime(table) { () -> OS2Strikeout? in
+            let length = CFDataGetLength(table)
+            guard length >= 30, let bytes = CFDataGetBytePtr(table) else { return nil }
+            return OS2Strikeout(os2Table: UnsafeBufferPointer(start: bytes, count: length))
         }
+        guard let strikeout = parsed else { return fallback }
         let unitsPerEm = CGFloat(CTFontGetUnitsPerEm(font))
-        guard unitsPerEm > 0 else { return fallback }
-        let pixelsPerUnit = CTFontGetSize(font) / unitsPerEm
-        let size = CGFloat(int16(at: 26)) * pixelsPerUnit
-        let position = CGFloat(int16(at: 28)) * pixelsPerUnit
-        guard size > 0 else { return fallback }
-        return (position: position, thickness: size)
+        return strikeout.pixels(pixelSize: CTFontGetSize(font), unitsPerEm: unitsPerEm) ?? fallback
     }
 }
