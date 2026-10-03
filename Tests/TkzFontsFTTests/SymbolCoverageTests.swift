@@ -311,7 +311,6 @@ struct SymbolCoverageTests {
 
     static let referenceDirectory = SymbolRecipe.repoRoot.appendingPathComponent("Tests/Parity/References/fonts", isDirectory: true)
     static let symbolInventoryURL = referenceDirectory.appendingPathComponent("symbols.json")
-    static let chromeMetricsURL = referenceDirectory.appendingPathComponent("chrome-metrics.json")
 
     /// The part of the exporter's schema (`SymbolsDump` in
     /// Sources/tkzmux-vtdump/FontDumpCommands.swift) this test reads: one configuration, and per
@@ -377,28 +376,23 @@ struct SymbolCoverageTests {
         0x2699, 0x2714, 0x2722, 0x2733, 0x273B, 0x273D, 0x27F3, 0x293F, 0x2B13, 0xFF0B,
     ]
 
-    /// TODO(WOR-312 S2): the dump owns this schema. The Linux side expects advances of single
-    /// strings per font role and size, in points. Unknown keys are ignored.
-    struct ChromeMetrics: Decodable {
-        struct Advance: Decodable {
-            let font: String  // "mono" or "ui"
-            let pointSize: Double
-            let weight: String?
-            let string: String
-            let advance: Double
-        }
-        let advances: [Advance]
-    }
-
+    /// S2's chrome dump records the sidebar's detail font (`Theme.Fonts.mono.detail`) as
+    /// `mono 10 regular` (ChromeMetricsReferenceTests.swift). The Mac draws ⎇ there from Lucida
+    /// Grande at 1.0 em; the subset still has its source's advance (0.947 em), so ⎇ is a known
+    /// issue until scripts/symbol-subset.json gives it `"advance": 1000` and the subset is rebuilt
+    /// (WOR-312 S7). A match then fails this test, so the entry cannot go stale.
     @Test("⎇ and · advances in mono 10 pt are within ±0.1 pt of the Mac's",
-          .enabled(if: FileManager.default.fileExists(atPath: chromeMetricsURL.path),
-                   "DEFERRED: Tests/Parity/References/fonts/chrome-metrics.json comes from WOR-312 S2 on the reference Mac"))
+          .enabled(if: ChromeMetricsReference.isCommitted, ChromeMetricsReference.skip))
     func monoAdvancesMatchMac() throws {
-        let metrics = try JSONDecoder().decode(ChromeMetrics.self, from: Data(contentsOf: Self.chromeMetricsURL))
+        let metrics = try ChromeMetricsReference.load()
         let cascade = try GlyphCascade.chromeMono(fallback: Self.freshFallback())
         for string in ["\u{2387}", "\u{00B7}"] {
-            let mac = try #require(metrics.advances.first { $0.font == "mono" && $0.pointSize == 10 && $0.string == string })
-            #expect(abs(cascade.advance(of: string, pointSize: 10) - mac.advance) <= 0.1, "\(string)")
+            let mac = try #require(metrics.advance(of: string, font: "mono 10 regular"))
+            withKnownIssue("WOR-312 S7: the subset's \(string) keeps its source advance, not the Mac's \(mac) pt") {
+                #expect(abs(cascade.advance(of: string, pointSize: 10) - mac) <= 0.1, "\(string)")
+            } when: {
+                string == "\u{2387}"
+            }
         }
     }
 }

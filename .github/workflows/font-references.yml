@@ -7,6 +7,11 @@
 # --check run then writes it again from a fresh process and fails unless the two agree byte for
 # byte (the manifest's provenance line aside). The folder is uploaded either way, as
 # `font-references`, so its contents go straight into Tests/Parity/References/fonts/.
+#
+# The `chrome` job writes the chrome metrics of WOR-312 S2 next to them, in parallel:
+# scripts/parity-chrome-references.sh runs the gated ChromeMetricsDumpTests, then again from a
+# second process with --check, and uploads the one file as `chrome-metrics`. It also checks that the
+# dump stays skipped without its variable, so a plain `swift test` never pays for it.
 # docs/linux/parity.md, "The font references".
 name: Font references
 
@@ -48,4 +53,38 @@ jobs:
         with:
           name: font-references
           path: Tests/Parity/References/fonts
+          if-no-files-found: ignore
+
+  chrome:
+    runs-on: macos-26
+    timeout-minutes: 50
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode 26.1
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.1.app
+          swift --version
+
+      - name: Write the chrome metrics
+        run: scripts/parity-chrome-references.sh --regenerate
+
+      - name: Check them from a second process
+        run: scripts/parity-chrome-references.sh --check
+
+      # Without TKZMUX_CHROME_METRICS_OUT the dump must be skipped, not run.
+      - name: The dump is skipped by default
+        run: |
+          log="$RUNNER_TEMP/skipped.log"
+          swift test --skip-build --no-parallel --filter ChromeMetricsDump 2>&1 | tee "$log"
+          grep -Eq 'skipped' <(sed 's/\x1b\[[0-9;]*m//g' "$log") \
+            || { echo "::error::ChromeMetricsDumpTests ran without TKZMUX_CHROME_METRICS_OUT"; exit 1; }
+
+      - name: Upload the chrome metrics
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: chrome-metrics
+          path: Tests/Parity/References/fonts/chrome-metrics.json
           if-no-files-found: ignore
