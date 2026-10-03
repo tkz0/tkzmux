@@ -7,7 +7,9 @@
 //     the Swift closure box (S1);
 //   - `tkz_gtk_symbol`, the runtime gate for every API newer than 4.16 (S1, ADR-0002 D4);
 //   - `TkzCanvas`, the one GtkWidget subclass, whose vfuncs forward to a C vtable (S2);
-//   - the compositor's dmabuf-feedback `main_device`, read on GDK's Wayland connection (S4).
+//   - the compositor's dmabuf-feedback `main_device`, read on GDK's Wayland connection (S4);
+//   - the GDBus pieces Swift cannot express safely: a GVariant type test that never asserts, and
+//     object registration with a single release path for the handler's box (WOR-320 S1).
 //
 // Every function here is called on the GTK (process main) thread unless it says otherwise.
 #pragma once
@@ -137,6 +139,40 @@ typedef enum {
 /// reached through dlsym only (it is in the process through libgtk-4, never linked). Blocks for a
 /// few roundtrips; call it once, on the GTK thread, outside any GDK event dispatch.
 TkzMainDeviceResult tkz_dmabuf_main_device(GdkDisplay *display, guint64 *main_device);
+
+// MARK: - GDBus (WOR-320 S1)
+
+/// `g_variant_is_of_type(value, G_VARIANT_TYPE(type_string))`, except that an invalid type string
+/// answers FALSE instead of failing GLib's assertion. `type_string` may be indefinite (`a*`, `r`).
+/// Any thread: GVariant is immutable.
+gboolean tkz_variant_is_of_type(GVariant *value, const char *type_string);
+
+/// `g_dbus_connection_register_object` for `info` at `object_path`, with a method-call handler only
+/// (GDBus answers property Get/Set with its own error). GDBus calls `method_call` with `box` as its
+/// user data, in the thread-default main context of the registering thread.
+///
+/// `destroy(box)` runs exactly once: when the object is unregistered or the connection finalized
+/// (GDBus calls it from the registering thread's context), or before this returns 0 with `*error`
+/// set. That holds whether or not the running GLib calls its free function on failure (2.88 does,
+/// earlier releases did not say), so the Swift side releases its box in `destroy` and nowhere
+/// else. The caller has checked `object_path` (`g_variant_is_object_path`): a failed GLib
+/// precondition returns 0 without setting `*error`, and this then releases the box itself.
+guint tkz_dbus_register_object(GDBusConnection *connection, const char *object_path,
+                               GDBusInterfaceInfo *info, GDBusInterfaceMethodCallFunc method_call,
+                               gpointer box, GDestroyNotify destroy, GError **error);
+
+/// The flags of a client connection to a message bus (`AUTHENTICATION_CLIENT | MESSAGE_BUS_CONNECTION`).
+/// GIO's flags enumerators do not import into Swift, like `G_APPLICATION_NON_UNIQUE` below.
+static inline GDBusConnectionFlags tkz_dbus_connection_flags_bus_client(void) {
+    return (GDBusConnectionFlags)(G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT
+                                  | G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION);
+}
+
+/// `G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT` and `_REPLACE`, as requested.
+static inline GBusNameOwnerFlags tkz_bus_name_owner_flags(gboolean allow_replacement, gboolean replace) {
+    return (GBusNameOwnerFlags)((allow_replacement ? G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT : 0)
+                                | (replace ? G_BUS_NAME_OWNER_FLAGS_REPLACE : 0));
+}
 
 // MARK: - Casts and macros
 
