@@ -163,11 +163,13 @@ runpath-allow */usr/lib/swift/linux | The toolchain runtime directory that a dyn
 
 # The hook relay (`bin/tkzmux-hook`, copied to $XDG_DATA_HOME/tkzmux/bin). It is Foundation-free,
 # links the stdlib statically and starts in under 20 ms. It must run under `env -i` from its copied
-# location, so it may have no RUNPATH at all. If the hook must be libc-only, WOR-305 S6 adopts the
-# Static Linux SDK (musl). A fully static binary has no NEEDED entries and passes here as it is.
+# location, so it may have no RUNPATH at all. WOR-305 S6 ships the musl Static Linux SDK build: it
+# is fully static, so it has no NEEDED entries and passes here as it is (docs/linux/hook.md). The
+# rules below still fit the glibc `-static-stdlib` hook that `swift build` makes for the tests,
+# except its `$ORIGIN` RUNPATH and its glibc-max.
 [tkzmux-hook]
 stdlib static
-status NEEDED measured in WOR-300 S4 (spikes.md); WOR-305 S6 decides between this glibc link and the musl Static Linux SDK
+status shipped as the fully static musl build (WOR-305 S6, docs/linux/hook.md); the glibc NEEDED set below was measured in WOR-300 S4 (spikes.md)
 glibc-max 2.35
 include @deny @no-toolchain-runpath @glibc @cxx-runtime
 deny libxkbcommon.so*        | The hook has no input handling.

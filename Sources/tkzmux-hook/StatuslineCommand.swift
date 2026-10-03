@@ -644,7 +644,11 @@ private func handOff(command: String, stdinBytes: [UInt8]) -> Never {
                     UnsafeMutablePointer(mutating: script),
                     nil,
                 ]
+                #if canImport(Darwin) || canImport(Glibc)
                 return posix_spawn(&childPid, shell, &actions, nil, &argv, environ)
+                #else
+                return forkExec(&childPid, shell, &argv, stdin: readEnd, closing: writeEnd)
+                #endif
             }
         }
     }
@@ -676,6 +680,30 @@ private func handOff(command: String, stdinBytes: [UInt8]) -> Never {
     }
     exit(0)
 }
+
+#if !canImport(Darwin) && !canImport(Glibc)
+/// `handOff`'s spawn on musl (the static hook, docs/linux/hook.md). The Musl overlay has no
+/// `environ` accessor, and Swift 6 rejects the raw C global as shared mutable state, so this
+/// forks and `execv`s, which passes the environment implicitly. The hook is single-threaded and
+/// everything the child touches is built before `fork()`. Returns 0 or `fork()`'s errno, like
+/// `posix_spawn`; an exec failure exits the child with 127, as `/bin/sh` itself would.
+private func forkExec(
+    _ pid: inout pid_t, _ path: UnsafePointer<CChar>, _ argv: inout [UnsafeMutablePointer<CChar>?],
+    stdin readEnd: Int32, closing writeEnd: Int32
+) -> Int32 {
+    let child = fork()
+    if child < 0 { return errno }
+    if child == 0 {
+        dup2(readEnd, STDIN_FILENO)
+        if readEnd != STDIN_FILENO { close(readEnd) }
+        close(writeEnd)
+        execv(path, &argv)
+        _exit(127)
+    }
+    pid = child
+    return 0
+}
+#endif
 
 /// What the statusline shows when tkzmux is the only thing configured. Deliberately plain — a user
 /// who wants more installs their own command and tkzmux wraps it.

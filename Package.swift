@@ -123,10 +123,14 @@ let sharedTargets: [Target] = [  // hygiene-scan
     .target(name: "TkzRenderCore", dependencies: ["TkzShaderTypes"], path: "Sources/TkzRenderCore"),
     .testTarget(name: "TkzRenderCoreTests", dependencies: ["TkzRenderCore", "TkzShaderTypes"], path: "Tests/TkzRenderCoreTests"),
 
-    // The hook relay: libc only (Darwin, Glibc or Musl), never Foundation (WOR-305 S5).
+    // The hook relay: libc only (Darwin, Glibc or Musl), never Foundation (WOR-305 S5). On Linux
+    // it carries the Swift runtime statically, per product and never through the global
+    // `--static-swift-stdlib` (ADR-0001), because it is copied out of the build tree and must run
+    // under `env -i`. The shipped hook is the musl build (docs/linux/hook.md, WOR-305 S6).
     .executableTarget(
         name: "tkzmux-hook",
-        path: "Sources/tkzmux-hook"
+        path: "Sources/tkzmux-hook",
+        linkerSettings: [.unsafeFlags(["-static-stdlib"], .when(platforms: [.linux]))]
     ),
 ]
 

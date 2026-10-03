@@ -10,7 +10,9 @@
 #                page describes. Debug build, serial tests, release build of `tkzmux` and its
 #                relocated-install test (InstalledStubTests), then scripts/linux/check-linkage.sh
 #                (NEEDED/RUNPATH only, per linkage-policy.txt; the ldd closure count is printed,
-#                never gated) and scripts/linux/check-binary.sh.
+#                never gated) and scripts/linux/check-binary.sh. Then the musl release build of
+#                `tkzmux-hook` through the pinned Static Linux SDK, run under `env -i` from a
+#                copied location, and the same two checks against [tkzmux-hook] (WOR-305 S6).
 #   ubuntu       ubuntu-24.04 + the pinned swift:<pin>-noble image (never the runner's own Swift):
 #                one `swift build --target` per non-GTK target, then the tests. WOR-314 S1
 #                restricts the list or retires the job once a GTK target exists (noble has GTK 4.14).
@@ -196,6 +198,58 @@ jobs:
 
       - name: check-binary.sh
         run: scripts/linux/check-binary.sh "$TKZMUX_BIN" --section tkzmux-default-stdlib
+
+      # The shipped tkzmux-hook is the fully static musl build (docs/linux/hook.md, WOR-305 S6).
+      # The SDK is pinned by version and sha256 in docs/linux/dev.md; it uses the toolchain's
+      # ld.lld, which finds libxml2.so.2 through the libxml2-legacy package installed above.
+      - name: Read the Static Linux SDK pin
+        id: sdk
+        run: |
+          read -r version sum < <(awk '$1 == "pin" && $2 == "static-sdk" { print $3, $4; exit }' docs/linux/dev.md) || true
+          [ -n "$version" ] && [ -n "$sum" ] || { echo "::error::no 'pin static-sdk' line in docs/linux/dev.md"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha256=${sum#sha256:}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the Static Linux SDK
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/swift-static-sdk
+          key: swift-static-sdk-${{ steps.pin.outputs.swift }}-${{ steps.sdk.outputs.version }}
+
+      - name: Install the Static Linux SDK
+        env:
+          PIN: ${{ steps.pin.outputs.swift }}
+          SDK: ${{ steps.sdk.outputs.version }}
+          SUM: ${{ steps.sdk.outputs.sha256 }}
+        run: |
+          name="swift-$PIN-RELEASE_static-linux-$SDK.artifactbundle.tar.gz"
+          dl="$HOME/.cache/swift-static-sdk"
+          mkdir -p "$dl"
+          [ -s "$dl/$name" ] || curl -fsSL --retry 3 -o "$dl/$name" \
+            "https://download.swift.org/swift-$PIN-release/static-sdk/swift-$PIN-RELEASE/$name"
+          echo "$SUM  $dl/$name" | sha256sum -c -
+          swift sdk install "$dl/$name"
+          swift sdk list
+
+      # Run under `env -i` from a copy in <HOME>/.local/share/tkzmux/bin, where the app installs
+      # it: no toolchain, no LD_LIBRARY_PATH, no build tree.
+      - name: swift build -c release --product tkzmux-hook (musl)
+        run: |
+          swift build --build-system native -c release --product tkzmux-hook --swift-sdk x86_64-swift-linux-musl
+          hook="$(swift build --build-system native -c release --swift-sdk x86_64-swift-linux-musl --show-bin-path)/tkzmux-hook"
+          echo "HOOK_BIN=$hook" >> "$GITHUB_ENV"
+          home="$RUNNER_TEMP/hook-home"
+          mkdir -p "$home/.local/share/tkzmux/bin"
+          cp "$hook" "$home/.local/share/tkzmux/bin/"
+          echo '{"session_id":"ci","model":{"display_name":"CI"}}' \
+            | env -i HOME="$home" "$home/.local/share/tkzmux/bin/tkzmux-hook" statusline
+          test -s "$home/.local/share/tkzmux/statusline/context-ci.json"
+
+      - name: check-linkage.sh (tkzmux-hook)
+        run: scripts/linux/check-linkage.sh "$HOOK_BIN" tkzmux-hook
+
+      - name: check-binary.sh (tkzmux-hook)
+        run: scripts/linux/check-binary.sh "$HOOK_BIN" --section tkzmux-hook
 
   ubuntu:
     if: github.event_name != 'schedule'
