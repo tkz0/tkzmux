@@ -21,9 +21,18 @@ if [[ -n "${TKZMUX_ZDOTDIR:-}" && -n "${TKZMUX_USER_ZDOTDIR:-}" ]]; then
         export HISTFILE="$TKZMUX_USER_ZDOTDIR/.zsh_history"
     fi
 
-    # $TKZMUX_BIN first on PATH, exactly once.
+    # $TKZMUX_BIN first on PATH, exactly once: now, and again before every prompt, because a
+    # precmd hook installed above -- mise with `activate_aggressive`, direnv -- may put its own
+    # directories in front again, and a `claude` resolved past the shim never binds its row.
+    # Appended to precmd_functions after the user's hooks (mise and direnv prepend theirs), and
+    # ahead of .zlogin's boot-command hook.
     path=("$TKZMUX_BIN" ${path:#$TKZMUX_BIN})
     export PATH
+    __tkzmux_bin_first() {
+        emulate -L zsh
+        [[ -n "${TKZMUX_BIN:-}" && "${path[1]}" != "$TKZMUX_BIN" ]] || return 0
+        path=("$TKZMUX_BIN" ${path:#$TKZMUX_BIN})
+    }
 
     # Report the working directory to tkzmux as OSC 7 (`file://localhost/<percent-encoded path>`)
     # once now and on every `cd`/`pushd`/`popd`, so the sidebar title follows the shell (2026-09-08).
@@ -47,6 +56,7 @@ if [[ -n "${TKZMUX_ZDOTDIR:-}" && -n "${TKZMUX_USER_ZDOTDIR:-}" ]]; then
         printf '\e]7;file://localhost%s\a' "$encoded"
     }
     autoload -Uz add-zsh-hook
+    add-zsh-hook precmd __tkzmux_bin_first
     add-zsh-hook chpwd __tkzmux_report_cwd
     __tkzmux_report_cwd
 

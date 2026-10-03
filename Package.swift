@@ -148,10 +148,6 @@ let sharedTargets: [Target] = [  // hygiene-scan
 
 // MARK: - Linux only
 
-// AgentBridge itself is shared (WOR-306 S3). Its tests run on Linux without the shell-integration
-// harness and the zsh wrapper tests, which need zsh and fish and are ported in WOR-306 S5.
-let agentBridgeTestsLinuxExcludes = ["ShellIntegrationHarnessTests.swift", "ZshWrapperTests.swift"]
-
 let linuxOnlyProducts: [Product] = [
     // Same product name as the Mac app, so the binary is `tkzmux` on both OSes.
     .executable(name: "tkzmux", targets: ["TkzmuxLinux"]),
@@ -189,7 +185,6 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
         name: "AgentBridgeTests",
         dependencies: ["AgentBridge", "TkzCore", "TkzPlatform", "TkzTerminalCore"],
         path: "Tests/AgentBridgeTests",
-        exclude: agentBridgeTestsLinuxExcludes,
         resources: [.copy("Fixtures")]
     ),
 

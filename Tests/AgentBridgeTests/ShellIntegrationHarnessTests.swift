@@ -2,8 +2,8 @@
 // the way the app spawns it (`TerminalEnvironment.loginShellSpawn` on a real `Pty`, wrappers
 // written by the real `ShimInstaller`), against a fake HOME with the user's own startup files.
 //
-// One test body, run once per shell found on the machine (`/bin/zsh`, `/bin/bash` 3.2, Homebrew
-// bash, fish). What it proves for each:
+// One test body, run once per shell found on the machine (macOS: `/bin/zsh`, `/bin/bash` 3.2,
+// Homebrew bash, fish; Linux: whatever `/etc/shells` and PATH hold). What it proves for each:
 //
 //   - `command -v claude` inside tkzmux is the shim, and the user's own PATH prepend comes second;
 //   - `TERM_PROGRAM`, `TKZMUX_SESSION_ID`, `TKZMUX_BIN` and the app's `CLAUDE_CONFIG_DIR` are
@@ -35,16 +35,43 @@ struct HarnessShell: CustomTestStringConvertible, Sendable {
     var testDescription: String { shell.path }
 }
 
-/// Every supported shell present on this machine. fish is not part of a stock macOS install; its
-/// absence is reported by `fishIsPresentForTheHarness` rather than silently shrinking this list.
+/// Every supported shell present on this machine. fish is not part of a stock macOS install, nor
+/// of most Linux ones; its absence is reported by `fishIsPresentForTheHarness` rather than silently
+/// shrinking this list.
 let installedHarnessShells: [HarnessShell] = {
+    #if os(macOS)
     let candidates = [
         "/bin/zsh", "/bin/bash", "/opt/homebrew/bin/bash", "/opt/homebrew/bin/fish",
         "/usr/local/bin/fish",
     ]
+    #else
+    let candidates = harnessShellCandidates(
+        etcShells: try? String(contentsOfFile: "/etc/shells", encoding: .utf8),
+        path: ProcessInfo.processInfo.environment["PATH"])
+    #endif
     return candidates.filter { FileManager.default.isExecutableFile(atPath: $0) }
         .map { HarnessShell(shell: LoginShell(path: $0)) }
 }()
+
+/// Linux has no fixed place for a shell: zsh and fish are wherever the package manager put them,
+/// and a merged /usr makes `/bin/bash`, `/usr/bin/bash` and `/bin/sh` one binary. So the candidates
+/// are every `/etc/shells` entry and every `<PATH dir>/{zsh,bash,fish}`, in that order, that names
+/// a supported shell, deduplicated by realpath (the first spelling wins). `/bin/sh` is never one,
+/// even when it is bash: `LoginShell` goes by the name, as the app does.
+func harnessShellCandidates(etcShells: String?, path: String?) -> [String] {
+    let listed = (etcShells ?? "").split(separator: "\n")
+        .map { $0.trimmingCharacters(in: .whitespaces) }
+        .filter { $0.hasPrefix("/") }
+    let onPath = (path ?? "").split(separator: ":").filter { $0.hasPrefix("/") }
+        .flatMap { directory in ["zsh", "bash", "fish"].map { "\(directory)/\($0)" } }
+    var seen = Set<String>()
+    return (listed + onPath).filter { candidate in
+        guard LoginShell(path: candidate).family != .other,
+            FileManager.default.isExecutableFile(atPath: candidate)
+        else { return false }
+        return seen.insert(realPath(URL(fileURLWithPath: candidate))).inserted
+    }
+}
 
 // MARK: - Fixture
 
@@ -78,8 +105,9 @@ private func write(_ text: String, to url: URL) throws {
 
 /// A fake HOME with the user's own startup files for `shell`, plus a tkzmux directory the real
 /// installer has written into. Each user file appends a marker to `$MARKER_LOG`; the rc file also
-/// prepends `~/.local/bin` to PATH and exports its own `CLAUDE_CONFIG_DIR` -- the two things the
-/// wrapper has to beat.
+/// prepends `~/.local/bin` to PATH, again from a prompt hook at every prompt (mise's
+/// `activate_aggressive` does that, and direnv), and exports its own `CLAUDE_CONFIG_DIR` -- the
+/// things the wrapper has to beat.
 private func makeFixture(for shell: LoginShell) throws -> HarnessFixture {
     let root = try ShimTestSupport.makeTempDirectory("harness-\(shell.name)")
     let home = root.appendingPathComponent("home", isDirectory: true)
@@ -110,6 +138,8 @@ private func makeFixture(for shell: LoginShell) throws -> HarnessFixture {
             path=("$HOME/.local/bin" $path)
             export PATH
             export CLAUDE_CONFIG_DIR="$HOME/.claude-from-rc"
+            __user_path_first() { path=("$HOME/.local/bin" ${path:#$HOME/.local/bin}) }
+            precmd_functions=(__user_path_first $precmd_functions)
 
             """, to: home.appendingPathComponent(".zshrc"))
         try write("echo zlogin >> \"$MARKER_LOG\"\n", to: home.appendingPathComponent(".zlogin"))
@@ -122,7 +152,7 @@ private func makeFixture(for shell: LoginShell) throws -> HarnessFixture {
             echo bash_profile >> "$MARKER_LOG"
             export PATH="$HOME/.local/bin:$PATH"
             export CLAUDE_CONFIG_DIR="$HOME/.claude-from-rc"
-            PROMPT_COMMAND='echo user_prompt_command >> "$MARKER_LOG";'
+            PROMPT_COMMAND='echo user_prompt_command >> "$MARKER_LOG"; PATH="$HOME/.local/bin:$PATH";'
 
             """, to: home.appendingPathComponent(".bash_profile"))
         try write("echo bashrc >> \"$MARKER_LOG\"\n", to: home.appendingPathComponent(".bashrc"))
@@ -135,6 +165,9 @@ private func makeFixture(for shell: LoginShell) throws -> HarnessFixture {
             echo config.fish >> "$MARKER_LOG"
             set -U fish_user_paths $HOME/.local/bin
             set -gx CLAUDE_CONFIG_DIR $HOME/.claude-from-rc
+            function __user_path_first --on-event fish_prompt
+                set -gx PATH $HOME/.local/bin (string match -v -- $HOME/.local/bin $PATH)
+            end
 
             """, to: home.appendingPathComponent(".config/fish/config.fish"))
     case .other:
@@ -291,18 +324,44 @@ private func realPath(_ url: URL) -> String {
 
 // MARK: - The harness
 
+#if os(macOS)
+private let harnessNeedsEveryShell = true
+#else
+/// zsh and fish are packages a Linux developer machine may not have; there the harness covers
+/// what is installed. CI (`CI` set, as on GitHub Actions) installs both, and a missing one fails.
+private let harnessNeedsEveryShell = ProcessInfo.processInfo.environment["CI"] != nil
+#endif
+
 @Suite(.serialized)
 struct ShellIntegrationHarnessTests {
-    /// fish is a Homebrew install (`brew install fish`), and the ticket's acceptance is all three
-    /// shells. A missing fish would otherwise shrink the argument list without a word.
-    @Test func fishIsPresentForTheHarness() {
+    /// fish is a Homebrew install on macOS and a package on Linux, and the ticket's acceptance is
+    /// all three shells. A missing fish would otherwise shrink the argument list without a word.
+    @Test(.enabled(if: harnessNeedsEveryShell, "not in CI: the harness covers the shells installed"))
+    func fishIsPresentForTheHarness() {
         let hasFish = installedHarnessShells.contains { $0.shell.family == .fish }
         if !hasFish {
+            #if os(macOS)
             Issue.record("fish is not installed; the harness cannot cover it (brew install fish)")
+            #else
+            Issue.record(
+                "fish is not installed; the harness cannot cover it (pacman -S fish, apt install fish)")
+            #endif
         }
         #expect(installedHarnessShells.contains { $0.shell.family == .zsh })
         #expect(installedHarnessShells.contains { $0.shell.family == .bash })
     }
+
+    #if os(Linux)
+    /// A merged /usr lists one bash under several names; the harness runs it once, under the
+    /// first, and never as `sh` or `rbash`.
+    @Test func linuxCandidatesAreDeduplicatedByRealpath() {
+        let etcShells = "# Valid login shells.\n/bin/sh\n/bin/bash\n/usr/bin/bash\n/usr/bin/rbash\n"
+        let candidates = harnessShellCandidates(etcShells: etcShells, path: "/usr/bin:/bin")
+        let bashes = candidates.filter { LoginShell(path: $0).family == .bash }
+        #expect(bashes == ["/bin/bash"], "\(candidates)")
+        #expect(candidates.allSatisfy { LoginShell(path: $0).family != .other }, "\(candidates)")
+    }
+    #endif
 
     @Test(arguments: installedHarnessShells)
     func shellIntegration(_ harness: HarnessShell) async throws {
@@ -313,7 +372,8 @@ struct ShellIntegrationHarnessTests {
         let run = try await runSession(fixture, bootCommand: bootCommand)
         let tag = harness.shell.path
 
-        // The shim wins, the user's prepend is right behind it.
+        // The shim wins, the user's prepend is right behind it -- also after the prompts at which
+        // the user's hook put `~/.local/bin` first again.
         #expect(fixture.reportFile("which.txt")?.trimmingCharacters(in: .whitespacesAndNewlines)
             == fixture.shim.path, "\(tag): \(fixture.reportFile("which.txt") ?? "no which.txt")")
         let path = (fixture.reportFile("path.txt") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -351,6 +411,16 @@ struct ShellIntegrationHarnessTests {
             let boot = markers.firstIndex(of: "BOOT-RAN")
             #expect(userHook != nil && boot != nil && userHook! < boot!, "\(tag): markers \(markers)")
         }
+
+        // The title is tkzmux's (from OSC 7), as on macOS: no OSC 0/2 from the system files.
+        // (Arch's /etc/bash.bashrc sets one at every prompt; this fixture's PROMPT_COMMAND
+        // assignment overwrites that element, so `BashWrapperTests` checks it.) fish's own default
+        // fish_title sends OSC 0 on both OSes. And no OSC 3008 (Arch's systemd profile script).
+        if harness.shell.family != .fish {
+            #expect(!run.output.contains("\u{1b}]0;"), "\(tag): an OSC 0 title")
+            #expect(!run.output.contains("\u{1b}]2;"), "\(tag): an OSC 2 title")
+        }
+        #expect(!run.output.contains("\u{1b}]3008;"), "\(tag): an OSC 3008 context report")
 
         // OSC 9;4 around the boot command, OSC 7 for the start directory and after `cd`.
         #expect(run.output.contains("\u{1b}]9;4;3\u{7}"), "\(tag): no progress start")

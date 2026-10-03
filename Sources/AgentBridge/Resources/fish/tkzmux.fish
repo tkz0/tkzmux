@@ -20,6 +20,16 @@ if set -q TKZMUX_BIN; and test -n "$TKZMUX_BIN"
     # every shell outside tkzmux.
     set -gx PATH $TKZMUX_BIN (string match -rv -- '^'(string escape --style=regex -- $TKZMUX_BIN)'$' $PATH)
 
+    # And again before every prompt: a fish_prompt handler the user's configuration installed --
+    # mise with `activate_aggressive`, direnv -- may put its own directories in front again, and a
+    # `claude` resolved past the shim never binds its row. fish runs the handlers of one event in
+    # the order they were defined, so this one runs after theirs and before the boot command's.
+    function __tkzmux_bin_first --on-event fish_prompt
+        if set -q TKZMUX_BIN; and test -n "$TKZMUX_BIN"; and test "$PATH[1]" != "$TKZMUX_BIN"
+            set -gx PATH $TKZMUX_BIN (string match -rv -- '^'(string escape --style=regex -- $TKZMUX_BIN)'$' $PATH)
+        end
+    end
+
     # Report the working directory to tkzmux as OSC 7 (`file://localhost/<percent-encoded path>`)
     # once now and on every change of $PWD, so the sidebar title follows the shell. `localhost`
     # rather than $hostname on purpose: only tkzmux reads it, and a hostname that does not match

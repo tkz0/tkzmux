@@ -87,11 +87,13 @@ jobs:
           # default linker), readelf, nm, objdump; sqlite, curl, util-linux-libs, zlib, icu: the
           # toolchain binaries' own libraries; ncurses + libxml2-legacy: the compat sonames from
           # docs/linux/dev.md ("Compat libraries"); zsh: the interactive-shell PtyTests, which skip
-          # without it (WOR-305).
+          # without it (WOR-305); zsh, fish, bash-completion, git, python: AgentBridgeTests' shell
+          # harness covers bash, zsh and fish against Arch's own system files (a missing shell
+          # fails under CI), and GitStatusTests drive git (WOR-306 S5).
           pacman -Syu --noconfirm --needed \
             git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
-            gnupg zstd pkgconf zsh
-          pacman -Q glibc gcc binutils
+            gnupg zstd pkgconf zsh fish bash-completion python
+          pacman -Q glibc gcc binutils bash zsh fish
 
       - uses: actions/checkout@v5
 
@@ -178,6 +180,21 @@ jobs:
             exit 1
           fi
           echo "Swift Testing ran $(awk '{ n += $1 } END { print n }' <<< "$counts") tests"
+
+      # WOR-306's acceptance gate, on its own after the whole suite: AgentBridgeTests (the shell
+      # harness with bash, zsh and fish; HookBinaryTests at 50 ms) and GitStatusTests, serially,
+      # through the same summary-line guard. Already built by the step above.
+      - name: swift test --filter AgentBridgeTests, --filter GitStatusTests
+        run: |
+          for suite in AgentBridgeTests GitStatusTests; do
+            log="$RUNNER_TEMP/swift-test-$suite.log"
+            swift test --build-system native --no-parallel --skip-build --filter "$suite" 2>&1 | tee "$log"
+            n="$(sed 's/\x1b\[[0-9;]*m//g' "$log" | sed -n 's/.*Test run with \([0-9][0-9]*\) tests\{0,1\} .*/\1/p')"
+            if [ -z "$n" ] || [ "$n" = 0 ]; then
+              echo "::error::swift test --filter $suite: no 'Test run with N tests' line, or N = 0"
+              exit 1
+            fi
+          done
 
       - name: Check the test runner's linkage
         run: scripts/linux/check-linkage.sh "$(swift build --build-system native --show-bin-path)/tkzmuxPackageTests.xctest" tests

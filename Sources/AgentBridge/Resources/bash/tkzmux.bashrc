@@ -25,8 +25,30 @@ if [ -n "${TKZMUX_BIN:-}" ]; then
         unset TKZMUX_BOOT_COMMAND
     fi
 
-    # The login sequence, as bash itself would run it for `bash -l`.
-    if [ -r /etc/profile ]; then . /etc/profile; fi
+    # The login sequence, as bash itself would run it for `bash -l`. On Linux, bash has already
+    # read the system bashrc (/etc/bash.bashrc, compiled in as SYS_BASHRC on Arch and Debian) before
+    # this file, and /etc/profile sources it again whenever PS1 is set. Arch's loads
+    # bash_completion with no guard, so it would load twice: when the system bashrc has loaded it
+    # already, PS1 is out of the way while /etc/profile runs, and put back unless the profile set
+    # one of its own. Otherwise /etc/profile runs with PS1 as before: Debian's bash.bashrc leaves
+    # completion to /etc/profile.d/bash_completion.sh, which only runs with PS1 set, and macOS's
+    # /bin/bash has no system bashrc of its own (/etc/profile is what reads /etc/bashrc).
+    case ${OSTYPE:-} in
+        darwin*)
+            if [ -r /etc/profile ]; then . /etc/profile; fi
+            ;;
+        *)
+            if [ -n "${BASH_COMPLETION_VERSINFO+set}" ]; then
+                __tkzmux_ps1="${PS1-}"
+                unset PS1
+                if [ -r /etc/profile ]; then . /etc/profile; fi
+                if [ -z "${PS1+set}" ]; then PS1="$__tkzmux_ps1"; fi
+                unset __tkzmux_ps1
+            elif [ -r /etc/profile ]; then
+                . /etc/profile
+            fi
+            ;;
+    esac
     if [ -r "$HOME/.bash_profile" ]; then
         . "$HOME/.bash_profile"
     elif [ -r "$HOME/.bash_login" ]; then
@@ -35,20 +57,49 @@ if [ -n "${TKZMUX_BIN:-}" ]; then
         . "$HOME/.profile"
     fi
 
-    # $TKZMUX_BIN first on PATH, exactly once. Globbing off while PATH is split on `:`.
-    case $- in *f*) __tkzmux_had_noglob=1 ;; *) __tkzmux_had_noglob=; set -f ;; esac
-    __tkzmux_path=""
-    __tkzmux_ifs="$IFS"
-    IFS=:
-    for __tkzmux_entry in $PATH; do
-        if [ "$__tkzmux_entry" != "$TKZMUX_BIN" ]; then
-            __tkzmux_path="$__tkzmux_path:$__tkzmux_entry"
-        fi
-    done
-    IFS="$__tkzmux_ifs"
-    if [ -z "$__tkzmux_had_noglob" ]; then set +f; fi
-    export PATH="$TKZMUX_BIN$__tkzmux_path"
-    unset __tkzmux_path __tkzmux_ifs __tkzmux_entry __tkzmux_had_noglob
+    # Two prompt hooks of Arch's system files that tkzmux has no use for, unhooked by their exact
+    # text so nothing of the user's own is touched (on macOS neither exists):
+    #   - /etc/bash.bashrc's `printf "\033]0;%s@%s:%s\007" ...` for an xterm-like TERM. An OSC 0
+    #     title at every prompt replaces the title tkzmux derives from OSC 7 and counts as
+    #     terminal activity.
+    #   - /etc/profile.d/80-systemd-osc-context.sh's OSC 3008 context reports, which tkzmux
+    #     ignores and which fork several subshells and a sed at every prompt and every command
+    #     (8.4 ms a prompt, measured). Its PS0 part is cut too: a `$(...)` in PS0 forks even when
+    #     the function returns at once.
+    case "$(declare -p PROMPT_COMMAND 2>/dev/null)" in
+        "declare -a"*)
+            __tkzmux_kept=()
+            for __tkzmux_entry in "${PROMPT_COMMAND[@]}"; do
+                case "$__tkzmux_entry" in
+                    __systemd_osc_context_precmdline) ;;
+                    'printf "\033]0;%s@%s:%s\007" '*) ;;
+                    *) __tkzmux_kept+=("$__tkzmux_entry") ;;
+                esac
+            done
+            PROMPT_COMMAND=(${__tkzmux_kept[@]+"${__tkzmux_kept[@]}"})
+            unset __tkzmux_kept __tkzmux_entry
+            ;;
+    esac
+    __tkzmux_ps0='$(__systemd_osc_context_ps0)'
+    if [ -n "${PS0:-}" ]; then PS0=${PS0#"$__tkzmux_ps0"}; fi
+    unset __tkzmux_ps0
+
+    # $TKZMUX_BIN first on PATH, exactly once: now, and again at every prompt (below), because a
+    # prompt hook installed above -- mise with `activate_aggressive`, direnv -- may put its own
+    # directories in front again, and a `claude` resolved past the shim never binds its row.
+    # Globbing off while PATH is split on `:`. Builtins only: this runs at every prompt.
+    __tkzmux_bin_first() {
+        local had_noglob="" entry rest="" ifs="$IFS"
+        case $- in *f*) had_noglob=1 ;; *) set -f ;; esac
+        IFS=:
+        for entry in $PATH; do
+            if [ "$entry" != "$TKZMUX_BIN" ]; then rest="$rest:$entry"; fi
+        done
+        IFS="$ifs"
+        if [ -z "$had_noglob" ]; then set +f; fi
+        export PATH="$TKZMUX_BIN$rest"
+    }
+    __tkzmux_bin_first
 
     # Report the working directory to tkzmux as OSC 7 (`file://localhost/<percent-encoded path>`)
     # once now and from every prompt whose directory changed, so the sidebar title follows the
@@ -72,6 +123,10 @@ if [ -n "${TKZMUX_BIN:-}" ]; then
     }
 
     __tkzmux_precmd() {
+        case $PATH in
+            "$TKZMUX_BIN" | "$TKZMUX_BIN":*) ;;
+            *) if [ -n "${TKZMUX_BIN:-}" ]; then __tkzmux_bin_first; fi ;;
+        esac
         if [ "${__tkzmux_last_pwd:-}" != "$PWD" ]; then
             __tkzmux_last_pwd="$PWD"
             __tkzmux_report_cwd

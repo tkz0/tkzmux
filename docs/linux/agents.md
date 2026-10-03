@@ -4,13 +4,14 @@ How the agent side of tkzmux (hook socket, watchers, liveness, installers, shell
 
 ## Bring-up
 
-AgentBridge joined the Linux graph a file at a time. Until WOR-306 S3, `Package.swift` listed the sources that built on Linux and the tests that ran on them and excluded the rest. Since S3 every source builds, so AgentBridge is a shared target, with its resources (`shim`, `zsh`, `bash`, `fish`) on both OSes and `TkzPlatformShim` linked on Linux only. The Linux `AgentBridgeTests` target runs every test file except `ShellIntegrationHarnessTests` and `ZshWrapperTests` (`agentBridgeTestsLinuxExcludes`), which need zsh and fish and are ported in S5.
+AgentBridge joined the Linux graph a file at a time. Until WOR-306 S3, `Package.swift` listed the sources that built on Linux and the tests that ran on them and excluded the rest. Since S3 every source builds, so AgentBridge is a shared target, with its resources (`shim`, `zsh`, `bash`, `fish`) on both OSes and `TkzPlatformShim` linked on Linux only. Since S5 the Linux `AgentBridgeTests` target runs every test file, the shell harness and the zsh wrapper tests included (see [Shell integration](#shell-integration)).
 
 | Session | Linux sources | Linux tests |
 |---|---|---|
 | WOR-306 S1 | `HookFrame.swift`, `HookServer.swift` | `HookServerTests` (plus the hook's own `HookHygieneTests` and `HookSupportPathTests` from WOR-305) |
 | WOR-306 S2 | `ClaudeSessionWatcher.swift`, `StatuslineReader.swift`, `TranscriptWatch.swift` (new), and what they need to build: `AgentAdapter.swift`, `ProcessLiveness.swift`, `QuotaReconciler.swift`, `PromptCommand.swift`, `TranscriptReader.swift`, `TranscriptSearch.swift`, `TranscriptUsageReader.swift`, `Claude/ClaudeSessionInfo.swift`, `Codex/CodexUsageExtractor.swift` | `ClaudeSessionWatcherTests`, `StatuslineReaderTests` (with `StatuslineTestSupport.swift`, split out of `StatuslineTests` so the reader tests build without `StatuslineInstaller`), `TranscriptWatchTests` |
 | WOR-306 S3 | everything else: the adapters and mappers, `ProcessOwnership.swift`, `ShimInstaller.swift`, `StatuslineInstaller.swift`, `UserPath.swift`, `ModuleResources.swift`, `Codex/*`, `Antigravity/*` | everything but the shell harness and the zsh wrapper tests |
+| WOR-306 S5 | – (the wrapper resources change) | `ShellIntegrationHarnessTests`, `ZshWrapperTests`, `BashWrapperTests` (new) |
 
 ## Hook socket
 
@@ -134,3 +135,49 @@ State stays in each type's `Mutex<Storage>`. The inotify watcher is created and 
 - `StatuslineReaderTests` on both OSes. On Linux the test writer publishes with `rename(2)`, because corelibs' `replaceItemAt` fails when the destination does not exist. `anUpdateArrivesWithin200Milliseconds` (Linux) uses the production 100 ms debounce. Measured: a median of 100.4 ms from `rename` to the event.
 - `TranscriptWatchTests` on both OSes: a burst of appends fires once, a sibling file does not fire, a delete ends the watch, and `cancel` drops an armed debounce.
 - `FileWatcherTests.descriptorsDoNotLeakOverAThousandCycles` (TkzPlatformTests) counts only the inotify fds that watch its own directories (from `/proc/self/fdinfo`), not every inotify fd of the process: in a parallel `swift test` these watchers hold inotify fds of their own in the same test process.
+
+## Shell integration
+
+The wrappers (`Resources/{bash,zsh,fish}`) are the same files on both OSes. WOR-306 S5 made them correct against Arch's system startup files and added one rule for all three shells.
+
+### `$TKZMUX_BIN` first at every prompt
+
+Each wrapper puts `$TKZMUX_BIN` first on PATH once at startup, as before, and now again before every prompt. A prompt hook the user's files installed can put its own directories in front again: mise with `activate_aggressive`, direnv. A `claude` resolved past the shim never binds its row. The re-assert is a no-op when `$TKZMUX_BIN` is already first, and builtins only.
+
+| Shell | Hook | Runs after the user's hooks because |
+|---|---|---|
+| bash | first thing in `__tkzmux_precmd`, the last PROMPT_COMMAND element | mise and direnv prepend theirs; the wrapper appends after the login files ran |
+| zsh | `__tkzmux_bin_first`, `add-zsh-hook precmd` in `.zshrc` | mise and direnv prepend to `precmd_functions`; `.zlogin`'s boot-command hook is appended after it |
+| fish | `__tkzmux_bin_first --on-event fish_prompt` in `tkzmux.fish` | fish runs one event's handlers in definition order (checked with fish 4.9): `vendor_conf.d` (Arch's `mise-activate.fish`) and `config.fish` before `-C`, and the boot-command handler after it |
+
+### bash on Arch
+
+bash starts as `bash --rcfile <support>/bash/tkzmux.bashrc`, an interactive non-login shell. Three things in Arch's system files (bash 5.3, bash-completion 2.18, systemd 261) needed handling:
+
+- **bash_completion loaded twice.** Arch's bash reads `/etc/bash.bashrc` (compiled in as SYS_BASHRC) *before* `--rcfile`, and `/etc/profile` sources it again whenever `PS1` is set (`/etc/profile`, lines 42–47). bash.bashrc's `BASHRCSOURCED` guard covers its prompt setup but not `. /usr/share/bash-completion/bash_completion`. So when bash_completion is already loaded (`BASH_COMPLETION_VERSINFO` set) on Linux, the wrapper sources `/etc/profile` with `PS1` unset and puts it back afterwards, unless the profile set one of its own. Otherwise `/etc/profile` runs with `PS1` as before: Debian and Ubuntu leave completion to `/etc/profile.d/bash_completion.sh`, which only runs with `PS1` set, and on macOS (`$OSTYPE` darwin) `/etc/profile` is what reads `/etc/bashrc`. One known difference from `bash -l` on Arch: a `SHELL_PROMPT_PREFIX`/`SUFFIX` that pam_systemd provisions from credentials is applied by `70-systemd-shell-extra.sh` to an unset `PS1`, so the prompt is the prefix alone.
+- **The OSC 0 title.** For an xterm-like `TERM`, bash.bashrc appends `printf "\033]0;%s@%s:%s\007" …` to `PROMPT_COMMAND`. It replaces the title tkzmux derives from OSC 7 and counts as activity (`compressor.noteActivity`). The wrapper removes that exact element after the login files ran. A title the user's own files set is untouched.
+- **OSC 3008.** `/etc/profile.d/80-systemd-osc-context.sh` adds `__systemd_osc_context_precmdline` to `PROMPT_COMMAND` and `$(__systemd_osc_context_ps0)` to `PS0`. They fork several command substitutions and a `sed` at every prompt and every command. tkzmux ignores OSC 3008, so the wrapper removes both, again by their exact text.
+
+Measured on the reference machine on a pty, as `PROMPT_COMMAND` plus the `PS0`/`PS1` expansions, 300 prompts, three runs each:
+
+| Shell | Per prompt |
+|---|---|
+| `bash --norc --noprofile` | 1 µs |
+| `bash -l` (Arch's files, no tkzmux) | 8.46 ms |
+| tkzmux bash before S5 | 8.51 ms |
+| tkzmux bash after S5 | 12–18 µs |
+
+The same machine's zsh and fish need nothing: Arch's `/etc/zsh/zprofile` only sources `/etc/profile` in sh emulation (the bash-only parts return early), there is no `/etc/zsh/zshrc`, and `/etc/fish/config.fish` is empty. On Arch a login zsh has no `HISTFILE` (only macOS's `/etc/zshrc` sets one), inside tkzmux and outside it.
+
+### Tests
+
+The tests find the shells on Linux from `/etc/shells` plus `PATH`, deduplicated by realpath (`harnessShellCandidates`), so a merged `/usr` runs each binary once. macOS keeps its fixed list (`/bin/zsh`, `/bin/bash`, Homebrew bash and fish).
+
+- `ShellIntegrationHarnessTests`: every installed bash, zsh and fish on a real `Pty`, as before. The fixture's user files now also install a prompt hook that puts `~/.local/bin` first again at every prompt, and the PATH assertions run after it. New assertions: no OSC 0/2 title from bash or zsh (fish's default `fish_title` sends one on both OSes) and no OSC 3008 from any shell. `fishIsPresentForTheHarness` is skipped on Linux outside CI (`CI` unset), so a developer machine without fish runs what it has. Under CI a missing fish or zsh fails, as on macOS.
+- `ZshWrapperTests`: the harness's first zsh rather than `/bin/zsh`, every test `.enabled(if:)` one exists. `histfileIsRedirectedToTheUsersHome` accepts an unset `HISTFILE` on Linux, and on both OSes it must never point into tkzmux's ZDOTDIR. New on both OSes: `tkzmuxBinStaysFirstAfterTheUsersPrecmdHooks`, with a mise-like precmd hook, over two prompts.
+- `BashWrapperTests` (new), against the machine's own system files:
+  - `bashCompletionLoadsOnce`: `SHELLOPTS=xtrace` in the environment turns tracing on before bash reads SYS_BASHRC, and the trace must hold at most one `. …/bash_completion`. Before S5 it held two.
+  - `noSystemTitleOrContextReports`: the first prompts write OSC 7 and no OSC 0, 2 or 3008.
+  - `perPromptOverheadIsUnderTwoMilliseconds`: tkzmux bash minus `bash --norc --noprofile`, both measured in the shell with `EPOCHREALTIME`, is under 2 ms a prompt. It is skipped for bash < 5 (macOS's `/bin/bash`). Before S5 the difference was 2.2 ms with output to `/dev/null`.
+
+zsh and fish are not installed on the reference machine, so the Arch `zsh` 5.9.2 and `fish` 4.9.2 packages (signatures checked) were overlaid on `/usr` and `/etc` with `bwrap` for these runs, also as uid 0 like the CI container. All three fail against the wrapper as it was before S5 (checked), and so do the harness's PATH assertions for all three shells and its OSC 3008 assertion for bash. `ci-linux.yml` installs `zsh`, `fish`, `bash-completion`, `git` and `python` in the `arch` job; the `ubuntu` job already had `zsh`, `fish`, `git` and `python3`. The `arch` job then runs `--filter AgentBridgeTests` and `--filter GitStatusTests` as a separate step after the whole suite, through the same summary-line guard.

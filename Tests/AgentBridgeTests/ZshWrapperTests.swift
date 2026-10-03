@@ -1,4 +1,5 @@
-// ZshWrapperTests — runs a real login `/bin/zsh -l -i` against the installed ZDOTDIR wrappers and a
+// ZshWrapperTests — runs a real login `zsh -l -i` (`/bin/zsh` on macOS, wherever the package put it
+// on Linux; skipped when there is none) against the installed ZDOTDIR wrappers and a
 // fake HOME with the user's own dotfiles, verifying every startup file ran, in order, and that
 // HISTFILE / PATH / ZDOTDIR end up where the contract in the M3.3 ticket says they should. See
 // TerminalEnvironment.swift for the env contract this wrapper chain assumes (`ZDOTDIR`,
@@ -7,6 +8,11 @@ import Foundation
 import Testing
 
 @testable import AgentBridge
+
+/// The zsh to run: the harness's first zsh (`/bin/zsh` on macOS, `/etc/shells` or PATH on Linux).
+private let zshPath = installedHarnessShells.first { $0.shell.family == .zsh }?.shell.path
+private let zshExecutable = URL(fileURLWithPath: zshPath ?? "/bin/zsh")
+private let zshMissing: Comment = "zsh is not installed (pacman -S zsh, apt install zsh)"
 
 private typealias ProcessResult = ShimTestSupport.ProcessResult
 private func makeTempDirectory(_ label: String) throws -> URL {
@@ -85,7 +91,7 @@ private func runInteractiveLoginShell(
     _ fixture: WrapperFixture, extraEnv: [String: String] = [:]
 ) throws -> ProcessResult {
     try run(
-        URL(fileURLWithPath: "/bin/zsh"),
+        zshExecutable,
         [
             "-l", "-i", "-c",
             "print -r -- $PATH; print -r -- $HISTFILE; print -r -- ${ZDOTDIR:-unset};"
@@ -103,11 +109,12 @@ private func runLoginShellToPrompt(
     extraEnv: [String: String] = [:]
 ) throws -> ProcessResult {
     try run(
-        URL(fileURLWithPath: "/bin/zsh"), ["-l", "-i"],
+        zshExecutable, ["-l", "-i"],
         environment: wrapperEnvironment(fixture, extraEnv: extraEnv), stdin: script)
 }
 
-@Test func allFourUserFilesRunInOrder() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func allFourUserFilesRunInOrder() throws {
     let fixture = try makeWrapperFixture()
     _ = try runInteractiveLoginShell(fixture)
     let markers = (try? String(contentsOf: fixture.log, encoding: .utf8)) ?? ""
@@ -115,7 +122,8 @@ private func runLoginShellToPrompt(
     #expect(lines == ["zshenv", "zprofile", "zshrc", "zlogin"])
 }
 
-@Test func pathStartsWithTkzmuxBinThenUserLocalBin() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func pathStartsWithTkzmuxBinThenUserLocalBin() throws {
     let fixture = try makeWrapperFixture()
     let result = try runInteractiveLoginShell(fixture)
     let outputLines = result.stdout.split(separator: "\n", omittingEmptySubsequences: false)
@@ -126,16 +134,25 @@ private func runLoginShellToPrompt(
     #expect(pathEntries.dropFirst().first == "\(fixture.fakeHome.path)/.local/bin")
 }
 
-@Test func histfileIsRedirectedToTheUsersHome() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func histfileIsRedirectedToTheUsersHome() throws {
     let fixture = try makeWrapperFixture()
     let result = try runInteractiveLoginShell(fixture)
     let outputLines = result.stdout.split(separator: "\n", omittingEmptySubsequences: false)
         .map(String.init)
     let histfile = outputLines[1]
+    #if os(macOS)
     #expect(histfile == "\(fixture.fakeHome.path)/.zsh_history")
+    #else
+    // Only macOS's /etc/zshrc sets HISTFILE (into ZDOTDIR, which is ours at that point). Arch ships
+    // no /etc/zsh/zshrc, so HISTFILE stays unset, as in a login zsh outside tkzmux.
+    #expect(histfile.isEmpty || histfile == "\(fixture.fakeHome.path)/.zsh_history", "\(histfile)")
+    #endif
+    #expect(!histfile.hasPrefix(fixture.tkzmuxZdotdir.path))
 }
 
-@Test func zdotdirIsRestoredByZloginForNestedShells() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func zdotdirIsRestoredByZloginForNestedShells() throws {
     let fixture = try makeWrapperFixture()
     let result = try runInteractiveLoginShell(fixture)
     let outputLines = result.stdout.split(separator: "\n", omittingEmptySubsequences: false)
@@ -144,7 +161,8 @@ private func runLoginShellToPrompt(
     #expect(outputLines[3] == fixture.tkzmuxZdotdir.path)   // TKZMUX_ZDOTDIR itself stays exported
 }
 
-@Test func relocatedUserZdotdirIsFollowed() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func relocatedUserZdotdirIsFollowed() throws {
     let fixture = try makeWrapperFixture()
     let relocated = fixture.fakeHome.appendingPathComponent(".config/zsh", isDirectory: true)
     try FileManager.default.createDirectory(at: relocated, withIntermediateDirectories: true)
@@ -176,7 +194,8 @@ private func runLoginShellToPrompt(
     #expect(lines == ["zshenv", "zprofile-relocated", "zshrc-relocated", "zlogin-relocated"])
 }
 
-@Test func withoutTkzmuxZdotdirTheWrappersDoNothing() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func withoutTkzmuxZdotdirTheWrappersDoNothing() throws {
     let fixture = try makeWrapperFixture()
     // A plain zsh under our ZDOTDIR, but with TKZMUX_ZDOTDIR unset: the wrappers must no-op
     // rather than misbehave, and in particular must not source the user's files a second time
@@ -189,12 +208,13 @@ private func runLoginShellToPrompt(
     ]
     env["TKZMUX_USER_ZDOTDIR"] = fixture.fakeHome.path
     let result = try run(
-        URL(fileURLWithPath: "/bin/zsh"), ["-c", "print -r -- ok"], environment: env)
+        zshExecutable, ["-c", "print -r -- ok"], environment: env)
     #expect(result.status == 0)
     #expect(result.stdout.contains("ok"))
 }
 
-@Test func chosenAccountWinsOverTheUsersRc() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func chosenAccountWinsOverTheUsersRc() throws {
     // The user's own .zshrc exports a default account; the account picked in tkzmux must win,
     // and when none was picked the user's export must survive untouched (M5.2). TKZ-84 generalized
     // the single hard-coded `TKZMUX_CLAUDE_CONFIG_DIR` re-export into the `TKZMUX_REEXPORT` /
@@ -217,7 +237,7 @@ private func runLoginShellToPrompt(
         ]
         for (key, value) in extra { env[key] = value }
         let script = names.map { "print -r -- ${\($0):-unset}" }.joined(separator: "; ")
-        let result = try run(URL(fileURLWithPath: "/bin/zsh"), ["-l", "-i", "-c", script], environment: env)
+        let result = try run(zshExecutable, ["-l", "-i", "-c", script], environment: env)
         return result.stdout.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     }
     func configDir(_ extra: [String: String]) throws -> String {
@@ -246,7 +266,8 @@ private func runLoginShellToPrompt(
 }
 
 
-@Test func theWorkingDirectoryIsReportedAsOSC7OnStartAndOnEveryCd() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func theWorkingDirectoryIsReportedAsOSC7OnStartAndOnEveryCd() throws {
     // The sidebar title follows `cd` through OSC 7 (2026-09-08). Percent-encoded path, `localhost`
     // as the host, once at startup and again after every directory change.
     let fixture = try makeWrapperFixture()
@@ -264,7 +285,7 @@ private func runLoginShellToPrompt(
         "TKZMUX_OSC7_TO_STDOUT": "1",
     ]
     let result = try run(
-        URL(fileURLWithPath: "/bin/zsh"),
+        zshExecutable,
         ["-l", "-i", "-c", "cd \"$HOME/has space\"; cd /tmp; print -r -- end"],
         environment: env)
     let reports = result.stdout.components(separatedBy: "\u{1b}]7;").dropFirst()
@@ -278,7 +299,7 @@ private func runLoginShellToPrompt(
 
     // Piped stdout without the override: no escape bytes at all.
     env["TKZMUX_OSC7_TO_STDOUT"] = nil
-    let quiet = try run(URL(fileURLWithPath: "/bin/zsh"), ["-l", "-i", "-c", "cd /tmp; print -r -- end"], environment: env)
+    let quiet = try run(zshExecutable, ["-l", "-i", "-c", "cd /tmp; print -r -- end"], environment: env)
     #expect(!quiet.stdout.contains("\u{1b}]7;"))
 }
 
@@ -294,7 +315,8 @@ private func runLoginShellToPrompt(
 /// never started. Nothing goes through the tty now: `.zlogin` takes the command out of the
 /// environment and hands it to a one-shot precmd hook, which runs it at the first prompt
 /// (2026-09-10, see `bootCommandSeesWhatThePrecmdHooksExported`).
-@Test func bootCommandRuns() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func bootCommandRuns() throws {
     let fixture = try makeWrapperFixture()
     let result = try runLoginShellToPrompt(
         fixture, extraEnv: ["TKZMUX_BOOT_COMMAND": "print -r -- BOOT-RAN"])
@@ -303,7 +325,8 @@ private func runLoginShellToPrompt(
 
 /// It must not survive into anything the command starts: `claude` itself re-execs shells, and an
 /// inherited value would run the command a second time.
-@Test func bootCommandIsUnsetBeforeItRuns() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func bootCommandIsUnsetBeforeItRuns() throws {
     let fixture = try makeWrapperFixture()
     let result = try runLoginShellToPrompt(
         fixture,
@@ -313,7 +336,8 @@ private func runLoginShellToPrompt(
 
 /// The shim has to win: `claude` in the boot command must resolve to `$TKZMUX_BIN/claude`, or the
 /// resumed session runs the real binary and the row never gets its pid bound.
-@Test func bootCommandSeesTkzmuxBinFirstOnPath() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func bootCommandSeesTkzmuxBinFirstOnPath() throws {
     let fixture = try makeWrapperFixture()
     let shim = fixture.tkzmuxBin.appendingPathComponent("claude")
     try "#!/bin/sh\n".write(to: shim, atomically: true, encoding: .utf8)
@@ -327,7 +351,8 @@ private func runLoginShellToPrompt(
 /// The command is bracketed in OSC 9;4 progress — *indeterminate* before, *remove* after — so
 /// tkzmux knows when it has returned. That "remove" is what takes the "Starting Claude…" overlay
 /// down when a launch fails straight back to the prompt; nothing else says so.
-@Test func bootCommandIsBracketedInProgressReports() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func bootCommandIsBracketedInProgressReports() throws {
     let fixture = try makeWrapperFixture()
     let result = try runLoginShellToPrompt(
         fixture,
@@ -349,7 +374,8 @@ private func runLoginShellToPrompt(
 
 /// A `.shell` session carries no command, and the block must then do nothing at all: no output,
 /// no progress bytes, and no hook left on `precmd_functions`.
-@Test func noBootCommandIsANoOp() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func noBootCommandIsANoOp() throws {
     let fixture = try makeWrapperFixture()
     let result = try runLoginShellToPrompt(
         fixture, script: "print -r -- HOOKS=${precmd_functions:-none}\n",
@@ -363,7 +389,8 @@ private func runLoginShellToPrompt(
 
 /// A `return` in the user's own .zlogin must not skip the boot command — hence the block sitting
 /// outside the wrapper's guard.
-@Test func bootCommandSurvivesAReturnInTheUsersZlogin() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func bootCommandSurvivesAReturnInTheUsersZlogin() throws {
     let fixture = try makeWrapperFixture()
     try "echo zlogin >> \"$MARKER_LOG\"\nreturn 0\n".write(
         to: fixture.fakeHome.appendingPathComponent(".zlogin"), atomically: true, encoding: .utf8)
@@ -394,7 +421,8 @@ private func installFakeDirenv(_ fixture: WrapperFixture) throws {
 /// `.envrc`. direnv puts its environment in place from a precmd hook, which had not fired yet when
 /// `.zlogin` ran the command inline; exiting Claude showed `direnv: loading …` and a second launch
 /// worked. The command must see what the user's precmd hooks exported.
-@Test func bootCommandSeesWhatThePrecmdHooksExported() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func bootCommandSeesWhatThePrecmdHooksExported() throws {
     let fixture = try makeWrapperFixture()
     try installFakeDirenv(fixture)
     let result = try runLoginShellToPrompt(
@@ -404,7 +432,8 @@ private func installFakeDirenv(_ fixture: WrapperFixture) throws {
 
 /// After the user's hooks, not before: direnv prepends itself, tkzmux appends, and the order in
 /// which they run at the first prompt is what makes the test above hold.
-@Test func bootCommandRunsAfterTheUsersPrecmdHooks() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func bootCommandRunsAfterTheUsersPrecmdHooks() throws {
     let fixture = try makeWrapperFixture()
     try installFakeDirenv(fixture)
     _ = try runLoginShellToPrompt(
@@ -418,7 +447,8 @@ private func installFakeDirenv(_ fixture: WrapperFixture) throws {
 
 /// One shot: several prompts, one run, and the hook is gone from `precmd_functions` afterwards so
 /// nothing about it leaks into the rest of the session.
-@Test func bootCommandRunsOnceAndUnhooksItself() throws {
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func bootCommandRunsOnceAndUnhooksItself() throws {
     let fixture = try makeWrapperFixture()
     let script = """
     print -r -- line-1
@@ -434,4 +464,31 @@ private func installFakeDirenv(_ fixture: WrapperFixture) throws {
     #expect(result.stdout.contains("line-2"), "\(result.stdout)")
     #expect(!result.stdout.contains("__tkzmux_run_boot_command"), "\(result.stdout)")
     #expect(result.stdout.contains("LEFTOVER=unset"), "\(result.stdout)")
+}
+
+/// A precmd hook of the user's that puts its own directory first again at every prompt (mise with
+/// `activate_aggressive`, direnv) must not get ahead of the shim: `.zshrc` re-asserts
+/// `$TKZMUX_BIN` from a precmd hook appended after the user's (WOR-306 S5).
+@Test(.enabled(if: zshPath != nil, zshMissing))
+func tkzmuxBinStaysFirstAfterTheUsersPrecmdHooks() throws {
+    let fixture = try makeWrapperFixture()
+    let rc = fixture.fakeHome.appendingPathComponent(".zshrc")
+    let hook = """
+
+    __fake_mise() { path=("$HOME/.local/bin" ${path:#$HOME/.local/bin}) }
+    typeset -ag precmd_functions
+    precmd_functions=(__fake_mise $precmd_functions)
+
+    """
+    try (String(contentsOf: rc, encoding: .utf8) + hook).write(to: rc, atomically: true, encoding: .utf8)
+    let result = try runLoginShellToPrompt(
+        fixture, script: "print -r -- PATH=$PATH\nprint -r -- PATH=$PATH\n")
+    let paths = result.stdout.split(separator: "\n").filter { $0.hasPrefix("PATH=") }
+        .map { $0.dropFirst("PATH=".count).split(separator: ":").map(String.init) }
+    #expect(paths.count == 2, "\(result.stdout)")
+    for entries in paths {
+        #expect(entries.first == fixture.tkzmuxBin.path, "\(entries)")
+        #expect(entries.dropFirst().first == "\(fixture.fakeHome.path)/.local/bin", "\(entries)")
+        #expect(entries.filter { $0 == fixture.tkzmuxBin.path }.count == 1, "\(entries)")
+    }
 }
