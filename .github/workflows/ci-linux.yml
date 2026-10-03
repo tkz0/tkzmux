@@ -357,7 +357,7 @@ jobs:
       # or anything that depends on them: TkzmuxLinux (the `tkzmux` entry) left the list when it
       # started linking TkzGtkShell (WOR-314 S1). SwiftPM warns that gtk4's .pc is missing; that
       # is expected here.
-      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzShaderTypes TkzRenderCore TkzPNG TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzPNGTests TkzShadersSPIRVTests tkzmux-hook AgentBridgeTests TkzFontsFT TkzFontsFTTests TkzRenderVK TkzRenderVKTests tkzmux-vtdump
+      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzShaderTypes TkzRenderCore TkzPNG TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzPNGTests TkzShadersSPIRVTests tkzmux-hook AgentBridgeTests TkzFontsFT TkzFontsFTTests TkzRenderVK TkzRenderVKTests TkzCanvasHost TkzCanvasHostTests tkzmux-vtdump
     steps:
       - name: Install system packages
         run: |

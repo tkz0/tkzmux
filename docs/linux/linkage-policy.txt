@@ -102,7 +102,7 @@ deny libdecor-*.so*          | GTK owns the toplevel and tkzmux draws its own wi
 deny libX11*.so*             | No direct X11. X11 is not a target (GDK_BACKEND=wayland), and libX11 reaches the closure only through GTK.
 deny libxcb*.so*             | No direct X11, for the same reason as libX11.
 deny libX[a-z]*.so*          | No direct X11 extension libraries (Xi, Xext, Xrandr, Xcursor, ...). The pattern does not match libXCTest.
-deny libwayland-*.so*        | No direct Wayland client. GDK owns the connection, and WOR-313's `vtdump gpu` is headless.
+deny libwayland-*.so*        | No direct Wayland client. GDK owns the connection, and WOR-313's `vtdump gpu` is headless. The one read GDK does not publish (dmabuf main_device, WOR-314 S4) uses GDK's connection through dlsym, never a link.
 deny libadwaita-1.so*        | GTK is a shell only. No Adwaita widgets or styling.
 deny libnotify.so*           | Notifications use org.freedesktop.Notifications over GDBus directly.
 deny libSDL*.so*             | No second windowing or input toolkit.

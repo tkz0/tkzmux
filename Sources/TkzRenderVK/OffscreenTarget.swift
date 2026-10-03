@@ -72,7 +72,9 @@ public final class OffscreenTarget: VulkanRenderTarget {
         imageInfo.arrayLayers = 1
         imageInfo.samples = VK_SAMPLE_COUNT_1_BIT
         imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL
-        imageInfo.usage = VkImageUsageFlags(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT.rawValue | VK_IMAGE_USAGE_TRANSFER_SRC_BIT.rawValue)
+        // Transfer destination too, for `VulkanDevice.upload` (test patterns, WOR-314 S4).
+        imageInfo.usage = VkImageUsageFlags(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT.rawValue | VK_IMAGE_USAGE_TRANSFER_SRC_BIT.rawValue
+            | VK_IMAGE_USAGE_TRANSFER_DST_BIT.rawValue)
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE
         imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
         var image: VkImage?

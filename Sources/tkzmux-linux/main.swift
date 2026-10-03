@@ -1,6 +1,6 @@
 // tkzmux on Linux — the entry point until WOR-314 brings the GTK application.
 //
-// Six cases, all answered synchronously on the main thread (no async main, no `dispatchMain()`:
+// Seven cases, all answered synchronously on the main thread (no async main, no `dispatchMain()`:
 // WOR-314's GTK loop must own this thread, so nothing here may start a different one):
 //
 //   --version, -v        the banner, exactly as `Sources/tkzmux/main.swift` prints it on the Mac;
@@ -15,6 +15,8 @@
 //                        main actor and libdispatch's main queue run on this thread (MainLoopCheck)
 //   --canvas-cycle-check hidden, needs a display: opens and closes windows holding a TkzCanvas and
 //                        checks that every box, canvas and toplevel is gone again (CanvasCycleCheck)
+//   --presentation-check hidden, needs a display and a Vulkan device: one GtkCanvasHost window
+//                        presenting Vulkan frames as dma-buf textures (PresentationCheck)
 //   anything else        "not yet implemented" on stderr, exit 69 (EX_UNAVAILABLE)
 //
 // Like the Mac entry point, `--version` is a *scan* rather than a match on argv[1].
@@ -44,6 +46,10 @@ if arguments.contains("--main-loop-check") {
 
 if arguments.contains("--canvas-cycle-check") {
     exit(CanvasCycleCheck.run(arguments: Array(arguments)))
+}
+
+if arguments.contains("--presentation-check") {
+    exit(PresentationCheck.run(arguments: Array(arguments)))
 }
 
 FileHandle.standardError.write(Data("tkzmux: not yet implemented on Linux (try --version)\n".utf8))

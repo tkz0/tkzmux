@@ -6,7 +6,8 @@
 //   - `tkz_signal_connect`, a `g_signal_connect_data` whose destroy-notify is the only release of
 //     the Swift closure box (S1);
 //   - `tkz_gtk_symbol`, the runtime gate for every API newer than 4.16 (S1, ADR-0002 D4);
-//   - `TkzCanvas`, the one GtkWidget subclass, whose vfuncs forward to a C vtable (S2).
+//   - `TkzCanvas`, the one GtkWidget subclass, whose vfuncs forward to a C vtable (S2);
+//   - the compositor's dmabuf-feedback `main_device`, read on GDK's Wayland connection (S4).
 //
 // Every function here is called on the GTK (process main) thread unless it says otherwise.
 #pragma once
@@ -114,6 +115,29 @@ guint tkz_canvas_live_count(void);
 
 static inline gboolean tkz_is_canvas(gpointer p) { return G_TYPE_CHECK_INSTANCE_TYPE(p, tkz_canvas_get_type()); }
 
+// MARK: - The compositor's main device
+
+typedef enum {
+    /// `*main_device` is the compositor's dmabuf-feedback `main_device`.
+    TKZ_MAIN_DEVICE_FOUND = 0,
+    /// The display is not a Wayland display (or GDK was built without the Wayland backend).
+    TKZ_MAIN_DEVICE_NOT_WAYLAND,
+    /// libwayland-client's functions are not in the process, or a queue could not be made.
+    TKZ_MAIN_DEVICE_NO_LIBWAYLAND,
+    /// The compositor offers no zwp_linux_dmabuf_v1 of version 4 or later (no feedback).
+    TKZ_MAIN_DEVICE_NO_DMABUF,
+    /// The default feedback arrived without a `main_device`.
+    TKZ_MAIN_DEVICE_NO_FEEDBACK,
+} TkzMainDeviceResult;
+
+/// The compositor's dmabuf-feedback `main_device` (a `dev_t`) for `display`: the DRM device it
+/// composites on, which the Vulkan device must match (WOR-313 `DeviceSelector`). Binds
+/// zwp_linux_dmabuf_v1 v4 on GDK's own `wl_display` through a private event queue, reads the
+/// default feedback, and destroys everything again; GDK's queue is never dispatched. libwayland is
+/// reached through dlsym only (it is in the process through libgtk-4, never linked). Blocks for a
+/// few roundtrips; call it once, on the GTK thread, outside any GDK event dispatch.
+TkzMainDeviceResult tkz_dmabuf_main_device(GdkDisplay *display, guint64 *main_device);
+
 // MARK: - Casts and macros
 
 // The G_TYPE_CHECK_INSTANCE_CAST macros (GTK_WIDGET(), G_OBJECT(), …) do not import into Swift.
@@ -131,6 +155,8 @@ static inline GdkToplevel *tkz_toplevel(gpointer p) { return GDK_TOPLEVEL(p); }
 static inline GdkPaintable *tkz_paintable(gpointer p) { return GDK_PAINTABLE(p); }
 static inline GdkTexture *tkz_texture(gpointer p) { return GDK_TEXTURE(p); }
 static inline GtkAccessible *tkz_accessible(gpointer p) { return GTK_ACCESSIBLE(p); }
+static inline GtkStyleProvider *tkz_style_provider(gpointer p) { return GTK_STYLE_PROVIDER(p); }
+static inline GdkFrameClock *tkz_frame_clock(gpointer p) { return GDK_FRAME_CLOCK(p); }
 
 /// `G_IS_OBJECT(p)`: whether `p` points at a live GObject instance (a debugging aid; a freed
 /// instance can still pass).

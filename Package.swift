@@ -178,11 +178,11 @@ let linuxOnlyProducts: [Product] = [
 ]
 
 let linuxOnlyTargets: [Target] = [  // hygiene-scan
-    // The Linux entry point: `--version`, a libghostty-vt smoke check and the main-loop self-check
-    // until WOR-314 brings the GTK application.
+    // The Linux entry point: `--version`, a libghostty-vt smoke check, the main-loop, canvas-cycle
+    // and presentation self-checks until WOR-314 brings the GTK application.
     .executableTarget(
         name: "TkzmuxLinux",
-        dependencies: ["TkzCore", "GhosttyVt", "TkzGtkShell"],
+        dependencies: ["TkzCore", "GhosttyVt", "TkzGtkShell", "TkzCanvasHost", "TkzRenderVK"],
         path: "Sources/tkzmux-linux",
         linkerSettings: [.linkedLibrary("m")]
     ),
@@ -202,10 +202,11 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
         publicHeadersPath: "include",
         linkerSettings: [.linkedLibrary("dispatch")]
     ),
-    // GObjectRef, signal closures, the main-queue bridge and the runtime GTK gate.
+    // GObjectRef, signal closures, the main-queue bridge, the runtime GTK gate, and
+    // `GtkCanvasHost`, the GTK implementation of TkzCanvasHost's seam (S4).
     .target(
         name: "TkzGtkShell",
-        dependencies: ["CGtk", "TkzLinuxShim"],
+        dependencies: ["CGtk", "TkzLinuxShim", "TkzCanvasHost", "TkzRenderVK", "TkzPlatform"],
         path: "Sources/TkzGtkShell"
     ),
     .testTarget(name: "TkzGtkShellTests", dependencies: ["TkzGtkShell", "TkzLinuxShim", "CGtk"],
@@ -243,6 +244,13 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
                                                          "TkzTerminalCore", "TkzCore", "TkzShaderTypes",
                                                          "TkzPNG", "TkzPlatform", "GhosttyVt"],
                 path: "Tests/TkzRenderVKTests"),
+
+    // The seam between tkzmux's pixels and the platform shell (WOR-314 S4): `CanvasHost`, the
+    // offscreen `FakeCanvasHost` and the per-host ring. No GTK: TkzCanvasUI and the app reach the
+    // shell only through it, and TkzGtkShell implements it.
+    .target(name: "TkzCanvasHost", dependencies: ["TkzRenderVK"], path: "Sources/TkzCanvasHost"),
+    .testTarget(name: "TkzCanvasHostTests", dependencies: ["TkzCanvasHost", "TkzRenderVK"],
+                path: "Tests/TkzCanvasHostTests"),
 
     // MARK: Font stack (WOR-312). System libraries from pkg-config, declared only in this branch:
     // a `canImport` check would turn on with Homebrew's freetype on a Mac. Their module maps are
