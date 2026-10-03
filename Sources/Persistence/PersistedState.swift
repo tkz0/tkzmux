@@ -18,6 +18,9 @@
 
 import Foundation
 import TkzCore
+#if canImport(CoreGraphics)
+import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics overlay on Apple platforms
+#endif
 
 /// A rectangle with names. `CGRect: Codable` writes `[[x,y],[w,h]]`; a file a human may have to
 /// repair by hand deserves better, and `TkzCore`/`Persistence` may not use `NSStringFromRect`.

@@ -6,6 +6,9 @@
 // CPU bitmaps in device pixels, and `CellMetrics`.
 
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics overlay on Apple platforms
+#endif
 
 /// The four faces a terminal draws with.
 public enum FontStyle: UInt8, CaseIterable, Sendable, Hashable {

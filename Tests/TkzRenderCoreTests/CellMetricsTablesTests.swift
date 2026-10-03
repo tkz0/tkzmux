@@ -7,6 +7,9 @@
 import Foundation
 import Testing
 import TkzRenderCore
+#if canImport(CoreGraphics)
+import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics overlay on Apple platforms
+#endif
 
 @Suite("CellMetrics from font tables")
 struct CellMetricsTablesTests {

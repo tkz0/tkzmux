@@ -4,6 +4,9 @@ import Foundation
 import Testing
 
 @testable import TkzCore
+#if canImport(CoreGraphics)
+import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics overlay on Apple platforms
+#endif
 
 @MainActor
 @Suite struct AppStoreTests {

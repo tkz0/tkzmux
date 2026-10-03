@@ -14,6 +14,9 @@
 import Foundation
 import Persistence
 import TkzCore
+#if canImport(CoreGraphics)
+import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics overlay on Apple platforms
+#endif
 
 enum StateChurnCommand {
     static func run(_ argv: [String]) throws {

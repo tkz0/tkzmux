@@ -7,6 +7,9 @@
 // Display order comes from the `order` field via the ordered accessors below.
 
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics overlay on Apple platforms
+#endif
 
 public struct AppState: Hashable, Sendable {
     public var groups: [GroupID: Group]

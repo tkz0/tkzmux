@@ -10,6 +10,9 @@
 // decision that a shell's working directory is process state (see `LiveSessionState.shellCwd`).
 
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics overlay on Apple platforms
+#endif
 
 // MARK: - Identifiers
 

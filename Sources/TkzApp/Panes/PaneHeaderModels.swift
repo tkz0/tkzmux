@@ -6,20 +6,24 @@
 
 import Foundation
 import TkzCore
+#if canImport(CoreGraphics)
+import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics overlay on Apple platforms
+#endif
 
 public enum PaneHeaderMetrics {
     /// The artboard's 28 pt strip: dot · title · path · badge, a 1 pt border below.
-    public static let height: CGFloat = 28
-    public static let insetX: CGFloat = 12
-    public static let gap: CGFloat = 8
+    public static let height = CGFloat(DesignTokens.Metrics.PaneHeader.height.value)
+    public static let insetX = CGFloat(DesignTokens.Metrics.PaneHeader.insetX.value)
+    public static let gap = CGFloat(DesignTokens.Metrics.PaneHeader.gap.value)
     /// The header's dot is 6 pt, one smaller than the sidebar row's.
-    public static let dotDiameter: CGFloat = 6
+    public static let dotDiameter = CGFloat(DesignTokens.Metrics.PaneHeader.dotDiameter.value)
     /// The `×` at the header's right edge: a square hit box this wide, always drawn.
-    public static let closeSize: CGFloat = 16
+    public static let closeSize = CGFloat(DesignTokens.Metrics.PaneHeader.closeSize.value)
     /// The 1.5 pt inset ring around the focused pane.
-    public static let focusRingWidth: CGFloat = 1.5
+    public static let focusRingWidth = CGFloat(DesignTokens.Metrics.PaneHeader.focusRingWidth.value)
     /// The artboards draw the unfocused pane's terminal at 85 %.
-    public static let inactiveContentAlpha: CGFloat = 0.85
+    public static let inactiveContentAlpha =
+        CGFloat(DesignTokens.Metrics.PaneHeader.inactiveContentAlpha.value)
 }
 
 public struct PaneHeaderModel: Hashable, Sendable {

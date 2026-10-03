@@ -5,6 +5,9 @@ import Testing
 import TkzCore
 
 @testable import Persistence
+#if canImport(CoreGraphics)
+import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics overlay on Apple platforms
+#endif
 
 private func makeMinimalState() -> PersistedState {
     var state = AppState()

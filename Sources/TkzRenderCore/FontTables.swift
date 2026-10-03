@@ -14,6 +14,9 @@
 // it lives in `pixelsPerUnit` below and nowhere else.
 
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics overlay on Apple platforms
+#endif
 
 /// The OS/2 strikeout fields, in font units, positive up.
 public struct OS2Strikeout: Sendable, Equatable, Hashable {

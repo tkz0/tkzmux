@@ -11,6 +11,9 @@
 // `SessionLauncher` learns that the row itself has to go.
 
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics overlay on Apple platforms
+#endif
 
 extension AppState {
 
