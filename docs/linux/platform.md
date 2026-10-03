@@ -1,6 +1,6 @@
 # TkzPlatform on Linux
 
-The OS seam below the UI (`Sources/TkzPlatform/`): one API per primitive, a back-end per OS. The Darwin back-ends live in `Darwin/` and the Linux ones in `Linux/`. Written in WOR-304 S2 (logging and signposts) and extended in WOR-304 S3 (paths), S4 (SHA-256 and clocks) and S5 (file and process-exit watching); S6 adds the process table and listening ports.
+The OS seam below the UI (`Sources/TkzPlatform/`): one API per primitive, a back-end per OS. The Darwin back-ends live in `Darwin/` and the Linux ones in `Linux/`. Written in WOR-304 S2 (logging and signposts) and extended in WOR-304 S3 (paths), S4 (SHA-256 and clocks), S5 (file and process-exit watching) and S6 (the process table and listening ports).
 
 ## Logging: `TkzLogger`
 
@@ -180,7 +180,7 @@ Every accepted entry costs one fd and one kqueue registration, so filters should
 `ProcessExitWatcher` (`Sources/TkzPlatform/ProcessExitWatcher.swift`) calls a handler once, on the watcher's queue, when a process exits. A process that has already exited, whether a zombie or gone altogether, is reported straight away. `SystemProcessExitWatcher` is the back-end for the OS being built.
 
 - **It never reaps.** The owner calls `waitpid(pid, &status, WNOHANG)` in the exit handler, or its child stays a zombie. That keeps the exit status with the owner, and the watcher also works for processes that are not the owner's children.
-- **Foreign pids.** A pid that is not the owner's child can be reused once its parent reaps it. Check its start time (`ProcessTable`, WOR-304 S6) before trusting it.
+- **Foreign pids.** A pid that is not the owner's child can be reused once its parent reaps it. Check its start time (`ProcessTable.startTicks`, below) before trusting it.
 - **Linux** (`Linux/PidfdProcessExitWatcher.swift`): `pidfd_open` (Linux 5.3 or later; ENOSYS is `.unsupported`), wrapped in a dispatch read source. A pidfd stays readable after the exit, so the first event cancels the source, and its cancel handler closes the fd. ESRCH from `pidfd_open` means the process is already gone, which is reported as an exit.
 - **macOS** (`Darwin/KqueueProcessExitWatcher.swift`): a NOTE_EXIT process source. kqueue never reports a process that exited before the registration, so the queue checks once after it, as Pty does. `waitid(WNOWAIT)` sees an exited child without reaping it, and `kill(pid, 0)` failing with ESRCH sees any other process that no longer exists.
 - **Not for the pty child.** Pty keeps its own pidfd from `clone3` (WOR-305) and does not open a second one through here.
@@ -197,3 +197,42 @@ On 2026-10-03, on the reference machine (Swift 6.3.3, debug build, `swift test -
 - Holding the delivery queue while 9,192 files were created (18,384 events, against `max_queued_events` 16,384) produced `.overflow`, and the watch kept reporting afterwards.
 - 100 children, each reaped from its own exit event, left none behind in `/proc/self/task/*/children`. With the reap removed, the same check failed with 100 zombies.
 - The numbers of `anon_inode:inotify` and `anon_inode:[pidfd]` entries in `/proc/self/fd` were back at their starting values after 1,000 add/remove cycles, 1,000 whole watchers and 2,000 pidfd watches. The test counts these two kinds rather than every fd, so files opened by Swift Testing or by parallel suites do not move the count.
+
+## Processes: `ProcessTable`
+
+`ProcessTable` (`Sources/TkzPlatform/ProcessTable.swift`) answers read-only questions about other processes. It replaces `AgentBridge.ProcessTree` and the private walk in GitStatus's `PortScanner`; WOR-306 moves their callers (ProcessLiveness, ProcessOwnership, SessionMemory, PortScanner) onto it and deletes them. Each back-end conforms to `ProcessTableBackend`, so both are held to one signature, and `ProcessTable` names the one for the OS being built.
+
+| Call | Linux (`Linux/ProcfsProcessTable.swift`) | macOS (`Darwin/LibprocProcessTable.swift`) |
+|---|---|---|
+| `children(of:)` | `/proc/<pid>/task/*/children`; a scan of `/proc/*/stat` for the ppid when the kernel has no children files | `proc_listchildpids` |
+| `descendants(of:maxDepth:maxProcesses:)` | breadth first over `children`, bounded by `maxProcesses` (512); shared code | the same |
+| `parent(of:)` | field 4 of `/proc/<pid>/stat` | `pbi_ppid` |
+| `name(of:)` | `/proc/<pid>/comm`, at most 15 bytes | `proc_name`, at most 2 × MAXCOMLEN |
+| `startTicks(of:)` | field 22 of `/proc/<pid>/stat`: clock ticks after boot | `pbi_start_tvsec` and `pbi_start_tvusec` in microseconds since 1970 |
+| `startTime(of:)` | `btime` from `/proc/stat` + `startTicks` / `sysconf(_SC_CLK_TCK)` | `pbi_start_tvsec` |
+| `exe(of:)`, `cwd(of:)` | `readlink` of `/proc/<pid>/exe` and `cwd`, without ` (deleted)` | `proc_pidpath`; PROC_PIDVNODEPATHINFO |
+
+- **Best-effort.** Nothing throws. A process that exits mid-call, or that may not be inspected (another user's under `hidepid`, where reads fail with EACCES), reads as nil or as having no children.
+- **Parsed from the last `)`.** `stat` puts `comm` in parentheses, and `comm` may hold spaces and parentheses itself. Fields are therefore counted from after the last `)`, so a process named `a) b (c` parses correctly.
+- **The children files.** Each thread has its own `children` file, listing the children it forked, so all of `task/*` is read. Kernels built without `CONFIG_PROC_CHILDREN` have none; whether they exist is decided once, from this process's own main thread. Without them, every `/proc/<n>/stat` is read instead.
+- **An exact pid-reuse check.** `startTicks` is the value Claude Code writes as `procStart` in `~/.claude/sessions/<pid>.json` on Linux, so a descriptor can be matched to its process exactly. `startTime` is good to about a second (`btime` is whole seconds, ticks are 10 ms), which is enough for the existing 30 s window. On macOS `startTicks` is only an identity token: equal values for one pid mean the same process. Values are not comparable across OSes or reboots.
+- **Deleted executables.** After an auto-update replaces the running executable, the kernel appends ` (deleted)` to the `exe` link. `exe` strips it, so the path is the one the process started from.
+
+## Listening ports: `ListeningPorts`
+
+`ListeningPorts.scan(pids:)` (`Sources/TkzPlatform/ListeningPorts.swift`) returns the TCP ports each pid listens on, over IPv4 and IPv6, as `ListeningSocket(port:pid:)`. Results are grouped by pid in the order given, ports ascend within a pid, and an IPv4 and an IPv6 listener on one port by one process count once. GitStatus's `PortScanner` keeps its tree walk, its one-owner-per-port rule and the process names, and moves onto this in WOR-306.
+
+- **Linux** (`Linux/ProcfsListeningPorts.swift`): `/proc/<pid>/net/tcp` is the table of the whole network namespace, not of one process. So a scan reads `/proc/self/net/tcp` and `tcp6` once, keeps the rows whose state is LISTEN (`st` `0A`) as a map from socket inode to port, and joins it with each pid's `/proc/<pid>/fd` links (`socket:[<inode>]`).
+  - A process in another network namespace, such as a container, reports no ports.
+  - Only this user's processes can be read, which is all tkzmux asks about.
+- **macOS** (`Darwin/LibprocListeningPorts.swift`): each pid's fds through PROC_PIDLISTFDS and PROC_PIDFDSOCKETINFO, lifted from `PortScanner`.
+- **A socket held by several processes** (an inherited listener) is reported for each of them, as `ss -ltnp` does.
+
+### Measured
+
+On 2026-10-03, on the reference machine (Swift 6.3.3):
+
+- **Matches `ss -ltnp`.** `ListeningPortsTests.matchesSs` holds an IPv4 and an IPv6 listener in the test process and an IPv6 listener in a child, then compares the scan with `ss -ltnpH` for the same pids. They matched. The same test also passed in a network namespace with IPv6 turned off (`unshare -rn` and `disable_ipv6=1`), which is how Docker runs a job whose network has no IPv6. The IPv6 listeners are skipped there. The ubuntu CI job installs `iproute2` for `ss`; Arch has it in `base`.
+- **Fast enough.** The test process with 50 children was walked (`descendants`) and its ports joined (`scan`) in a median of 1.1 ms in a release build (`swift test -c release`) over 21 runs, and 1.5 ms in a debug build. The test fails a release build above 5 ms.
+- **`startTicks` is `procStart`.** For the two live Claude Code 2.1.287 sessions in `~/.claude/sessions/`, `ProcessTable.startTicks` equalled the descriptor's `procStart` exactly (1147318 and 1630842). `startTime` was 1 to 2 s before the descriptor's `startedAt`. `exe` was Claude's binary under mise's installs, and `cwd` matched the descriptor's `cwd`.
+- **The tree.** A 3-level tree (the test runner, `sh`, `sh`, `sleep`, with a second `sleep` beside the inner `sh`) came back exactly, from both the children files and the `/proc/*/stat` fallback.

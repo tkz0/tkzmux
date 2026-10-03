@@ -1,9 +1,11 @@
-// Shared by the FileWatcher and ProcessExitWatcher tests (WOR-304 S5).
+// Shared by the FileWatcher and ProcessExitWatcher tests (WOR-304 S5), and the ProcessTable and
+// ListeningPorts tests (S6).
 //
 // Every suite that opens inotify fds or pidfds, or spawns children, is nested in `WatcherTests`,
 // which is serialized: the descriptor-count and zombie checks below read process-wide state
 // (/proc/self/fd, /proc/self/task/*/children) and must not see another watcher test's fds or
-// children. No other suite in this target opens those fds or spawns processes.
+// children. That includes the ProcessTable and ListeningPorts suites (S6), which spawn children;
+// no suite outside `WatcherTests` opens those fds or spawns processes.
 
 import Dispatch
 import Foundation
@@ -85,12 +87,25 @@ private func systemWrite(_ fd: Int32, _ bytes: UnsafeRawPointer?, _ count: Int) 
 }
 
 /// Spawns `path` with `arguments` and an empty environment; returns the pid. The caller reaps it.
-func spawnChild(_ path: String, _ arguments: [String] = []) throws -> pid_t {
+/// `fd3`, when given, becomes the child's fd 3 (dup2 clears its close-on-exec flag in the child).
+func spawnChild(_ path: String, _ arguments: [String] = [], fd3: Int32? = nil) throws -> pid_t {
     let argv = ([path] + arguments).map { strdup($0) } + [nil]
     defer { for pointer in argv { free(pointer) } }
     var environment: [UnsafeMutablePointer<CChar>?] = [nil]
+    #if canImport(Darwin)
+    var actions: posix_spawn_file_actions_t? = nil
+    #else
+    var actions = posix_spawn_file_actions_t()
+    #endif
+    posix_spawn_file_actions_init(&actions)
+    defer { posix_spawn_file_actions_destroy(&actions) }
+    // A dup2 of fd 3 onto itself does not clear close-on-exec on every OS (glibc does, macOS is
+    // not documented to), so a source that already is fd 3 is handed over from a copy.
+    let copy: Int32? = fd3 == 3 ? fcntl(3, F_DUPFD_CLOEXEC, 4) : nil
+    defer { if let copy, copy >= 0 { close(copy) } }
+    if let fd3 { posix_spawn_file_actions_adddup2(&actions, copy ?? fd3, 3) }
     var pid: pid_t = 0
-    let result = posix_spawn(&pid, path, nil, nil, argv, &environment)
+    let result = posix_spawn(&pid, path, &actions, nil, argv, &environment)
     guard result == 0 else { throw POSIXError(POSIXErrorCode(rawValue: result) ?? .EIO) }
     return pid
 }

@@ -10,7 +10,7 @@ One test target per Swift library module, under `Tests/<Module>Tests`, written w
 
 | Target | Covers |
 |---|---|
-| `TkzPlatformTests` | the `TkzLogger`/`TkzSignposter` facade, the `import os` hygiene check, `AppPaths`, `SHA256`, `Clocks`, `FileWatcher`, `ProcessExitWatcher`; on Linux the redaction table, journal datagrams, trace JSON, inotify overflow, zombie and fd-leak checks |
+| `TkzPlatformTests` | the `TkzLogger`/`TkzSignposter` facade, the `import os` hygiene check, `AppPaths`, `SHA256`, `Clocks`, `FileWatcher`, `ProcessExitWatcher`, `ProcessTable`, `ListeningPorts`; on Linux the redaction table, journal datagrams, trace JSON, inotify overflow, zombie and fd-leak checks, `/proc` parsing and the `ss -ltnp` comparison |
 | `TkzCoreTests` | models, `AppStore`, status derivation, theme tokens |
 | `PersistenceTests` | `state.json`, migrations, snapshots |
 | `AgentBridgeTests` | session watcher, hook server, transcript search |

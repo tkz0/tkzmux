@@ -205,8 +205,9 @@ jobs:
       - name: Install system packages
         run: |
           apt-get update -q
+          # iproute2: `ss`, which ListeningPortsTests compares against (Arch has it in `base`).
           DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
-            zsh fish git python3 ncurses-bin binutils pkg-config
+            zsh fish git python3 ncurses-bin binutils pkg-config iproute2
 
       - uses: actions/checkout@v5
 

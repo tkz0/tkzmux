@@ -14,6 +14,10 @@
 //   FileWatcher.swift         `FileWatcher`: directory changes; inotify (Linux/), kqueue (Darwin/)
 //   ProcessExitWatcher.swift  `ProcessExitWatcher`: process exits, never reaping; pidfd (Linux/),
 //                             kqueue (Darwin/). The pidfd calls are in the C target TkzPlatformShim.
+//   ProcessTable.swift        `ProcessTable`: children, descendants, parent, name, start, exe, cwd;
+//                             /proc (Linux/), libproc (Darwin/)
+//   ListeningPorts.swift      `ListeningPorts`: listening TCP ports per pid; /proc/net joined with
+//                             /proc/<pid>/fd (Linux/), libproc (Darwin/)
 
 /// Module marker used by the smoke tests until the module has API on every OS.
 public enum TkzPlatformModule {
