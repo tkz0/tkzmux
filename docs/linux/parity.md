@@ -416,6 +416,8 @@ The feature sheet is written from `L2FeatureSheet.output` with an empty environm
 
 `Tests/Parity/References/fonts/` holds the Mac's CoreText answers that WOR-312's FreeType path is held to (L1 and L4). `scripts/parity-font-references.sh` writes them with the release `tkzmux-vtdump`, on macOS only and only on the reference runner: it refuses without `CI` and `ImageOS`, and refuses an image other than the one the committed manifest names unless `--regenerate` is passed. `--check` writes the set again into a temporary directory and fails unless it is byte-identical, the manifest's provenance line aside. It replaces, hashes and compares only its own files: WOR-312 S2's chrome dump shares the folder. The *Font references* workflow (`.github/workflows/font-references.yml`) runs both, on a manual dispatch or a push to a `mac-refs/*` branch, and uploads the folder as `font-references`.
 
+The chrome metrics (`chrome-metrics.json`, WOR-312 S2) have their own producer, `scripts/parity-chrome-references.sh`, with the same flags and the same refusals; the image it checks is the file's own `reference.imageVersion`. The dump is a test, `ChromeMetricsDumpTests` in TkzAppTests, which runs only when `TKZMUX_CHROME_METRICS_OUT` names its output file and is skipped by every other `swift test`. It measures twice in one process and refuses a measurement that differs, and `--check` then demands byte identity from a second process. The workflow's `chrome` job runs both, checks that the dump stays skipped without the variable, and uploads the file as `chrome-metrics`.
+
 | File | Command | What it holds |
 |---|---|---|
 | `fontmetrics.json` | `tkzmux-vtdump fontmetrics --json` | every `CellMetrics` field of JetBrains Mono at 11, 12.5, 13, 14 and 16 pt at 1.6x and 2x, and 40 pt at 2x (80 px), with the unrounded CoreText inputs; 12.5 pt at 2x is the rounding tie case (ascent 25.5, descent 7.5) |
@@ -423,8 +425,9 @@ The feature sheet is written from `L2FeatureSheet.output` with an empty environm
 | `symbols.json` | `tkzmux-vtdump symbols --json` | WOR-312 S7's inventory plus every corpus scalar: JetBrains Mono coverage, the CoreText fallback font, advance and ink box per style |
 | `atlas-<pt>pt-<s>x-thicken<t>.json`, `-grayscale.png`, `-color.png` | `tkzmux-vtdump atlas --json` | an `AtlasDump` (TkzRenderCore) and its two pages for the default sample at 12.5 and 14 pt, at 1.6x and 2x, thicken 0 and 1; a five-glyph sample at 40 pt, 2x. The other sizes would cost about 160 KB each of the budget; `atlas --json` writes them on demand |
 | `manifest.json` | the script | the runner image, macOS build, Xcode, `hw.model`, CoreText version, `AppleFontSmoothing`, display profile, every command line, a sha256 per file, and the provenance (commit, run) |
+| `chrome-metrics.json` | `scripts/parity-chrome-references.sh` (`TKZMUX_CHROME_METRICS_OUT=… swift test --filter ChromeMetricsDump`) | every DesignTokens typography role and the chrome's inline fonts (the session title, the mono detail line at 10 pt, the status bar, …), resolved through `Theme.Fonts.ui/mono`: the PostScript name, ascender, descender, leading, cap and x height, `NSLayoutManager`'s line height and baseline, and the advances of printable ASCII, a fixed corpus and every chrome symbol (the modifier glyphs, S7's lists, every non-ASCII scalar of a TkzApp or TkzCore string literal) with CoreText's fallback runs; `SessionRowView.neededDetailWidth` per fixture model with its components and the 44/59 pt grid at 240–520 pt; each status-bar strip's item widths and, at 100–1300 pt, which items are placed, split or truncated (`minTruncatedWidth` 30); the runner in `reference`. Compact JSON, one record per line |
 
-Every dump carries the same `environment` block, so a file read on its own still says which machine it describes. The Linux tests in `Tests/TkzFontsFTTests` (`FaceMetricsTests`, `ShapingTests`, `SymbolCoverageTests`, `AtlasDumpTests`) decode the parts they compare and skip while a file is missing.
+Every dump carries the same `environment` block, so a file read on its own still says which machine it describes. The Linux tests in `Tests/TkzFontsFTTests` (`FaceMetricsTests`, `ShapingTests`, `SymbolCoverageTests`, `AtlasDumpTests`, `ChromeMetricsReferenceTests`) decode the parts they compare and skip while a file is missing. `ChromeMetricsReference` is the chrome dump's Linux decoder; its tests hold the file to the rules it records (the components add up, the row wraps exactly where they exceed the width, nothing is truncated into less than 30 pt).
 
 ## Regenerating the references
 
@@ -434,7 +437,7 @@ Every committed reference has exactly one producer:
 |---|---|---|
 | `Tests/TkzAppTests/ComponentSnapshots/` | the Component snapshots workflow (WOR-307; [Updating the goldens](#updating-the-goldens)) | reference runner |
 | `Tests/Parity/References/framebuilder/` | `scripts/parity-framebuilder-references.sh` (L2, above) | reference runner. A Linux bootstrap until WOR-322 S2 |
-| `Tests/Parity/References/fonts/` | `scripts/parity-font-references.sh` (WOR-312 S1, [above](#the-font-references)), and WOR-312 S2's NSFont chrome dump | reference runner (WOR-312 S1, S2) |
+| `Tests/Parity/References/fonts/` | `scripts/parity-font-references.sh` (WOR-312 S1, [above](#the-font-references)), and `scripts/parity-chrome-references.sh` for `chrome-metrics.json` (WOR-312 S2) | reference runner (WOR-312 S1, S2) |
 | `Tests/Parity/References/terminal/`, `manifest.json`, the full-window captures | `make parity-references` (`scripts/parity-export-mac.sh`) | reference runner (WOR-322 S2, S4) |
 | WOR-313's conformance outputs | `TKZMUX_WRITE_CONFORMANCE_REFS`, a step that WOR-313 S3 adds to the exporter | reference runner |
 

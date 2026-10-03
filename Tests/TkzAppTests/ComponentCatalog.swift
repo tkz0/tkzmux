@@ -397,6 +397,40 @@ enum ComponentCatalog {
         branch: "feature/tkz-18-main-window", modelName: "Sonnet 4.5", contextPercent: 88,
         sessionUsage: .init(percent: 74), weeklyUsage: .init(percent: 96))
 
+    /// Every segment kind the full strip does not draw: running agents and shells, an open PR,
+    /// spend, the in-sync arrows.
+    static var liveStrip: StatusBarModel {
+        var model = StatusBarModel(
+            branch: "feature/live-reload", isWorktree: true, worktreeName: "live-reload",
+            modelName: "Opus 4.1", diffAdded: 12, diffRemoved: 3, diffFiles: 1, ahead: 3, behind: 0,
+            upstream: "origin/feature/live-reload",
+            pullRequest: PRInfo(number: 418, state: "OPEN", reviewDecision: "APPROVED"),
+            ports: [8080], contextPercent: 41,
+            sessionUsage: .init(percent: 12), weeklyUsage: .init(percent: 22), spendUSD: 4.2)
+        model.runningAgents = 2
+        model.runningShells = 1
+        return model
+    }
+
+    /// No upstream (`↑– ↓–`), a merged PR (the merge glyph), one quota window (a single bar).
+    static let gitStrip = StatusBarModel(
+        branch: "fix/csv-import", upstreamMissing: true,
+        pullRequest: PRInfo(number: 402, state: "MERGED"),
+        weeklyUsage: .init(percent: 39))
+
+    /// A rebase running (the dimmed pill), a closed PR, a shell with no count.
+    static var rebasingStrip: StatusBarModel {
+        var model = StatusBarModel(
+            branch: "feat/hangfire", ahead: 1, behind: 0, baseBranch: "origin/develop", behindBase: 4,
+            isRebasing: true, pullRequest: PRInfo(number: 77, state: "CLOSED"))
+        model.runningShells = 0
+        return model
+    }
+
+    static let draftStrip = StatusBarModel(branch: "spike/graphql", diffFiles: 1, pullRequest: PRInfo(number: 409, isDraft: true))
+
+    static let noticeStrip = StatusBarModel(notice: "Restored sidebar from backup")
+
     static func statusBar() -> [ComponentCase] {
         var cases: [ComponentCase] = []
         // The five `StatusBarViewTests.writesInspectionPngs` cases. Its `wide-light` is
@@ -405,41 +439,11 @@ enum ComponentCatalog {
         cases.append(statusBar("narrow", width: 480) { ComponentCatalog.fullStrip })
         cases.append(statusBar("ellipsis", width: 150) { ComponentCatalog.fullStrip })
         cases.append(statusBar("hot", width: 1_240) { ComponentCatalog.hotStrip })
-        // Every segment kind the full strip does not draw: running agents and shells, an open PR,
-        // spend, the in-sync arrows.
-        cases.append(statusBar("segments.live", width: 1_240) {
-            var model = StatusBarModel(
-                branch: "feature/live-reload", isWorktree: true, worktreeName: "live-reload",
-                modelName: "Opus 4.1", diffAdded: 12, diffRemoved: 3, diffFiles: 1, ahead: 3, behind: 0,
-                upstream: "origin/feature/live-reload",
-                pullRequest: PRInfo(number: 418, state: "OPEN", reviewDecision: "APPROVED"),
-                ports: [8080], contextPercent: 41,
-                sessionUsage: .init(percent: 12), weeklyUsage: .init(percent: 22), spendUSD: 4.2)
-            model.runningAgents = 2
-            model.runningShells = 1
-            return model
-        })
-        // No upstream (`↑– ↓–`), a merged PR (the merge glyph), one quota window (a single bar).
-        cases.append(statusBar("segments.git", width: 720) {
-            StatusBarModel(
-                branch: "fix/csv-import", upstreamMissing: true,
-                pullRequest: PRInfo(number: 402, state: "MERGED"),
-                weeklyUsage: .init(percent: 39))
-        })
-        // A rebase running (the dimmed pill), a closed PR, a shell with no count.
-        cases.append(statusBar("segments.rebasing", width: 720) {
-            var model = StatusBarModel(
-                branch: "feat/hangfire", ahead: 1, behind: 0, baseBranch: "origin/develop", behindBase: 4,
-                isRebasing: true, pullRequest: PRInfo(number: 77, state: "CLOSED"))
-            model.runningShells = 0
-            return model
-        })
-        cases.append(statusBar("segments.draft", width: 480) {
-            StatusBarModel(branch: "spike/graphql", diffFiles: 1, pullRequest: PRInfo(number: 409, isDraft: true))
-        })
-        cases.append(statusBar("notice", width: 600) {
-            StatusBarModel(notice: "Restored sidebar from backup")
-        })
+        cases.append(statusBar("segments.live", width: 1_240) { ComponentCatalog.liveStrip })
+        cases.append(statusBar("segments.git", width: 720) { ComponentCatalog.gitStrip })
+        cases.append(statusBar("segments.rebasing", width: 720) { ComponentCatalog.rebasingStrip })
+        cases.append(statusBar("segments.draft", width: 480) { ComponentCatalog.draftStrip })
+        cases.append(statusBar("notice", width: 600) { ComponentCatalog.noticeStrip })
         return cases
     }
 
