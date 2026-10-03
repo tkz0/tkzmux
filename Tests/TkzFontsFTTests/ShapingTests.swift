@@ -2,7 +2,7 @@
 //
 // The fixed expectations run on the bundled faces only, so they hold on any machine. Fallback
 // faces are pinned in ParityFontsTests, where the font set is fixed too. The comparison with the
-// Mac's shaping dump (WOR-312 S1) is skipped until that file is committed.
+// Mac's shaping dump (WOR-312 S1) skips while that file is missing.
 
 import CFreeType
 import Foundation
@@ -117,9 +117,9 @@ struct ShapingTests {
         .deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("Parity/References/fonts/shaping.json")
 
-    /// TODO(WOR-312 S1): the exporter owns this schema. This decoder is the Linux side's
-    /// expectation of it — per cluster its scalars, style, cellSpan and CoreText runs — and must
-    /// be aligned with whatever S1 commits. Unknown keys are ignored.
+    /// The part of the exporter's schema (`ShapingDump` in
+    /// Sources/tkzmux-vtdump/FontDumpCommands.swift) this test reads: per cluster its scalars,
+    /// style, cellSpan and CoreText runs. Unknown keys are ignored.
     struct Reference: Decodable {
         struct Cluster: Decodable {
             /// Unicode scalar values.

@@ -1,0 +1,51 @@
+# Regenerates the Mac font references (WOR-312 S1) on the reference runner: the macos-26 image with
+# Xcode 26.1, the same runner class and toolchain as ci.yml (ADR-0003 §5). Started by hand, or by
+# pushing a `mac-refs/*` branch (workflow_dispatch only reaches workflows on main). macOS minutes
+# cost, and a reference set is committed by a person in a reviewed PR, never by CI.
+#
+# scripts/parity-font-references.sh writes the set into Tests/Parity/References/fonts/, and its
+# --check run then writes it again from a fresh process and fails unless the two agree byte for
+# byte (the manifest's provenance line aside). The folder is uploaded either way, as
+# `font-references`, so its contents go straight into Tests/Parity/References/fonts/.
+# docs/linux/parity.md, "The font references".
+name: Font references
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['mac-refs/**']
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  regenerate:
+    runs-on: macos-26
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode 26.1
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.1.app
+          swift --version
+
+      # --regenerate: a new image is the reason to run this at all; the manifest records which.
+      - name: Write the font references
+        run: scripts/parity-font-references.sh --regenerate
+
+      - name: Check them from a second process
+        run: scripts/parity-font-references.sh --check
+
+      - name: Upload the font references
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: font-references
+          path: Tests/Parity/References/fonts
+          if-no-files-found: ignore

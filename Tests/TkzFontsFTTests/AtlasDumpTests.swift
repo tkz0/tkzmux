@@ -3,8 +3,9 @@
 //
 // The Mac comparisons skip until those files exist. Each reference is one `AtlasDump` JSON (the
 // schema in TkzRenderCore, shared with the Mac exporter) plus the PNG pages it names.
-// TODO(WOR-312 S1): write the references under `MacAtlasReference.fileName` for 14 pt at 1.6x and
-// 2x, thicken 0 and 1. TODO(WOR-322 S1): score masks with the TkzParity comparator once it exists;
+// scripts/parity-font-references.sh writes them under `MacAtlasReference.fileName`, 14 pt at 1.6x
+// and 2x with thicken 0 and 1 among them. TODO(WOR-322 S1): score masks with the TkzParity
+// comparator once it exists;
 // `MacAtlasReference.meanAbsoluteDifference` is a stand-in with the same alignment rule (pen
 // origin to pen origin).
 
