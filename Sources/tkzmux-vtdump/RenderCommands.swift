@@ -7,10 +7,13 @@
 //       golden-frame tests meaningful. `--scale` is the backing scale the font set is built at
 //       (default 2, the Retina factor the goldens use; 1.6 is the Linux parity scale).
 //
-//   tkzmux-vtdump atlas --out <prefix> [--point-size n --scale n --sample "…"]
+//   tkzmux-vtdump atlas --out <prefix> [--point-size n --scale n --sample "…" --thicken 0|1 --json]
 //       Rasterizes a sample string (printable ASCII plus a CJK/emoji tail by default) and dumps
 //       both atlases: `<prefix>-grayscale.png` and `<prefix>-color.png`. Runs with no Metal device
 //       at all — `GlyphAtlas` (TkzRenderCore) is a CPU staging buffer; only the renderer uploads it.
+//       `--json` also writes `<prefix>.json`, an `AtlasDump` (TkzRenderCore) with every glyph's
+//       slot, bearings, `appliedScale`, ink box and CoreText face: the WOR-312 S1 parity reference
+//       (FontDumpCommands.swift). The PNGs are the same with or without it.
 //
 // macOS only: on Linux, VulkanRenderCommands.swift draws `render` through Vulkan and stands in for
 // `atlas` (WOR-313 S6). Each file also gives `framedump` its platform's font stack (WOR-322 S3).
@@ -76,7 +79,8 @@ public enum RenderCommands {
             pointSize: Double(arguments.value("point-size") ?? "") ?? 12.5,
             scale: Double(arguments.value("scale") ?? "") ?? 2,
             sample: arguments.value("sample"),
-            thicken: arguments.value("thicken") != "0"
+            thicken: arguments.value("thicken") != "0",
+            json: arguments.has("json")
         )
     }
 
@@ -129,19 +133,32 @@ public enum RenderCommands {
 
     // MARK: - atlas
 
-    /// `tkzmux-vtdump atlas --out <prefix>` — dump both glyph atlases as PNGs.
+    /// `tkzmux-vtdump atlas --out <prefix>` — dump both glyph atlases as PNGs, and with `json` the
+    /// `AtlasDump` that describes them.
     public static func atlas(pngPrefix: URL, pointSize: Double, scale: Double, sample: String?,
-                             thicken: Bool = true) throws {
+                             thicken: Bool = true, json: Bool = false) throws {
         let fontSet = FontSet(pointSize: pointSize, scale: scale)
+        // The recorder only watches the source the cache would have built itself
+        // (`GlyphCache(fontSet:thicken:)`), so the pages are the same either way.
+        let recorder = AtlasRecorder(base: CoreTextGlyphSource(fontSet: fontSet, thicken: thicken))
         // Small atlases so the dump is legible rather than a postage stamp in a 2048² field.
-        let cache = GlyphCache(fontSet: fontSet, grayscaleInitialSize: 512, colorInitialSize: 256,
-                               thicken: thicken)
+        let cache = GlyphCache(source: recorder, grayscaleInitialSize: 512, colorInitialSize: 256)
 
+        var glyphs: [AtlasDump.Glyph] = []
         let text = sample ?? defaultSample
         for character in text where !character.isNewline {
             for style in FontStyle.allCases {
-                _ = cache.glyph(for: character, style: style)
+                recorder.drawn = nil
+                guard let placed = cache.glyph(for: character, style: style) else { continue }
+                // Only a miss draws; a hit (a sprite in its second style, say) is already listed.
+                if let entry = recorder.entry(for: Array(character.unicodeScalars), style: style, placed: placed) {
+                    glyphs.append(entry)
+                }
             }
+        }
+        if json, cache.grayscale.rebuildCount > 0 || cache.color.rebuildCount > 0 {
+            // A rebuild drops earlier glyphs' pixels, and the slots listed for them with it.
+            throw CommandError(description: "the sample overflowed a 2048² atlas; dump a shorter --sample")
         }
 
         let directory = pngPrefix.deletingLastPathComponent()
@@ -159,6 +176,20 @@ public enum RenderCommands {
             FileHandle.standardError.write(Data(
                 "\(suffix): \(atlas.size)×\(atlas.size), \(cache.cachedCount) cached glyphs → \(url.path)\n".utf8))
         }
+        guard json else { return }
+
+        let dump = AtlasDump(
+            platform: "macos", pointSize: pointSize, scale: scale, pixelSize: Double(fontSet.pixelSize),
+            thicken: thicken, padding: recorder.padding, metrics: recorder.metrics,
+            environment: MacFontEnvironment.current,
+            pages: [
+                AtlasDump.Page(kind: "grayscale", size: cache.grayscale.size, file: "\(base)-grayscale.png"),
+                AtlasDump.Page(kind: "color", size: cache.color.size, file: "\(base)-color.png"),
+            ],
+            glyphs: glyphs)
+        let url = directory.appendingPathComponent("\(base).json")
+        try dump.encoded().write(to: url, options: .atomic)
+        FileHandle.standardError.write(Data("json: \(glyphs.count) glyphs → \(url.path)\n".utf8))
     }
 
     /// Printable ASCII plus the interesting tail: box drawing, a CJK pair and two emoji.

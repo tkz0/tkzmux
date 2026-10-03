@@ -412,6 +412,20 @@ The feature sheet is written from `L2FeatureSheet.output` with an empty environm
 - **Until then, the committed set is a Linux bootstrap.** WOR-322 S3 made it with the same script on Linux, with FreeType and the pinned parity fonts (`--fonts parity`), and the dumps say so in `source`. L2 is shared code, so the gate is the same either way: the Linux FrameBuilder must rebuild the committed buffers from the committed table. Until the Mac set replaces the bootstrap, that pins FrameBuilder, the packer and the buffer layout against regressions, but it does not yet prove anything across the two OSes. The runner adds a note to every L2 row while `source.platform` is not `macos`.
 - **Regenerating** is needed when FrameBuilder's output changes on purpose, or when the fixtures change. Rerun the script on the Mac, and on Linux until the Mac set exists. Commit the set on its own, and explain in the PR every buffer that changed.
 
+## The font references
+
+`Tests/Parity/References/fonts/` holds the Mac's CoreText answers that WOR-312's FreeType path is held to (L1 and L4). `scripts/parity-font-references.sh` writes them with the release `tkzmux-vtdump`, on macOS only and only on the reference runner: it refuses without `CI` and `ImageOS`, and refuses an image other than the one the committed manifest names unless `--regenerate` is passed. `--check` writes the set again into a temporary directory and fails unless it is byte-identical, the manifest's provenance line aside. It replaces, hashes and compares only its own files: WOR-312 S2's chrome dump shares the folder. The *Font references* workflow (`.github/workflows/font-references.yml`) runs both, on a manual dispatch or a push to a `mac-refs/*` branch, and uploads the folder as `font-references`.
+
+| File | Command | What it holds |
+|---|---|---|
+| `fontmetrics.json` | `tkzmux-vtdump fontmetrics --json` | every `CellMetrics` field of JetBrains Mono at 11, 12.5, 13, 14 and 16 pt at 1.6x and 2x, and 40 pt at 2x (80 px), with the unrounded CoreText inputs; 12.5 pt at 2x is the rounding tie case (ascent 25.5, descent 7.5) |
+| `shaping.json` | `tkzmux-vtdump shaping --json` | the corpus (ZWJ sequences, flags, keycap+VS16, combining marks, CJK, emoji, the agent glyphs of `claude-tool-run.txt`) in four styles at 14 pt, 2x: cellSpan, glyph count, the shaper's font and CoreText's runs |
+| `symbols.json` | `tkzmux-vtdump symbols --json` | WOR-312 S7's inventory plus every corpus scalar: JetBrains Mono coverage, the CoreText fallback font, advance and ink box per style |
+| `atlas-<pt>pt-<s>x-thicken<t>.json`, `-grayscale.png`, `-color.png` | `tkzmux-vtdump atlas --json` | an `AtlasDump` (TkzRenderCore) and its two pages for the default sample at 12.5 and 14 pt, at 1.6x and 2x, thicken 0 and 1; a five-glyph sample at 40 pt, 2x. The other sizes would cost about 160 KB each of the budget; `atlas --json` writes them on demand |
+| `manifest.json` | the script | the runner image, macOS build, Xcode, `hw.model`, CoreText version, `AppleFontSmoothing`, display profile, every command line, a sha256 per file, and the provenance (commit, run) |
+
+Every dump carries the same `environment` block, so a file read on its own still says which machine it describes. The Linux tests in `Tests/TkzFontsFTTests` (`FaceMetricsTests`, `ShapingTests`, `SymbolCoverageTests`, `AtlasDumpTests`) decode the parts they compare and skip while a file is missing.
+
 ## Regenerating the references
 
 Every committed reference has exactly one producer:
@@ -420,7 +434,7 @@ Every committed reference has exactly one producer:
 |---|---|---|
 | `Tests/TkzAppTests/ComponentSnapshots/` | the Component snapshots workflow (WOR-307; [Updating the goldens](#updating-the-goldens)) | reference runner |
 | `Tests/Parity/References/framebuilder/` | `scripts/parity-framebuilder-references.sh` (L2, above) | reference runner. A Linux bootstrap until WOR-322 S2 |
-| `Tests/Parity/References/fonts/` | WOR-312's `atlas --json`, `fontmetrics` and NSFont chrome dumps | reference runner (WOR-312 S1, S2) |
+| `Tests/Parity/References/fonts/` | `scripts/parity-font-references.sh` (WOR-312 S1, [above](#the-font-references)), and WOR-312 S2's NSFont chrome dump | reference runner (WOR-312 S1, S2) |
 | `Tests/Parity/References/terminal/`, `manifest.json`, the full-window captures | `make parity-references` (`scripts/parity-export-mac.sh`) | reference runner (WOR-322 S2, S4) |
 | WOR-313's conformance outputs | `TKZMUX_WRITE_CONFORMANCE_REFS`, a step that WOR-313 S3 adds to the exporter | reference runner |
 

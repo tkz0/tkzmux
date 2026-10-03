@@ -1,0 +1,420 @@
+{
+  "configurations" : [
+    {
+      "faces" : {
+        "bold" : "JetBrainsMono-Bold",
+        "boldItalic" : "JetBrainsMono-BoldItalic",
+        "italic" : "JetBrainsMono-Italic",
+        "regular" : "JetBrainsMono-Regular"
+      },
+      "family" : "JetBrains Mono",
+      "font" : "JetBrainsMono-Regular",
+      "inputs" : {
+        "ascent" : 17.952075195312503,
+        "descent" : 5.2800537109375005,
+        "leading" : 0,
+        "maxAdvance" : 10.56,
+        "underlinePosition" : -2.728,
+        "underlineThickness" : 0.88,
+        "unitsPerEm" : 1000
+      },
+      "metrics" : {
+        "ascent" : 18,
+        "baseline" : 18,
+        "descent" : 5,
+        "height" : 23,
+        "leading" : 0,
+        "strikethroughOffset" : -6,
+        "strikethroughThickness" : 1,
+        "underlineOffset" : 3,
+        "underlineThickness" : 1,
+        "width" : 11
+      },
+      "needsSyntheticBold" : false,
+      "needsSyntheticItalic" : false,
+      "pixelSize" : 17.6,
+      "pointSize" : 11,
+      "scale" : 1.6,
+      "usedFallbackFamily" : false
+    },
+    {
+      "faces" : {
+        "bold" : "JetBrainsMono-Bold",
+        "boldItalic" : "JetBrainsMono-BoldItalic",
+        "italic" : "JetBrainsMono-Italic",
+        "regular" : "JetBrainsMono-Regular"
+      },
+      "family" : "JetBrains Mono",
+      "font" : "JetBrainsMono-Regular",
+      "inputs" : {
+        "ascent" : 22.440093994140625,
+        "descent" : 6.600067138671875,
+        "leading" : 0,
+        "maxAdvance" : 13.2,
+        "underlinePosition" : -3.4099999999999997,
+        "underlineThickness" : 1.0999999999999999,
+        "unitsPerEm" : 1000
+      },
+      "metrics" : {
+        "ascent" : 22,
+        "baseline" : 22,
+        "descent" : 7,
+        "height" : 29,
+        "leading" : 0,
+        "strikethroughOffset" : -7,
+        "strikethroughThickness" : 1,
+        "underlineOffset" : 3,
+        "underlineThickness" : 1,
+        "width" : 14
+      },
+      "needsSyntheticBold" : false,
+      "needsSyntheticItalic" : false,
+      "pixelSize" : 22,
+      "pointSize" : 11,
+      "scale" : 2,
+      "usedFallbackFamily" : false
+    },
+    {
+      "faces" : {
+        "bold" : "JetBrainsMono-Bold",
+        "boldItalic" : "JetBrainsMono-BoldItalic",
+        "italic" : "JetBrainsMono-Italic",
+        "regular" : "JetBrainsMono-Regular"
+      },
+      "family" : "JetBrains Mono",
+      "font" : "JetBrainsMono-Regular",
+      "inputs" : {
+        "ascent" : 20.40008544921875,
+        "descent" : 6.00006103515625,
+        "leading" : 0,
+        "maxAdvance" : 12,
+        "underlinePosition" : -3.1,
+        "underlineThickness" : 1,
+        "unitsPerEm" : 1000
+      },
+      "metrics" : {
+        "ascent" : 20,
+        "baseline" : 20,
+        "descent" : 6,
+        "height" : 26,
+        "leading" : 0,
+        "strikethroughOffset" : -6,
+        "strikethroughThickness" : 1,
+        "underlineOffset" : 3,
+        "underlineThickness" : 1,
+        "width" : 12
+      },
+      "needsSyntheticBold" : false,
+      "needsSyntheticItalic" : false,
+      "pixelSize" : 20,
+      "pointSize" : 12.5,
+      "scale" : 1.6,
+      "usedFallbackFamily" : false
+    },
+    {
+      "faces" : {
+        "bold" : "JetBrainsMono-Bold",
+        "boldItalic" : "JetBrainsMono-BoldItalic",
+        "italic" : "JetBrainsMono-Italic",
+        "regular" : "JetBrainsMono-Regular"
+      },
+      "family" : "JetBrains Mono",
+      "font" : "JetBrainsMono-Regular",
+      "inputs" : {
+        "ascent" : 25.500106811523438,
+        "descent" : 7.5000762939453125,
+        "leading" : 0,
+        "maxAdvance" : 15,
+        "underlinePosition" : -3.875,
+        "underlineThickness" : 1.25,
+        "unitsPerEm" : 1000
+      },
+      "metrics" : {
+        "ascent" : 26,
+        "baseline" : 26,
+        "descent" : 8,
+        "height" : 33,
+        "leading" : 0,
+        "strikethroughOffset" : -8,
+        "strikethroughThickness" : 1,
+        "underlineOffset" : 4,
+        "underlineThickness" : 1,
+        "width" : 15
+      },
+      "needsSyntheticBold" : false,
+      "needsSyntheticItalic" : false,
+      "pixelSize" : 25,
+      "pointSize" : 12.5,
+      "scale" : 2,
+      "usedFallbackFamily" : false
+    },
+    {
+      "faces" : {
+        "bold" : "JetBrainsMono-Bold",
+        "boldItalic" : "JetBrainsMono-BoldItalic",
+        "italic" : "JetBrainsMono-Italic",
+        "regular" : "JetBrainsMono-Regular"
+      },
+      "family" : "JetBrains Mono",
+      "font" : "JetBrainsMono-Regular",
+      "inputs" : {
+        "ascent" : 21.216088867187498,
+        "descent" : 6.2400634765625,
+        "leading" : 0,
+        "maxAdvance" : 12.479999999999999,
+        "underlinePosition" : -3.2239999999999998,
+        "underlineThickness" : 1.04,
+        "unitsPerEm" : 1000
+      },
+      "metrics" : {
+        "ascent" : 21,
+        "baseline" : 21,
+        "descent" : 6,
+        "height" : 27,
+        "leading" : 0,
+        "strikethroughOffset" : -7,
+        "strikethroughThickness" : 1,
+        "underlineOffset" : 3,
+        "underlineThickness" : 1,
+        "width" : 13
+      },
+      "needsSyntheticBold" : false,
+      "needsSyntheticItalic" : false,
+      "pixelSize" : 20.8,
+      "pointSize" : 13,
+      "scale" : 1.6,
+      "usedFallbackFamily" : false
+    },
+    {
+      "faces" : {
+        "bold" : "JetBrainsMono-Bold",
+        "boldItalic" : "JetBrainsMono-BoldItalic",
+        "italic" : "JetBrainsMono-Italic",
+        "regular" : "JetBrainsMono-Regular"
+      },
+      "family" : "JetBrains Mono",
+      "font" : "JetBrainsMono-Regular",
+      "inputs" : {
+        "ascent" : 26.520111083984375,
+        "descent" : 7.800079345703125,
+        "leading" : 0,
+        "maxAdvance" : 15.6,
+        "underlinePosition" : -4.03,
+        "underlineThickness" : 1.3,
+        "unitsPerEm" : 1000
+      },
+      "metrics" : {
+        "ascent" : 27,
+        "baseline" : 27,
+        "descent" : 8,
+        "height" : 34,
+        "leading" : 0,
+        "strikethroughOffset" : -8,
+        "strikethroughThickness" : 1,
+        "underlineOffset" : 4,
+        "underlineThickness" : 1,
+        "width" : 16
+      },
+      "needsSyntheticBold" : false,
+      "needsSyntheticItalic" : false,
+      "pixelSize" : 26,
+      "pointSize" : 13,
+      "scale" : 2,
+      "usedFallbackFamily" : false
+    },
+    {
+      "faces" : {
+        "bold" : "JetBrainsMono-Bold",
+        "boldItalic" : "JetBrainsMono-BoldItalic",
+        "italic" : "JetBrainsMono-Italic",
+        "regular" : "JetBrainsMono-Regular"
+      },
+      "family" : "JetBrains Mono",
+      "font" : "JetBrainsMono-Regular",
+      "inputs" : {
+        "ascent" : 22.848095703125004,
+        "descent" : 6.720068359375001,
+        "leading" : 0,
+        "maxAdvance" : 13.440000000000001,
+        "underlinePosition" : -3.4720000000000004,
+        "underlineThickness" : 1.12,
+        "unitsPerEm" : 1000
+      },
+      "metrics" : {
+        "ascent" : 23,
+        "baseline" : 23,
+        "descent" : 7,
+        "height" : 30,
+        "leading" : 0,
+        "strikethroughOffset" : -7,
+        "strikethroughThickness" : 1,
+        "underlineOffset" : 3,
+        "underlineThickness" : 1,
+        "width" : 14
+      },
+      "needsSyntheticBold" : false,
+      "needsSyntheticItalic" : false,
+      "pixelSize" : 22.400000000000002,
+      "pointSize" : 14,
+      "scale" : 1.6,
+      "usedFallbackFamily" : false
+    },
+    {
+      "faces" : {
+        "bold" : "JetBrainsMono-Bold",
+        "boldItalic" : "JetBrainsMono-BoldItalic",
+        "italic" : "JetBrainsMono-Italic",
+        "regular" : "JetBrainsMono-Regular"
+      },
+      "family" : "JetBrains Mono",
+      "font" : "JetBrainsMono-Regular",
+      "inputs" : {
+        "ascent" : 28.56011962890625,
+        "descent" : 8.40008544921875,
+        "leading" : 0,
+        "maxAdvance" : 16.8,
+        "underlinePosition" : -4.34,
+        "underlineThickness" : 1.4000000000000001,
+        "unitsPerEm" : 1000
+      },
+      "metrics" : {
+        "ascent" : 29,
+        "baseline" : 29,
+        "descent" : 8,
+        "height" : 37,
+        "leading" : 0,
+        "strikethroughOffset" : -9,
+        "strikethroughThickness" : 1,
+        "underlineOffset" : 4,
+        "underlineThickness" : 1,
+        "width" : 17
+      },
+      "needsSyntheticBold" : false,
+      "needsSyntheticItalic" : false,
+      "pixelSize" : 28,
+      "pointSize" : 14,
+      "scale" : 2,
+      "usedFallbackFamily" : false
+    },
+    {
+      "faces" : {
+        "bold" : "JetBrainsMono-Bold",
+        "boldItalic" : "JetBrainsMono-BoldItalic",
+        "italic" : "JetBrainsMono-Italic",
+        "regular" : "JetBrainsMono-Regular"
+      },
+      "family" : "JetBrains Mono",
+      "font" : "JetBrainsMono-Regular",
+      "inputs" : {
+        "ascent" : 26.112109375000003,
+        "descent" : 7.6800781250000005,
+        "leading" : 0,
+        "maxAdvance" : 15.360000000000001,
+        "underlinePosition" : -3.968,
+        "underlineThickness" : 1.28,
+        "unitsPerEm" : 1000
+      },
+      "metrics" : {
+        "ascent" : 26,
+        "baseline" : 26,
+        "descent" : 8,
+        "height" : 34,
+        "leading" : 0,
+        "strikethroughOffset" : -8,
+        "strikethroughThickness" : 1,
+        "underlineOffset" : 4,
+        "underlineThickness" : 1,
+        "width" : 16
+      },
+      "needsSyntheticBold" : false,
+      "needsSyntheticItalic" : false,
+      "pixelSize" : 25.6,
+      "pointSize" : 16,
+      "scale" : 1.6,
+      "usedFallbackFamily" : false
+    },
+    {
+      "faces" : {
+        "bold" : "JetBrainsMono-Bold",
+        "boldItalic" : "JetBrainsMono-BoldItalic",
+        "italic" : "JetBrainsMono-Italic",
+        "regular" : "JetBrainsMono-Regular"
+      },
+      "family" : "JetBrains Mono",
+      "font" : "JetBrainsMono-Regular",
+      "inputs" : {
+        "ascent" : 32.64013671875,
+        "descent" : 9.60009765625,
+        "leading" : 0,
+        "maxAdvance" : 19.2,
+        "underlinePosition" : -4.96,
+        "underlineThickness" : 1.6,
+        "unitsPerEm" : 1000
+      },
+      "metrics" : {
+        "ascent" : 33,
+        "baseline" : 33,
+        "descent" : 10,
+        "height" : 42,
+        "leading" : 0,
+        "strikethroughOffset" : -10,
+        "strikethroughThickness" : 2,
+        "underlineOffset" : 5,
+        "underlineThickness" : 2,
+        "width" : 20
+      },
+      "needsSyntheticBold" : false,
+      "needsSyntheticItalic" : false,
+      "pixelSize" : 32,
+      "pointSize" : 16,
+      "scale" : 2,
+      "usedFallbackFamily" : false
+    },
+    {
+      "faces" : {
+        "bold" : "JetBrainsMono-Bold",
+        "boldItalic" : "JetBrainsMono-BoldItalic",
+        "italic" : "JetBrainsMono-Italic",
+        "regular" : "JetBrainsMono-Regular"
+      },
+      "family" : "JetBrains Mono",
+      "font" : "JetBrainsMono-Regular",
+      "inputs" : {
+        "ascent" : 81.600341796875,
+        "descent" : 24.000244140625,
+        "leading" : 0,
+        "maxAdvance" : 48,
+        "underlinePosition" : -12.4,
+        "underlineThickness" : 4,
+        "unitsPerEm" : 1000
+      },
+      "metrics" : {
+        "ascent" : 82,
+        "baseline" : 82,
+        "descent" : 24,
+        "height" : 106,
+        "leading" : 0,
+        "strikethroughOffset" : -26,
+        "strikethroughThickness" : 4,
+        "underlineOffset" : 12,
+        "underlineThickness" : 4,
+        "width" : 48
+      },
+      "needsSyntheticBold" : false,
+      "needsSyntheticItalic" : false,
+      "pixelSize" : 80,
+      "pointSize" : 40,
+      "scale" : 2,
+      "usedFallbackFamily" : false
+    }
+  ],
+  "environment" : {
+    "AppleFontSmoothing" : "unset",
+    "coreTextVersion" : "0x000D0000",
+    "displayProfile" : "Display",
+    "macOSBuild" : "25G83",
+    "macOSVersion" : "26.6.2"
+  },
+  "platform" : "macos",
+  "schema" : 1
+}
