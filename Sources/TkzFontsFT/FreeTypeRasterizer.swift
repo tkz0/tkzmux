@@ -186,14 +186,15 @@ final class FreeTypeRasterizer {
     }
 
     /// The bitmap a span callback writes into: rows top-down, outline y up from the bottom row.
-    private struct SpanTarget {
+    /// Shared with `IconRasterizer`.
+    struct SpanTarget {
         let base: UnsafeMutablePointer<UInt8>
         let width: Int32
         let height: Int32
     }
 
     /// Composites one anti-aliased span list source-over: `a + b - a·b/255`.
-    private static let compositeSpans: FT_SpanFunc = { y, count, spans, user in
+    static let compositeSpans: FT_SpanFunc = { y, count, spans, user in
         guard let spans, let user else { return }
         let target = user.assumingMemoryBound(to: SpanTarget.self).pointee
         let row = target.height - 1 - y

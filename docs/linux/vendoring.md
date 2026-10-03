@@ -126,3 +126,13 @@ The `-static-stdlib` ceiling failure is a real finding, not a checker bug. The s
   ```
 
 `TerminalEnvironment.bundledTerminfoDirectory` accepts either layout through `ResourceLocator.terminfoDirectory(in:)`, which looks for `78/xterm-ghostty` or `x/xterm-ghostty` ([build.md](build.md#resource-lookup)).
+
+## Tkzmux Symbols (WOR-312 S7)
+
+`Sources/TkzFontsFT/Resources/Symbols/` holds a generated font, not code: Tkzmux Symbols, the Linux-only subset of the symbols that JetBrains Mono and the chrome's UI font lack (⏺ ⎿ ✢ ✳ ⎇ ↵ ⚙ ⌘ and the rest of `BundledSymbols.inventory`), with its `OFL.txt`. TkzFontsFT opens it directly and tries it after the primary faces and before fontconfig, so no inventory glyph depends on the machine's fonts and ✳ is never a colour emoji.
+
+- **Recipe.** `scripts/symbol-subset.json` pins each source (Noto Sans Symbols 2, Noto Sans Symbols and Noto Sans Math from `notofonts.github.io`, plus their `OFL.txt` from the upstream repos) by URL and SHA-256, and names the source of every glyph. A glyph's `advance` overrides its source advance in font units; the Mac's advances are not in yet (WOR-312 S1/S2).
+- **Regenerating.** `scripts/make-symbol-subset.py` downloads the sources into `$XDG_CACHE_HOME/tkzmux/symbol-sources`, refuses a file whose hash differs, subsets each with HarfBuzz's subsetter (`libharfbuzz-subset`, through ctypes), merges the glyphs into one TrueType font, renames it and writes the licence with every source's copyright line. Then copy the printed SHA-256 into the recipe's `output.sha256`. Two runs give the same bytes, and `--check` rebuilds and compares without writing. It runs at dev time only: CI and the build never run it, and `SymbolCoverageTests` pins the committed font to the recipe.
+- **Licence.** All sources are OFL-1.1 and declare no Reserved Font Name. The script still refuses a family name that contains one, and the result carries no "Noto" in its names.
+
+The three SF Symbols the Mac chrome uses (`bell.fill`, `bell.slash`, `folder.badge.plus`) are not in the font. SF Symbols may not ship outside Apple platforms, so Linux draws stand-ins from original path data (`Sources/TkzFontsFT/SymbolIcons.swift`), with no Apple artwork involved.

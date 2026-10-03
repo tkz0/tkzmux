@@ -126,14 +126,15 @@ struct ParityFontsTests {
         Resolution(cluster: "❤️", style: .regular, face: "NotoColorEmoji", isColor: true, cellSpan: 2, glyphs: [168]),
         // HarfBuzz composes e + U+0301 to é where the face has it.
         Resolution(cluster: "e\u{301}", style: .regular, face: "JetBrainsMono-Regular", isColor: false, cellSpan: 1, glyphs: [226]),
-        Resolution(cluster: "◐", style: .regular, face: "NotoSansMono-Regular", isColor: false, cellSpan: 1, glyphs: [3025]),
-        Resolution(cluster: "◐", style: .bold, face: "NotoSansMono-Bold", isColor: false, cellSpan: 1, glyphs: [3025]),
-        Resolution(cluster: "⎿", style: .regular, face: "NotoSansCJKsc-Regular", isColor: false, cellSpan: 1, glyphs: [900]),
-        // Until WOR-312 S7's symbol subset: ✳ has no text face in the parity set, so the colour
-        // font, last in the text list, draws it. S7 moves it to the subset (and never colour).
-        Resolution(cluster: "✳", style: .regular, face: "NotoColorEmoji", isColor: true, cellSpan: 1, glyphs: [157]),
-        // No parity font has ✢: the bundled face's .notdef (S7's subset covers it).
-        Resolution(cluster: "✢", style: .regular, face: "JetBrainsMono-Regular", isColor: false, cellSpan: 1, glyphs: [0]),
+        // The agent glyphs JetBrains Mono lacks come from the bundled symbol subset (WOR-312 S7),
+        // before any parity font: one regular face for every style, never colour.
+        Resolution(cluster: "◐", style: .regular, face: "TkzmuxSymbols-Regular", isColor: false, cellSpan: 1, glyphs: [24]),
+        Resolution(cluster: "◐", style: .bold, face: "TkzmuxSymbols-Regular", isColor: false, cellSpan: 1, glyphs: [24]),
+        Resolution(cluster: "⎿", style: .regular, face: "TkzmuxSymbols-Regular", isColor: false, cellSpan: 1, glyphs: [12]),
+        Resolution(cluster: "✳", style: .regular, face: "TkzmuxSymbols-Regular", isColor: false, cellSpan: 1, glyphs: [32]),
+        Resolution(cluster: "✢", style: .regular, face: "TkzmuxSymbols-Regular", isColor: false, cellSpan: 1, glyphs: [31]),
+        // A symbol the subset lacks still goes to the parity fonts.
+        Resolution(cluster: "★", style: .regular, face: "NotoSansCJKsc-Regular", isColor: false, cellSpan: 1, glyphs: [1282]),
     ]
 
     @Test("parity mode resolves the corpus to the pinned faces and glyphs",

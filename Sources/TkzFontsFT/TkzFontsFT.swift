@@ -21,7 +21,11 @@
 //       skipping (FreeTypeRasterizer.swift, Dilation.swift, ColorBitmapResampler.swift), the
 //       `GlyphSource` conformance (FreeTypeGlyphSource.swift) and the Linux side of
 //       `vtdump atlas --json` (AtlasDumper.swift)
-//   S6  the thicken calibration; S7 the symbol subset; S8 Inter for chrome text
+//   S7  the bundled symbol subset, tried after the primary faces and before fontconfig
+//       (BundledSymbols.swift, Resources/Symbols, written by scripts/make-symbol-subset.py), the
+//       chrome's face cascade (GlyphCascade.swift) and the path-drawn SF Symbol stand-ins
+//       (SymbolIcons.swift)
+//   S6  the thicken calibration; S8 Inter for chrome text
 
 import CFontconfig
 import CFreeType

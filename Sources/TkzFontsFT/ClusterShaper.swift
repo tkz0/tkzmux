@@ -4,11 +4,14 @@
 // Shaping is per cluster, never across cells, so there are no cross-cell ligatures.
 //
 // Face. A text cluster stays on the style's bundled face when that face covers every
-// non-ignorable scalar; otherwise `FontFallback`'s text list for the style resolves it. A cluster
-// that asks for emoji presentation (`FontFallback.wantsColor`) goes to the colour list first.
-// Nothing covering it at all leaves it on the bundled face, as `.notdef`. One face draws the whole
-// cluster, so a glyph is never drawn with a face other than the one that produced its id (the
-// Mac's multi-run clusters, drawn with the first run's font, are a known divergence that stays).
+// non-ignorable scalar; otherwise the bundled symbol subset (`BundledSymbols`, WOR-312 S7) draws it
+// when it covers them all, and only then does `FontFallback`'s text list for the style resolve it.
+// A cluster that asks for emoji presentation (`FontFallback.wantsColor`) goes to the colour list
+// first, and to the subset if no colour or text font covers it. Nothing covering it at all leaves
+// it on the bundled face, as `.notdef`. The subset has one regular face for every style, as a
+// fallback font with no bold has on the Mac. One face draws the whole cluster, so a glyph is never
+// drawn with a face other than the one that produced its id (the Mac's multi-run clusters, drawn
+// with the first run's font, are a known divergence that stays).
 //
 // Glyphs. Fast path: one scalar the face maps, `FT_Get_Char_Index`. Otherwise `hb_shape` on the
 // cluster with that face: `-liga,-calt` on outline faces, like the Mac's
@@ -56,10 +59,14 @@ final class ClusterShaper {
     private let library: FreeTypeLibrary
     private let primaries: [FontStyle: FreeTypeFace]
     private let fallback: FontFallback
+    /// The bundled symbol subset, tried before `fallback` (`nil`: straight to fontconfig).
+    private let symbols: FallbackFace?
     private let pixelSize: CGFloat
 
     private var cache: [Key: ShapedCluster] = [:]
     private var primaryGlyphs: [PrimaryGlyphKey: UInt32] = [:]
+    /// The subset's glyph per scalar, 0 where it has none.
+    private var symbolGlyphs: [UInt32: UInt32] = [:]
     private var opened: [OpenedFace] = []
     private var openedIndex: [FallbackFace: Int] = [:]
     /// Fallbacks FreeType could not open or size; never retried.
@@ -69,10 +76,12 @@ final class ClusterShaper {
 
     static let firstFallbackFace: UInt32 = 4
 
-    init(library: FreeTypeLibrary, primaries: [FontStyle: FreeTypeFace], fallback: FontFallback, pixelSize: CGFloat) {
+    init(library: FreeTypeLibrary, primaries: [FontStyle: FreeTypeFace], fallback: FontFallback,
+         symbols: FallbackFace? = BundledSymbols.face, pixelSize: CGFloat) {
         self.library = library
         self.primaries = primaries
         self.fallback = fallback
+        self.symbols = symbols
         self.pixelSize = pixelSize
     }
 
@@ -132,6 +141,7 @@ final class ClusterShaper {
         if !wantsColor, needed.allSatisfy({ primaryGlyph($0, style: style) != 0 }) {
             return (primaryHandle, primary, false, nil)
         }
+        if !wantsColor, let resolved = resolveSymbols(needed, skipping: skipped) { return resolved }
         if !needed.isEmpty {
             let list: FontFallback.List = wantsColor ? .color : .text(style)
             var excluded = skipped.union(unusable)
@@ -144,7 +154,23 @@ final class ClusterShaper {
                 return (handle, opened[index].face, descriptor.isColor, descriptor)
             }
         }
+        if wantsColor, let resolved = resolveSymbols(needed, skipping: skipped) { return resolved }
         return (primaryHandle, primary, false, nil)
+    }
+
+    /// The bundled subset, when it covers every scalar in `needed` (none empty) and has not been
+    /// skipped (a `symbols:` font with COLRv1-only glyphs would otherwise be retried forever). No
+    /// fontconfig.
+    private func resolveSymbols(_ needed: [Unicode.Scalar],
+                                skipping skipped: Set<FallbackFace>) -> (FontFace, FreeTypeFace, Bool, FallbackFace?)? {
+        guard let symbols, !needed.isEmpty, !skipped.contains(symbols), let index = open(symbols) else { return nil }
+        let face = opened[index].face
+        for scalar in needed {
+            let glyph = symbolGlyphs[scalar.value] ?? FT_Get_Char_Index(face.handle, FT_ULong(scalar.value))
+            symbolGlyphs[scalar.value] = glyph
+            if glyph == 0 { return nil }
+        }
+        return (FontFace(rawValue: Self.firstFallbackFace + UInt32(index)), face, false, symbols)
     }
 
     private func primaryGlyph(_ scalar: Unicode.Scalar, style: FontStyle) -> UInt32 {

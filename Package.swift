@@ -131,12 +131,13 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
     .systemLibrary(name: "CFontconfig", pkgConfig: "fontconfig", providers: [.apt(["libfontconfig-dev"])]),
     // FreeType faces and metrics, HarfBuzz shaping and the private fontconfig fallback behind the
     // TkzRenderCore font seam. Resources/Fonts is a byte-identical copy of TkzTerminalRender's
-    // (Tests/TkzFontsFTTests guards it).
+    // (Tests/TkzFontsFTTests guards it); Resources/Symbols is the Linux-only symbol subset that
+    // scripts/make-symbol-subset.py writes.
     .target(
         name: "TkzFontsFT",
         dependencies: ["CFreeType", "CHarfBuzz", "CFontconfig", "TkzRenderCore", "TkzCore", "TkzPlatform"],
         path: "Sources/TkzFontsFT",
-        resources: [.copy("Resources/Fonts")]
+        resources: [.copy("Resources/Fonts"), .copy("Resources/Symbols")]
     ),
     // Fixtures/ (the generated COLRv1 test font) is read through #filePath; TkzPNG decodes the Mac
     // reference atlases.

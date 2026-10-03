@@ -9,10 +9,11 @@
 // Pixel size is `pointSize * scale` in Double, exactly as the Mac's `FontSet` builds its CTFonts
 // (14 pt at 1.6 is 22.400000000000002 px there too).
 //
-// Shaping (S4) runs in the same owner: `ClusterShaper` resolves a cluster to a bundled face or a
-// `FontFallback` face and shapes it. So does rasterizing (S5): `FreeTypeRasterizer` draws a shaped
-// cluster with the face that shaped it. Fontconfig is only reached on a cache miss and never from
-// `init`; call `prewarm()` once, early, so the first miss does not build the fallback lists.
+// Shaping (S4) runs in the same owner: `ClusterShaper` resolves a cluster to a bundled face, the
+// bundled symbol subset (S7) or a `FontFallback` face and shapes it. So does rasterizing (S5):
+// `FreeTypeRasterizer` draws a shaped cluster with the face that shaped it. Fontconfig is only
+// reached on a cache miss and never from `init`; call `prewarm()` once, early, so the first miss
+// does not build the fallback lists.
 
 import Foundation
 import Synchronization
@@ -57,13 +58,16 @@ public final class TerminalFaces: Sendable {
     }
 
     /// Opens the bundled faces.
-    public convenience init(pointSize: CGFloat, scale: CGFloat, fallback: FontFallback = .system) throws {
+    public convenience init(pointSize: CGFloat, scale: CGFloat, fallback: FontFallback = .system,
+                            symbols: FallbackFace? = BundledSymbols.face) throws {
         guard let directory = BundledFonts.directory else { throw TerminalFacesError.bundledFontsNotFound }
-        try self.init(pointSize: pointSize, scale: scale, fontDirectory: directory, fallback: fallback)
+        try self.init(pointSize: pointSize, scale: scale, fontDirectory: directory, fallback: fallback, symbols: symbols)
     }
 
-    /// Opens the four `BundledFonts.jetBrainsMonoFile` faces from `fontDirectory`.
-    public init(pointSize: CGFloat, scale: CGFloat, fontDirectory: URL, fallback: FontFallback = .system) throws {
+    /// Opens the four `BundledFonts.jetBrainsMonoFile` faces from `fontDirectory`. `symbols` is
+    /// tried before `fallback` (WOR-312 S7); `nil` leaves everything the faces lack to fontconfig.
+    public init(pointSize: CGFloat, scale: CGFloat, fontDirectory: URL, fallback: FontFallback = .system,
+                symbols: FallbackFace? = BundledSymbols.face) throws {
         let pixelSize = pointSize * scale
         let library = try FreeTypeLibrary()
         var faces: [FontStyle: FreeTypeFace] = [:]
@@ -85,7 +89,8 @@ public final class TerminalFaces: Sendable {
         self.metrics = metrics
         self.fallback = fallback
         self.needsSyntheticBold = !(faces[.bold]?.isBold ?? false)
-        let shaper = ClusterShaper(library: library, primaries: faces, fallback: fallback, pixelSize: pixelSize)
+        let shaper = ClusterShaper(library: library, primaries: faces, fallback: fallback, symbols: symbols,
+                                   pixelSize: pixelSize)
         self.owner = Mutex(Owner(library: library, faces: faces, shaper: shaper))
     }
 
@@ -127,7 +132,8 @@ public final class TerminalFaces: Sendable {
         owner.withLock { $0.shaper.name(of: face) } ?? "?"
     }
 
-    /// The fontconfig font behind a fallback face, `nil` for a bundled face.
+    /// The font behind a fallback face (fontconfig's, or the bundled symbol subset's), `nil` for a
+    /// primary face.
     public func fallbackFace(of face: FontFace) -> FallbackFace? {
         owner.withLock { $0.shaper.fallbackFace(of: face) }
     }

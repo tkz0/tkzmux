@@ -61,7 +61,8 @@ public final class FontFallback: Sendable {
     public static let colorFamily = "Noto Color Emoji"
 
     /// The symbols agents print that JetBrains Mono lacks, looked up by `prewarm()` so the first
-    /// tool run does not wait on fontconfig.
+    /// tool run does not wait on fontconfig. The bundled symbol subset (WOR-312 S7) draws them
+    /// before fontconfig is asked, so this only matters for a build without it.
     public static let prewarmScalars: [Unicode.Scalar] = [
         "\u{23FA}", "\u{23BF}", "\u{2722}", "\u{2733}", "\u{2736}", "\u{273B}", "\u{273D}",
         "\u{21AF}", "\u{2714}", "\u{25D0}", "\u{23F5}",
