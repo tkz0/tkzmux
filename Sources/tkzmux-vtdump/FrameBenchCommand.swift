@@ -22,27 +22,41 @@
 // otherwise grow without anyone noticing (an unbounded cache, a leak). Churn shows up in the
 // nanoseconds-per-glyph figure instead, which is why that one is printed.
 //
-// macOS only until WOR-313 brings a Vulkan renderer; on Linux, UnavailableCommands.swift stands in.
-// The block counter is TkzPlatform's `HeapStats`, which on Linux counts bytes instead (mallinfo2),
-// so a Linux bench-frame will report bytes under its own key.
+// The corpus and the report are shared; `run` is per renderer: the Metal one below, the Vulkan one
+// in FrameBenchVulkan.swift (WOR-313 S6), which adds `--size` and the GPU time of every frame from a
+// timestamp-query pair. The block counter is TkzPlatform's `HeapStats`, which on Linux counts bytes
+// instead (mallinfo2), so a Linux bench-frame reports bytes under its own name and key.
 
-#if canImport(Metal)
 import Foundation
-import Metal
 import TkzPlatform
-import TkzRenderCore
 import TkzTerminalCore
+#if canImport(Metal)
+import Metal
+import TkzRenderCore
 import TkzTerminalRender
+#endif
 
 enum FrameBenchCommand {
     struct CommandError: Error, CustomStringConvertible {
         let description: String
     }
 
-    /// Live `blocks_in_use` across the malloc zones (`malloc_zone_statistics(nil, …)`).
+    /// Live `blocks_in_use` across the malloc zones (`malloc_zone_statistics(nil, …)`) on macOS;
+    /// live heap bytes (`mallinfo2`) on Linux.
     static func mallocBlocks() -> Int {
-        HeapStats.sample().blocksInUse
+        #if canImport(Darwin)
+        return HeapStats.sample().blocksInUse
+        #else
+        return HeapStats.sample().bytesInUse
+        #endif
     }
+
+    /// What `mallocBlocks` counts, as the report names it: "blocks" or "bytes".
+    #if canImport(Darwin)
+    static let heapUnit = "blocks"
+    #else
+    static let heapUnit = "bytes"
+    #endif
 
     static func nanos() -> UInt64 { DispatchTime.now().uptimeNanoseconds }
 
@@ -55,6 +69,8 @@ enum FrameBenchCommand {
         var rowsRebuilt: Int
         var glyphCount: Int
         var wasFull: Bool
+        /// The frame's GPU time from a timestamp-query pair (Vulkan only).
+        var gpuNanos: Double? = nil
     }
 
     // MARK: - Corpus
@@ -102,19 +118,12 @@ enum FrameBenchCommand {
         session.write(ptyBytes: Data(text.utf8))
     }
 
-    // MARK: - run
+    // MARK: - Session
 
-    static func run(_ argv: [String]) throws {
-        let arguments = Arguments(
-            argv, valueFlags: ["cols", "rows", "frames", "warmup", "json", "fill"])
-        let columns = Int(arguments.uint16("cols") ?? 125)
-        let rowCount = Int(arguments.uint16("rows") ?? 40)
-        let frames = arguments.value("frames").flatMap(Int.init) ?? 200
-        let warmup = arguments.value("warmup").flatMap(Int.init) ?? 20
-        guard columns > 0, rowCount > 0, frames > 0 else {
-            throw CommandError(description: "bench-frame: --cols/--rows/--frames must be positive")
-        }
-
+    /// The bench's session and the name of its corpus: `<file.tkzrec>` replayed and resized, or
+    /// the `--fill` mode on a fresh screen.
+    static func makeSession(_ arguments: Arguments, columns: Int, rows rowCount: Int) throws
+        -> (session: TerminalSession, corpus: String) {
         let session = try TerminalSession(
             options: TerminalSessionOptions(cols: UInt16(columns), rows: UInt16(rowCount)))
         let fill = Fill(rawValue: arguments.value("fill") ?? "text") ?? .text
@@ -131,6 +140,24 @@ enum FrameBenchCommand {
             case .text: try fillSynthetic(session, columns: columns, rows: rowCount)
             }
         }
+        return (session, corpus)
+    }
+
+    // MARK: - run
+
+    #if canImport(Metal)
+    static func run(_ argv: [String]) throws {
+        let arguments = Arguments(
+            argv, valueFlags: ["cols", "rows", "frames", "warmup", "json", "fill"])
+        let columns = Int(arguments.uint16("cols") ?? 125)
+        let rowCount = Int(arguments.uint16("rows") ?? 40)
+        let frames = arguments.value("frames").flatMap(Int.init) ?? 200
+        let warmup = arguments.value("warmup").flatMap(Int.init) ?? 20
+        guard columns > 0, rowCount > 0, frames > 0 else {
+            throw CommandError(description: "bench-frame: --cols/--rows/--frames must be positive")
+        }
+
+        let (session, corpus) = try makeSession(arguments, columns: columns, rows: rowCount)
 
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw CommandError(description: "bench-frame: no Metal device")
@@ -187,6 +214,7 @@ enum FrameBenchCommand {
         report(samples, corpus: corpus, columns: columns, rows: rowCount,
                json: arguments.value("json"))
     }
+    #endif
 
     // MARK: - Reporting
 
@@ -203,7 +231,9 @@ enum FrameBenchCommand {
 
     static func format(_ value: Double) -> String { String(format: "%.3f", value) }
 
-    static func report(_ samples: [Sample], corpus: String, columns: Int, rows: Int, json: String?) {
+    /// `target` and `device` are the Vulkan bench's: the target size and the device it ran on.
+    static func report(_ samples: [Sample], corpus: String, columns: Int, rows: Int, json: String?,
+                       target: (width: Int, height: Int)? = nil, device: String? = nil) {
         let build = stats(samples.map { Double($0.buildNanos) / 1e6 })
         let encode = stats(samples.map { Double($0.encodeNanos) / 1e6 })
         let buildBlocks = samples.map { Double($0.buildBlocks) }
@@ -216,6 +246,8 @@ enum FrameBenchCommand {
         // The most interpretable figure: a dictionary hit should cost tens of nanoseconds, so this
         // says directly how much the per-cell path is spending above what a lookup has to cost.
         let nsPerGlyph = glyphCount > 0 ? build.median * 1e6 / Double(glyphCount) : 0
+        let gpuSamples = samples.compactMap(\.gpuNanos)
+        let gpu = gpuSamples.isEmpty ? nil : stats(gpuSamples.map { $0 / 1e6 })
 
         // A run where the rebuild was optimised away would look wonderful and mean nothing, so the
         // two properties that make the numbers real are printed next to them: every frame reported
@@ -228,24 +260,38 @@ enum FrameBenchCommand {
               encode ms  min=\(format(encode.min)) median=\(format(encode.median)) \
             p99=\(format(encode.p99)) max=\(format(encode.max))
               per glyph  \(format(nsPerGlyph)) ns   (build median / glyphs)
-              net live blocks/frame  build median=\(Int(allocBuild.median)) max=\(Int(allocBuild.max))  \
+              net live \(heapUnit)/frame  build median=\(Int(allocBuild.median)) max=\(Int(allocBuild.max))  \
             frame median=\(Int(allocFrame.median)) max=\(Int(allocFrame.max))
             """)
+        if let gpu {
+            print("  gpu    ms  min=\(format(gpu.min)) median=\(format(gpu.median)) "
+                + "p99=\(format(gpu.p99)) max=\(format(gpu.max))   (\(gpuSamples.count) timestamped frames)")
+        }
+        if let target, let device {
+            print("  target \(target.width)x\(target.height) px on \(device)")
+        }
         if fullCount != samples.count {
             print("  WARNING: \(samples.count - fullCount) frame(s) were not DIRTY_FULL — "
                 + "the re-attach is not forcing a full rebuild and these numbers are not comparable")
         }
 
         guard let json else { return }
-        let record: [String: Any] = [
+        var record: [String: Any] = [
             "corpus": corpus, "columns": columns, "rows": rows, "frames": samples.count,
             "full": fullCount, "rowsRebuilt": rowsRebuilt, "glyphCount": glyphCount,
             "buildMs": ["min": build.min, "median": build.median, "p99": build.p99, "max": build.max],
             "encodeMs": ["min": encode.min, "median": encode.median, "p99": encode.p99, "max": encode.max],
             "nsPerGlyph": nsPerGlyph,
-            "netLiveBlocksBuild": ["median": allocBuild.median, "max": allocBuild.max],
-            "netLiveBlocksFrame": ["median": allocFrame.median, "max": allocFrame.max],
+            "netLive\(heapUnit.capitalized)Build": ["median": allocBuild.median, "max": allocBuild.max],
+            "netLive\(heapUnit.capitalized)Frame": ["median": allocFrame.median, "max": allocFrame.max],
         ]
+        if let gpu {
+            record["gpuMs"] = ["min": gpu.min, "median": gpu.median, "p99": gpu.p99, "max": gpu.max]
+        }
+        if let target, let device {
+            record["target"] = ["width": target.width, "height": target.height]
+            record["device"] = device
+        }
         if let data = try? JSONSerialization.data(
             withJSONObject: record, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: URL(fileURLWithPath: json))
@@ -253,4 +299,3 @@ enum FrameBenchCommand {
         }
     }
 }
-#endif

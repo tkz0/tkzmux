@@ -10,9 +10,10 @@
 // Hand-rolled argument parsing on purpose: no third-party dependencies (CLAUDE.md).
 //
 // Builds on macOS and Linux (WOR-311 S7). `render`, `atlas` and `bench-frame` draw through the
-// Metal renderer and live in `#if canImport(Metal)` files; on Linux they are stubs that exit 1
-// (UnavailableCommands.swift) until WOR-312/WOR-313 bring FreeType and Vulkan. `gpu` exists on
-// Linux only (GPUCommand.swift, WOR-313 S1).
+// Metal renderer in `#if canImport(Metal)` code; on Linux `render` and `bench-frame` draw through
+// Vulkan (VulkanRenderCommands.swift, FrameBenchVulkan.swift; WOR-313 S6) and `atlas` is a stub
+// that exits 1 until WOR-312 wires the FreeType dump. `gpu` exists on Linux only (GPUCommand.swift,
+// WOR-313 S1).
 #if canImport(Darwin)
 import Darwin
 #elseif os(Linux)
@@ -64,10 +65,15 @@ usage: tkzmux-vtdump <command> [options]
 
   render  --out <file.png> [--cols n] [--rows n] [--scale s] <file.tkzrec>
                             replay a recording and rasterise the screen offscreen (M1.5) at backing
-                            scale s (default 2)
+                            scale s (default 2); Linux: Vulkan, plus [--fonts system|parity]
+                            [--no-validation] (WOR-313)
   atlas   --out <prefix> [--point-size n] [--scale n] [--sample <text>] [--thicken 0|1]
-                            dump the glyph atlas textures as PNGs (M1.4)
-                            (render, atlas and bench-frame are macOS-only for now: WOR-312/WOR-313)
+                            dump the glyph atlas textures as PNGs (M1.4) (macOS only for now: WOR-312)
+  bench-frame [--cols n] [--rows n] [--frames n] [--warmup n] [--fill blank|spaces|text]
+          [--json <file>] [<file.tkzrec>]
+                            time a full-rebuild frame: FrameBuilder and the encode; Linux adds
+                            [--size <w>x<h>] [--scale s] [--fonts system|parity] [--validation]
+                            and the GPU time from a timestamp-query pair (WOR-313)
   gpu     [--headless] [--main-device <major:minor>] [--no-validation] [--size <w>x<h>] [--no-clear]
                             Linux only: list the Vulkan devices, select one as the app does
                             (TKZMUX_GPU=auto|integrated|discrete) and log why, then clear an

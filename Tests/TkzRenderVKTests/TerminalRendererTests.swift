@@ -523,3 +523,41 @@ struct VulkanRendererPixelTests {
         fixture.expectNoValidationErrors()
     }
 }
+
+// MARK: - GPU time
+
+@Suite("Vulkan renderer: GPU frame timer", .serialized,
+       .enabled(if: VulkanTestEnvironment.runs, VulkanTestEnvironment.skipReason))
+struct VulkanFrameTimerTests {
+
+    /// `bench-frame`'s GPU time (WOR-313 S6): a timestamp pair around each encoded frame, and none
+    /// for a frame that drew nothing.
+    @Test("an encoded frame has a GPU time; a skipped frame and a frame without a target have none")
+    func encodedFramesAreTimed() throws {
+        let fixture = try RendererFixture()
+        let timer = try GPUFrameTimer(device: fixture.device)
+        #expect(timer.period > 0 && timer.validBits > 0)
+        fixture.renderer.frameTimer = timer
+
+        try fixture.renderAndWait()
+        let first = try #require(try timer.elapsed())
+        #expect(first > 0 && first < 1e9, "a 40×9 frame takes well under a second: \(first) ns")
+        #expect(try timer.elapsed() == nil, "each frame's time is read once")
+
+        _ = try fixture.renderer.render(surface: fixture.surface, to: fixture.target)
+        #expect(try timer.elapsed() == nil, "an idle frame records no timestamps")
+
+        fixture.session.write(ptyText: "x")
+        let target = fixture.target
+        let starved = try fixture.renderer.render(
+            surface: fixture.surface, targetWidth: Int(target.width), targetHeight: Int(target.height)) { nil }
+        #expect(!starved.didEncode)
+        _ = try target.bgraBytes()  // waits for the submitted slot
+        #expect(try timer.elapsed() == nil, "a frame that found no target has only its first timestamp")
+
+        try fixture.renderAndWait()
+        #expect(try timer.elapsed() != nil)
+        fixture.renderer.frameTimer = nil
+        fixture.expectNoValidationErrors()
+    }
+}

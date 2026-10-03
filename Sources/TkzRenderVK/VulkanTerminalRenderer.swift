@@ -140,6 +140,9 @@ public final class VulkanTerminalRenderer {
 
     public private(set) var stats = RenderStats()
 
+    /// Times every encoded frame on the GPU when set (`tkzmux-vtdump bench-frame`; WOR-313 S6).
+    public var frameTimer: GPUFrameTimer?
+
     let pipelines: TerminalPipelines
 
     public init(device: VulkanDevice, glyphCache: GlyphCache, theme: Theme = .default) throws {
@@ -227,6 +230,7 @@ public final class VulkanTerminalRenderer {
         // recorded into it must reach the GPU (`FrameRing.Slot.mustSubmit`).
         var reachedSubmit = false
         do {
+            if let frameTimer { frameTimer.begin(try slot.commands()) }
             // One copy per atlas per frame, before anything is drawn.
             try atlasUploader.upload(glyphCache, into: slot)
 
@@ -371,6 +375,7 @@ public final class VulkanTerminalRenderer {
         drawRects(sets.instances[.rectsAbove], count: counts.above, commands)
 
         vkCmdEndRendering(commands)
+        frameTimer?.end(commands)
     }
 
     private func drawRects(_ set: VkDescriptorSet?, count: Int, _ commands: VkCommandBuffer) {

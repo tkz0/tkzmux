@@ -17,7 +17,8 @@
 #                its linkage against [tkzmux-vtdump] (WOR-311 S7). Vulkan (WOR-313 S1): lavapipe
 #                and the Khronos validation layer are installed, and TKZMUX_REQUIRE_VULKAN=1 turns
 #                every GPU test that would skip without a device into a failure; `vtdump gpu` runs
-#                the bootstrap and its clear + readback; the SPIR-V drift check regenerates the
+#                the bootstrap and its clear + readback, `vtdump render` and `bench-frame` draw
+#                through Vulkan (S6); the SPIR-V drift check regenerates the
 #                committed shaders with the pinned shaderc (scripts/build-shaders-linux.sh --fetch).
 #   ubuntu       ubuntu-24.04 + the pinned swift:<pin>-noble image (never the runner's own Swift):
 #                one `swift build --target` per non-GTK target, then the tests. WOR-314 S1
@@ -297,16 +298,28 @@ jobs:
         run: scripts/linux/check-binary.sh "$HOOK_BIN" --section tkzmux-hook
 
       # WOR-311 S7. The crash harness builds the release vtdump itself; `abi` must print exactly
-      # the committed Linux manifest. render/atlas/bench-frame are stubs until WOR-312/WOR-313.
+      # the committed Linux manifest. `atlas` is a stub until WOR-312.
       # `gpu` (WOR-313 S1) selects lavapipe, the only device here, under the validation layer and
-      # exits 1 on a readback mismatch or any validation error.
-      - name: tkzmux-vtdump (abi, state-crash-test.sh, gpu, linkage)
+      # exits 1 on a readback mismatch or any validation error. `render` and `bench-frame`
+      # (WOR-313 S6) draw through Vulkan on lavapipe under the same layer and exit 1 on any
+      # validation error; a recording rendered twice must give the same PNG, and its sha256 is
+      # printed so two runs can be compared.
+      - name: tkzmux-vtdump (abi, state-crash-test.sh, gpu, render, bench-frame, linkage)
         run: |
           scripts/state-crash-test.sh 50
           vtdump="$(swift build --build-system native -c release --show-bin-path)/tkzmux-vtdump"
           "$vtdump" abi | diff - vendor/ghostty-vt/abi-types.x86_64-linux-gnu.json
           "$vtdump" gpu | tee "$RUNNER_TEMP/vtdump-gpu.txt"
           grep -q '^loader: .*validation on$' "$RUNNER_TEMP/vtdump-gpu.txt"
+          for scale in 2 1.6; do
+            for run in a b; do
+              "$vtdump" render --fonts parity --scale "$scale" --out "$RUNNER_TEMP/render-$scale-$run.png" \
+                Tests/TkzTerminalCoreTests/Fixtures/claude-tool-run.tkzrec
+            done
+            cmp "$RUNNER_TEMP/render-$scale-a.png" "$RUNNER_TEMP/render-$scale-b.png"
+            sha256sum "$RUNNER_TEMP/render-$scale-a.png"
+          done
+          "$vtdump" bench-frame --fonts parity --frames 20 --warmup 2 --validation
           scripts/linux/check-linkage.sh "$vtdump" tkzmux-vtdump
 
   ubuntu:

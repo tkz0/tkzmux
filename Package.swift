@@ -38,10 +38,11 @@ let sharedProducts: [Product] = [
 ]
 
 // vtdump's `render`, `atlas` and `bench-frame` draw through the Metal renderer, so only the macOS
-// graph links it; on Linux those three are stubs until WOR-312/WOR-313 (WOR-311 S7). The Linux
-// graph links the Vulkan bootstrap for the Linux-only `gpu` subcommand (WOR-313 S1).
+// graph links it. The Linux graph links the Vulkan renderer for the Linux-only `gpu` subcommand
+// (WOR-313 S1) and for `render` and `bench-frame`, with FreeType glyphs and TkzPNG (WOR-313 S6);
+// `atlas` is a stub there until WOR-312.
 #if os(Linux)
-let vtdumpRendererDependencies: [Target.Dependency] = ["TkzRenderVK"]
+let vtdumpRendererDependencies: [Target.Dependency] = ["TkzRenderVK", "TkzRenderCore", "TkzFontsFT", "TkzPNG"]
 #else
 let vtdumpRendererDependencies: [Target.Dependency] = ["TkzTerminalRender", "TkzRenderCore"]
 #endif
@@ -212,9 +213,11 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
         path: "Sources/TkzRenderVK"
     ),
     // TkzFontsFT puts real glyphs in the atlases the upload tests copy; TkzTerminalCore's sessions
-    // feed the renderer's idle twins.
+    // feed the renderer's idle twins. TkzPNG decodes the Mac goldens the golden twins compare with,
+    // GhosttyVt sets their selection and TkzPlatform hashes their frames (S6).
     .testTarget(name: "TkzRenderVKTests", dependencies: ["TkzRenderVK", "CVulkan", "TkzRenderCore", "TkzFontsFT",
-                                                         "TkzTerminalCore", "TkzCore", "TkzShaderTypes"],
+                                                         "TkzTerminalCore", "TkzCore", "TkzShaderTypes",
+                                                         "TkzPNG", "TkzPlatform", "GhosttyVt"],
                 path: "Tests/TkzRenderVKTests"),
 
     // MARK: Font stack (WOR-312). System libraries from pkg-config, declared only in this branch:

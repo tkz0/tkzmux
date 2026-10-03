@@ -12,7 +12,8 @@
 //       both atlases: `<prefix>-grayscale.png` and `<prefix>-color.png`. Runs with no Metal device
 //       at all — `GlyphAtlas` (TkzRenderCore) is a CPU staging buffer; only the renderer uploads it.
 //
-// macOS only: on Linux, UnavailableCommands.swift stands in for both (WOR-311 S7).
+// macOS only: on Linux, VulkanRenderCommands.swift draws `render` through Vulkan and stands in for
+// `atlas` (WOR-313 S6).
 
 #if canImport(Metal)
 import Foundation

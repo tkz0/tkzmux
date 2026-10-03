@@ -12,7 +12,7 @@
 // geometry the Mac's `BoxSprites` paints, with `sprite: true`, no face and no ink box.
 //
 // Not here yet: the PNG files and the command line. vtdump builds on Linux since WOR-311 S7, but
-// its `atlas` is a stub (Sources/tkzmux-vtdump/UnavailableCommands.swift) until it is wired to this
+// its `atlas` is a stub (Sources/tkzmux-vtdump/VulkanRenderCommands.swift) until it is wired to this
 // dumper, writing `pages` with TkzPNG (`AtlasPage.pngLayout`) and the JSON beside them. TkzPNG is
 // not a dependency of this module, which ships in the app.
 //
