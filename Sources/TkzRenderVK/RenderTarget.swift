@@ -9,7 +9,7 @@
 // everything is submitted in the order it was recorded (the renderer submits each frame at once).
 //
 // `OffscreenTarget` is one (headless, tests, vtdump, the readback rung of S5b); the exportable
-// dmabuf images of S5a are the other.
+// dma-buf images of S5a (`PresentationRing.Image`) are the other.
 
 import CVulkan
 

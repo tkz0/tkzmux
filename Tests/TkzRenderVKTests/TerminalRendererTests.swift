@@ -22,7 +22,7 @@ import TkzTerminalCore
 // MARK: - Fixture
 
 /// The Mac golden screen's content, one feature per line, without the recording round trip.
-private enum RendererScreen {
+enum RendererScreen {
     static let columns: UInt16 = 40
     static let rows: UInt16 = 9
 
@@ -47,7 +47,7 @@ private enum RendererScreen {
     }
 }
 
-private enum RendererFonts {
+enum RendererFonts {
     static let cacheDirectory = FileManager.default.temporaryDirectory
         .appendingPathComponent("tkzmux-tests-fontconfig-\(getuid())", isDirectory: true)
 

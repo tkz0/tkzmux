@@ -9,7 +9,8 @@
 //   withCStrings              a [String] as `const char *const *` for create-info name lists
 //   imageBarrier / pipelineBarrier
 //                             synchronization2 barriers on a single-mip colour image, recorded
-//                             with one `vkCmdPipelineBarrier2` (WOR-313 S4a)
+//                             with one `vkCmdPipelineBarrier2` (WOR-313 S4a); queue family
+//                             ownership transfers (S5a)
 //
 // Core 1.3 commands (vkCmdBeginRendering, vkQueueSubmit2, …) are exported by the loader and are
 // called directly; only extension commands go through the proc helpers.
@@ -109,10 +110,12 @@ let colorSubresourceRange = VkImageSubresourceRange(
     aspectMask: VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT.rawValue),
     baseMipLevel: 0, levelCount: 1, baseArrayLayer: 0, layerCount: 1)
 
-/// A layout transition (or, with equal layouts, a plain memory barrier) on `image`, within one queue.
+/// A layout transition (or, with equal layouts, a plain memory barrier) on `image`, within one queue,
+/// or with `ownership`, one half of a queue family ownership transfer (WOR-313 S5a: the release to
+/// and the acquire from VK_QUEUE_FAMILY_FOREIGN_EXT).
 func imageBarrier(
     _ image: VkImage, from oldLayout: VkImageLayout, to newLayout: VkImageLayout,
-    source: VulkanScope, destination: VulkanScope
+    source: VulkanScope, destination: VulkanScope, ownership: (from: UInt32, to: UInt32)? = nil
 ) -> VkImageMemoryBarrier2 {
     var barrier = VkImageMemoryBarrier2()
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2
@@ -122,8 +125,8 @@ func imageBarrier(
     barrier.dstAccessMask = destination.access
     barrier.oldLayout = oldLayout
     barrier.newLayout = newLayout
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
+    barrier.srcQueueFamilyIndex = ownership?.from ?? VK_QUEUE_FAMILY_IGNORED
+    barrier.dstQueueFamilyIndex = ownership?.to ?? VK_QUEUE_FAMILY_IGNORED
     barrier.image = image
     barrier.subresourceRange = colorSubresourceRange
     return barrier
