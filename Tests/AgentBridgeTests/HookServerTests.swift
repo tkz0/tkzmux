@@ -332,6 +332,31 @@ private func connectBlocking(fd: Int32, path: String) throws {
         #expect(frames.count == 1)
     }
 
+    /// A line several read chunks long, written in one go by a client that then closes, arrives
+    /// whole. On Linux this needs the server to drain the socket: corelibs Dispatch does not signal
+    /// again for bytes a handler left unread (WOR-306 S3).
+    @Test func aLineLongerThanOneReadChunkArrivesWhole() async throws {
+        let dir = try makeSocketDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let socketPath = dir.appendingPathComponent("hook.sock")
+        let collector = FrameCollector()
+        let server = HookServer(socketPath: socketPath) { collector.append($0) }
+        try server.start()
+        defer { server.stop() }
+
+        let message = String(repeating: "m", count: 200 * 1024)
+        try sendLine(
+            #"{"v":1,"type":"hook","event":"Stop","ppid":7,"ts":1,"payload":{"session_id":"s","last_assistant_message":""#
+                + message + "\"}}\n", to: socketPath)
+        let frames = await collector.waitFor(count: 1)
+        #expect(frames.count == 1)
+        guard case .hook(_, _, _, let fullMessage)? = frames.first else {
+            Issue.record("expected a .hook frame")
+            return
+        }
+        #expect(fullMessage?.utf8.count == 200 * 1024)
+    }
+
     @Test func oversizedUnterminatedFrameDropsConnection() async throws {
         let dir = try makeSocketDir()
         defer { try? FileManager.default.removeItem(at: dir) }

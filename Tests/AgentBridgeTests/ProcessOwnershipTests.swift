@@ -1,7 +1,14 @@
 // ProcessOwnershipTests — the "is this pid under this tkzmux?" walk, driven by a fake process
-// tree, plus one real-process check of the libproc-backed ancestry.
+// tree, plus one real-process check of the `ProcessTable`-backed ancestry (libproc on macOS,
+// /proc on Linux).
+#if os(macOS)
+import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 import Testing
+import TkzPlatform
 
 @testable import AgentBridge
 
@@ -72,16 +79,16 @@ struct FakeAncestry: ProcessAncestry {
 
 @Suite(.serialized)
 struct SystemProcessAncestryTests {
-    @Test("names come from proc_name, and a spawned child is owned by this process")
+    @Test("names come from the process table, and a spawned child is owned by this process")
     func realProcessIsOwned() throws {
         let ancestry = SystemProcessAncestry()
-        let own = try #require(ProcessTree.name(of: getpid()))
+        let own = try #require(ProcessTable.name(of: getpid()))
         #expect(!own.isEmpty)
-        #expect(ProcessTree.name(of: 999_999) == nil)
+        #expect(ProcessTable.name(of: 999_999) == nil)
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        // The trailing no-op keeps sh from exec-ing sleep in place (see ProcessTreeTests).
+        // The trailing no-op keeps sh from exec-ing sleep in place (see ProcessTableWalkTests).
         process.arguments = ["-c", "sleep 30; true"]
         try process.run()
         let shPid = process.processIdentifier
@@ -91,7 +98,7 @@ struct SystemProcessAncestryTests {
         var sleepPid: pid_t?
         let deadline = Date().addingTimeInterval(2)
         while Date() < deadline {
-            if let found = ProcessTree.descendants(of: shPid).first(where: { $0 != shPid }) {
+            if let found = ProcessTable.descendants(of: shPid).first(where: { $0 != shPid }) {
                 sleepPid = found
                 break
             }
@@ -101,7 +108,8 @@ struct SystemProcessAncestryTests {
 
         #expect(ancestry.parent(of: sleep) == shPid)
         #expect(ancestry.parent(of: shPid) == getpid())
-        // `/bin/sh` is bash on macOS and reports as such; only the shape matters here.
+        // `/bin/sh` is bash on macOS (and on Arch) and reports as such, dash on Debian; only the
+        // shape matters here.
         let shName = try #require(ancestry.name(of: shPid))
         #expect(!shName.isEmpty && shName != own)
         #expect(ProcessOwnership.owns(sleep, selfPid: getpid(), selfName: own, ancestry: ancestry))

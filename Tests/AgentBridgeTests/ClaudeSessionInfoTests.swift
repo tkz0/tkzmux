@@ -65,6 +65,27 @@ import Testing
         #expect(info.startedAt != nil)
     }
 
+    /// Claude Code on Linux stamps its exact process identity: `procStart` as a decimal string
+    /// (field 22 of /proc/<pid>/stat) and the pid namespace it was written in (shape measured on a
+    /// live Linux descriptor, WOR-306).
+    @Test func decodesTheProcessIdentityStamp() throws {
+        let json = #"{"pid":208724,"sessionId":"s","procStart":"1630842","pidDomain":"linux:0123abcd:pid:[4026531836]"}"#
+        let info = try ClaudeSessionInfo.decode(Data(json.utf8), configDir: "~/.claude")
+        #expect(info.procStart == 1_630_842)
+        #expect(info.pidDomain == "linux:0123abcd:pid:[4026531836]")
+        // A number is accepted too; anything else, or an empty domain, reads as absent.
+        let number = try ClaudeSessionInfo.decode(
+            Data(#"{"pid":1,"sessionId":"s","procStart":42}"#.utf8), configDir: "~/.claude")
+        #expect(number.procStart == 42)
+        let junk = try ClaudeSessionInfo.decode(
+            Data(#"{"pid":1,"sessionId":"s","procStart":"Thu 2 Oct","pidDomain":""}"#.utf8), configDir: "~/.claude")
+        #expect(junk.procStart == nil)
+        #expect(junk.pidDomain == nil)
+        // The realistic (macOS-shaped) descriptor has neither.
+        let mac = try ClaudeSessionInfo.decode(Data(Self.realistic.utf8), configDir: "~/.claude")
+        #expect(mac.procStart == nil && mac.pidDomain == nil)
+    }
+
     /// Unknown enum values must degrade, not throw: Claude Code adds statuses without asking us.
     @Test func unknownEnumValuesDegradeToUnknown() throws {
         let json = #"{"pid":1,"sessionId":"s","kind":"weird","status":"thinking","nameSource":"typed"}"#

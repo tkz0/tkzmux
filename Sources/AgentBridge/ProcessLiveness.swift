@@ -2,19 +2,21 @@
 //
 // `kill(pid, 0)` tells us whether *a* process with that pid exists and is signalable, but pids get
 // reused: a descriptor's `startedAt` (ms since epoch) is compared against the live process's actual
-// start time (`PROC_PIDTBSDINFO.pbi_start_tvsec`) so a reused pid reads as dead rather than alive.
-// The comparison is one-sided — see `SystemProcessLiveness.startTimeMatches`.
+// start time (TkzPlatform's `ProcessTable`: `pbi_start_tvsec` on macOS, /proc on Linux) so a reused
+// pid reads as dead rather than alive. The comparison is one-sided — see
+// `SystemProcessLiveness.startTimeMatches`.
 //
-// On Linux the start time comes from TkzPlatform's `ProcessTable` (/proc); `ProcessTree` is
-// macOS-only until WOR-306 S3 moves the macOS callers too and deletes it.
+// On Linux, Claude Code also stamps the descriptor with `procStart` (field 22 of
+// /proc/<pid>/stat) and `pidDomain` (which pid namespace on which machine the pid belongs to), and
+// those give an exact guard instead — see `isAlive(pid:startedAt:procStart:pidDomain:)`.
 
 #if os(macOS)
 import Darwin
 #else
 import Glibc
-import TkzPlatform
 #endif
 import Foundation
+import TkzPlatform
 
 /// Abstraction over "is this pid alive" so the watcher's liveness sweep is testable without real
 /// processes.
@@ -23,6 +25,17 @@ public protocol ProcessLiveness: Sendable {
     /// is known, also requires the live process not to have started more than 30 s *after* it, else
     /// false (pid-reuse guard).
     func isAlive(pid: pid_t, startedAt: Date?) -> Bool
+
+    /// `isAlive(pid:startedAt:)` for a descriptor that may carry Claude Code's exact process
+    /// identity: `procStart` (the process's start in the OS's own ticks) and `pidDomain` (the pid
+    /// namespace it was written in). The default ignores both; `SystemProcessLiveness` uses them.
+    func isAlive(pid: pid_t, startedAt: Date?, procStart: UInt64?, pidDomain: String?) -> Bool
+}
+
+extension ProcessLiveness {
+    public func isAlive(pid: pid_t, startedAt: Date?, procStart: UInt64?, pidDomain: String?) -> Bool {
+        isAlive(pid: pid, startedAt: startedAt)
+    }
 }
 
 /// The real, syscall-backed implementation.
@@ -36,12 +49,7 @@ public struct SystemProcessLiveness: ProcessLiveness {
             // pid-reuse guard below when we can, otherwise assume alive.
         }
         guard let startedAt else { return true }
-        #if os(macOS)
-        let actualStart = ProcessTree.startTime(of: pid)
-        #else
-        let actualStart = ProcessTable.startTime(of: pid)
-        #endif
-        guard let actualStart else {
+        guard let actualStart = ProcessTable.startTime(of: pid) else {
             // Could not read start time (process gone between the kill() and the pidinfo call, or
             // no permission) — do not claim aliveness we cannot verify.
             return false
@@ -64,92 +72,65 @@ public struct SystemProcessLiveness: ProcessLiveness {
     public static func startTimeMatches(actualStart: Date, descriptorStartedAt: Date) -> Bool {
         actualStart.timeIntervalSince(descriptorStartedAt) <= 30
     }
-}
 
-#if os(macOS)
-/// `libproc`-backed helpers for walking the process tree — used to locate a Claude Code session's
-/// child/descendant processes and to read start times for the pid-reuse guard.
-public enum ProcessTree {
-    /// Direct children of `pid` via `proc_listchildpids`.
+    /// The exact guard, when the descriptor allows it:
     ///
-    /// Unlike `proc_listallpids`, this call does not support the "pass NULL to size the buffer"
-    /// idiom (it ignores `pid` and returns a bogus system-wide count), and its return value is the
-    /// **number of pids** written, not a byte count — so a fixed, generous buffer is used and the
-    /// return value indexes directly into it.
-    public static func children(of pid: pid_t) -> [pid_t] {
-        var buffer = [pid_t](repeating: 0, count: 4096)
-        let count = buffer.withUnsafeMutableBytes { raw -> Int32 in
-            proc_listchildpids(pid, raw.baseAddress, Int32(raw.count))
+    /// - written in this pid namespace on this machine (`pidDomain == ownPidDomain`) with a
+    ///   `procStart`: alive only while the pid exists and its start ticks equal `procStart`.
+    ///   Field 22 of /proc/<pid>/stat is what Claude Code writes, so a reused pid can never match;
+    /// - written in another domain (a distrobox or other container sharing `~/.claude`): not
+    ///   ours, so not alive — its pid names a different process here, if any;
+    /// - otherwise (no `pidDomain` or `procStart`, or no domain of our own, which is always the
+    ///   case on macOS): `isAlive(pid:startedAt:)` and its 30 s window.
+    public func isAlive(pid: pid_t, startedAt: Date?, procStart: UInt64?, pidDomain: String?) -> Bool {
+        switch Self.identityCheck(procStart: procStart, pidDomain: pidDomain, ownDomain: Self.ownPidDomain) {
+        case .foreign:
+            return false
+        case .exact(let expected):
+            if kill(pid, 0) != 0, errno == ESRCH { return false }
+            return ProcessTable.startTicks(of: pid) == expected
+        case .window:
+            return isAlive(pid: pid, startedAt: startedAt)
         }
-        guard count > 0 else { return [] }
-        return Array(buffer.prefix(Int(count)))
     }
 
-    /// BFS over descendants of `pid` (excludes `pid` itself).
-    ///
-    /// Bounded by **total process count**, not by depth. The old 6-level cap was too shallow for
-    /// what actually hangs off a tkzmux pty: `zsh` → `claude` → `bash` → `swift-package` →
-    /// `swiftpm-testing-helper` is already five, and a nested shell or a subagent pushes past six —
-    /// which would have hidden exactly the process worth finding (see docs/perf.md → *Session
-    /// process memory*). `maxDepth` stays as a belt-and-braces stop; `maxProcesses` is the real
-    /// bound, matching `PortScanner`'s `maxProcessesVisited`.
-    ///
-    /// A `visited` set makes the walk safe against a pid appearing twice (pid reuse between two
-    /// `proc_listchildpids` calls), which would otherwise loop.
-    public static func descendants(
-        of pid: pid_t, maxDepth: Int = 32, maxProcesses: Int = 512
-    ) -> [pid_t] {
-        var result: [pid_t] = []
-        var visited: Set<pid_t> = [pid]
-        var frontier: [pid_t] = [pid]
-        var depth = 0
-        while depth < maxDepth, !frontier.isEmpty, result.count < maxProcesses {
-            var next: [pid_t] = []
-            for p in frontier {
-                for kid in children(of: p) where visited.insert(kid).inserted {
-                    result.append(kid)
-                    next.append(kid)
-                    if result.count >= maxProcesses { return result }
-                }
-            }
-            frontier = next
-            depth += 1
-        }
-        return result
+    /// Which guard `isAlive(pid:startedAt:procStart:pidDomain:)` applies.
+    enum IdentityCheck: Equatable {
+        /// Compare the live process's start ticks with this value.
+        case exact(UInt64)
+        /// Another pid namespace or machine wrote the descriptor.
+        case foreign
+        /// Not enough to go on: the one-sided start-time window.
+        case window
     }
 
-    /// The process's start time via `PROC_PIDTBSDINFO.pbi_start_tvsec`, or `nil` if unavailable.
-    public static func startTime(of pid: pid_t) -> Date? {
-        var info = proc_bsdinfo()
-        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
-        let result = withUnsafeMutablePointer(to: &info) {
-            proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, $0, size)
-        }
-        guard result == size else { return nil }
-        return Date(timeIntervalSince1970: TimeInterval(info.pbi_start_tvsec))
+    static func identityCheck(procStart: UInt64?, pidDomain: String?, ownDomain: String?) -> IdentityCheck {
+        guard let pidDomain, !pidDomain.isEmpty, let ownDomain else { return .window }
+        guard pidDomain == ownDomain else { return .foreign }
+        return procStart.map(IdentityCheck.exact) ?? .window
     }
 
-    /// The process's short name (`p_comm`, the executable's file name capped at `MAXCOMLEN`)
-    /// via `proc_name`, or `nil` when the pid is gone or not readable. Used on both sides of the
-    /// comparison in `ProcessOwnership`, so the cap cannot make two names disagree.
-    public static func name(of pid: pid_t) -> String? {
-        var buffer = [UInt8](repeating: 0, count: Int(2 * MAXCOMLEN) + 1)
-        let written = buffer.withUnsafeMutableBytes { raw in
-            proc_name(pid, raw.baseAddress, UInt32(raw.count))
-        }
-        guard written > 0 else { return nil }
-        return String(decoding: buffer.prefix(while: { $0 != 0 }), as: UTF8.self)
-    }
+    /// This process's `pidDomain`, spelled as Claude Code writes it:
+    /// `linux:<machine-id>:pid:[<inode of /proc/self/ns/pid>]`. Nil on macOS, and on Linux when
+    /// either part cannot be read — every descriptor then falls back to the 30 s window.
+    public static let ownPidDomain: String? = {
+        #if os(Linux)
+        let machineID = ["/etc/machine-id", "/var/lib/dbus/machine-id"].lazy
+            .compactMap { try? String(contentsOfFile: $0, encoding: .utf8) }
+            .first
+        let namespace = try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/ns/pid")
+        return pidDomain(machineID: machineID, pidNamespace: namespace)
+        #else
+        return nil
+        #endif
+    }()
 
-    /// The parent pid via `PROC_PIDTBSDINFO.pbi_ppid`, or `nil` if unavailable.
-    public static func parent(of pid: pid_t) -> pid_t? {
-        var info = proc_bsdinfo()
-        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
-        let result = withUnsafeMutablePointer(to: &info) {
-            proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, $0, size)
-        }
-        guard result == size else { return nil }
-        return pid_t(info.pbi_ppid)
+    /// `linux:<machine-id>:<pid namespace link>` (`pid:[4026531836]`), or nil when either is
+    /// missing or empty.
+    static func pidDomain(machineID: String?, pidNamespace: String?) -> String? {
+        let id = machineID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let namespace = pidNamespace?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !id.isEmpty, namespace.hasPrefix("pid:[") else { return nil }
+        return "linux:\(id):\(namespace)"
     }
 }
-#endif

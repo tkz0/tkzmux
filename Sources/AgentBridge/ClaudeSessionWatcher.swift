@@ -532,7 +532,8 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
     /// Merges a freshly parsed descriptor into the snapshot, returning `.updated` only when the
     /// info or liveness actually changed.
     private func applyUpdate(key: DescriptorKey, info: ClaudeSessionInfo, _ s: inout Storage) -> DescriptorEvent? {
-        let alive = liveness.isAlive(pid: info.pid, startedAt: info.startedAt)
+        let alive = liveness.isAlive(
+            pid: info.pid, startedAt: info.startedAt, procStart: info.procStart, pidDomain: info.pidDomain)
         let previous = s.snapshot[key]
         let changed = previous?.info != info || previous?.alive != alive
         s.snapshot[key] = DescriptorState(info: info, alive: alive, lastSeenAt: Date())
@@ -573,7 +574,9 @@ public final class ClaudeSessionWatcher: AgentObservationWatcher {
         }
         #endif
         for (key, current) in s.snapshot {
-            let alive = liveness.isAlive(pid: current.info.pid, startedAt: current.info.startedAt)
+            let info = current.info
+            let alive = liveness.isAlive(
+                pid: info.pid, startedAt: info.startedAt, procStart: info.procStart, pidDomain: info.pidDomain)
             guard alive != current.alive else {
                 // Long-dead and still on disk: stop paying for a watch on it. Deliberately *not*
                 // done the moment it reads dead — `isAlive` is a pid check, and giving up a watch

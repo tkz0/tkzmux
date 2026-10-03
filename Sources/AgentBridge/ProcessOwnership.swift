@@ -11,9 +11,15 @@
 // The rule: a pid is ours when walking its parents reaches this process before reaching launchd —
 // and before passing through another process with our executable name, which is the dev build
 // sitting in a pane. Every pty child of this app is a direct child of the app, so for anything a
-// pane actually runs the walk is two or three steps.
+// pane actually runs the walk is two or three steps. On Linux pid 1 is the init system (systemd)
+// rather than launchd, and the same rule holds.
 
+#if os(macOS)
 import Darwin
+#else
+import Glibc
+#endif
+import TkzPlatform
 
 /// Parent and name lookups for the ownership walk, injected so it can be driven without real
 /// processes — the same seam `ClaudeSessionWatcher` has in `ProcessLiveness`.
@@ -22,16 +28,16 @@ public protocol ProcessAncestry: Sendable {
     func name(of pid: pid_t) -> String?
 }
 
-/// The `libproc`-backed implementation.
+/// The `ProcessTable`-backed implementation: libproc on macOS, /proc on Linux.
 public struct SystemProcessAncestry: ProcessAncestry {
     public init() {}
-    public func parent(of pid: pid_t) -> pid_t? { ProcessTree.parent(of: pid) }
-    public func name(of pid: pid_t) -> String? { ProcessTree.name(of: pid) }
+    public func parent(of pid: pid_t) -> pid_t? { ProcessTable.parent(of: pid) }
+    public func name(of pid: pid_t) -> String? { ProcessTable.name(of: pid) }
 }
 
 public enum ProcessOwnership {
     /// Deeper than the join's own 8-level walks: a nested shell or two under a pane is normal,
-    /// and a false "not ours" is worse than a few extra `proc_pidinfo` calls.
+    /// and a false "not ours" is worse than a few extra process-table lookups.
     public static let maxDepth = 16
 
     /// Whether `pid` runs under the process `selfPid`.

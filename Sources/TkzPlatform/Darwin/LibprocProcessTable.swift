@@ -1,9 +1,10 @@
 // The macOS `ProcessTable` (WOR-304 S6): libproc.
 //
-// `children`, `startTime`, `name` and `parent` are AgentBridge's `ProcessTree` (ProcessLiveness.swift)
-// lifted verbatim; `descendants` is shared with Linux in ProcessTable.swift. `startTicks` reads the
-// same `proc_bsdinfo` as `startTime`, to the microsecond. `exe` and `cwd` are TkzPtyShim's
-// `tkz_proc_path` and `tkz_proc_cwd` (`proc_pidpath`, PROC_PIDVNODEPATHINFO) in Swift.
+// `children`, `startTime`, `name` and `parent` are AgentBridge's old process-tree helpers
+// (ProcessLiveness.swift, until WOR-306 S3) lifted verbatim; `descendants` is shared with Linux in
+// ProcessTable.swift. `startTicks` reads the same `proc_bsdinfo` as `startTime`, to the
+// microsecond. `exe` and `cwd` are TkzPtyShim's `tkz_proc_path` and `tkz_proc_cwd`
+// (`proc_pidpath`, PROC_PIDVNODEPATHINFO) in Swift.
 
 #if canImport(Darwin)
 import Darwin

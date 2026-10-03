@@ -1,5 +1,6 @@
 # tkzmux shell integration for bash (installed as
-# ~/Library/Application Support/tkzmux/bash/tkzmux.bashrc).
+# <support>/bash/tkzmux.bashrc, where <support> is ~/Library/Application Support/tkzmux on macOS
+# and $XDG_DATA_HOME/tkzmux on Linux).
 #
 # tkzmux starts bash as `bash --rcfile <this file>`: an *interactive non-login* shell, because a
 # login bash reads the profile files and ignores --rcfile (man bash, INVOCATION). So this file

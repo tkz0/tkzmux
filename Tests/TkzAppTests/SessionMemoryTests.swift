@@ -11,6 +11,7 @@ import AgentBridge
 import Darwin
 import Foundation
 import Testing
+import TkzPlatform
 
 @testable import TkzApp
 
@@ -257,9 +258,9 @@ struct SessionMemoryTests {
             process.waitUntilExit()
         }
 
-        let deepEnough = Self.waitFor { ProcessTree.descendants(of: root).count >= 8 }
+        let deepEnough = Self.waitFor { ProcessTable.descendants(of: root).count >= 8 }
         #expect(deepEnough, "a 10-deep chain must be walked past the old 6-level cap")
         // And the cap is honoured.
-        #expect(ProcessTree.descendants(of: root, maxProcesses: 3).count == 3)
+        #expect(ProcessTable.descendants(of: root, maxProcesses: 3).count == 3)
     }
 }

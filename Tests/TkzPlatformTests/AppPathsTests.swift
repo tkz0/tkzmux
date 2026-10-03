@@ -92,12 +92,21 @@ import Testing
         #expect(AppPaths.home.path == expected)
         #expect(AppPaths.support == AppPaths.currentLayout().support)
         #expect(AppPaths.cache == AppPaths.currentLayout().cache)
+        #expect(AppPaths.support(environment: ProcessInfo.processInfo.environment) == AppPaths.support)
+    }
+
+    /// `support(environment:)` resolves the injected environment, not this process's.
+    @Test func linuxSupportForAnotherEnvironment() {
+        #expect(AppPaths.support(environment: ["HOME": "/h", "XDG_DATA_HOME": "/d"]).path == "/d/tkzmux")
+        #expect(AppPaths.support(environment: ["HOME": "/h"]).path == "/h/.local/share/tkzmux")
+        #expect(AppPaths.support(environment: ["HOME": "/h", "XDG_DATA_HOME": "rel"]).path == "/h/.local/share/tkzmux")
     }
     #endif
 
     #if os(macOS)
     @Test func macRuntimeIsSupport() {
         #expect(AppPaths.runtime == AppPaths.support)
+        #expect(AppPaths.support(environment: ["XDG_DATA_HOME": "/d"]) == AppPaths.support)
         #expect(AppPaths.home.path == NSHomeDirectory())
     }
 

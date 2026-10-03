@@ -3,11 +3,12 @@
 //   Linux  `ProcfsProcessTable` (Linux/): /proc. Children from /proc/<pid>/task/*/children (a scan
 //          of /proc/*/stat when the kernel lacks CONFIG_PROC_CHILDREN), ppid and start ticks from
 //          /proc/<pid>/stat, the name from /proc/<pid>/comm, exe and cwd through readlink.
-//   macOS  `LibprocProcessTable` (Darwin/): libproc, lifted from AgentBridge's `ProcessTree`.
+//   macOS  `LibprocProcessTable` (Darwin/): libproc, lifted from AgentBridge's old process-tree
+//          helpers.
 //
 // `ProcessTable` names the back-end for the OS being built, and is the one name callers use. It
-// replaces `AgentBridge.ProcessTree` (ProcessLiveness.swift) and the private walk in GitStatus's
-// `PortScanner`; WOR-306 moves those callers and deletes them.
+// replaced AgentBridge's process-tree helpers (ProcessLiveness.swift, deleted in WOR-306 S3) and
+// replaces the private walk in GitStatus's `PortScanner` in WOR-306 S4.
 //
 // Everything is best-effort and never throws: a process that exits mid-call, or that this process
 // may not inspect (another user's under `hidepid`, launchd), reads as nil or as having no children.

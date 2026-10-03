@@ -1,5 +1,5 @@
-# tkzmux shell integration for fish (installed as
-# ~/Library/Application Support/tkzmux/fish/tkzmux.fish).
+# tkzmux shell integration for fish (installed as <support>/fish/tkzmux.fish, where <support> is
+# ~/Library/Application Support/tkzmux on macOS and $XDG_DATA_HOME/tkzmux on Linux).
 #
 # tkzmux starts fish as `fish -l -C 'source <this file>'`. --init-command runs after fish has read
 # the user's configuration -- config.fish, conf.d, the universal variables -- and before the first

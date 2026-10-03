@@ -1,7 +1,7 @@
 // StatuslineReader — the consumer half of the status line integration.
 //
-// `tkzmux-hook statusline` writes two kinds of file into `~/Library/Application
-// Support/tkzmux/statusline`:
+// `tkzmux-hook statusline` writes two kinds of file into `<AppPaths.support>/statusline`
+// (`~/Library/Application Support/tkzmux` on macOS, `$XDG_DATA_HOME/tkzmux` on Linux):
 //
 //   usage-<accountKey>.json   quota for one Claude account   → `UsageSnapshot`
 //   context-<sessionId>.json  one session's context/model/PR → `SessionSidecar`
@@ -24,9 +24,7 @@ import Dispatch
 import Foundation
 import Synchronization
 import TkzCore
-#if !os(macOS)
 import TkzPlatform
-#endif
 
 /// One change to what the statusline sidecars say.
 public enum StatuslineEvent: Sendable {
@@ -166,9 +164,9 @@ public final class StatuslineReader: Sendable {
         }
     }
 
-    /// `~/Library/Application Support/tkzmux/statusline` — the same directory
-    /// `tkzmux-hook statusline` derives from its own location.
-    public static func standardDirectory(supportDirectory: URL) -> String {
+    /// `<support>/statusline`, by default under `AppPaths.support` — the same directory
+    /// `tkzmux-hook statusline` derives from its own location (`<support>/bin/tkzmux-hook`).
+    public static func standardDirectory(supportDirectory: URL = AppPaths.support) -> String {
         supportDirectory.appendingPathComponent("statusline").path
     }
 

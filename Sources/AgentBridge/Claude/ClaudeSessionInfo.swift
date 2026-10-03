@@ -80,8 +80,16 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
     public var pid: pid_t
     public var sessionId: String
     public var cwd: String?
-    /// Decoded from epoch **milliseconds**; also the pid-reuse guard against `pbi_start_tvsec`.
+    /// Decoded from epoch **milliseconds**; also the pid-reuse guard against the process's real
+    /// start time when there is no `procStart` to compare (`SystemProcessLiveness`).
     public var startedAt: Date?
+    /// The process's start in the OS's own units, written as a decimal string: on Linux, clock
+    /// ticks after boot, field 22 of /proc/<pid>/stat. With a matching `pidDomain` it is the exact
+    /// pid-reuse guard (`SystemProcessLiveness.isAlive(pid:startedAt:procStart:pidDomain:)`).
+    public var procStart: UInt64?
+    /// The pid namespace the descriptor was written in, `linux:<machine-id>:pid:[<inode>]` on
+    /// Linux. A different one means the pid is not ours to check.
+    public var pidDomain: String?
     public var version: String?
     public var kind: Kind?
     public var entrypoint: String?
@@ -125,7 +133,9 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
         messagingSocketPath: String? = nil,
         bridgeSessionId: String? = nil,
         parkedJobId: String? = nil,
-        jobId: String? = nil
+        jobId: String? = nil,
+        procStart: UInt64? = nil,
+        pidDomain: String? = nil
     ) {
         self.configDir = configDir
         self.pid = pid
@@ -144,6 +154,8 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
         self.bridgeSessionId = bridgeSessionId
         self.parkedJobId = parkedJobId
         self.jobId = jobId
+        self.procStart = procStart
+        self.pidDomain = pidDomain
     }
 
     /// `decoder.userInfo` key carrying the config dir (a `String`) into `init(from:)`.
@@ -161,7 +173,7 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
     private enum CodingKeys: String, CodingKey {
         case pid, sessionId, cwd, startedAt, version, kind, entrypoint, name, nameSource
         case status, updatedAt, statusUpdatedAt, messagingSocketPath, bridgeSessionId
-        case parkedJobId, jobId
+        case parkedJobId, jobId, procStart, pidDomain
     }
 
     public init(from decoder: any Decoder) throws {
@@ -195,6 +207,8 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
         bridgeSessionId = try? c.decodeIfPresent(String.self, forKey: .bridgeSessionId)
         parkedJobId = try? c.decodeIfPresent(String.self, forKey: .parkedJobId)
         jobId = try? c.decodeIfPresent(String.self, forKey: .jobId)
+        procStart = Self.unsigned(c, .procStart)
+        pidDomain = (try? c.decodeIfPresent(String.self, forKey: .pidDomain)).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// Number or numeric string — Claude Code has shipped both shapes for ids.
@@ -203,6 +217,12 @@ public struct ClaudeSessionInfo: Hashable, Sendable, Decodable {
         if let value = try? c.decodeIfPresent(Double.self, forKey: key) { return Int(value) }
         if let text = try? c.decodeIfPresent(String.self, forKey: key) { return Int(text) }
         return nil
+    }
+
+    /// A decimal string (what Claude Code writes) or a non-negative integer; nil for anything else.
+    private static func unsigned(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> UInt64? {
+        if let text = try? c.decodeIfPresent(String.self, forKey: key) { return UInt64(text) }
+        return try? c.decodeIfPresent(UInt64.self, forKey: key)
     }
 
     /// Epoch **milliseconds** → `Date`; tolerant of a numeric string.

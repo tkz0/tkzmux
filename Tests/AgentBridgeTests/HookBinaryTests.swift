@@ -3,7 +3,11 @@
 // Timing acceptance (c) is measured against the debug build here; the release binary is measured
 // separately (see the ticket's Finish step) since `swift test` always runs against the debug
 // product build directory.
+#if os(macOS)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 import Synchronization
 import Testing
@@ -14,7 +18,7 @@ import TkzCore
 private func makeSocketDir() throws -> URL {
     var template = Array("/tmp/tkzhs.XXXXXX".utf8CString)
     let result = template.withUnsafeMutableBufferPointer { buf -> UnsafeMutablePointer<CChar>? in
-        mkdtemp(buf.baseAddress)
+        mkdtemp(buf.baseAddress!)
     }
     guard result != nil else { throw HookBinaryTestError.mkdtempFailed }
     let path = template.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
@@ -212,6 +216,14 @@ private func bestWallTime(
         // added suites that spawn `git` and `gh` by the dozen. So: up to two more samples, and the
         // **best** of them. A real regression makes every sample slow; a busy scheduler does not.
         // Loosening the budget instead would have thrown the contract away to silence the noise.
+        //
+        // Linux (WOR-306 S3), recalibrated with this same best-of-3 against the debug glibc hook
+        // (`-static-stdlib`, so no Swift runtime to load) on a Ryzen 9 9950X, x86_64 Arch: the
+        // measured run takes 0.8-0.9 ms; over 100 further samples p50 0.76-0.80 ms, p90 0.86-0.98
+        // ms, p99 1.2 ms in a parallel run and 11-14 ms (one scheduler outlier) under
+        // `--no-parallel`. Every sample stayed far inside 50 ms, so the budget stays 50 ms on both
+        // OSes: one number for the hook's contract, not one per machine. The shipped musl hook is
+        // faster still (docs/linux/hook.md).
         var best = result.wallTime
         for _ in 0..<2 where best > 0.050 {
             let sample = try runHook(

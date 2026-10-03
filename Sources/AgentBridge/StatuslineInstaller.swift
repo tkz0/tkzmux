@@ -1,9 +1,10 @@
 // StatuslineInstaller — the only code in tkzmux that writes `~/.claude/settings.json`.
 //
 // Everything else about the Claude integration is deliberately non-invasive: `ShimInstaller` writes
-// only into tkzmux's own Application Support directory, and the shim injects hooks per invocation
-// via `claude --settings`. A statusline cannot work that way — Claude Code reads `statusLine` from
-// the settings file, and the data it carries (rate limits, context usage) reaches disk nowhere else.
+// only into tkzmux's own support directory (`AppPaths.support`), and the shim injects hooks per
+// invocation via `claude --settings`. A statusline cannot work that way — Claude Code reads
+// `statusLine` from the settings file, and the data it carries (rate limits, context usage) reaches
+// disk nowhere else.
 // So this one thing is a real, visible edit to a file the user owns, which is why it happens only
 // behind an explicit consent sheet and why `uninstall` is held to a higher standard than "delete the
 // key".
@@ -13,11 +14,14 @@
 // diff, and a round trip through `JSONSerialization` would silently reorder every key and reformat
 // every number. The hook prints the new document; this type writes it atomically.
 //
-// Layout added under `directory` (normally `~/Library/Application Support/tkzmux`):
+// Layout added under `directory` (normally `AppPaths.support`: `~/Library/Application
+// Support/tkzmux` on macOS, `$XDG_DATA_HOME/tkzmux` on Linux — never the installed
+// `<prefix>/lib/tkzmux`):
 //     statusline/previous-<accountKey>.json   the `statusLine` value from before the install
 //     statusline/usage-<accountKey>.json      written by the producer, read by `StatuslineReader`
 //     statusline/context-<sessionId>.json     ditto
 import Foundation
+import TkzPlatform
 
 public enum StatuslineInstallerError: Error, Equatable, Sendable {
     /// settings.json exists but is not JSON we can rewrite safely.
@@ -83,10 +87,10 @@ public struct StatuslineInstallPlan: Equatable, Sendable {
 }
 
 public struct StatuslineInstaller: Sendable {
-    /// tkzmux's application support directory.
+    /// tkzmux's support directory.
     public var directory: URL
 
-    public init(directory: URL) {
+    public init(directory: URL = AppPaths.support) {
         self.directory = directory
     }
 
@@ -110,7 +114,7 @@ public struct StatuslineInstaller: Sendable {
     }
 
     /// The `statusLine.command` this installer writes. Quoted because the bin directory may contain
-    /// spaces (`~/Library/Application Support/…`).
+    /// spaces (`~/Library/Application Support/…` on macOS, any `$XDG_DATA_HOME` on Linux).
     public var command: String { "\"\(hookBinary.path)\" statusline" }
 
     // MARK: - Detection

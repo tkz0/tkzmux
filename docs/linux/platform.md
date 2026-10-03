@@ -200,7 +200,7 @@ On 2026-10-03, on the reference machine (Swift 6.3.3, debug build, `swift test -
 
 ## Processes: `ProcessTable`
 
-`ProcessTable` (`Sources/TkzPlatform/ProcessTable.swift`) answers read-only questions about other processes. It replaces `AgentBridge.ProcessTree` and the private walk in GitStatus's `PortScanner`; WOR-306 moves their callers (ProcessLiveness, ProcessOwnership, SessionMemory, PortScanner) onto it and deletes them. Each back-end conforms to `ProcessTableBackend`, so both are held to one signature, and `ProcessTable` names the one for the OS being built.
+`ProcessTable` (`Sources/TkzPlatform/ProcessTable.swift`) answers read-only questions about other processes. It replaces `AgentBridge.ProcessTree` (deleted in WOR-306 S3, whose callers ProcessLiveness, ProcessOwnership and SessionMemory now use it) and the private walk in GitStatus's `PortScanner` (WOR-306 S4). Each back-end conforms to `ProcessTableBackend`, so both are held to one signature, and `ProcessTable` names the one for the OS being built.
 
 | Call | Linux (`Linux/ProcfsProcessTable.swift`) | macOS (`Darwin/LibprocProcessTable.swift`) |
 |---|---|---|

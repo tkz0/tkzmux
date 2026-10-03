@@ -93,7 +93,7 @@ import Testing
             withIntermediateDirectories: true)
         let work = (home as NSString).appendingPathComponent(".codex-work")
         try fm.createDirectory(atPath: work, withIntermediateDirectories: true)
-        fm.createFile(
+        _ = fm.createFile(
             atPath: (work as NSString).appendingPathComponent("config.toml"), contents: Data())
         let decoy = (home as NSString).appendingPathComponent(".codex-decoy")
         try fm.createDirectory(atPath: decoy, withIntermediateDirectories: true)
@@ -106,7 +106,7 @@ import Testing
             .appendingPathComponent("CodexAdapterTests-bin-\(UUID().uuidString)").path
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let binary = (dir as NSString).appendingPathComponent("codex")
-        FileManager.default.createFile(atPath: binary, contents: Data("#!/bin/sh\n".utf8))
+        _ = FileManager.default.createFile(atPath: binary, contents: Data("#!/bin/sh\n".utf8))
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary)
         return dir
     }

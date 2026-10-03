@@ -17,6 +17,7 @@ import Metal
 import Persistence
 import Testing
 import TkzCore
+import TkzPlatform
 import TkzTerminalCore
 import TkzTerminalRender
 import TkzTerminalView
@@ -157,7 +158,7 @@ struct SessionKillTests {
         #expect(asked != nil, "the action must confirm before killing")
         #expect((asked?.processCount ?? 0) > 1)
         // The `sleep` is gone…
-        #expect(Self.waitFor { !ProcessTree.descendants(of: harness.pid).contains { SessionMemory.name(of: $0) == "sleep" } })
+        #expect(Self.waitFor { !ProcessTable.descendants(of: harness.pid).contains { SessionMemory.name(of: $0) == "sleep" } })
         // …and the shell that owns the row is not.
         #expect(kill(harness.pid, 0) == 0)
     }

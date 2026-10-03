@@ -78,6 +78,19 @@ public enum AppPaths {
         #endif
     }
 
+    /// `support` as `environment` would resolve it, for a caller that works on behalf of another
+    /// environment (a test's temporary `HOME` and `XDG_DATA_HOME`, an installer run for a child).
+    /// Linux: the XDG rule over `environment`, with `HOME` from it or else the account database.
+    /// macOS: `support`, which never depended on the environment.
+    public static func support(environment: [String: String]) -> URL {
+        #if os(Linux)
+        let home = resolvedHome(environment: environment, passwordDatabaseHome: passwordDatabaseHome())
+        return xdgLayout(environment: environment, home: home).support
+        #else
+        return support
+        #endif
+    }
+
     /// The cache directory: `$XDG_CACHE_HOME/tkzmux` on Linux, `~/Library/Caches/tkzmux` on
     /// macOS. Not created here.
     public static var cache: URL {

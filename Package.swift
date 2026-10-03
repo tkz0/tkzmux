@@ -18,9 +18,6 @@
 // checked for RunLoop/Timer APIs, which never fire under the Linux main loop. A target moved into
 // `shared` or `linuxOnly` is covered without touching the test.
 import PackageDescription
-#if os(Linux)
-import Foundation
-#endif
 
 // MARK: - Shared (macOS and Linux)
 
@@ -100,6 +97,21 @@ let sharedTargets: [Target] = [  // hygiene-scan
         path: "Sources/Persistence"
     ),
 
+    // Agent adapters, hook server, watchers and installers (WOR-306). TkzPlatformShim for accept4
+    // on Linux.
+    .target(
+        name: "AgentBridge",
+        dependencies: [
+            "TkzCore", "TkzPlatform",
+            .byName(name: "TkzPlatformShim", condition: .when(platforms: [.linux])),
+        ],
+        path: "Sources/AgentBridge",
+        resources: [
+            .copy("Resources/shim"), .copy("Resources/zsh"), .copy("Resources/bash"),
+            .copy("Resources/fish"),
+        ]
+    ),
+
     // Fixtures/ (NIST SHAVS vectors) is read through #filePath, not bundled.
     .testTarget(name: "TkzPlatformTests", dependencies: ["TkzPlatform"], path: "Tests/TkzPlatformTests", exclude: ["Fixtures"]),
     .testTarget(name: "TkzCoreTests", dependencies: ["TkzCore"], path: "Tests/TkzCoreTests"),
@@ -136,43 +148,9 @@ let sharedTargets: [Target] = [  // hygiene-scan
 
 // MARK: - Linux only
 
-// AgentBridge joins the Linux graph a file at a time (WOR-306): Linux builds only the sources
-// ported so far and runs only the tests that cover them (plus the hook's own tests, which import
-// no AgentBridge). Each session adds to both lists; AgentBridge moves to the shared targets once
-// every file builds. The rest of each directory is excluded, listed here so SwiftPM does not warn
-// about it, and the Mac's targets compile all of it.
-let agentBridgeLinuxSources = [
-    "HookFrame.swift", "HookServer.swift",
-    // S2: the watchers, and what they need to build.
-    "AgentAdapter.swift", "ClaudeSessionWatcher.swift", "StatuslineReader.swift", "TranscriptWatch.swift",
-    "ProcessLiveness.swift", "QuotaReconciler.swift", "TranscriptReader.swift", "TranscriptSearch.swift",
-    "TranscriptUsageReader.swift", "PromptCommand.swift", "Claude/ClaudeSessionInfo.swift",
-    "Codex/CodexUsageExtractor.swift",
-]
-let agentBridgeLinuxTests = [
-    "HookHygieneTests.swift", "HookSupportPathTests.swift", "HookServerTests.swift",
-    "ClaudeSessionWatcherTests.swift", "StatuslineReaderTests.swift",
-    "StatuslineTestSupport.swift", "TranscriptWatchTests.swift",
-]
-#if os(Linux)
-/// Every path under `directory` that is not kept: whole entries, or the other entries of a
-/// subdirectory that holds a kept file (`Claude/ClaudeSessionInfo.swift`).
-func linuxExcludes(_ directory: String, keeping kept: [String]) -> [String] {
-    ((try? FileManager.default.contentsOfDirectory(atPath: Context.packageDirectory + "/" + directory)) ?? [])
-        .flatMap { entry -> [String] in
-            if kept.contains(entry) { return [] }
-            let inside = kept.filter { $0.hasPrefix(entry + "/") }
-                .map { String($0.dropFirst(entry.count + 1)) }
-            if inside.isEmpty { return [entry] }
-            return linuxExcludes(directory + "/" + entry, keeping: inside).map { entry + "/" + $0 }
-        }.sorted()
-}
-let agentBridgeMacOnly = linuxExcludes("Sources/AgentBridge", keeping: agentBridgeLinuxSources)
-let agentBridgeTestsMacOnly = linuxExcludes("Tests/AgentBridgeTests", keeping: agentBridgeLinuxTests)
-#else
-let agentBridgeMacOnly: [String] = []
-let agentBridgeTestsMacOnly: [String] = []
-#endif
+// AgentBridge itself is shared (WOR-306 S3). Its tests run on Linux without the shell-integration
+// harness and the zsh wrapper tests, which need zsh and fish and are ported in WOR-306 S5.
+let agentBridgeTestsLinuxExcludes = ["ShellIntegrationHarnessTests.swift", "ZshWrapperTests.swift"]
 
 let linuxOnlyProducts: [Product] = [
     // Same product name as the Mac app, so the binary is `tkzmux` on both OSes.
@@ -207,21 +185,12 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
     // them, and neither is in the Linux graph yet (WOR-304 S3).
     .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzCore"], path: "Tests/PersistenceTests"),
 
-    // The ported part of AgentBridge and its tests (see agentBridgeLinuxSources above). No
-    // resources yet: ModuleResources.swift is not ported. TkzPlatformShim for accept4.
-    .target(
-        name: "AgentBridge",
-        dependencies: ["TkzCore", "TkzPlatform", "TkzPlatformShim"],
-        path: "Sources/AgentBridge",
-        exclude: agentBridgeMacOnly,
-        sources: agentBridgeLinuxSources
-    ),
     .testTarget(
         name: "AgentBridgeTests",
         dependencies: ["AgentBridge", "TkzCore", "TkzPlatform", "TkzTerminalCore"],
         path: "Tests/AgentBridgeTests",
-        exclude: agentBridgeTestsMacOnly,
-        sources: agentBridgeLinuxTests
+        exclude: agentBridgeTestsLinuxExcludes,
+        resources: [.copy("Fixtures")]
     ),
 
     .testTarget(
@@ -260,15 +229,6 @@ let macOnlyTargets: [Target] = [
     ),
 
     // MARK: App core and services
-    .target(
-        name: "AgentBridge",
-        dependencies: ["TkzCore", "TkzPlatform"],
-        path: "Sources/AgentBridge",
-        resources: [
-            .copy("Resources/shim"), .copy("Resources/zsh"), .copy("Resources/bash"),
-            .copy("Resources/fish"),
-        ]
-    ),
     .target(
         name: "GitStatus",
         dependencies: ["TkzCore"],

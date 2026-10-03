@@ -244,18 +244,32 @@ public final class HookServer: Sendable {
     }
 
     private func readAvailable(fd: Int32) {
+        #if os(macOS)
+        readChunk(fd: fd)
+        #else
+        // Drain: corelibs Dispatch's epoll back-end does not signal again for bytes a handler left
+        // unread, so a client that writes a frame larger than one chunk (a 200 KiB Stop message)
+        // and closes would leave the rest of it in the socket for good. kqueue does signal again.
+        while readChunk(fd: fd) {}
+        #endif
+    }
+
+    /// Reads one chunk and handles every line it completes. True when a whole chunk was read and
+    /// the connection is still open, so more may be waiting.
+    @discardableResult
+    private func readChunk(fd: Int32) -> Bool {
         var buf = [UInt8](repeating: 0, count: HookServer.readChunkSize)
         let n = buf.withUnsafeMutableBytes { ptr -> Int in
             read(fd, ptr.baseAddress, ptr.count)
         }
         if n < 0 {
-            if errno == EAGAIN || errno == EWOULDBLOCK { return }
+            if errno == EAGAIN || errno == EWOULDBLOCK { return false }
             closeConnection(fd: fd)
-            return
+            return false
         }
         if n == 0 {
             closeConnection(fd: fd)
-            return
+            return false
         }
 
         var completedLines: [[UInt8]] = []
@@ -280,7 +294,9 @@ public final class HookServer: Sendable {
         if overLimit {
             logger.warning("hook connection exceeded \(HookServer.maxUnterminatedBuffer) bytes without a newline; dropping")
             closeConnection(fd: fd)
+            return false
         }
+        return n == HookServer.readChunkSize
     }
 
     private func closeConnection(fd: Int32) {

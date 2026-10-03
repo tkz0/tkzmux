@@ -54,6 +54,7 @@
 // by default — so nothing here checks for it, and nothing should ever be written that tells a user
 // to set it.
 import Foundation
+import TkzPlatform
 
 /// What is producing this account's Codex hooks right now, from `hooks.json` alone.
 ///
@@ -160,11 +161,11 @@ public struct CodexHooksInstaller: HookConfigInstaller, Sendable {
         "PermissionRequest", "PreToolUse", "PostToolUse",
     ]
 
-    /// tkzmux's application support directory, exactly what `AgentIntegration` already hands the
-    /// other installed hooks writer of its own.
+    /// tkzmux's support directory (`AppPaths.support` unless handed another), exactly what
+    /// `AgentIntegration` already hands the other installed hooks writer of its own.
     public var directory: URL
 
-    public init(directory: URL) {
+    public init(directory: URL = AppPaths.support) {
         self.directory = directory
     }
 
@@ -198,7 +199,7 @@ public struct CodexHooksInstaller: HookConfigInstaller, Sendable {
     }
 
     /// The command this installer writes for one event. Quoted because the support directory may
-    /// contain spaces (`~/Library/Application Support/…`).
+    /// contain spaces (`~/Library/Application Support/…` on macOS, any `$XDG_DATA_HOME` on Linux).
     public func command(for event: String) -> String {
         "\"\(hookBinary.path)\" \(event)"
     }

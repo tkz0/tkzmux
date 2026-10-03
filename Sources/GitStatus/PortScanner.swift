@@ -128,8 +128,9 @@ public enum PortScanner {
         return String(decoding: bytes, as: UTF8.self)
     }
 
-    // Direct children of `pid` via `proc_listchildpids`. Re-implemented from
-    // `AgentBridge.ProcessTree.children(of:)` rather than shared, per the header comment above:
+    // Direct children of `pid` via `proc_listchildpids`. Re-implemented from AgentBridge's old
+    // process-tree walk (now TkzPlatform's `ProcessTable.children(of:)`, which WOR-306 S4 switches
+    // this file to) rather than shared, per the header comment above:
     // `GitStatus` must not depend on `AgentBridge`. Its return value is the **number of pids
     // written**, not a byte count, and (unlike proc_listallpids) it does not support the
     // NULL-sizing idiom, so a fixed, generous buffer is used and the return value indexes directly

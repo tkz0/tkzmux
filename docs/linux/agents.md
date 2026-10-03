@@ -4,12 +4,13 @@ How the agent side of tkzmux (hook socket, watchers, liveness, installers, shell
 
 ## Bring-up
 
-AgentBridge joins the Linux graph a file at a time. `Package.swift` lists the sources that build on Linux (`agentBridgeLinuxSources`) and the tests that run on them (`agentBridgeLinuxTests`), and excludes the rest of each directory. On macOS both targets still compile everything. Once every file builds, AgentBridge moves to the shared targets.
+AgentBridge joined the Linux graph a file at a time. Until WOR-306 S3, `Package.swift` listed the sources that built on Linux and the tests that ran on them and excluded the rest. Since S3 every source builds, so AgentBridge is a shared target, with its resources (`shim`, `zsh`, `bash`, `fish`) on both OSes and `TkzPlatformShim` linked on Linux only. The Linux `AgentBridgeTests` target runs every test file except `ShellIntegrationHarnessTests` and `ZshWrapperTests` (`agentBridgeTestsLinuxExcludes`), which need zsh and fish and are ported in S5.
 
 | Session | Linux sources | Linux tests |
 |---|---|---|
 | WOR-306 S1 | `HookFrame.swift`, `HookServer.swift` | `HookServerTests` (plus the hook's own `HookHygieneTests` and `HookSupportPathTests` from WOR-305) |
 | WOR-306 S2 | `ClaudeSessionWatcher.swift`, `StatuslineReader.swift`, `TranscriptWatch.swift` (new), and what they need to build: `AgentAdapter.swift`, `ProcessLiveness.swift`, `QuotaReconciler.swift`, `PromptCommand.swift`, `TranscriptReader.swift`, `TranscriptSearch.swift`, `TranscriptUsageReader.swift`, `Claude/ClaudeSessionInfo.swift`, `Codex/CodexUsageExtractor.swift` | `ClaudeSessionWatcherTests`, `StatuslineReaderTests` (with `StatuslineTestSupport.swift`, split out of `StatuslineTests` so the reader tests build without `StatuslineInstaller`), `TranscriptWatchTests` |
+| WOR-306 S3 | everything else: the adapters and mappers, `ProcessOwnership.swift`, `ShimInstaller.swift`, `StatuslineInstaller.swift`, `UserPath.swift`, `ModuleResources.swift`, `Codex/*`, `Antigravity/*` | everything but the shell harness and the zsh wrapper tests |
 
 ## Hook socket
 
@@ -44,11 +45,53 @@ A peer check would add nothing against the same user: any process of that user c
 
 On Linux the listener is opened with `SOCK_CLOEXEC`, and connections are accepted with `accept4(SOCK_NONBLOCK | SOCK_CLOEXEC)`. A pane spawned while a hook is connected therefore never inherits the listener or a connection. Swift's Glibc module hides `accept4` (glibc declares it only under `_GNU_SOURCE`), so it is called through `tkz_accept4` in `TkzPlatformShim`. macOS keeps `accept` plus `fcntl(O_NONBLOCK)`. The server never writes to a connection, so it needs neither `SO_NOSIGPIPE` nor `MSG_NOSIGNAL`. Corelibs Dispatch does not mark sources `Sendable`, so the accept and read sources are created and resumed under the state lock, as in `Pty`.
 
+On Linux a connection's read handler drains the socket, reading 64 KiB chunks until one comes back short. Corelibs Dispatch's epoll back-end does not signal again for bytes a handler left unread, so a hook that wrote a frame longer than one chunk (a 200 KiB `Stop` message) and closed would otherwise leave the rest in the socket and the frame would never arrive (found by `HookBinaryTests.longMessageArrivesIntactPrefixTruncated` in WOR-306 S3; `HookServerTests.aLineLongerThanOneReadChunkArrivesWhole` fails without the drain). kqueue signals again, so macOS keeps one read per event.
+
 ### Tests
 
 - `HookSocketTests` (TkzCoreTests): on Linux, the private runtime directory and every fallback (unset, empty, relative, a file, a symlinked `tkzmux`, a missing root, and an unwritable root, which is skipped as root). On macOS, the directory is the support directory whatever `XDG_RUNTIME_DIR` says.
 - `TerminalEnvironmentTests.hookSocketDirectoryFollowsTheRuntimeDirectory`: `TKZMUX_SOCKET == $XDG_RUNTIME_DIR/tkzmux/tkzmux-<pid>.sock` on Linux, the support path when the variable is unset, empty or relative, and the support path on macOS.
 - `HookServerTests` on both OSes. `paneAndServerAgreeOnTheSocketDirectory` points `XDG_RUNTIME_DIR` at a temp directory, checks that the pane's `TKZMUX_SOCKET` is the server's path, checks the 0700/0600 modes, and delivers a frame there. On Linux, `listenerAndConnectionsAreCloseOnExec` checks `FD_CLOEXEC` on the listener and on an accepted connection. The test clients use `send(MSG_NOSIGNAL)` on Linux, where macOS sets `SO_NOSIGPIPE` and uses `write`.
+
+## Liveness and ownership
+
+`ProcessLiveness`, `ProcessOwnership` and the `SessionMemory` call sites use TkzPlatform's `ProcessTable` on both OSes; `AgentBridge.ProcessTree` is deleted (WOR-306 S3). On macOS `ProcessTable` is `LibprocProcessTable`, the same libproc code lifted verbatim, so the answers are unchanged.
+
+### The exact pid-reuse guard
+
+Claude Code stamps each Linux session descriptor with two fields that `ClaudeSessionInfo` now decodes:
+
+- `procStart`: a decimal string, field 22 of `/proc/<pid>/stat` (clock ticks after boot). It matched `/proc/<pid>/stat` exactly on two live descriptors here.
+- `pidDomain`: `linux:<machine-id>:pid:[<inode>]`, where the last part is `readlink /proc/self/ns/pid`. It names the pid namespace the pid belongs to.
+
+`SystemProcessLiveness.isAlive(pid:startedAt:procStart:pidDomain:)` picks the guard (`identityCheck`), and `ClaudeSessionWatcher` calls it with the descriptor's fields:
+
+| Descriptor | Guard |
+|---|---|
+| `pidDomain` equals this process's (`ownPidDomain`) and `procStart` is present | alive only if `kill(pid, 0)` does not fail with ESRCH and `ProcessTable.startTicks(of: pid) == procStart`; `startedAt` is not consulted |
+| `pidDomain` present and different (a distrobox or other container sharing `~/.claude`, another machine through a synced home) | not ours: not alive |
+| no `pidDomain`, no `procStart`, or no domain of our own | the one-sided 30 s `startedAt` window, as before |
+
+`ownPidDomain` is nil on macOS, so a Mac descriptor always takes the window and Mac behaviour is unchanged. On Linux it is nil only when neither `/etc/machine-id` nor `/var/lib/dbus/machine-id` can be read. The protocol's default for the new method forwards to `isAlive(pid:startedAt:)`, so test fakes need no change. `AgentIntegration`'s launch-pid poll passes no descriptor and keeps the plain check.
+
+`ProcessOwnership` walks `ProcessTable.parent`/`name`. On Linux pid 1 is the init system rather than launchd, and the rule is the same; names are `comm`, at most 15 bytes, on both sides of the comparison.
+
+## Installers and paths
+
+The installers and readers take `AppPaths.support` by default: `$XDG_DATA_HOME/tkzmux` (or `~/.local/share/tkzmux`) on Linux, `~/Library/Application Support/tkzmux` on macOS. That is `StatuslineInstaller(directory:)`, `CodexHooksInstaller(directory:)`, `StatuslineReader.standardDirectory(supportDirectory:)` and `TranscriptUsageReader.standardDirectory(supportDirectory:)`. The Mac app still hands them its own directory, which is the same path.
+
+`ShimInstaller.standard(locator:)` builds the installer for the tkzmux a `ResourceLocator` describes. It only reads the install and only writes user data:
+
+| | Read from (never written) | Written to |
+|---|---|---|
+| Shims and wrappers | the AgentBridge bundle the locator finds (`<prefix>/lib/tkzmux/tkzmux_AgentBridge.resources`), through `ShimResources.bundled(locator:)`, which has no `Bundle.module` fallback into `.build` | `AppPaths.support(environment: locator.environment)`: `bin/{claude,codex,agy}`, the wrappers, `VERSION` |
+| Hook | `tkzmux-hook` beside the executable with symlinks resolved (`<prefix>/bin/tkzmux-hook`, ADR-0002) | `<support>/bin/tkzmux-hook` |
+
+`AppPaths.support(environment:)` (new) resolves the XDG rule for an injected environment. `ShimInstaller.standardHookBinary()` takes the executable from `/proc/self/exe` on Linux, because `Bundle.main` is the test runner under `swift test`; macOS is unchanged. The atomic rename is `Glibc.rename` on Linux and `Foundation.rename` on macOS.
+
+The wrapper resources (`Resources/{bash,fish,zsh}`) now name `<support>` for both OSes in their header comments. That edit changes `ShimInstaller.version`, so an existing install rewrites its shims and wrappers once on the next launch, on macOS too.
+
+`ShimInstallerPrefixTests` (Linux) copies the built hook and bundle into a temporary `<prefix>`, runs the executable through a symlink with only `HOME` and `XDG_DATA_HOME` set and no resource override, and checks: `ensureInstalled()` is `.installed` then `.upToDate`; `bin/{agy,claude,codex,tkzmux-hook}`, every wrapper and `VERSION` are in `$XDG_DATA_HOME/tkzmux`; and every file under the prefix keeps its bytes, mode and mtime. It runs twice, once with a separate prefix and once with `PREFIX=$HOME/.local` and no `XDG_DATA_HOME`, where the install's `~/.local/lib/tkzmux` and the user data's `~/.local/share/tkzmux` share one `~/.local`. A prefix without a bundle is an error rather than a fall back to the build tree.
 
 ## Watchers
 

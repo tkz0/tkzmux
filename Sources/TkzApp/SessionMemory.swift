@@ -24,6 +24,7 @@
 import AgentBridge
 import Darwin
 import Foundation
+import TkzPlatform
 
 /// One reading of a session's process subtree.
 ///
@@ -94,7 +95,7 @@ public enum SessionMemory {
     /// a tree this size is always slightly stale by the time it is summed.
     public static func sample(rootPid pid: pid_t) -> SessionMemorySample {
         guard pid > 0 else { return .empty }
-        let children = ProcessTree.descendants(of: pid, maxProcesses: maxProcesses)
+        let children = ProcessTable.descendants(of: pid, maxProcesses: maxProcesses)
 
         var total: UInt64 = 0
         var counted = 0
@@ -145,7 +146,7 @@ public enum SessionMemory {
     ) -> [pid_t] {
         guard pid > 0 else { return [] }
         var signalled: [pid_t] = []
-        for p in ProcessTree.descendants(of: pid, maxProcesses: maxProcesses).reversed() {
+        for p in ProcessTable.descendants(of: pid, maxProcesses: maxProcesses).reversed() {
             if kill(p, signal) == 0 { signalled.append(p) }
         }
         if includingRoot, kill(pid, signal) == 0 { signalled.append(pid) }

@@ -8,7 +8,7 @@
 // `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens_details.thinking_tokens`).
 //
 // This sums that, incrementally: transcripts are append-only, so each session gets a small cache
-// file under `~/Library/Application Support/tkzmux/usage/<agent>-<sessionId>.json` recording a byte
+// file under `<AppPaths.support>/usage/<agent>-<sessionId>.json` recording a byte
 // offset and running per-model *token* totals — never a cost, so a `ModelPricing` edit changes what
 // old totals cost without needing to re-read anything. A missing or corrupt cache file just means
 // the next `refresh` starts from offset 0 and re-derives it: the cache is a recomputable
@@ -41,6 +41,7 @@
 
 import Foundation
 import TkzCore
+import TkzPlatform
 
 /// How the lines read since the last `refresh` turn into updated per-model token totals. See the
 /// file header for why this exists instead of a branch inside one method.
@@ -58,8 +59,9 @@ public actor TranscriptUsageReader {
         self.cacheDirectory = cacheDirectory
     }
 
-    /// `~/Library/Application Support/tkzmux/usage`.
-    public static func standardDirectory(supportDirectory: URL) -> String {
+    /// `<support>/usage`, by default under `AppPaths.support` (`~/Library/Application
+    /// Support/tkzmux` on macOS, `$XDG_DATA_HOME/tkzmux` on Linux).
+    public static func standardDirectory(supportDirectory: URL = AppPaths.support) -> String {
         supportDirectory.appendingPathComponent("usage").path
     }
 

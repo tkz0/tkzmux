@@ -87,7 +87,7 @@ import Testing
             atPath: (work as NSString).appendingPathComponent("sessions"),
             withIntermediateDirectories: true)
         // A decoy: starts with the right prefix but is a plain file, not a directory with markers.
-        fm.createFile(
+        _ = fm.createFile(
             atPath: (home as NSString).appendingPathComponent(".claude-decoy"), contents: Data())
         return home
     }
@@ -141,7 +141,7 @@ import Testing
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(atPath: dir) }
         let binary = (dir as NSString).appendingPathComponent("claude")
-        FileManager.default.createFile(atPath: binary, contents: Data("#!/bin/sh\n".utf8))
+        _ = FileManager.default.createFile(atPath: binary, contents: Data("#!/bin/sh\n".utf8))
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary)
 
         #expect(ClaudeAdapter().isInstalled(path: dir))
@@ -153,7 +153,7 @@ import Testing
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(atPath: dir) }
         let binary = (dir as NSString).appendingPathComponent("claude")
-        FileManager.default.createFile(atPath: binary, contents: Data("#!/bin/sh\n".utf8))
+        _ = FileManager.default.createFile(atPath: binary, contents: Data("#!/bin/sh\n".utf8))
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: binary)
 
         #expect(!ClaudeAdapter().isInstalled(path: dir))

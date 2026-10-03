@@ -2,10 +2,11 @@
 // support directory. See Sources/AgentBridge/Resources/{shim,zsh,bash,fish} and `LoginShell`
 // (TkzCore) for the layout both this and the pty agree on. Never touches ~/.claude/settings.json.
 //
-// Layout written under `directory` (normally
-// `~/Library/Application Support/tkzmux`):
+// Layout written under `directory` (normally `AppPaths.support`: `~/Library/Application
+// Support/tkzmux` on macOS, `$XDG_DATA_HOME/tkzmux` on Linux):
 //     bin/claude              0755  the shim, from Resources/shim/claude.sh
 //     bin/codex               0755  the shim, from Resources/shim/codex.sh
+//     bin/agy                 0755  the shim, from Resources/shim/agy.sh
 //     bin/tkzmux-hook         0755  copied from `hookBinary`
 //     zsh/.zshenv             0644  the ZDOTDIR wrappers (M3.3)
 //     zsh/.zprofile           0644
@@ -21,7 +22,15 @@
 //
 // `zsh/` may already exist and be empty: `TerminalViewHost` creates it at startup so a login zsh
 // spawned before the installer runs still finds *a* ZDOTDIR (see TerminalHost.swift).
+//
+// The installer only ever reads its sources — the resource bundle and the built hook — and never
+// writes beside them. On Linux an install keeps them read-only under `<prefix>/lib/tkzmux` and
+// `<prefix>/bin` (`ResourceLocator`), apart from the user data in `AppPaths.support`, even when
+// `PREFIX=$HOME/.local` puts both under one home (`standard(locator:)`, WOR-306 S3).
 import Foundation
+#if os(Linux)
+import Glibc
+#endif
 import TkzPlatform
 import TkzCore
 
@@ -51,9 +60,26 @@ public struct ShimResources: Sendable {
     /// `ShimResource` (AgentAdapter.swift) assumes, so a future agent's shim needs no change here —
     /// only the new `.sh` file and its adapter.
     public static func bundled() throws -> ShimResources {
-        let bundle = ModuleResources.bundle
+        try bundled(from: ModuleResources.bundle)
+    }
 
+    /// Loads from the AgentBridge bundle `locator` finds, and only from there: no `Bundle.module`
+    /// fallback into the build tree, so an install reads its own `<prefix>/lib/tkzmux`.
+    /// - Throws: `resourceMissing` when `locator` finds no bundle.
+    public static func bundled(locator: ResourceLocator) throws -> ShimResources {
+        guard let url = locator.bundleURL(forModule: "AgentBridge"), let bundle = Bundle(url: url) else {
+            throw ShimInstallerError.resourceMissing("\(ResourceLocator.bundlePrefix)AgentBridge bundle")
+        }
+        return try bundled(from: bundle)
+    }
+
+    static func bundled(from bundle: Bundle) throws -> ShimResources {
+        #if os(macOS)
         let shimURLs = bundle.urls(forResourcesWithExtension: "sh", subdirectory: "shim") ?? []
+        #else
+        // Corelibs Foundation types this `[NSURL]?`.
+        let shimURLs = (bundle.urls(forResourcesWithExtension: "sh", subdirectory: "shim") ?? []).map { $0 as URL }
+        #endif
         guard !shimURLs.isEmpty else {
             throw ShimInstallerError.resourceMissing("shim/*.sh")
         }
@@ -115,11 +141,41 @@ public struct ShimInstaller: Sendable {
     }
 
     /// `Contents/MacOS/tkzmux-hook` next to the running executable — true both inside
-    /// `build/tkzmux.app` and under `swift run` (the executable's own directory).
+    /// `build/tkzmux.app` and under `swift run` (the executable's own directory). On Linux,
+    /// `<prefix>/bin/tkzmux-hook` beside `<prefix>/bin/tkzmux` (ADR-0002), from
+    /// `/proc/self/exe` rather than `Bundle.main`, which is the test runner under `swift test`.
     public static func standardHookBinary() -> URL {
+        #if os(macOS)
         Bundle.main.executableURL!
             .deletingLastPathComponent()
             .appendingPathComponent("tkzmux-hook")
+        #else
+        hookBinary(locator: .current)
+            ?? Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("tkzmux-hook")
+        #endif
+    }
+
+    /// `tkzmux-hook` beside `locator`'s executable, symlinks resolved first, so a
+    /// `~/.local/bin/tkzmux` link to an install elsewhere finds that install's hook. Nil without an
+    /// executable path. Whether the file exists is the caller's question.
+    public static func hookBinary(locator: ResourceLocator) -> URL? {
+        guard let path = locator.executablePath, !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path).resolvingSymlinksInPath()
+            .deletingLastPathComponent()
+            .appendingPathComponent("tkzmux-hook")
+    }
+
+    /// The installer for the tkzmux that `locator` describes: resources from its AgentBridge
+    /// bundle (`ShimResources.bundled(locator:)`), the hook beside its executable, and
+    /// `AppPaths.support` for its environment as the directory written. Reads the install, never
+    /// writes it.
+    /// - Throws: `resourceMissing` when the bundle or the hook is missing.
+    public static func standard(locator: ResourceLocator = .current) throws -> ShimInstaller {
+        guard let hook = hookBinary(locator: locator), FileManager.default.isExecutableFile(atPath: hook.path)
+        else { throw ShimInstallerError.resourceMissing("tkzmux-hook") }
+        return ShimInstaller(
+            directory: AppPaths.support(environment: locator.environment), hookBinary: hook,
+            resources: try ShimResources.bundled(locator: locator))
     }
 
     /// Content-derived install version: a SHA-256 over every shim script, every shell wrapper, and
@@ -271,7 +327,11 @@ public struct ShimInstaller: Sendable {
         source.withUnsafeFileSystemRepresentation { from in
             destination.withUnsafeFileSystemRepresentation { to in
                 guard let from, let to else { errno = EINVAL; return false }
+                #if os(macOS)
                 return Foundation.rename(from, to) == 0
+                #else
+                return Glibc.rename(from, to) == 0
+                #endif
             }
         }
     }
