@@ -72,3 +72,12 @@ stop
 ```
 
 Then sanitize with length-preserving substitutions and regenerate the golden from the sanitized file.
+
+# Key fixtures (WOR-315 S1)
+
+Not recordings, and read through `#filePath`, not the bundle.
+
+| Fixture | What it is | Regenerate |
+|---|---|---|
+| `keymaps/{se,us,us-intl,de,fr}.json` | Per layout: the GDK state of each modifier chord, and per evdev key its level-0 keysym and its keysym under every chord. Compiled from xkeyboard-config by libxkbcommon (`evdev`/`pc105`, no options, no user or environment overrides). `LinuxKeyTranslatorTests` reads them on both OSes. | `TKZMUX_UPDATE_KEYMAP_FIXTURES=1 swift test --build-system native --filter LinuxKeymapTests` on Linux |
+| `key-parity.json` | US-layout keystrokes as AppKit and as GDK report them, and the one `KeyPress` the Mac adapter (`Tests/TkzTerminalViewTests/KeyParityTests.swift`) and the Linux translator (`LinuxKeyTranslatorTests`) must both build. Its `about` lists the rows left out and why. | By hand |
