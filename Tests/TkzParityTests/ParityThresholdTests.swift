@@ -49,8 +49,8 @@ import Testing
         #expect(ParityThresholds.l1Exact && ParityThresholds.l2Exact && ParityThresholds.l0Exact)
         #expect(ParityThresholds.referenceBudgetBytes == 9_437_184)
         #expect(try String(contentsOf: Self.adrURL, encoding: .utf8).contains("9 MiB (9,437,184 bytes)"))
-        #expect(ParityThresholds.componentSnapshotShareBytes == 4 * 1024 * 1024)
-        #expect(ParityThresholds.parityReferenceShareBytes == 5 * 1024 * 1024)
+        #expect(ParityThresholds.componentSnapshotShareBytes == 4_718_592)
+        #expect(ParityThresholds.parityReferenceShareBytes == 4_718_592)
         #expect(ParityThresholds.componentSnapshotShareBytes + ParityThresholds.parityReferenceShareBytes
                 == ParityThresholds.referenceBudgetBytes)
     }

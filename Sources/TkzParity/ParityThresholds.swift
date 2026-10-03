@@ -65,10 +65,10 @@ public enum ParityThresholds {
     /// `Tests/Parity/References/`, 9 MiB.
     public static let referenceBudgetBytes = 9 * 1024 * 1024
     /// WOR-307's share, `Tests/TkzAppTests/ComponentSnapshots/`: 4 MiB.
-    public static let componentSnapshotShareBytes = 4 * 1024 * 1024
+    public static let componentSnapshotShareBytes = 4_718_592  // 4.5 MiB (renegotiated 2026-10-03, ADR-0003 §5)
     /// WOR-322's share, `Tests/Parity/References/` (WOR-312's fonts and WOR-313's conformance
     /// outputs included): 5 MiB.
-    public static let parityReferenceShareBytes = 5 * 1024 * 1024
+    public static let parityReferenceShareBytes = 4_718_592  // 4.5 MiB
 
     /// A constant's value as the ADR writes it: `exact` for the byte-for-byte layers.
     public enum Value: Equatable, Sendable {
