@@ -99,8 +99,15 @@ import Testing
         var offences: [String] = []
         for url in files {
             let text = try String(contentsOf: url, encoding: .utf8)
-            for (number, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
-                let line = String(line)
+            let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            for (number, line) in lines.enumerated() {
+                // On Apple platforms CGRect's geometry API and its Hashable/Codable conformances live
+                // in the CoreGraphics overlay, so shared files may import it — but only guarded, so
+                // Linux (where the guard is false) keeps using swift-corelibs-foundation's CG types.
+                if number > 0, lines[number - 1].trimmingCharacters(in: .whitespaces) == "#if canImport(CoreGraphics)",
+                   line.trimmingCharacters(in: .whitespaces).hasPrefix("import CoreGraphics") {
+                    continue
+                }
                 if regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil {
                     let relative = url.path.replacingOccurrences(of: repoRoot.path + "/", with: "")
                     offences.append("\(relative):\(number + 1): \(line)")
@@ -131,7 +138,39 @@ import Testing
             + Self.tkzAppModelFiles.map { Self.repoRoot.appendingPathComponent($0) }
         #expect(files.count >= 7)
         let offences = try Self.offences(of: Self.coreGraphicsImport, in: files)
-        #expect(offences.isEmpty, "CGFloat/CGRect come from Foundation on both OSes: \(offences)")
+        #expect(offences.isEmpty, "CoreGraphics only behind #if canImport(CoreGraphics): \(offences)")
+    }
+
+    // MARK: Design tokens (WOR-307 S3)
+
+    /// `DesignTokens*.swift` is the toolkit-free table both UIs read, so it imports Foundation and
+    /// nothing else — not even CoreGraphics, which `platformImport` would also catch but
+    /// `noUIFrameworkImports` would not — and spells its values as `Double`, never `CGFloat`.
+    @Test func designTokensImportOnlyFoundation() throws {
+        let files = try Self.swiftSources().filter { $0.lastPathComponent.hasPrefix("DesignTokens") }
+        #expect(files.count >= 2, "the DesignTokens sources were not found")
+        let imports = try NSRegularExpression(pattern: #"^\s*(@_exported\s+)?import\s+(\w+)"#)
+        var offences: [String] = []
+        for url in files {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            var foundation = false
+            for (number, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+                let line = String(line)
+                let range = NSRange(line.startIndex..., in: line)
+                if let match = imports.firstMatch(in: line, range: range),
+                   let module = Range(match.range(at: 2), in: line).map({ String(line[$0]) }) {
+                    if module == "Foundation" { foundation = true } else {
+                        offences.append("\(url.lastPathComponent):\(number + 1): \(line)")
+                    }
+                }
+                let code = line.components(separatedBy: "//")[0]
+                if code.contains("CGFloat") || code.contains("CGRect") || code.contains("CGSize") {
+                    offences.append("\(url.lastPathComponent):\(number + 1): \(line)")
+                }
+            }
+            if !foundation { offences.append("\(url.lastPathComponent): no `import Foundation`") }
+        }
+        #expect(offences.isEmpty, "DesignTokens is Foundation and Double only: \(offences)")
     }
 
     /// The platform pattern sees guarded and re-exported imports, and only imports.
