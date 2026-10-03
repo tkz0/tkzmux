@@ -103,7 +103,7 @@ struct AtlasDumpTests {
                                     environment: ["fallback": TestFallbacks.parityFontsPresent ? "parity" : "system"])
     }
 
-    @Test("the default sample: ASCII and the CJK/emoji tail in four styles, no sprites")
+    @Test("the default sample: ASCII and the CJK/emoji tail in four styles, sprites once each")
     func contents() throws {
         let output = try Self.dump(thicken: true)
         let dump = output.dump
@@ -113,7 +113,12 @@ struct AtlasDumpTests {
         #expect(dump.environment["freetype"] != nil && dump.environment["fallback"] != nil)
         #expect(dump.pages.map(\.file) == ["atlas-grayscale.png", "atlas-color.png"])
 
-        #expect(!dump.glyphs.contains { $0.sprite || (0x2500...0x259F).contains($0.scalars[0]) })
+        // The box-drawing tail is drawn, once per scalar under `regular`, the way the Mac caches it.
+        let sprites = dump.glyphs.filter(\.sprite)
+        #expect(sprites.map(\.scalars) == "─│┌┐└┘├┤┬┴┼█▀▄░▒▓".unicodeScalars.map { [$0.value] })
+        #expect(sprites.allSatisfy { $0.style == "regular" && $0.face.isEmpty && $0.bbox == nil && $0.cellSpan == 1 })
+        #expect(sprites.allSatisfy { $0.page == "grayscale" && $0.width == 14 + 4 && $0.height == 30 + 4 })
+        #expect(!dump.glyphs.contains { !$0.sprite && (0x2500...0x259F).contains($0.scalars[0]) })
         for code in 0x21...0x7E {
             let entries = dump.glyphs.filter { $0.scalars == [UInt32(code)] }
             #expect(entries.map(\.style) == ["regular", "bold", "italic", "boldItalic"], "U+\(String(code, radix: 16))")

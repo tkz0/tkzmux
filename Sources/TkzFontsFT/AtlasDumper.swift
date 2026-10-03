@@ -7,12 +7,13 @@
 // entries are what parity compares; the page layout follows the Mac's shelf packer so the PNGs can
 // also be eyeballed side by side.
 //
-// Not here yet:
-//   - box-drawing and block-element sprites (U+2500-259F): the Mac draws them with BoxSprites,
-//     Linux gets the shared geometry with WOR-311 S5, so the dump leaves them out;
-//   - the PNG files and the command line: vtdump builds on Linux with WOR-311 S7, whose `atlas`
-//     writes `pages` with TkzPNG (`AtlasPage.pngLayout`) and the JSON beside them. TkzPNG is not a
-//     dependency of this module, which ships in the app.
+// Box-drawing and block-element sprites (U+2500-259F) are packed the way the Mac's cache packs
+// them: once, under `regular`, when the first style asks, drawn by `BoxSpriteRasterizer` from the
+// geometry the Mac's `BoxSprites` paints, with `sprite: true`, no face and no ink box.
+//
+// Not here yet: the PNG files and the command line. vtdump builds on Linux with WOR-311 S7, whose
+// `atlas` writes `pages` with TkzPNG (`AtlasPage.pngLayout`) and the JSON beside them. TkzPNG is
+// not a dependency of this module, which ships in the app.
 //
 // The packer below follows TkzRenderCore's `GlyphAtlas` (WOR-311 S3): same best-fit shelves, same
 // doubling, but no rebuild (a dump that overflows a 2048² page throws instead of silently dropping
@@ -154,6 +155,7 @@ public enum AtlasDumper {
                             filePrefix: String,
                             environment: [String: String] = [:]) throws -> Output {
         let options = RasterizerOptions(thicken: thicken, dilation: dilation, syntheticBold: faces.needsSyntheticBold)
+        let sprites = BoxSpriteRasterizer(metrics: faces.metrics, padding: options.padding)
         var grayscale = AtlasPage(kind: "grayscale", size: 512, bytesPerPixel: 1)
         var color = AtlasPage(kind: "color", size: 256, bytesPerPixel: 4)
 
@@ -166,7 +168,18 @@ public enum AtlasDumper {
         var glyphs: [AtlasDump.Glyph] = []
         for character in sample where !character.isNewline {
             let scalars = Array(character.unicodeScalars)
-            guard !isSprite(scalars) else { continue }  // TODO(WOR-311 S5): box sprites
+            if isSprite(scalars) {
+                guard seen.insert(Key(scalars: scalars.map(\.value), style: .regular, span: 1)).inserted,
+                      let raster = sprites.rasterize(scalars[0]) else { continue }
+                guard let slot = grayscale.insert(raster) else { throw AtlasDumpError.pageFull(kind: "grayscale") }
+                glyphs.append(AtlasDump.Glyph(
+                    scalars: scalars.map(\.value), style: AtlasDump.styleName(.regular),
+                    face: "", sprite: true, cellSpan: 1,
+                    page: "grayscale", x: slot.x, y: slot.y, width: raster.width, height: raster.height,
+                    bearingX: raster.bearingX, bearingTop: raster.bearingTop,
+                    appliedScale: Double(raster.appliedScale), bbox: nil))
+                continue
+            }
             for style in FontStyle.allCases {
                 let shaped = faces.shape(scalars, style: style)
                 guard seen.insert(Key(scalars: scalars.map(\.value), style: style, span: shaped.cellSpan)).inserted,

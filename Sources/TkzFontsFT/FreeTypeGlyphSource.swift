@@ -5,8 +5,9 @@
 // CoreTextGlyphSource builds its GlyphRasterizer. One source per (size, scale, thicken), like the
 // Mac's.
 //
-// Box-drawing sprites are not drawn here yet: `sprite(for:)` returns nil until WOR-311 S5 lands
-// the shared box-sprite geometry and its pure-Swift rasterizer.
+// Box-drawing and block-element sprites come from TkzRenderCore's `BoxSpriteRasterizer`, which
+// paints the same `BoxSpriteGeometry` the Mac's CoreGraphics `BoxSprites` does, at the same padding
+// as the glyphs.
 
 import Foundation
 import TkzRenderCore
@@ -14,11 +15,14 @@ import TkzRenderCore
 public final class FreeTypeGlyphSource: GlyphSource {
     public let faces: TerminalFaces
     public let options: RasterizerOptions
+    /// Box-drawing and block-element sprites, drawn instead of the font's own glyphs so they tile.
+    public let sprites: BoxSpriteRasterizer
 
     public init(faces: TerminalFaces, thicken: Bool = true, dilation: Dilation? = nil) {
         self.faces = faces
         self.options = RasterizerOptions(thicken: thicken, dilation: dilation,
                                          syntheticBold: faces.needsSyntheticBold)
+        self.sprites = BoxSpriteRasterizer(metrics: faces.metrics, padding: options.padding)
     }
 
     public var metrics: CellMetrics { faces.metrics }
@@ -34,8 +38,7 @@ public final class FreeTypeGlyphSource: GlyphSource {
     }
 
     public func sprite(for scalar: Unicode.Scalar) -> RasterizedGlyph? {
-        // TODO(WOR-311 S5): BoxSpriteRasterizer.
-        nil
+        sprites.rasterize(scalar)
     }
 
     public func name(of face: FontFace) -> String {

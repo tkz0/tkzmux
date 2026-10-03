@@ -119,7 +119,7 @@ let sharedTargets: [Target] = [  // hygiene-scan
 
     // The device-free half of the renderer, shared by Metal and Vulkan (WOR-311): the font seam,
     // CellMetrics, the atlas packer and GlyphCache, TerminalSurface and FrameBuilder (which read
-    // libghostty's render state, hence TkzTerminalCore); WOR-311 S5 moves the box-sprite geometry in.
+    // libghostty's render state, hence TkzTerminalCore), the box-sprite geometry and its rasterizer.
     .target(
         name: "TkzRenderCore",
         dependencies: ["TkzShaderTypes", "TkzCore", "TkzTerminalCore", "GhosttyVt"],
