@@ -7,6 +7,9 @@
 //                             cast to their PFN type with `unsafeBitCast`
 //   fixedString               a `char[N]` field (device and layer names) as a String
 //   withCStrings              a [String] as `const char *const *` for create-info name lists
+//   imageBarrier / pipelineBarrier
+//                             synchronization2 barriers on a single-mip colour image, recorded
+//                             with one `vkCmdPipelineBarrier2` (WOR-313 S4a)
 //
 // Core 1.3 commands (vkCmdBeginRendering, vkQueueSubmit2, …) are exported by the loader and are
 // called directly; only extension commands go through the proc helpers.
@@ -94,4 +97,68 @@ func withCStrings<Result>(
     defer { copies.forEach { free($0) } }
     let pointers = copies.map { $0.map { UnsafePointer<CChar>($0) } }
     return try pointers.withUnsafeBufferPointer { try body($0.baseAddress) }
+}
+
+// MARK: - Barriers
+
+/// A stage and access pair: one side of a synchronization2 barrier.
+typealias VulkanScope = (stage: VkPipelineStageFlags2, access: VkAccessFlags2)
+
+/// The colour aspect of a single-mip, single-layer image: every image TkzRenderVK makes.
+let colorSubresourceRange = VkImageSubresourceRange(
+    aspectMask: VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT.rawValue),
+    baseMipLevel: 0, levelCount: 1, baseArrayLayer: 0, layerCount: 1)
+
+/// A layout transition (or, with equal layouts, a plain memory barrier) on `image`, within one queue.
+func imageBarrier(
+    _ image: VkImage, from oldLayout: VkImageLayout, to newLayout: VkImageLayout,
+    source: VulkanScope, destination: VulkanScope
+) -> VkImageMemoryBarrier2 {
+    var barrier = VkImageMemoryBarrier2()
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2
+    barrier.srcStageMask = source.stage
+    barrier.srcAccessMask = source.access
+    barrier.dstStageMask = destination.stage
+    barrier.dstAccessMask = destination.access
+    barrier.oldLayout = oldLayout
+    barrier.newLayout = newLayout
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
+    barrier.image = image
+    barrier.subresourceRange = colorSubresourceRange
+    return barrier
+}
+
+/// A barrier on the whole of `buffer`, within one queue.
+func bufferBarrier(_ buffer: VkBuffer, source: VulkanScope, destination: VulkanScope) -> VkBufferMemoryBarrier2 {
+    var barrier = VkBufferMemoryBarrier2()
+    barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2
+    barrier.srcStageMask = source.stage
+    barrier.srcAccessMask = source.access
+    barrier.dstStageMask = destination.stage
+    barrier.dstAccessMask = destination.access
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
+    barrier.buffer = buffer
+    barrier.size = VkDeviceSize(VK_WHOLE_SIZE)
+    return barrier
+}
+
+/// Records `images` and `buffers` as one `vkCmdPipelineBarrier2`. Nothing is recorded when both
+/// are empty.
+func pipelineBarrier(
+    _ commands: VkCommandBuffer, images: [VkImageMemoryBarrier2] = [], buffers: [VkBufferMemoryBarrier2] = []
+) {
+    guard !images.isEmpty || !buffers.isEmpty else { return }
+    images.withUnsafeBufferPointer { images in
+        buffers.withUnsafeBufferPointer { buffers in
+            var dependency = VkDependencyInfo()
+            dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO
+            dependency.imageMemoryBarrierCount = UInt32(images.count)
+            dependency.pImageMemoryBarriers = images.baseAddress
+            dependency.bufferMemoryBarrierCount = UInt32(buffers.count)
+            dependency.pBufferMemoryBarriers = buffers.baseAddress
+            vkCmdPipelineBarrier2(commands, &dependency)
+        }
+    }
 }

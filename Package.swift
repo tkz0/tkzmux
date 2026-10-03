@@ -203,13 +203,19 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
     // MARK: Vulkan renderer (WOR-313). The loader from pkg-config, declared only in this branch
     // like the font stack below; Sources/CVulkan/shim.h wraps the macros Swift cannot import.
     .systemLibrary(name: "CVulkan", pkgConfig: "vulkan", providers: [.apt(["libvulkan-dev"])]),
-    // Instance, device selection, queues, the debug messenger and the headless target.
+    // Instance, device selection, queues, the debug messenger and the headless target; the
+    // per-surface FrameRing and the atlas uploader over TkzRenderCore's GlyphCache (S4a); the
+    // pipelines over the committed SPIR-V and the terminal renderer (S4b).
     .target(
         name: "TkzRenderVK",
-        dependencies: ["CVulkan", "TkzPlatform"],
+        dependencies: ["CVulkan", "TkzPlatform", "TkzRenderCore", "TkzShaderTypes", "TkzShadersSPIRV", "TkzCore"],
         path: "Sources/TkzRenderVK"
     ),
-    .testTarget(name: "TkzRenderVKTests", dependencies: ["TkzRenderVK", "CVulkan"], path: "Tests/TkzRenderVKTests"),
+    // TkzFontsFT puts real glyphs in the atlases the upload tests copy; TkzTerminalCore's sessions
+    // feed the renderer's idle twins.
+    .testTarget(name: "TkzRenderVKTests", dependencies: ["TkzRenderVK", "CVulkan", "TkzRenderCore", "TkzFontsFT",
+                                                         "TkzTerminalCore", "TkzCore", "TkzShaderTypes"],
+                path: "Tests/TkzRenderVKTests"),
 
     // MARK: Font stack (WOR-312). System libraries from pkg-config, declared only in this branch:
     // a `canImport` check would turn on with Homebrew's freetype on a Mac. Their module maps are

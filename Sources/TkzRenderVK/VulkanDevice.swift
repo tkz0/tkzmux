@@ -101,6 +101,77 @@ public final class VulkanDevice {
     }
 }
 
+// MARK: - Memory and one-shot commands (WOR-313 S4a)
+
+extension VulkanDevice {
+    /// Allocates `requirements.size` bytes of the first memory type that has all of `preferred`,
+    /// else of the first that has all of `required`.
+    func allocateMemory(
+        _ requirements: VkMemoryRequirements, preferred: VkMemoryPropertyFlags, required: VkMemoryPropertyFlags,
+        for purpose: @autoclosure () -> String
+    ) throws -> VkDeviceMemory {
+        guard let type = memoryTypeIndex(typeBits: requirements.memoryTypeBits, required: preferred | required)
+            ?? memoryTypeIndex(typeBits: requirements.memoryTypeBits, required: required)
+        else { throw VulkanError("vkAllocateMemory (no memory type for \(purpose()))", VK_ERROR_OUT_OF_DEVICE_MEMORY) }
+        var info = VkMemoryAllocateInfo()
+        info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO
+        info.allocationSize = requirements.size
+        info.memoryTypeIndex = type
+        var memory: VkDeviceMemory?
+        try vkCheck(vkAllocateMemory(handle, &info, nil, &memory), "vkAllocateMemory (\(purpose()))")
+        guard let memory else { throw VulkanError("vkAllocateMemory (\(purpose()))", VK_ERROR_OUT_OF_DEVICE_MEMORY) }
+        return memory
+    }
+
+    /// Records `body` into a command buffer of its own, submits it, and waits for it. For
+    /// diagnostics and test readbacks only; frames go through a `FrameRing` slot. The submission is
+    /// ordered after everything submitted before it on the one queue.
+    func submitOnce(_ body: (VkCommandBuffer) throws -> Void) throws {
+        var poolInfo = VkCommandPoolCreateInfo()
+        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO
+        poolInfo.flags = VkCommandPoolCreateFlags(VK_COMMAND_POOL_CREATE_TRANSIENT_BIT.rawValue)
+        poolInfo.queueFamilyIndex = queueFamily
+        var pool: VkCommandPool?
+        try vkCheck(vkCreateCommandPool(handle, &poolInfo, nil, &pool), "vkCreateCommandPool")
+        defer { vkDestroyCommandPool(handle, pool, nil) }
+
+        var allocateInfo = VkCommandBufferAllocateInfo()
+        allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO
+        allocateInfo.commandPool = pool
+        allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY
+        allocateInfo.commandBufferCount = 1
+        var commands: VkCommandBuffer?
+        try vkCheck(vkAllocateCommandBuffers(handle, &allocateInfo, &commands), "vkAllocateCommandBuffers")
+        guard let commands else { throw VulkanError("vkAllocateCommandBuffers", VK_ERROR_INITIALIZATION_FAILED) }
+
+        var fenceInfo = VkFenceCreateInfo()
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
+        var fence: VkFence?
+        try vkCheck(vkCreateFence(handle, &fenceInfo, nil, &fence), "vkCreateFence")
+        defer { vkDestroyFence(handle, fence, nil) }
+
+        var begin = VkCommandBufferBeginInfo()
+        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+        begin.flags = VkCommandBufferUsageFlags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT.rawValue)
+        try vkCheck(vkBeginCommandBuffer(commands, &begin), "vkBeginCommandBuffer")
+        try body(commands)
+        try vkCheck(vkEndCommandBuffer(commands), "vkEndCommandBuffer")
+
+        var commandInfo = VkCommandBufferSubmitInfo()
+        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO
+        commandInfo.commandBuffer = commands
+        let result = withUnsafePointer(to: &commandInfo) { commandInfo in
+            var submit = VkSubmitInfo2()
+            submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2
+            submit.commandBufferInfoCount = 1
+            submit.pCommandBufferInfos = commandInfo
+            return vkQueueSubmit2(queue, 1, &submit, fence)
+        }
+        try vkCheck(result, "vkQueueSubmit2")
+        try vkCheck(vkWaitForFences(handle, 1, &fence, VkBool32(VK_TRUE), UInt64.max), "vkWaitForFences")
+    }
+}
+
 // MARK: - Bootstrap
 
 /// Everything the bootstrap found, for `vtdump gpu` and the log.

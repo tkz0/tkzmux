@@ -327,8 +327,9 @@ public final class TerminalRenderer {
 
         // The command buffer is created *before* the drawable is acquired. A drawable that is
         // acquired and never presented is only returned to the layer's pool when it deallocates,
-        // and with `maximumDrawableCount = 2` a couple of those make `nextDrawable()` block for
-        // about a second each — which looks exactly like a frozen window.
+        // and the pool holds three (`maximumDrawableCount`, set in `TerminalMetalView`), so a
+        // couple of those with a frame in flight make `nextDrawable()` block for up to a second
+        // each — which looks exactly like a frozen window.
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             ring.release()
             stats.framesSkipped += 1

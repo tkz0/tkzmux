@@ -85,6 +85,9 @@ jobs:
       TKZMUX_REQUIRE_PARITY_FONTS: '1'
       # TkzRenderVKTests fails instead of skipping without a Vulkan device or the validation layer.
       TKZMUX_REQUIRE_VULKAN: '1'
+      # The layer's synchronization validation too: a missing barrier in the ring or the atlas
+      # uploads (WOR-313 S4a) is a hazard error, which the tests count.
+      VK_KHRONOS_VALIDATION_VALIDATE_SYNC: '1'
     steps: &arch-steps
       # Before checkout: actions/checkout needs git in the container to fetch a real repository,
       # and actions/cache needs zstd.
@@ -375,4 +378,5 @@ jobs:
       ARCH_SNAPSHOT: ''
       TKZMUX_REQUIRE_PARITY_FONTS: '1'
       TKZMUX_REQUIRE_VULKAN: '1'
+      VK_KHRONOS_VALIDATION_VALIDATE_SYNC: '1'
     steps: *arch-steps

@@ -43,6 +43,14 @@ public struct FrameUpdate: Sendable, Hashable {
     public var glyphCount: Int
     public var rectCount: Int
 
+    /// Public, because both renderers build the outcome of a frame skipped before `update`.
+    public init(dirty: SurfaceDirty, rowsRebuilt: Int, glyphCount: Int, rectCount: Int) {
+        self.dirty = dirty
+        self.rowsRebuilt = rowsRebuilt
+        self.glyphCount = glyphCount
+        self.rectCount = rectCount
+    }
+
     /// True when the surface has nothing new to draw and the renderer must return early.
     public var isClean: Bool { dirty == .none }
 }

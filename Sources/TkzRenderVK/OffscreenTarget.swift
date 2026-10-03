@@ -5,8 +5,9 @@
 // on the Mac, and parity means identical encoded bytes (ADR-0003). Readback rows are tightly packed
 // (`width * 4` bytes), B, G, R, A per pixel, top row first, like the Metal renderer's `bgraBytes`.
 //
-// S1 only clears it (through dynamic rendering, so the bootstrap exercises both required 1.3
-// features); WOR-313 S4b draws the terminal into it.
+// S1 clears it (through dynamic rendering, so the bootstrap exercises both required 1.3
+// features). Since S4b it is also a `VulkanRenderTarget`: `VulkanTerminalRenderer` draws panes into
+// it from their own `FrameRing` slots, and `bgraBytes()` reads the result back.
 
 import CVulkan
 
@@ -26,16 +27,18 @@ public struct BGRA8: Hashable, Sendable, CustomStringConvertible {
     }
 }
 
-public final class OffscreenTarget {
+public final class OffscreenTarget: VulkanRenderTarget {
     public static let format = VK_FORMAT_B8G8R8A8_UNORM
 
     public let device: VulkanDevice
     public let width: UInt32
     public let height: UInt32
 
-    private let image: VkImage
+    public let image: VkImage
+    public let view: VkImageView
+    /// Tracked as commands are recorded, here and by the renderer (`VulkanRenderTarget`).
+    public var layout = VK_IMAGE_LAYOUT_UNDEFINED
     private let imageMemory: VkDeviceMemory
-    private let view: VkImageView
     private let readback: VkBuffer
     private let readbackMemory: VkDeviceMemory
     private let mapped: UnsafeMutableRawPointer
@@ -89,7 +92,7 @@ public final class OffscreenTarget {
         viewInfo.image = image
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D
         viewInfo.format = Self.format
-        viewInfo.subresourceRange = Self.colorRange
+        viewInfo.subresourceRange = colorSubresourceRange
         var view: VkImageView?
         try vkCheck(vkCreateImageView(vk, &viewInfo, nil, &view), "vkCreateImageView")
         cleanup.append { vkDestroyImageView(vk, view, nil) }
@@ -156,7 +159,9 @@ public final class OffscreenTarget {
     }
 
     deinit {
-        // Nothing is in flight: `clear` waits for its fence before it returns or throws.
+        // `clear` and `bgraBytes` wait for their fence before they return or throw; a frame the
+        // renderer drew into the image may still be in flight, so wait for the queue.
+        vkQueueWaitIdle(device.queue)
         let vk = device.handle
         vkDestroyFence(vk, fence, nil)
         vkDestroyCommandPool(vk, pool, nil)
@@ -171,40 +176,55 @@ public final class OffscreenTarget {
     /// Clears the whole target to `color` with a dynamic-rendering `LOAD_OP_CLEAR`, copies it into
     /// the readback buffer, waits for the GPU and returns the bytes.
     public func clear(to color: BGRA8) throws -> [UInt8] {
-        let vk = device.handle
-        try vkCheck(vkResetFences(vk, 1, [fence]), "vkResetFences")
-        try vkCheck(vkResetCommandBuffer(commands, 0), "vkResetCommandBuffer")
-        var begin = VkCommandBufferBeginInfo()
-        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
-        begin.flags = VkCommandBufferUsageFlags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT.rawValue)
-        try vkCheck(vkBeginCommandBuffer(commands, &begin), "vkBeginCommandBuffer")
+        try record { commands in
+            // From UNDEFINED: the clear discards the old contents. The source scope still orders
+            // the clear after whatever last wrote the image (a frame the renderer drew into it).
+            pipelineBarrier(commands, images: [imageBarrier(
+                image, from: VK_IMAGE_LAYOUT_UNDEFINED, to: VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                source: lastAccess(of: layout),
+                destination: (VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT))])
+            layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
 
-        imageBarrier(from: VK_IMAGE_LAYOUT_UNDEFINED, to: VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                     source: (VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE),
-                     destination: (VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT))
-
-        var attachment = VkRenderingAttachmentInfo()
-        attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO
-        attachment.imageView = view
-        attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-        attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR
-        attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE
-        attachment.clearValue = VkClearValue(color: VkClearColorValue(float32: (
-            Float(color.r) / 255, Float(color.g) / 255, Float(color.b) / 255, Float(color.a) / 255)))
-        withUnsafePointer(to: &attachment) { attachment in
-            var rendering = VkRenderingInfo()
-            rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO
-            rendering.renderArea = VkRect2D(offset: VkOffset2D(x: 0, y: 0), extent: VkExtent2D(width: width, height: height))
-            rendering.layerCount = 1
-            rendering.colorAttachmentCount = 1
-            rendering.pColorAttachments = attachment
-            vkCmdBeginRendering(commands, &rendering)
-            vkCmdEndRendering(commands)
+            var attachment = VkRenderingAttachmentInfo()
+            attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO
+            attachment.imageView = view
+            attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+            attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR
+            attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE
+            attachment.clearValue = VkClearValue(color: VkClearColorValue(float32: (
+                Float(color.r) / 255, Float(color.g) / 255, Float(color.b) / 255, Float(color.a) / 255)))
+            withUnsafePointer(to: &attachment) { attachment in
+                var rendering = VkRenderingInfo()
+                rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO
+                rendering.renderArea = VkRect2D(offset: VkOffset2D(x: 0, y: 0), extent: VkExtent2D(width: width, height: height))
+                rendering.layerCount = 1
+                rendering.colorAttachmentCount = 1
+                rendering.pColorAttachments = attachment
+                vkCmdBeginRendering(commands, &rendering)
+                vkCmdEndRendering(commands)
+            }
+            recordReadback(commands)
         }
+        return Array(UnsafeRawBufferPointer(start: mapped, count: byteCount))
+    }
 
-        imageBarrier(from: VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, to: VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                     source: (VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT),
-                     destination: (VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT))
+    /// The image as it is now (after everything submitted to the queue so far, such as the frames
+    /// a `VulkanTerminalRenderer` drew into it), as tightly packed BGRA rows, top row first: the
+    /// Metal renderer's `bgraBytes(of:)`. Waits for the GPU. An image nothing has written yet reads
+    /// back undefined bytes.
+    public func bgraBytes() throws -> [UInt8] {
+        try record { recordReadback($0) }
+        return Array(UnsafeRawBufferPointer(start: mapped, count: byteCount))
+    }
+
+    // MARK: Helpers
+
+    /// Records the copy of the whole image into the readback buffer, made visible to the host.
+    private func recordReadback(_ commands: VkCommandBuffer) {
+        pipelineBarrier(commands, images: [imageBarrier(
+            image, from: layout, to: VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            source: lastAccess(of: layout), destination: (VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT))])
+        layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
 
         var region = VkBufferImageCopy()
         region.imageSubresource = VkImageSubresourceLayers(
@@ -213,59 +233,24 @@ public final class OffscreenTarget {
         vkCmdCopyImageToBuffer(commands, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readback, 1, &region)
 
         // Make the copy visible to the host read after the fence.
-        var bufferBarrier = VkBufferMemoryBarrier2()
-        bufferBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2
-        bufferBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT
-        bufferBarrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT
-        bufferBarrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT
-        bufferBarrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT
-        bufferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
-        bufferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
-        bufferBarrier.buffer = readback
-        bufferBarrier.size = VkDeviceSize(VK_WHOLE_SIZE)
-        withUnsafePointer(to: &bufferBarrier) { barrier in
-            var dependency = VkDependencyInfo()
-            dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO
-            dependency.bufferMemoryBarrierCount = 1
-            dependency.pBufferMemoryBarriers = barrier
-            vkCmdPipelineBarrier2(commands, &dependency)
-        }
-
-        try vkCheck(vkEndCommandBuffer(commands), "vkEndCommandBuffer")
-        try submitAndWait()
-        return Array(UnsafeRawBufferPointer(start: mapped, count: byteCount))
+        pipelineBarrier(commands, buffers: [bufferBarrier(
+            readback, source: (VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT),
+            destination: (VK_PIPELINE_STAGE_2_HOST_BIT, VK_ACCESS_2_HOST_READ_BIT))])
     }
 
-    // MARK: Helpers
-
-    private static let colorRange = VkImageSubresourceRange(
-        aspectMask: VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT.rawValue),
-        baseMipLevel: 0, levelCount: 1, baseArrayLayer: 0, layerCount: 1)
-
-    private func imageBarrier(
-        from oldLayout: VkImageLayout, to newLayout: VkImageLayout,
-        source: (stage: VkPipelineStageFlags2, access: VkAccessFlags2),
-        destination: (stage: VkPipelineStageFlags2, access: VkAccessFlags2)
-    ) {
-        var barrier = VkImageMemoryBarrier2()
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2
-        barrier.srcStageMask = source.stage
-        barrier.srcAccessMask = source.access
-        barrier.dstStageMask = destination.stage
-        barrier.dstAccessMask = destination.access
-        barrier.oldLayout = oldLayout
-        barrier.newLayout = newLayout
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED
-        barrier.image = image
-        barrier.subresourceRange = Self.colorRange
-        withUnsafePointer(to: &barrier) { barrier in
-            var dependency = VkDependencyInfo()
-            dependency.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO
-            dependency.imageMemoryBarrierCount = 1
-            dependency.pImageMemoryBarriers = barrier
-            vkCmdPipelineBarrier2(commands, &dependency)
-        }
+    /// Records `body` into the target's command buffer, submits it and waits for its fence, which
+    /// also covers everything submitted to the queue before it.
+    private func record(_ body: (VkCommandBuffer) -> Void) throws {
+        let vk = device.handle
+        try vkCheck(vkResetFences(vk, 1, [fence]), "vkResetFences")
+        try vkCheck(vkResetCommandBuffer(commands, 0), "vkResetCommandBuffer")
+        var begin = VkCommandBufferBeginInfo()
+        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+        begin.flags = VkCommandBufferUsageFlags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT.rawValue)
+        try vkCheck(vkBeginCommandBuffer(commands, &begin), "vkBeginCommandBuffer")
+        body(commands)
+        try vkCheck(vkEndCommandBuffer(commands), "vkEndCommandBuffer")
+        try submitAndWait()
     }
 
     private func submitAndWait() throws {
