@@ -10,3 +10,4 @@
 #include FT_OUTLINE_H
 #include FT_BBOX_H
 #include FT_ADVANCES_H
+#include FT_COLOR_H

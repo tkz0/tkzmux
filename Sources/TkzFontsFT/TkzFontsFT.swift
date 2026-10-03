@@ -17,7 +17,10 @@
 //   S4  the private FcConfig, fallback and HarfBuzz cluster shaping (FontconfigConfiguration.swift,
 //       FontFallback.swift, ClusterShaper.swift; the pinned parity fonts are fetched by
 //       scripts/fetch-parity-fonts.sh from Tests/Parity/Fonts/fonts.lock.json)
-//   S5  the A8 rasterizer (dilation, synthetic bold, CBDT, COLRv1 skipping)
+//   S5  the A8 rasterizer with dilation and synthetic bold, CBDT colour bitmaps and COLRv1
+//       skipping (FreeTypeRasterizer.swift, Dilation.swift, ColorBitmapResampler.swift), the
+//       `GlyphSource` conformance (FreeTypeGlyphSource.swift) and the Linux side of
+//       `vtdump atlas --json` (AtlasDumper.swift)
 //   S6  the thicken calibration; S7 the symbol subset; S8 Inter for chrome text
 
 import CFontconfig

@@ -21,6 +21,11 @@
 // on first use and numbered from 4. Outline fallbacks are sized like the bundled faces; bitmap
 // colour faces get their strike from the rasterizer (WOR-312 S5).
 //
+// COLRv1 (S5). A fallback whose glyphs for the cluster are COLRv1 only
+// (`FreeTypeFace.isCOLRv1Only`) would rasterize blank, so it is skipped and the list continues:
+// the next colour font, then the monochrome faces the colour list runs on into. A fallback FreeType
+// cannot open is skipped the same way.
+//
 // Not Sendable: owned by `TerminalFaces`' owner, behind its `Mutex`, with the FreeType library.
 
 import CFreeType
@@ -90,39 +95,56 @@ final class ClusterShaper {
     }
 
     private func shapeUncached(_ scalars: [Unicode.Scalar], style: FontStyle, span: Int) -> ShapedCluster {
-        let (handle, face, isColor) = resolve(scalars, style: style)
+        // A fallback that cannot draw the cluster's glyphs (COLRv1 only) is skipped and the next
+        // one in the list tried; the colour list runs on into monochrome faces after the colour ones.
+        var skipped: Set<FallbackFace> = []
+        while true {
+            let (handle, face, isColor, descriptor) = resolve(scalars, style: style, skipping: skipped)
+            let glyphs = glyphs(for: scalars, handle: handle, face: face, isColor: isColor)
+            if let descriptor, glyphs.contains(where: { face.isCOLRv1Only(glyph: $0.glyph.rawValue) }) {
+                skipped.insert(descriptor)
+                continue
+            }
+            return ShapedCluster(face: handle, glyphs: glyphs, isColor: isColor, cellSpan: span)
+        }
+    }
 
+    private func glyphs(for scalars: [Unicode.Scalar], handle: FontFace, face: FreeTypeFace, isColor: Bool) -> [ClusterGlyph] {
         // Fast path: one scalar the face maps directly.
         if scalars.count == 1 {
             let glyph = FT_Get_Char_Index(face.handle, FT_ULong(scalars[0].value))
-            if glyph != 0 {
-                return ShapedCluster(face: handle, glyphs: [ClusterGlyph(glyph: GlyphID(rawValue: glyph))],
-                                     isColor: isColor, cellSpan: span)
-            }
+            if glyph != 0 { return [ClusterGlyph(glyph: GlyphID(rawValue: glyph))] }
         }
-        return ShapedCluster(face: handle, glyphs: harfBuzzShape(scalars, face: handle, isColor: isColor),
-                             isColor: isColor, cellSpan: span)
+        return harfBuzzShape(scalars, face: handle, isColor: isColor)
     }
 
     // MARK: - Face resolution
 
-    private func resolve(_ scalars: [Unicode.Scalar], style: FontStyle) -> (FontFace, FreeTypeFace, Bool) {
+    /// The face for a cluster, skipping the fallbacks in `skipped`; the descriptor is `nil` for a
+    /// bundled face.
+    private func resolve(_ scalars: [Unicode.Scalar], style: FontStyle,
+                         skipping skipped: Set<FallbackFace>) -> (FontFace, FreeTypeFace, Bool, FallbackFace?) {
         let primaryHandle = FontFace(rawValue: UInt32(style.rawValue))
         let primary = primaries[style]!
         let needed = FontFallback.nonIgnorable(scalars)
         let wantsColor = FontFallback.wantsColor(scalars)
 
         if !wantsColor, needed.allSatisfy({ primaryGlyph($0, style: style) != 0 }) {
-            return (primaryHandle, primary, false)
+            return (primaryHandle, primary, false, nil)
         }
         if !needed.isEmpty {
             let list: FontFallback.List = wantsColor ? .color : .text(style)
-            if let descriptor = fallback.face(covering: needed, in: list), let index = open(descriptor) {
+            var excluded = skipped.union(unusable)
+            while let descriptor = fallback.face(covering: needed, in: list, excluding: excluded) {
+                guard let index = open(descriptor) else {
+                    excluded.insert(descriptor)
+                    continue
+                }
                 let handle = FontFace(rawValue: Self.firstFallbackFace + UInt32(index))
-                return (handle, opened[index].face, descriptor.isColor)
+                return (handle, opened[index].face, descriptor.isColor, descriptor)
             }
         }
-        return (primaryHandle, primary, false)
+        return (primaryHandle, primary, false, nil)
     }
 
     private func primaryGlyph(_ scalar: Unicode.Scalar, style: FontStyle) -> UInt32 {
@@ -154,7 +176,7 @@ final class ClusterShaper {
 
     // MARK: - Faces by handle
 
-    private func freeTypeFace(_ handle: FontFace) -> FreeTypeFace? {
+    func freeTypeFace(_ handle: FontFace) -> FreeTypeFace? {
         if handle.rawValue < Self.firstFallbackFace {
             return FontStyle(rawValue: UInt8(handle.rawValue)).flatMap { primaries[$0] }
         }

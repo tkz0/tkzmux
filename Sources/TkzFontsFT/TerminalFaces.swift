@@ -10,7 +10,8 @@
 // (14 pt at 1.6 is 22.400000000000002 px there too).
 //
 // Shaping (S4) runs in the same owner: `ClusterShaper` resolves a cluster to a bundled face or a
-// `FontFallback` face and shapes it. Fontconfig is only reached on a cache miss and never from
+// `FontFallback` face and shapes it. So does rasterizing (S5): `FreeTypeRasterizer` draws a shaped
+// cluster with the face that shaped it. Fontconfig is only reached on a cache miss and never from
 // `init`; call `prewarm()` once, early, so the first miss does not build the fallback lists.
 
 import Foundation
@@ -33,19 +34,25 @@ public final class TerminalFaces: Sendable {
     public let metrics: CellMetrics
     /// Where clusters the bundled faces cannot draw are resolved.
     public let fallback: FontFallback
+    /// True when the bold face is not a real bold, so bold styles are emboldened
+    /// (`RasterizerOptions.syntheticBold`). False for the bundled JetBrains Mono, as on the Mac.
+    public let needsSyntheticBold: Bool
 
     private let owner: Mutex<Owner>
 
-    /// The library, the four faces and the shaper. Only ever touched inside `owner.withLock`.
+    /// The library, the four faces, the shaper and the rasterizer. Only ever touched inside
+    /// `owner.withLock`.
     private final class Owner {
         let library: FreeTypeLibrary
         let faces: [FontStyle: FreeTypeFace]
         let shaper: ClusterShaper
+        let rasterizer: FreeTypeRasterizer
 
         init(library: FreeTypeLibrary, faces: [FontStyle: FreeTypeFace], shaper: ClusterShaper) {
             self.library = library
             self.faces = faces
             self.shaper = shaper
+            self.rasterizer = FreeTypeRasterizer(library: library)
         }
     }
 
@@ -77,6 +84,7 @@ public final class TerminalFaces: Sendable {
         self.pixelSize = pixelSize
         self.metrics = metrics
         self.fallback = fallback
+        self.needsSyntheticBold = !(faces[.bold]?.isBold ?? false)
         let shaper = ClusterShaper(library: library, primaries: faces, fallback: fallback, pixelSize: pixelSize)
         self.owner = Mutex(Owner(library: library, faces: faces, shaper: shaper))
     }
@@ -127,6 +135,24 @@ public final class TerminalFaces: Sendable {
     /// Number of cached clusters (test/diagnostic hook).
     var cachedClusterCount: Int {
         owner.withLock { $0.shaper.cachedCount }
+    }
+
+    // MARK: - Rasterizing (WOR-312 S5)
+
+    /// Rasterizes a cluster `shape` returned (`FreeTypeRasterizer`). `nil` when it has no ink or
+    /// its face is not one this instance minted.
+    public func rasterize(_ cluster: ShapedCluster, style: FontStyle = .regular,
+                          options: RasterizerOptions = RasterizerOptions()) -> RasterizedGlyph? {
+        rasterizeWithInk(cluster, style: style, options: options)?.glyph
+    }
+
+    /// `rasterize`, plus the ink box the bitmap was placed from.
+    func rasterizeWithInk(_ cluster: ShapedCluster, style: FontStyle, options: RasterizerOptions) -> RasterResult? {
+        owner.withLock { owner in
+            guard let face = owner.shaper.freeTypeFace(cluster.face) else { return nil }
+            return owner.rasterizer.rasterize(cluster, style: style, face: face, metrics: metrics,
+                                              pixelSize: pixelSize, options: options)
+        }
     }
 
     /// Builds the fallback lists off the calling thread (`FontFallback.prewarm`).

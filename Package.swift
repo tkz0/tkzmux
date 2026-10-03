@@ -138,7 +138,10 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
         path: "Sources/TkzFontsFT",
         resources: [.copy("Resources/Fonts")]
     ),
-    .testTarget(name: "TkzFontsFTTests", dependencies: ["TkzFontsFT", "TkzRenderCore", "TkzPlatform", "CFreeType"], path: "Tests/TkzFontsFTTests"),
+    // Fixtures/ (the generated COLRv1 test font) is read through #filePath; TkzPNG decodes the Mac
+    // reference atlases.
+    .testTarget(name: "TkzFontsFTTests", dependencies: ["TkzFontsFT", "TkzRenderCore", "TkzPlatform", "CFreeType", "TkzPNG"],
+                path: "Tests/TkzFontsFTTests", exclude: ["Fixtures"]),
 
     // The Mac's PersistenceTests also lists TkzTerminalCore and GhosttyVt; nothing in it imports
     // them, and neither is in the Linux graph yet (WOR-304 S3).

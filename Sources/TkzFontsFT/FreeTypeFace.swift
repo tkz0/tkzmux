@@ -38,7 +38,8 @@ public struct GlyphOutlineMetrics: Sendable, Equatable {
 final class FreeTypeFace {
     /// The load flags for every outline this module draws or measures. `FT_LOAD_NO_HINTING` is the
     /// one that matters (see the file header); `FT_LOAD_NO_BITMAP` keeps an embedded bitmap strike
-    /// from replacing the outline at some size. Colour bitmaps (CBDT) get their own flags (S5).
+    /// from replacing the outline at some size. Colour bitmaps (CBDT) get their own flags
+    /// (`FreeTypeRasterizer.colorLoadFlags`).
     static let loadFlags = FT_Int32(FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP)
 
     /// Holds the library open for as long as the face is (faces must be freed first).
@@ -155,5 +156,56 @@ final class FreeTypeFace {
 
     private func sfntTable<Table>(_ tag: FT_Sfnt_Tag, as: Table.Type) -> Table? {
         FT_Get_Sfnt_Table(handle, tag).map { $0.assumingMemoryBound(to: Table.self).pointee }
+    }
+
+    // MARK: - Faces and colour (WOR-312 S5)
+
+    private func hasFlag(_ flag: Int) -> Bool {
+        handle.pointee.face_flags & FT_Long(flag) != 0
+    }
+
+    /// Outlines that scale to any size (false for a bitmap-only face like CBDT Noto Color Emoji).
+    var isScalable: Bool { hasFlag(FT_FACE_FLAG_SCALABLE) }
+    /// The face carries embedded bitmap strikes (CBDT/CBLC, sbix, EBDT).
+    var hasBitmapStrikes: Bool { hasFlag(FT_FACE_FLAG_FIXED_SIZES) && handle.pointee.num_fixed_sizes > 0 }
+    /// The face's own style says bold (`FT_STYLE_FLAG_BOLD`, from OS/2 and head.macStyle).
+    var isBold: Bool { handle.pointee.style_flags & FT_Long(FT_STYLE_FLAG_BOLD) != 0 }
+
+    /// Selects the bitmap strike for drawing at `pixelSize`: the smallest at least that large, so
+    /// drawing only ever scales down, else the largest. Returns the strike's y ppem in pixels.
+    func selectStrike(for pixelSize: CGFloat) -> CGFloat? {
+        guard hasBitmapStrikes, let sizes = handle.pointee.available_sizes else { return nil }
+        let count = Int(handle.pointee.num_fixed_sizes)
+        let ppems = (0..<count).map { CGFloat(sizes[$0].y_ppem) / 64 }
+        let index = ppems.indices.filter { ppems[$0] >= pixelSize }.min { ppems[$0] < ppems[$1] }
+            ?? ppems.indices.max { ppems[$0] < ppems[$1] }!
+        guard FT_Select_Size(handle, FT_Int(index)) == 0 else { return nil }
+        return ppems[index]
+    }
+
+    /// True when `glyph`'s only colour data is COLR version 1: no COLRv0 layers, a v1 paint, and no
+    /// bitmap in any strike. FreeType reports such a paint graph but cannot draw it (drawing it
+    /// takes `hb_raster_paint`, which waits on a WOR-299 allow-list decision), so the glyph would
+    /// come out blank: the colour fallback skips the face (ClusterShaper).
+    func isCOLRv1Only(glyph: UInt32) -> Bool {
+        var layerGlyph: FT_UInt = 0
+        var colorIndex: FT_UInt = 0
+        var iterator = FT_LayerIterator(num_layers: 0, layer: 0, p: nil)
+        if FT_Get_Color_Glyph_Layer(handle, FT_UInt(glyph), &layerGlyph, &colorIndex, &iterator) != 0 { return false }
+        var paint = FT_OpaquePaint(p: nil, insert_root_transform: 0)
+        guard FT_Get_Color_Glyph_Paint(handle, FT_UInt(glyph), FT_COLOR_INCLUDE_ROOT_TRANSFORM, &paint) != 0 else {
+            return false
+        }
+        return !hasStrikeBitmap(glyph: glyph)
+    }
+
+    /// Whether a bitmap strike has `glyph`. Selecting a strike resizes the face, so a scalable face
+    /// is sized back to `pixelSize` afterwards.
+    private func hasStrikeBitmap(glyph: UInt32) -> Bool {
+        guard hasBitmapStrikes, selectStrike(for: pixelSize) != nil else { return false }
+        defer { if isScalable && pixelSize > 0 { try? requestPixelSize(pixelSize) } }
+        let flags = FT_Int32(FT_LOAD_COLOR | FT_LOAD_SBITS_ONLY)
+        return FT_Load_Glyph(handle, FT_UInt(glyph), flags) == 0
+            && handle.pointee.glyph.pointee.format == FT_GLYPH_FORMAT_BITMAP
     }
 }

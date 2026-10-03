@@ -93,10 +93,14 @@ public final class FontFallback: Sendable {
 
     /// `isMainThread` decides which calls `statistics.mainThreadCalls` counts. Tests pass their
     /// own stand-in: under `swift test` on Linux, main-actor code does not run on the process's
-    /// main thread, so the real one cannot be reached from a test.
-    init(configuration: FontconfigConfiguration, isMainThread: @escaping @Sendable () -> Bool) {
+    /// main thread, so the real one cannot be reached from a test. `colorFamilies` replaces
+    /// `[colorFamily]` at the end of the colour list's pattern; tests use it to rank a fixture
+    /// colour font first.
+    init(configuration: FontconfigConfiguration,
+         colorFamilies: [String] = [FontFallback.colorFamily],
+         isMainThread: @escaping @Sendable () -> Bool) {
         self.configuration = configuration
-        self.state = Mutex(State(configuration: configuration, isMainThread: isMainThread))
+        self.state = Mutex(State(configuration: configuration, colorFamilies: colorFamilies, isMainThread: isMainThread))
     }
 
     // MARK: - Lookup
@@ -108,6 +112,16 @@ public final class FontFallback: Sendable {
         let needed = Self.nonIgnorable(scalars)
         guard !needed.isEmpty else { return nil }
         return state.withLock { $0.face(covering: needed, in: list) }
+    }
+
+    /// The same lookup with some faces ruled out: the ones the shaper found it cannot draw the
+    /// cluster with (a COLRv1-only colour font, a file FreeType cannot open). Not cached here; the
+    /// shaper caches the cluster it settles on.
+    public func face(covering scalars: [Unicode.Scalar], in list: List, excluding excluded: Set<FallbackFace>) -> FallbackFace? {
+        guard !excluded.isEmpty else { return face(covering: scalars, in: list) }
+        let needed = Self.nonIgnorable(scalars)
+        guard !needed.isEmpty else { return nil }
+        return state.withLock { $0.face(covering: needed, in: list, excluding: excluded) }
     }
 
     /// The whole sorted list, best first.
@@ -180,6 +194,7 @@ private final class State {
     }
 
     let configuration: FontconfigConfiguration
+    private let colorFamilies: [String]
     private let isMainThread: @Sendable () -> Bool
     private var config: OpaquePointer?
     private var loaded = false
@@ -191,8 +206,9 @@ private final class State {
     private(set) var calls = 0
     private(set) var mainThreadCalls = 0
 
-    init(configuration: FontconfigConfiguration, isMainThread: @escaping @Sendable () -> Bool) {
+    init(configuration: FontconfigConfiguration, colorFamilies: [String], isMainThread: @escaping @Sendable () -> Bool) {
         self.configuration = configuration
+        self.colorFamilies = colorFamilies
         self.isMainThread = isMainThread
     }
 
@@ -258,7 +274,7 @@ private final class State {
             fc { _ = FcPatternAddBool(pattern, FC_COLOR, FcBool(FcFalse)) }
         case .color:
             style = .regular
-            families.append(FontFallback.colorFamily)
+            families += colorFamilies
             fc { _ = FcPatternAddBool(pattern, FC_COLOR, FcBool(FcTrue)) }
         }
         fc { _ = FcPatternAddInteger(pattern, FC_WEIGHT, style.isBold ? FC_WEIGHT_BOLD : FC_WEIGHT_REGULAR) }
@@ -343,5 +359,13 @@ private final class State {
         let index = found ?? firstCovering(needed[0], in: list, sorted)
         clusterFaces[key] = index ?? -1
         return index.map { sorted.entries[$0].face }
+    }
+
+    /// `face(covering:in:)` over the entries not in `excluded`, uncached.
+    func face(covering needed: [Unicode.Scalar], in list: FontFallback.List, excluding excluded: Set<FallbackFace>) -> FallbackFace? {
+        guard let sorted = sorted(list) else { return nil }
+        let candidates = sorted.entries.filter { !excluded.contains($0.face) }
+        let whole = candidates.first { entry in needed.allSatisfy { covers(entry, $0) } }
+        return (whole ?? candidates.first { covers($0, needed[0]) })?.face
     }
 }
