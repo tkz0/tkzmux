@@ -28,7 +28,8 @@
 //     and the whole build-layout-draw runs inside `CATransaction.setDisableActions(true)`;
 //   * the bundled fonts are registered first, so a mono run is JetBrains Mono whichever tests ran
 //     earlier in the process (otherwise it depends on test order whether it falls back to Menlo);
-//   * the PNG is written by TkzPNG, whose output depends only on the pixels.
+//   * the PNG is written by TkzPNG, whose output depends only on the pixels (RGB when every pixel
+//     is opaque, RGBA otherwise).
 //
 // At a fractional scale the bitmap is `ceil(logical × scale)` pixels on an axis whose product is
 // not whole (a 44 pt row is 71 px at 1.6); the dump records that, and the component is drawn from
@@ -178,9 +179,37 @@ enum ComponentSnapshot {
 
         guard let data = ctx.data else { throw Failure.bitmap(width: width.pixels, height: height.pixels) }
         let premultiplied = [UInt8](UnsafeRawBufferPointer(start: data, count: bytesPerRow * height.pixels))
-        let png = try PNG.encode(
-            straightAlpha(premultiplied), width: width.pixels, height: height.pixels, colorType: .rgba)
+        let rgba = straightAlpha(premultiplied)
+        // A component drawn over its backdrop is opaque everywhere; storing its alpha channel would
+        // only spend the golden budget (WOR-307 S2) on 255s. The decoder expands both to RGBA.
+        let png = try isOpaque(rgba)
+            ? PNG.encode(dropAlpha(rgba), width: width.pixels, height: height.pixels, colorType: .rgb)
+            : PNG.encode(rgba, width: width.pixels, height: height.pixels, colorType: .rgba)
         return (Data(png), layout)
+    }
+
+    /// Whether every pixel of straight RGBA bytes has alpha 255.
+    static func isOpaque(_ rgba: [UInt8]) -> Bool {
+        var index = 3
+        while index < rgba.count {
+            if rgba[index] != 255 { return false }
+            index += 4
+        }
+        return true
+    }
+
+    /// RGBA to RGB, alpha discarded.
+    static func dropAlpha(_ rgba: [UInt8]) -> [UInt8] {
+        var out = [UInt8]()
+        out.reserveCapacity(rgba.count / 4 * 3)
+        var index = 0
+        while index + 3 < rgba.count {
+            out.append(rgba[index])
+            out.append(rgba[index + 1])
+            out.append(rgba[index + 2])
+            index += 4
+        }
+        return out
     }
 
     /// The layers' scale for this capture, on every layer in the tree. Subviews are walked

@@ -1,0 +1,76 @@
+# Regenerates the component snapshot goldens (WOR-307 S2) on the reference runner: the macos-26
+# image with Xcode 26.1, the same runner class and toolchain as ci.yml (ADR-0003 §5). Manual only:
+# macOS minutes cost, and a golden set is committed by a person in a reviewed PR, never by CI.
+#
+# The update renders every case twice in one process and refuses to write a render that is not
+# reproducible; the second step then runs the suite in a fresh process against what was just
+# written, which on the same build must match byte for byte. The folder (`component-snapshots`)
+# and the per-render artifacts and diffs (`component-snapshot-renders`) are uploaded either way.
+# docs/linux/parity.md, "Updating the goldens".
+#
+# Both test steps go through the summary-line guard of ci-linux.yml: `swift test` can exit 0
+# mid-run (Tests/TkzAppTests/SheetTestSupport.swift), which here would leave a partial set.
+name: Component snapshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  regenerate:
+    runs-on: macos-26
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode 26.1
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.1.app
+          swift --version
+
+      - name: swift build
+        run: swift build --build-tests
+
+      - name: Render the goldens
+        env:
+          TKZMUX_UPDATE_SNAPSHOTS: '1'
+        run: |
+          find Tests/TkzAppTests/ComponentSnapshots -type f ! -name README.md -delete
+          log="$RUNNER_TEMP/update.log"
+          TKZMUX_TEST_ARTIFACTS="$RUNNER_TEMP/artifacts/update" \
+            swift test --no-parallel --skip-build --filter ComponentSnapshot 2>&1 | tee "$log"
+          grep -Eq 'Test run with [1-9][0-9]* tests' <(sed 's/\x1b\[[0-9;]*m//g' "$log") \
+            || { echo "::error::no 'Test run with N tests' line: the run ended early"; exit 1; }
+
+      - name: Check them from a second process
+        run: |
+          log="$RUNNER_TEMP/check.log"
+          TKZMUX_TEST_ARTIFACTS="$RUNNER_TEMP/artifacts/check" \
+            swift test --no-parallel --skip-build --filter ComponentSnapshot 2>&1 | tee "$log"
+          grep -Eq 'Test run with [1-9][0-9]* tests' <(sed 's/\x1b\[[0-9;]*m//g' "$log") \
+            || { echo "::error::no 'Test run with N tests' line: the run ended early"; exit 1; }
+
+      # Two artifacts, so the first one's root is the golden folder itself: its contents go
+      # straight into Tests/TkzAppTests/ComponentSnapshots/. One artifact with both paths would be
+      # rooted at their common ancestor, outside the checkout.
+      - name: Upload the goldens
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: component-snapshots
+          path: Tests/TkzAppTests/ComponentSnapshots
+
+      - name: Upload the renders and diffs
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: component-snapshot-renders
+          path: ${{ runner.temp }}/artifacts
+          if-no-files-found: ignore

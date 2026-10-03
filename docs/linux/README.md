@@ -32,7 +32,7 @@ Docs that do not exist yet are listed by file name and become links when they ar
 | [platform.md](platform.md) | TkzPlatform: logging and signposts on Linux, the path table (XDG) and platform back-ends | WOR-304 S2; extended by WOR-304 S3 |
 | [hook.md](hook.md) | `tkzmux-hook` on Linux: timing results and linkage choice | WOR-305 S6 |
 | [agents.md](agents.md) | AgentBridge on Linux: hook socket location and access boundary; then real-agent probe traces, dotfile-sync collisions | WOR-306 S1; extended by WOR-306 S2-S6 |
-| `parity.md` | Layout-dump schema, snapping kinds, golden update flow; then the parity runner and reference regeneration | WOR-307 S2; extended by WOR-322 |
+| [parity.md](parity.md) | Layout-dump schema, snapping kinds, golden update flow; then the parity runner and reference regeneration | WOR-307 S2; extended by WOR-322 |
 | `seams.md` | Seam protocols and their Linux owners | WOR-308 S2 |
 | `lifecycle.md` | Close, shutdown and signal handling mapped to the Mac lifecycle | WOR-309 S7 |
 | `mainactor-audit.md` | @MainActor and main-queue audit for the GLib main loop | WOR-309 S7 |

@@ -13,8 +13,10 @@
 //     recorded at y 18 (44 − 19 − 7 for a 7 pt dot), which is what the Linux canvas has to produce.
 //   * **No rounding.** Frames and widths are the doubles AppKit and CoreText reported; L0 compares
 //     frames exactly and text widths within ±0.5 pt.
-//   * **The JSON is canonical**: sorted keys, pretty-printed, a trailing newline, and absent fields
-//     left out rather than written as null, so two runs on one build are byte-identical.
+//   * **The JSON is canonical**: sorted keys, compact (no whitespace), a trailing newline, and
+//     absent fields left out rather than written as null, so two runs on one build are
+//     byte-identical. Compact because ~300 of these are committed inside a 4 MiB budget and
+//     pretty-printing doubles them (WOR-307 S2); `jq -S .` reads one.
 
 import Foundation
 
@@ -164,7 +166,7 @@ struct LayoutDump: Codable, Equatable, Sendable {
     /// The canonical JSON form.
     func jsonData() throws -> Data {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         var data = try encoder.encode(self)
         data.append(0x0A)
         return data

@@ -260,8 +260,9 @@ let macOnlyTargets: [Target] = [
     .testTarget(name: "AgentBridgeTests", dependencies: ["AgentBridge", "TkzTerminalCore", "GhosttyVt"], path: "Tests/AgentBridgeTests", resources: [.copy("Fixtures")]),
     .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzTerminalCore", "GhosttyVt"], path: "Tests/PersistenceTests"),
     // TkzPNG: the component snapshots (WOR-307) encode their PNGs with the same codec the Linux
-    // parity harness decodes them with.
-    .testTarget(name: "TkzAppTests", dependencies: ["TkzApp", "TkzPNG"], path: "Tests/TkzAppTests"),
+    // parity harness decodes them with. Their goldens (ComponentSnapshots/) are read through
+    // #filePath, not bundled.
+    .testTarget(name: "TkzAppTests", dependencies: ["TkzApp", "TkzPNG"], path: "Tests/TkzAppTests", exclude: ["ComponentSnapshots"]),
 ]
 
 // MARK: - Package
