@@ -9,11 +9,10 @@
 // `git switch` in a sibling worktree show up: refs, HEAD and the index all live there, and file
 // events under a worktree's own directory would miss a commit that changed nothing on disk.
 //
-// The ignore list is not an optimisation, it is a correctness requirement. `.git/objects` churns
-// on every fetch and every commit with hundreds of events, `node_modules` churns on every install,
-// and `index.lock` is written by *our own* refresh — without dropping it a refresh would schedule
-// the next refresh and the repo would never go quiet.
+// The ignore list is not an optimisation, it is a correctness requirement; it lives in
+// `WatchPolicy`, shared with the Linux `InotifyRepoWatcher` (WOR-306 S4).
 
+#if os(macOS)
 import CoreServices
 import Dispatch
 import Foundation
@@ -88,37 +87,6 @@ public final class FSEventsWatcher: Sendable {
         }
     }
 
-    // MARK: - Filtering
-
-    /// Paths whose changes must never trigger a refresh.
-    ///
-    /// `index.lock` is matched by basename rather than by the literal `.git/index.lock`, because a
-    /// linked worktree's index lives at `<main>/.git/worktrees/<name>/index.lock` and that spelling
-    /// would slip through — and it is exactly our own refresh that writes it.
-    public static func isIgnored(_ path: String) -> Bool {
-        if path.contains("/.git/objects/") { return true }
-        if (path as NSString).lastPathComponent == "index.lock" { return true }
-        for directory in ignoredDirectories {
-            if path.contains("/\(directory)/") || path.hasSuffix("/\(directory)") { return true }
-        }
-        return false
-    }
-
-    /// Directory names whose contents cannot change what `git status` prints.
-    ///
-    /// A session's working directory is watched recursively, so a build running *inside* a tkzmux
-    /// session feeds this watcher thousands of events. Bounded by the 2 s per-session refresh floor
-    /// that still meant two `git` subprocesses every two seconds for the whole build — over output
-    /// that is ignored by the repo anyway, so the status could not have changed. The build was
-    /// competing for CPU with the watcher watching it.
-    ///
-    /// Deliberately conservative: every name here is either dot-prefixed or unambiguous. `target/`
-    /// and `build/` are **not** on the list — a repo can legitimately track a directory called
-    /// either, and dropping real events is a correctness bug where keeping a few is only waste.
-    static let ignoredDirectories = [
-        "node_modules", ".build", ".venv", ".next", "__pycache__", "DerivedData",
-    ]
-
     // MARK: - Stream plumbing (called only while `storage` is locked)
 
     private func rebuild(_ s: inout Storage) {
@@ -183,7 +151,7 @@ public final class FSEventsWatcher: Sendable {
 
     /// Runs on `queue` (FSEvents was handed it), so `onChange` does too.
     private func deliver(_ paths: [String]) {
-        let interesting = paths.filter { !Self.isIgnored($0) }
+        let interesting = paths.filter { !WatchPolicy.isIgnored($0) }
         guard !interesting.isEmpty else { return }
         onChange(interesting)
     }
@@ -192,3 +160,4 @@ public final class FSEventsWatcher: Sendable {
         Array(Set(paths.filter { !$0.isEmpty })).sorted()
     }
 }
+#endif

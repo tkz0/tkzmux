@@ -133,7 +133,7 @@ So on Linux `AppPaths` resolves the table itself, from `ProcessInfo.processInfo.
 
 ## File watching: `FileWatcher`
 
-`FileWatcher` (`Sources/TkzPlatform/FileWatcher.swift`) reports changes to the entries of watched directories. One watcher holds many watches and calls one handler, on a queue its owner gives it. `SystemFileWatcher` is the back-end for the OS being built. ClaudeSessionWatcher, StatuslineReader and TranscriptWatch move onto it in WOR-306.
+`FileWatcher` (`Sources/TkzPlatform/FileWatcher.swift`) reports changes to the entries of watched directories. One watcher holds many watches and calls one handler, on a queue its owner gives it. `SystemFileWatcher` is the back-end for the OS being built. ClaudeSessionWatcher, StatuslineReader and TranscriptWatch use it on Linux (WOR-306 S2), and so does GitStatus's `InotifyRepoWatcher` (WOR-306 S4, below).
 
 - **Directories only.** A watch follows an inode, so a watch on a file would stay on the old file after an atomic rename-replace. The directory sees the rename instead. To watch one file, watch its directory with a name filter.
 - **Name filters.** Each watch has a filter, and only entries it accepts are reported. Filters run outside the watcher's lock, so a filter may call back into the watcher.
@@ -174,6 +174,20 @@ So on Linux `AppPaths` resolves the table itself, from `ProcessInfo.processInfo.
 - one `O_EVTONLY` source on every entry the filter accepts, because a directory vnode does not see a file rewritten in place. After an entry event the path is checked again: gone is `.removed`, a new inode (rename-replace) is `.created` and the source is re-opened on it, and anything else is `.modified` or `.attributes`.
 
 Every accepted entry costs one fd and one kqueue registration, so filters should be narrow.
+
+### GitStatus's repo watcher (WOR-306 S4)
+
+macOS watches each repo with one recursive `FSEventStream` (`FSEventsWatcher`). Linux has `InotifyRepoWatcher` (`Sources/GitStatus/InotifyRepoWatcher.swift`), with the same `start`/`stop`/`setPaths` API and 0.3 s window, so `GitStatusService` changes only where it creates one:
+
+- **One inotify instance per `GitStatusService`**, created on the first watch and shared by every repo through `InotifyWatchHub`. Two repos that share a directory (a submodule inside a tracked checkout) share its watch; it is removed when the last one lets go.
+- **A watch per directory, pruned.** inotify is not recursive, so the watcher walks each root: add the watch, then list, then descend, never through a symlink. Nothing is watched below a directory `WatchPolicy.isPruned` names (`node_modules`, `.build`, `.venv`, `.next`, `__pycache__`, `DerivedData`, `.git/objects`): the same list `WatchPolicy.isIgnored` filters events with on both OSes.
+- **New and vanished directories.** A directory created or moved in is walked and watched, and reported as changed, so the refresh covers files made in it before its watch existed. A directory deleted or moved away releases every watch below it, so no child watch keeps reporting under the old path.
+- **IN_Q_OVERFLOW** drops every watch the hub holds, walks every root afresh and reports every root: a full refresh. No watch is kept, because the IN_IGNORED of a directory deleted and made again at the same path can be among the lost events, and its old watch would then be dead under a live path.
+- **ENOSPC** (`max_user_watches` used up) is logged once per repo, and the watches already added keep working. The row still refreshes on Stop hooks and on the selection poll.
+- **Coalescing** follows FSEvents' `NoDefer`: the first change after a quiet window goes out after 20 ms, so one save (create, modify, close-write, rename) is one batch, and later changes wait for the 0.3 s window. Without the 20 ms, the rest of a save came 0.3 s later and re-armed the service's own 300 ms debounce, and a tracked write took 607 ms to refresh.
+- **Lock order** is the one `GitStatusService` documents at `WatcherAction`: the service lock is never held while a watcher is called; a repo watcher may hold its lock while it calls the hub, and the hub may hold its lock while it calls `InotifyFileWatcher`. Events go the other way with no lock held.
+
+Measured on 2026-10-03 on the reference machine (debug build, `RepoWatcherTests`): a tracked write refreshed the row in 324 ms (debounce 300 ms, then `git status` and `git diff`). A checkout with a 50,000-directory `node_modules` held 10 watches, and 10,000 file creations there plus an edit to a tracked file inside it refreshed nothing. A real kernel overflow (the hub's queue held while 16,800 events piled up) found a directory whose IN_CREATE was dropped, and re-watched one deleted and made again while the queue was full.
 
 ## Process exits: `ProcessExitWatcher`
 
@@ -220,7 +234,7 @@ On 2026-10-03, on the reference machine (Swift 6.3.3, debug build, `swift test -
 
 ## Listening ports: `ListeningPorts`
 
-`ListeningPorts.scan(pids:)` (`Sources/TkzPlatform/ListeningPorts.swift`) returns the TCP ports each pid listens on, over IPv4 and IPv6, as `ListeningSocket(port:pid:)`. Results are grouped by pid in the order given, ports ascend within a pid, and an IPv4 and an IPv6 listener on one port by one process count once. GitStatus's `PortScanner` keeps its tree walk, its one-owner-per-port rule and the process names, and moves onto this in WOR-306.
+`ListeningPorts.scan(pids:)` (`Sources/TkzPlatform/ListeningPorts.swift`) returns the TCP ports each pid listens on, over IPv4 and IPv6, as `ListeningSocket(port:pid:)`. Results are grouped by pid in the order given, ports ascend within a pid, and an IPv4 and an IPv6 listener on one port by one process count once. GitStatus's `PortScanner` keeps its tree walk, its one-owner-per-port rule and the process names, and calls this once per scan (WOR-306 S4), so the TCP table is read once for the whole tree.
 
 - **Linux** (`Linux/ProcfsListeningPorts.swift`): `/proc/<pid>/net/tcp` is the table of the whole network namespace, not of one process. So a scan reads `/proc/self/net/tcp` and `tcp6` once, keeps the rows whose state is LISTEN (`st` `0A`) as a map from socket inode to port, and joins it with each pid's `/proc/<pid>/fd` links (`socket:[<inode>]`).
   - A process in another network namespace, such as a container, reports no ports.
@@ -233,6 +247,6 @@ On 2026-10-03, on the reference machine (Swift 6.3.3, debug build, `swift test -
 On 2026-10-03, on the reference machine (Swift 6.3.3):
 
 - **Matches `ss -ltnp`.** `ListeningPortsTests.matchesSs` holds an IPv4 and an IPv6 listener in the test process and an IPv6 listener in a child, then compares the scan with `ss -ltnpH` for the same pids. They matched. The same test also passed in a network namespace with IPv6 turned off (`unshare -rn` and `disable_ipv6=1`), which is how Docker runs a job whose network has no IPv6. The IPv6 listeners are skipped there. The ubuntu CI job installs `iproute2` for `ss`; Arch has it in `base`.
-- **Fast enough.** The test process with 50 children was walked (`descendants`) and its ports joined (`scan`) in a median of 1.1 ms in a release build (`swift test -c release`) over 21 runs, and 1.5 ms in a debug build. The test fails a release build above 5 ms.
+- **Fast enough.** The test process with 50 children was walked (`descendants`) and its ports joined (`scan`) in a median of 1.1 ms in a release build (`swift test -c release`) over 21 runs, and 1.5 ms in a debug build. The test fails a release build above 5 ms. `PortScanner.scan` over the test process and 50 children took 1.5 ms (best of 10, debug build); `PortScannerTests` fails above 5 ms in any build.
 - **`startTicks` is `procStart`.** For the two live Claude Code 2.1.287 sessions in `~/.claude/sessions/`, `ProcessTable.startTicks` equalled the descriptor's `procStart` exactly (1147318 and 1630842). `startTime` was 1 to 2 s before the descriptor's `startedAt`. `exe` was Claude's binary under mise's installs, and `cwd` matched the descriptor's `cwd`.
 - **The tree.** A 3-level tree (the test runner, `sh`, `sh`, `sleep`, with a second `sleep` beside the inner `sh`) came back exactly, from both the children files and the `/proc/*/stat` fallback.

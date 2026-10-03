@@ -183,6 +183,77 @@ import TkzCore
         #expect(fixture.witnessLineCount() == 2)
     }
 
+    // MARK: - Finding `gh`
+
+    @Test func searchPathFindsGhWithoutAnOverride() throws {
+        let fixture = try Fixture(origin: "https://github.com/o/r.git")
+        defer { fixture.cleanup() }
+
+        // The stub is `<base>/gh`, so `<base>` as the search path is all it takes.
+        let lookup = PRLookup(searchPath: fixture.base.path)
+        let result = try fixture.awaitLookup(lookup, force: true)
+
+        #expect(FileManager.default.fileExists(atPath: fixture.witnessPath))
+        #expect(result?.number == 99)
+    }
+
+    @Test func resolveGhPathSearchesThePathInOrder() throws {
+        let root = try Self.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        let first = try Self.makeExecutable("gh", in: root + "/first")
+        _ = try Self.makeExecutable("gh", in: root + "/second")
+
+        let found = PRLookup.resolveGhPath(searchPath: "\(root)/missing:\(root)/first:\(root)/second", home: root)
+        #expect(found == first)
+    }
+
+    #if os(Linux)
+    /// `gh` installed only by mise, the way the login shell (`UserPath`) sees it after
+    /// `mise activate`: its install directory is on `PATH`, and the shim (a symlink to `mise`,
+    /// here to a `mise` that does not exist) is never needed.
+    @Test func ghInstalledOnlyUnderMiseResolvesWithoutTheShim() throws {
+        let home = try Self.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        let installBin = home + "/.local/share/mise/installs/gh/2.63.0/gh_2.63.0_linux_amd64/bin"
+        let installed = try Self.makeExecutable("gh", in: installBin)
+        let shims = home + "/.local/share/mise/shims"
+        try FileManager.default.createDirectory(atPath: shims, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: shims + "/gh", withDestinationPath: home + "/no/mise")
+
+        let userPath = "\(installBin):\(shims):/usr/local/bin:/usr/bin"
+        #expect(PRLookup.resolveGhPath(searchPath: userPath, home: home) == installed)
+        // The shim alone resolves nothing: it points at a `mise` that is not there.
+        let shimOnly = PRLookup.resolveGhPath(searchPath: shims, home: home)
+        #expect(shimOnly != shims + "/gh")
+    }
+
+    /// With no `PATH` worth the name (a desktop-launched process), `~/.local/bin` still answers,
+    /// ahead of the system directories.
+    @Test func linuxFallsBackToLocalBinFirst() throws {
+        let home = try Self.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        let local = try Self.makeExecutable("gh", in: home + "/.local/bin")
+
+        #expect(PRLookup.resolveGhPath(searchPath: nil, home: home) == local)
+        #expect(PRLookup.resolveGhPath(searchPath: "", home: home) == local)
+        #expect(ToolSearchPath.fallbacks(home: home) == [home + "/.local/bin", "/usr/local/bin", "/usr/bin"])
+    }
+    #endif
+
+    private static func makeTemporaryDirectory() throws -> String {
+        let path = RepoInfo.resolve(NSTemporaryDirectory()) + "/tkzmux-gh-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        return path
+    }
+
+    private static func makeExecutable(_ name: String, in directory: String) throws -> String {
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        let path = directory + "/" + name
+        try "#!/bin/sh\nexit 0\n".write(toFile: path, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+        return path
+    }
+
     // MARK: - Fixture
 
     /// A real temp git repo with a stub `gh` on disk, wired together for one test.

@@ -1,6 +1,7 @@
 // End-to-end tests over real temporary repos, plus the shared fixture used by `RepoInfoTests`.
 //
-// Deliberately *not* tested here: FSEvents delivery. macOS coalesces filesystem events on its own
+// Deliberately *not* tested here: FSEvents delivery (the Linux inotify watcher is, in
+// RepoWatcherTests, where delivery is prompt and bounded). macOS coalesces filesystem events on its own
 // schedule (the 0.3 s latency is a floor, not a bound), so an assertion that waits for a stream
 // callback is a flake generator. Everything below drives the service through `refreshAllForTesting`
 // or an explicit `refresh`/`refreshIfStale`, with the debounce injected at 60 s so the automatic
@@ -420,30 +421,47 @@ private func makeService(_ recorder: TKZ26Recorder) -> GitStatusService {
     }
 
     @Test func ignoredPathsNeverTriggerARefresh() {
-        #expect(FSEventsWatcher.isIgnored("/repo/.git/objects/ab/cdef"))
-        #expect(FSEventsWatcher.isIgnored("/repo/node_modules/left-pad/index.js"))
-        #expect(FSEventsWatcher.isIgnored("/repo/.git/index.lock"))
+        #expect(WatchPolicy.isIgnored("/repo/.git/objects/ab/cdef"))
+        #expect(WatchPolicy.isIgnored("/repo/node_modules/left-pad/index.js"))
+        #expect(WatchPolicy.isIgnored("/repo/.git/index.lock"))
         // A linked worktree's index lock does not contain the literal `.git/index.lock`.
-        #expect(FSEventsWatcher.isIgnored("/repo/.git/worktrees/feature/index.lock"))
-        #expect(!FSEventsWatcher.isIgnored("/repo/Sources/A.swift"))
-        #expect(!FSEventsWatcher.isIgnored("/repo/.git/HEAD"))
+        #expect(WatchPolicy.isIgnored("/repo/.git/worktrees/feature/index.lock"))
+        #expect(!WatchPolicy.isIgnored("/repo/Sources/A.swift"))
+        #expect(!WatchPolicy.isIgnored("/repo/.git/HEAD"))
 
         // Build output. A build inside a watched session used to spawn two `git` processes every
         // two seconds for its whole duration, over files the repo ignores anyway.
-        #expect(FSEventsWatcher.isIgnored("/repo/.build/arm64-apple-macosx/debug/tkzmux.o"))
-        #expect(FSEventsWatcher.isIgnored("/repo/.venv/lib/python3.13/site-packages/x.py"))
-        #expect(FSEventsWatcher.isIgnored("/repo/web/.next/cache/chunk.js"))
-        #expect(FSEventsWatcher.isIgnored("/repo/pkg/__pycache__/mod.cpython-313.pyc"))
-        #expect(FSEventsWatcher.isIgnored("/repo/DerivedData/Build/Products/x"))
+        #expect(WatchPolicy.isIgnored("/repo/.build/arm64-apple-macosx/debug/tkzmux.o"))
+        #expect(WatchPolicy.isIgnored("/repo/.venv/lib/python3.13/site-packages/x.py"))
+        #expect(WatchPolicy.isIgnored("/repo/web/.next/cache/chunk.js"))
+        #expect(WatchPolicy.isIgnored("/repo/pkg/__pycache__/mod.cpython-313.pyc"))
+        #expect(WatchPolicy.isIgnored("/repo/DerivedData/Build/Products/x"))
         // The directory itself, not only things under it.
-        #expect(FSEventsWatcher.isIgnored("/repo/.build"))
+        #expect(WatchPolicy.isIgnored("/repo/.build"))
 
         // Conservative on purpose: these names are commonly *tracked*, so events under them must
         // still refresh. A missed refresh is a correctness bug; a redundant one is only waste.
-        #expect(!FSEventsWatcher.isIgnored("/repo/target/main.rs"))
-        #expect(!FSEventsWatcher.isIgnored("/repo/build/Makefile"))
+        #expect(!WatchPolicy.isIgnored("/repo/target/main.rs"))
+        #expect(!WatchPolicy.isIgnored("/repo/build/Makefile"))
         // A prefix match must not swallow a real directory whose name merely starts the same way.
-        #expect(!FSEventsWatcher.isIgnored("/repo/.buildkite/pipeline.yml"))
+        #expect(!WatchPolicy.isIgnored("/repo/.buildkite/pipeline.yml"))
+    }
+
+    /// The Linux watcher adds no watch below these: exactly the directories everything under which
+    /// `isIgnored` drops.
+    @Test func prunedDirectoriesAreTheOnesWhoseContentsAreIgnored() {
+        #expect(WatchPolicy.isPruned(directory: "/repo/.git/objects"))
+        #expect(WatchPolicy.isPruned(directory: "/repo/.git/objects/ab"))
+        #expect(WatchPolicy.isPruned(directory: "/repo/node_modules"))
+        #expect(WatchPolicy.isPruned(directory: "/repo/web/node_modules/left-pad/"))
+        #expect(WatchPolicy.isPruned(directory: "/repo/.build"))
+        #expect(!WatchPolicy.isPruned(directory: "/repo"))
+        #expect(!WatchPolicy.isPruned(directory: "/repo/.git"))
+        #expect(!WatchPolicy.isPruned(directory: "/repo/.git/refs/heads"))
+        #expect(!WatchPolicy.isPruned(directory: "/repo/.git/worktrees/feature"))
+        #expect(!WatchPolicy.isPruned(directory: "/repo/objects"))
+        #expect(!WatchPolicy.isPruned(directory: "/repo/target"))
+        #expect(!WatchPolicy.isPruned(directory: "/repo/.buildkite"))
     }
 
     @Test func isUnderMatchesDirectoriesNotPrefixes() {

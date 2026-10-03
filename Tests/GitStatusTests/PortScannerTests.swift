@@ -1,12 +1,16 @@
 // PortScannerTests — M4.3.
 //
 // These are only meaningfully testable against real processes: `PortScanner` walks the live
-// process table via libproc, so the tests spawn an actual listening process (a Python HTTP
-// server) as a child of the test runner and poll for it to show up / disappear, rather than
-// mocking libproc. `withKnownIssue`/an early return skips gracefully when `/usr/bin/python3` is
+// process table (libproc on macOS, /proc on Linux), so the tests spawn an actual listening process
+// (a Python HTTP server) as a child of the test runner and poll for it to show up / disappear,
+// rather than mocking the process table. `withKnownIssue`/an early return skips gracefully when `/usr/bin/python3` is
 // unavailable so the suite still passes on a minimal CI image.
 
+#if canImport(Darwin)
 import Darwin
+#elseif os(Linux)
+import Glibc
+#endif
 import Foundation
 import Testing
 
@@ -21,7 +25,11 @@ struct PortScannerTests {
     /// so the caller can hand it to a child process. There is a small window where another
     /// process could grab the port before the child binds it; acceptable for a test.
     private static func freeEphemeralPort() -> UInt16? {
+        #if os(Linux)
+        let fd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+        #else
         let fd = socket(AF_INET, SOCK_STREAM, 0)
+        #endif
         guard fd >= 0 else { return nil }
         defer { close(fd) }
         var addr = sockaddr_in()
@@ -49,6 +57,15 @@ struct PortScannerTests {
 
     private static var python3Available: Bool {
         FileManager.default.isExecutableFile(atPath: python3Path)
+    }
+
+    /// Kills `process` and reaps it. SIGKILL, not `terminate()`: on Linux, corelibs `Process`
+    /// spawns with the calling thread's signal mask, and Swift Testing runs tests on dispatch
+    /// worker threads, which block nearly every signal — the child inherits SIGTERM blocked and
+    /// `waitUntilExit` never returns. SIGKILL cannot be blocked.
+    private static func stop(_ process: Process) {
+        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        process.waitUntilExit()
     }
 
     /// Polls `condition` up to ~5s (100ms steps).
@@ -81,8 +98,7 @@ struct PortScannerTests {
         process.standardInput = FileHandle.nullDevice
         try process.run()
         defer {
-            process.terminate()
-            process.waitUntilExit()
+            Self.stop(process)
         }
 
         let rootPid = getpid()
@@ -95,8 +111,7 @@ struct PortScannerTests {
         #expect(entry?.pid == process.processIdentifier)
         #expect(entry?.processName != nil)
 
-        process.terminate()
-        process.waitUntilExit()
+        Self.stop(process)
 
         let gone = Self.poll {
             !PortScanner.scan(rootPid: rootPid).contains { $0.port == port }
@@ -119,8 +134,7 @@ struct PortScannerTests {
         process.standardInput = FileHandle.nullDevice
         try process.run()
         defer {
-            process.terminate()
-            process.waitUntilExit()
+            Self.stop(process)
         }
 
         let rootPid = getpid()
@@ -140,7 +154,7 @@ struct PortScannerTests {
     }
 
     @Test func purityAndRobustness() {
-        // pid 1 (launchd) — must not crash; result may or may not be empty depending on
+        // pid 1 (launchd, systemd) — must not crash; result may or may not be empty depending on
         // permissions, so only assert it runs to completion.
         _ = PortScanner.listeningPorts(ofProcess: 1)
 
@@ -167,8 +181,7 @@ struct PortScannerTests {
         process.standardInput = FileHandle.nullDevice
         try process.run()
         defer {
-            process.terminate()
-            process.waitUntilExit()
+            Self.stop(process)
         }
         _ = Self.poll { PortScanner.scan(rootPid: rootPid).contains { $0.port == port } }
 
@@ -180,4 +193,37 @@ struct PortScannerTests {
         // dual-stack fd depending on platform.
         #expect(withListener.filter { $0.port == port }.count == 1)
     }
+
+    #if os(Linux)
+    /// The scan the status bar polls, over a 50-process tree: one read of /proc/net/tcp{,6} for
+    /// all of it, then each pid's children and fd links. Under 5 ms on the 9950X it was written
+    /// on (~1.5 ms measured); best of 10, so a scheduler hiccup on a busy CI runner cannot fail it.
+    @Test func fiftyProcessScanIsUnderFiveMilliseconds() throws {
+        var children: [Process] = []
+        defer {
+            for child in children { Self.stop(child) }
+        }
+        for _ in 0..<50 {
+            let child = Process()
+            child.executableURL = URL(fileURLWithPath: "/bin/sleep")
+            child.arguments = ["60"]
+            child.standardOutput = FileHandle.nullDevice
+            child.standardError = FileHandle.nullDevice
+            child.standardInput = FileHandle.nullDevice
+            try child.run()
+            children.append(child)
+        }
+        let rootPid = getpid()
+        let pids = Set(children.map(\.processIdentifier))
+        #expect(Self.poll { pids.isSubset(of: PortScanner.processTree(from: rootPid)) })
+
+        var best = Duration.seconds(1)
+        let clock = ContinuousClock()
+        for _ in 0..<10 {
+            let elapsed = clock.measure { _ = PortScanner.scan(rootPid: rootPid) }
+            best = min(best, elapsed)
+        }
+        #expect(best < .milliseconds(5), "best of 10 scans over \(pids.count + 1) processes: \(best)")
+    }
+    #endif
 }

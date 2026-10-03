@@ -264,6 +264,7 @@ import TkzCore
 
     // MARK: Environment
 
+    #if os(macOS)
     @Test func fetchEnvironmentPrependsHomebrewAndKeepsTheNoPromptRules() {
         let overrides = GitRebase.fetchEnvironment(path: "/usr/bin:/bin:/opt/homebrew/bin")
         #expect(overrides["PATH"] == "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
@@ -275,6 +276,21 @@ import TkzCore
         #expect(env["PATH"] == "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
         #expect(env["HOME"] == "/Users/x")
     }
+    #else
+    @Test func fetchEnvironmentKeepsThePathFirstAppendsTheFallbacksAndTheNoPromptRules() {
+        let userPath = "/h/.local/share/mise/installs/gh/2.63.0/bin:/usr/bin:/bin"
+        let overrides = GitRebase.fetchEnvironment(path: userPath, home: "/h")
+        #expect(overrides["PATH"] == userPath + ":/h/.local/bin:/usr/local/bin")
+        #expect(GitRebase.fetchEnvironment(path: nil, home: "/h")["PATH"] == "/h/.local/bin:/usr/local/bin:/usr/bin")
+        #expect(GitRebase.fetchEnvironment(path: "", home: "/h/")["PATH"] == "/h/.local/bin:/usr/local/bin:/usr/bin")
+
+        let env = GitProcess.environment(base: ["PATH": "/usr/bin", "HOME": "/h"], overrides: overrides)
+        #expect(env["GIT_TERMINAL_PROMPT"] == "0")
+        #expect(env["GIT_ASKPASS"] == "")
+        #expect(env["PATH"] == userPath + ":/h/.local/bin:/usr/local/bin")
+        #expect(env["HOME"] == "/h")
+    }
+    #endif
 
     @Test func lastLinePrefersStderr() {
         let output = GitProcess.Output(status: 128, standardOutput: "out\n", standardError: "fatal: a\nfatal: b")

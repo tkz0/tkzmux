@@ -15,9 +15,11 @@
 import Foundation
 import Synchronization
 import TkzCore
+import TkzPlatform
 
 public final class PRLookup: Sendable {
     private let ghPathOverride: String?
+    private let searchPath: String?
     private let gitPath: String
     private let refreshInterval: TimeInterval
     private let failureCacheInterval: TimeInterval
@@ -40,14 +42,20 @@ public final class PRLookup: Sendable {
         var isGitHubByDirectory: [String: Bool] = [:]
     }
 
+    /// - Parameter searchPath: the `PATH` to find `gh` on when `ghPath` is nil: the app passes
+    ///   `UserPath.resolve()`, the login shell's own, so a `gh` installed by mise is found in its
+    ///   install directory the way the user's shell finds it, not through a shim. nil: this
+    ///   process's `PATH`.
     public init(
         ghPath: String? = nil,
+        searchPath: String? = nil,
         gitPath: String = GitProcess.gitPath,
         refreshInterval: TimeInterval = 300,
         failureCacheInterval: TimeInterval = 600,
         timeout: Double = 5
     ) {
         self.ghPathOverride = ghPath
+        self.searchPath = searchPath
         self.gitPath = gitPath
         self.refreshInterval = refreshInterval
         self.failureCacheInterval = failureCacheInterval
@@ -221,7 +229,8 @@ public final class PRLookup: Sendable {
     private func resolvedGhPath() -> String? {
         storage.withLock { s in
             if let resolved = s.resolvedGhPath { return resolved }
-            let path = Self.resolveGhPath()
+            let path = Self.resolveGhPath(
+                searchPath: searchPath ?? ProcessInfo.processInfo.environment["PATH"])
             s.resolvedGhPath = .some(path)
             return path
         }
@@ -273,13 +282,23 @@ public final class PRLookup: Sendable {
             reviewDecision: json["reviewDecision"] as? String)
     }
 
-    /// Where `gh` is, searching `PATH` then `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`.
-    public static func resolveGhPath(fileManager: FileManager = .default) -> String? {
+    /// Where `gh` is, searching `searchPath` then the OS's fallbacks: `/opt/homebrew/bin`,
+    /// `/usr/local/bin`, `/usr/bin` on macOS; `~/.local/bin`, `/usr/local/bin`, `/usr/bin` on Linux
+    /// (`ToolSearchPath.fallbacks`).
+    public static func resolveGhPath(
+        searchPath: String? = ProcessInfo.processInfo.environment["PATH"],
+        home: String = AppPaths.home.path,
+        fileManager: FileManager = .default
+    ) -> String? {
         var candidates: [String] = []
-        if let pathVar = ProcessInfo.processInfo.environment["PATH"] {
-            candidates.append(contentsOf: pathVar.split(separator: ":").map(String.init))
+        if let searchPath {
+            candidates.append(contentsOf: searchPath.split(separator: ":").map(String.init))
         }
+        #if os(macOS)
         candidates.append(contentsOf: ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"])
+        #else
+        candidates.append(contentsOf: ToolSearchPath.fallbacks(home: home))
+        #endif
 
         for dir in candidates {
             let candidate = (dir as NSString).appendingPathComponent("gh")

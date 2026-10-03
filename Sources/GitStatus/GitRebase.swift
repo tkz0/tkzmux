@@ -25,6 +25,7 @@
 
 import Foundation
 import TkzCore
+import TkzPlatform
 
 public enum GitRebase {
 
@@ -44,10 +45,15 @@ public enum GitRebase {
         /// a branch switched (or a detach) while the sheet was fetching, or while this request sat
         /// in the rebase queue, cannot rebase an unintended branch.
         public var expectedBranch: String?
+        /// The `PATH` the fetch runs with (`fetchEnvironment`): the app's `UserPath.resolve()`, so
+        /// a credential helper installed where only the login shell looks (`gh` under mise) runs.
+        /// nil: this process's `PATH`.
+        public var searchPath: String?
 
         public init(
             toplevel: String, gitDir: String, base: BaseBranch, skipFetch: Bool = false,
-            gitPath: String = GitProcess.gitPath, expectedBranch: String? = nil
+            gitPath: String = GitProcess.gitPath, expectedBranch: String? = nil,
+            searchPath: String? = nil
         ) {
             self.toplevel = toplevel
             self.gitDir = gitDir
@@ -55,6 +61,7 @@ public enum GitRebase {
             self.skipFetch = skipFetch
             self.gitPath = gitPath
             self.expectedBranch = expectedBranch
+            self.searchPath = searchPath
         }
     }
 
@@ -118,7 +125,9 @@ public enum GitRebase {
         do {
             let output = try GitProcess.run(
                 request.gitPath, ["-C", request.toplevel, "fetch", "--quiet", remote, request.base.name],
-                environment: fetchEnvironment(), timeout: fetchTimeout)
+                environment: fetchEnvironment(
+                    path: request.searchPath ?? ProcessInfo.processInfo.environment["PATH"]),
+                timeout: fetchTimeout)
             guard output.succeeded else { return .fetchFailed(lastLine(of: output)) }
             return nil
         } catch GitProcess.Failure.timedOut {
@@ -182,9 +191,9 @@ public enum GitRebase {
         // The rebase itself went through; only putting the stash back did not. Checked before
         // the exit status: git has reported this both ways, and an abort here would find no
         // rebase to abort while the conflict markers in the tree are the stash's, not ours.
-        if output.standardError.contains(autostashConflictMarker)
-            || output.standardOutput.contains(autostashConflictMarker)
-        {
+        if autostashConflictMarkers.contains(where: {
+            output.standardError.contains($0) || output.standardOutput.contains($0)
+        }) {
             return .rebasedStashConflict(commits: replayedCommits(request, before: before.ahead))
         }
         if output.succeeded {
@@ -197,22 +206,40 @@ public enum GitRebase {
         return .failed(lastLine(of: output))
     }
 
-    /// What git prints (exit 0) when the rebase went through but the stash did not apply.
-    static let autostashConflictMarker = "Applying autostash resulted in conflicts"
+    /// What git prints (exit 0) when the rebase went through but the stash did not apply: the
+    /// older wording, and the first line of the longer message newer git prints instead (seen
+    /// with git 2.55.0 on Arch, WOR-306 S4). `LC_ALL=C` keeps both in English.
+    static let autostashConflictMarkers = [
+        "Applying autostash resulted in conflicts",
+        "Your local changes are stashed, however applying them",
+    ]
 
     // MARK: - Helpers
 
     /// The environment overrides for the fetch: the default no-prompt environment plus a `PATH`
     /// a Finder-launched app lacks — a `credential.helper = !gh auth git-credential` or an
     /// `osxkeychain` from Homebrew's git would otherwise not resolve. Pure so it can be tested.
+    ///
+    /// macOS puts the Homebrew prefixes first. Linux keeps `path` first, in its own order — it is
+    /// the login shell's when the app passes `UserPath`, and a mise or nvm directory there must
+    /// win over the system's — and appends the `ToolSearchPath.fallbacks` it lacks.
     static func fetchEnvironment(
-        path: String? = ProcessInfo.processInfo.environment["PATH"]
+        path: String? = ProcessInfo.processInfo.environment["PATH"],
+        home: String = AppPaths.home.path
     ) -> [String: String] {
+        #if os(macOS)
         let prefixes = ["/opt/homebrew/bin", "/usr/local/bin"]
         var parts = prefixes
         if let path, !path.isEmpty {
             parts += path.split(separator: ":").map(String.init).filter { !prefixes.contains($0) }
         }
+        #else
+        var parts: [String] = []
+        let entries = (path ?? "").split(separator: ":").map(String.init)
+        for entry in entries + ToolSearchPath.fallbacks(home: home) where !parts.contains(entry) {
+            parts.append(entry)
+        }
+        #endif
         return ["PATH": parts.joined(separator: ":")]
     }
 

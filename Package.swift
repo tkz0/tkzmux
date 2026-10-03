@@ -112,6 +112,15 @@ let sharedTargets: [Target] = [  // hygiene-scan
         ]
     ),
 
+    // Git status, PR lookup and port scanning (WOR-306 S4). TkzPlatform for the repo watcher's
+    // inotify back-end, ProcessTable and ListeningPorts; never AgentBridge.
+    .target(
+        name: "GitStatus",
+        dependencies: ["TkzCore", "TkzPlatform"],
+        path: "Sources/GitStatus"
+    ),
+    .testTarget(name: "GitStatusTests", dependencies: ["GitStatus"], path: "Tests/GitStatusTests"),
+
     // Fixtures/ (NIST SHAVS vectors) is read through #filePath, not bundled.
     .testTarget(name: "TkzPlatformTests", dependencies: ["TkzPlatform"], path: "Tests/TkzPlatformTests", exclude: ["Fixtures"]),
     .testTarget(name: "TkzCoreTests", dependencies: ["TkzCore"], path: "Tests/TkzCoreTests"),
@@ -225,11 +234,6 @@ let macOnlyTargets: [Target] = [
 
     // MARK: App core and services
     .target(
-        name: "GitStatus",
-        dependencies: ["TkzCore"],
-        path: "Sources/GitStatus"
-    ),
-    .target(
         name: "TkzApp",
         dependencies: ["TkzCore", "TkzPlatform", "TkzTerminalCore", "TkzTerminalView", "AgentBridge", "GitStatus", "Persistence"],
         path: "Sources/TkzApp"
@@ -254,7 +258,6 @@ let macOnlyTargets: [Target] = [
     // TkzTerminalCore + GhosttyVt for the shell-integration harness, which spawns each login
     // shell on a real `Pty`, like PersistenceTests does for snapshots.
     .testTarget(name: "AgentBridgeTests", dependencies: ["AgentBridge", "TkzTerminalCore", "GhosttyVt"], path: "Tests/AgentBridgeTests", resources: [.copy("Fixtures")]),
-    .testTarget(name: "GitStatusTests", dependencies: ["GitStatus"], path: "Tests/GitStatusTests"),
     .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzTerminalCore", "GhosttyVt"], path: "Tests/PersistenceTests"),
     .testTarget(name: "TkzAppTests", dependencies: ["TkzApp"], path: "Tests/TkzAppTests"),
 ]

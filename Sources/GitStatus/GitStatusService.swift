@@ -1,8 +1,8 @@
 // GitStatusService — M4.1.
 //
 // Owns the whole answer to "what does this session's repo look like right now?": repo detection per
-// directory, an `FSEventStream` per repo root, a debounce/coalesce policy, the two git calls, and
-// the single decision to hand a new `GitSummary` to the app.
+// directory, an `FSEventStream` per repo root (on Linux an `InotifyRepoWatcher`), a debounce/coalesce
+// policy, the two git calls, and the single decision to hand a new `GitSummary` to the app.
 //
 // Four rules shape the code, and each of them is load-bearing:
 //
@@ -31,6 +31,14 @@ import Foundation
 import Synchronization
 import TkzCore
 
+#if os(macOS)
+/// The per-repo filesystem watcher of the OS being built; both have `start`, `stop`, `setPaths`.
+typealias RepoWatcher = FSEventsWatcher
+#elseif os(Linux)
+/// The per-repo filesystem watcher of the OS being built; both have `start`, `stop`, `setPaths`.
+typealias RepoWatcher = InotifyRepoWatcher
+#endif
+
 /// Keeps a `GitSummary` up to date for every tracked session and posts it when it changes.
 public final class GitStatusService: Sendable {
     private let debounce: Duration
@@ -42,6 +50,10 @@ public final class GitStatusService: Sendable {
     /// a test that tracks and then refreshes cannot race its own `track`.
     private let controlQueue = DispatchQueue(label: "se.tkz.tkzmux.GitStatusService")
     private let storage: Mutex<Storage>
+    #if os(Linux)
+    /// The one inotify instance every repo watcher of this service shares (WOR-306 S4).
+    private let watchHub = InotifyWatchHub()
+    #endif
 
     // MARK: - State
 
@@ -122,10 +134,13 @@ public final class GitStatusService: Sendable {
     /// the lock order: control queue holds `storage` and waits for the repo queue, repo queue waits
     /// for `storage`. Locked sections only ever *collect* these; the caller runs them afterwards,
     /// which leaves exactly one lock order — `storage`, then the watcher's own.
+    ///
+    /// The Linux watcher needs the same rule: walking a repo holds its lock for as long as the
+    /// walk takes, and its timer calls `onRepoPaths` (so `storage`) right after letting go of it.
     private enum WatcherAction {
-        case start(FSEventsWatcher)
-        case stop(FSEventsWatcher)
-        case setPaths(FSEventsWatcher, [String])
+        case start(RepoWatcher)
+        case stop(RepoWatcher)
+        case setPaths(RepoWatcher, [String])
 
         func run() {
             switch self {
@@ -138,7 +153,7 @@ public final class GitStatusService: Sendable {
 
     private final class RepoState {
         let queue: DispatchQueue
-        var watcher: FSEventsWatcher?
+        var watcher: RepoWatcher?
         var sessions: Set<SessionID> = []
         /// The repo's trunk (`BaseBranch.resolve`), shared by every worktree of the repo since refs
         /// live in the common dir. `nil` until resolved — or after the ref it named went away.
@@ -309,6 +324,11 @@ public final class GitStatusService: Sendable {
         storage.withLock { $0.sessions[id]?.changedPaths ?? [] }
     }
 
+    #if os(Linux)
+    /// Directory watches on this service's inotify instance. Tests.
+    var watchCountForTesting: Int { watchHub.watchCount }
+    #endif
+
     /// Test seam: refresh every tracked session synchronously, on the caller's thread. Drains the
     /// control queue first so a `track` issued a moment ago has definitely landed.
     public func refreshAllForTesting() {
@@ -384,9 +404,15 @@ public final class GitStatusService: Sendable {
         } else {
             repo = RepoState(
                 queue: DispatchQueue(label: "se.tkz.tkzmux.GitStatusService.repo"))
-            let watcher = FSEventsWatcher(queue: repo.queue) { [weak self] paths in
+            #if os(Linux)
+            let watcher = RepoWatcher(queue: repo.queue, hub: watchHub) { [weak self] paths in
                 self?.onRepoPaths(repoRoot: repoRoot, paths: paths)
             }
+            #else
+            let watcher = RepoWatcher(queue: repo.queue) { [weak self] paths in
+                self?.onRepoPaths(repoRoot: repoRoot, paths: paths)
+            }
+            #endif
             repo.watcher = watcher
             s.repos[repoRoot] = repo
             if s.started { actions.append(.start(watcher)) }

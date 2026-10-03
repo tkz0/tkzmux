@@ -10,13 +10,18 @@
 //  * `--git-dir` and `--git-common-dir` are printed **relative to the cwd** when the cwd is the
 //    repo root (`.git`), and absolute otherwise. Both forms have to end up absolute before they
 //    can be compared, or every plain checkout looks like a worktree.
-//  * The comparison has to be on *resolved* paths, and the resolution has to be Darwin's
+//  * The comparison has to be on *resolved* paths, and the resolution has to be the platform's
 //    `realpath(3)` — not `NSString.resolvingSymlinksInPath`, which deliberately strips the
 //    `/private` prefix on macOS. git (which resolves via `getcwd`) prints `/private/var/folders/…`
 //    for a temp dir while Foundation would hand back `/var/folders/…`, and the two would never
 //    compare equal. Every path in this type goes through the same `resolve`, `toplevel` included,
 //    so `repoRoot == toplevel` holds in a plain checkout no matter where it lives.
 
+#if canImport(Darwin)
+import Darwin
+#elseif os(Linux)
+import Glibc
+#endif
 import Foundation
 
 /// Where a session's working directory sits in git: the checkout it is in, and the *main* checkout
@@ -93,7 +98,12 @@ public struct RepoInfo: Hashable, Sendable {
     /// `realpath(3)`. Falls back to the input when the path does not exist (a `.git` file pointing
     /// at a removed worktree), so a detect never fails purely because of resolution.
     static func resolve(_ path: String) -> String {
-        guard let buffer = Darwin.realpath(path, nil) else {
+        #if canImport(Darwin)
+        let resolved = Darwin.realpath(path, nil)
+        #else
+        let resolved = Glibc.realpath(path, nil)
+        #endif
+        guard let buffer = resolved else {
             return (path as NSString).standardizingPath
         }
         defer { free(buffer) }

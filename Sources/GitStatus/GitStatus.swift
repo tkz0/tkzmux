@@ -1,7 +1,8 @@
 // GitStatus — the module's git, PR and port services.
 //
 // `GitProcess` (the one subprocess runner), `RepoInfo`, `GitStatusParsing`, `FSEventsWatcher` and
-// `GitStatusService` are M4.1; `PRLookup` is the lookup half of M4.2;
+// `GitStatusService` are M4.1 (`InotifyRepoWatcher` and `WatchPolicy` are its Linux watcher and
+// the filter both share, WOR-306 S4); `PRLookup` is the lookup half of M4.2;
 // `PortScanner` is M4.3; `WorktreeList` came earlier, with M5.2; `WorktreeRemoval` is TKZ-70
 // and is, with `GitRebase`, one of the two files here that write to a repository.
 //

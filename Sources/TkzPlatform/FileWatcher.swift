@@ -18,7 +18,8 @@
 // `SystemFileWatcher` names the back-end for the OS being built.
 //
 // Consumers: on Linux, AgentBridge's ClaudeSessionWatcher, StatuslineReader and TranscriptWatch
-// (WOR-306 S2; on macOS they keep their own kqueue sources), and GitStatus's repo watcher later.
+// (WOR-306 S2; on macOS they keep their own kqueue sources), and GitStatus's InotifyRepoWatcher
+// through one shared InotifyFileWatcher per GitStatusService (WOR-306 S4; macOS keeps FSEvents).
 
 import Dispatch
 

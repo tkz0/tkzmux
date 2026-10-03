@@ -7,7 +7,8 @@
 //          PROC_PIDFDSOCKETINFO, lifted from GitStatus's `PortScanner`.
 //
 // `ListeningPorts` names the back-end for the OS being built. GitStatus's `PortScanner` keeps the
-// tree walk, the per-port de-duplication and the process names, and moves onto this in WOR-306.
+// tree walk, the per-port de-duplication and the process names, and calls this once per scan
+// (WOR-306 S4).
 //
 // Best-effort like ProcessTable: a pid that exits mid-scan or may not be inspected has no ports.
 
