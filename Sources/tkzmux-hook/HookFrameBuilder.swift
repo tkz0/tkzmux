@@ -1,5 +1,11 @@
-// Builds the NDJSON wire frames sent to `HookServer`. `Darwin` only.
+// Builds the NDJSON wire frames sent to `HookServer`. libc only.
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 private let frameSizeLimit = 240 * 1024
 private let stringTruncateLimit = 64 * 1024

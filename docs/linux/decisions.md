@@ -90,8 +90,8 @@ Every item has an owner issue. Items marked *resolved* only need the owner to up
 | Swift runtime sonames allowed in `[tests]` | *Resolved in WOR-303 S2:* the first Linux test runner NEEDs 15 runtime sonames (Swift runtime, Foundation, dispatch, BlocksRuntime, Testing, `lib_Testing_Foundation`, XCTest) plus `libm.so.6` and `libc.so.6`, all matched by `[@swift-runtime]`; CI gates it against `[tests]` ([build.md](build.md#linux-ci)) | WOR-303 S2 |
 | CGtk link must not record pangocairo, cairo, gdk_pixbuf or graphene as NEEDED | `-Xlinker --as-needed` in the Linux branch ([ADR-0002](adr-0002-platform-defaults.md) D10) | WOR-314 S1 |
 | `tkz_gtk_symbol` helper: WOR-314 places it in S1, WOR-325 refers to S6 | S1 ([ADR-0002](adr-0002-platform-defaults.md) D4) | WOR-314 S1; WOR-325 updates its reference |
-| `tkzmux-hook` with no RUNPATH at all | Mechanism unconfirmed (`--disable-local-rpath` or a linker flag) | WOR-305 S6 |
-| `tkzmux-hook` libc-only, or the Static Linux SDK (musl) | Decided only after measurement | WOR-305 S6 |
+| `tkzmux-hook` with no RUNPATH at all | *Resolved in WOR-305 S6:* the shipped hook is the fully static musl build, which has no dynamic section and so no RUNPATH. The glibc `-static-stdlib` hook keeps SwiftPM's `$ORIGIN` under `--build-system native` unless built with `--disable-local-rpath`; the `swiftbuild` backend adds none ([hook.md](hook.md)) | WOR-305 S6 |
+| `tkzmux-hook` libc-only, or the Static Linux SDK (musl) | *Resolved in WOR-305 S6:* the Static Linux SDK (musl), pinned in [dev.md](dev.md). It passes `[tkzmux-hook]` and `check-binary.sh` unchanged and execs in about half the time of the glibc link, which fails `glibc-max 2.35` wherever it is linked ([hook.md](hook.md)) | WOR-305 S6 |
 | Static or dynamic stdlib for the app | `[tkzmux]` stays provisional in linkage-policy.txt | WOR-323 S2 |
 | `.mark` snapping kind | Added in [ADR-0003](adr-0003-parity.md) §2 | WOR-307 S3, WOR-316 S1 |
 | "Dev Mac" wording in other issues | Reads as the reference runner (S6-5) | WOR-322 S2, WOR-312 S1-S2, WOR-316 S2, WOR-311 |
@@ -102,7 +102,7 @@ Every item has an owner issue. Items marked *resolved* only need the owner to up
 | GTK inspector bindings never fire before tkzmux's capture-phase match | Test | WOR-315 S2 |
 | GNOME and KDE cells marked *inferred* | Non-gating smoke | WOR-314 S6 |
 | SUPER+SHIFT+comma becomes a claim once `reloadConfig` has a handler | Bypassed until then | WOR-324 S5 (audit) |
-| Rewording of the `tkzmux-hook` row in CLAUDE.md for Glibc | Unchanged until then | WOR-305 S5 |
+| Rewording of the `tkzmux-hook` row in CLAUDE.md for Glibc | *Resolved:* "libc only (Darwin/Glibc/Musl), never Foundation"; HookHygieneTests and a ci-linux grep enforce it | WOR-305 S5 |
 | Two-platform rewrite of CLAUDE.md and README (macOS-only wording at `CLAUDE.md:3`) | Unchanged until then | WOR-324 |
 | Inter tracking calibration | Pinned Inter 4.x, tracking fitted to NSFont dumps | WOR-312 S8 |
 | Folder picker without a FileChooser portal | Fall back to a tkzmux-drawn `DialogSpec` and log the reason | WOR-320 S4 |

@@ -43,7 +43,7 @@ make clean                  # rm -rf .build build
 | `TkzApp` | Swift | `AppDelegate`, window, sidebar, status bar, palette, `TerminalHost` |
 | `tkzmux` | exe | the app |
 | `tkzmux-vtdump` | exe | headless record/replay/render/abi tooling |
-| `tkzmux-hook` | exe | hook relay, shared by every agent's shim; `import Darwin` only, < 20 ms |
+| `tkzmux-hook` | exe | hook relay, shared by every agent's shim; libc only (Darwin/Glibc/Musl), never Foundation, < 20 ms |
 
 Tests: one target per Swift library module under `Tests/<Module>Tests`, using Swift Testing (`import Testing`, `@Test`, `#expect`).
 

@@ -2,6 +2,9 @@
 // the user's own login shell instead of a fixed `/bin/zsh` since the login-shell work (see `LoginShell`).
 import Foundation
 import TkzCore
+#if os(Linux)
+import Glibc
+#endif
 
 /// Builds the environment (and the shell command line) for a session's pty.
 ///
@@ -24,7 +27,7 @@ public enum TerminalEnvironment {
         // caller's environment, as does running the binary from such a shell. Inheriting them
         // hands every managed session the identity of the session that started tkzmux.
         "CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT",
-    ]
+    ] + platformStrippedKeys
 
     /// Any variable with one of these prefixes is stripped too, so a marker introduced by a future
     /// Claude Code version is covered without a code change here.
@@ -45,7 +48,55 @@ public enum TerminalEnvironment {
     ///
     /// `CLAUDE_CONFIG_DIR` deliberately does **not** match: an inherited config dir is left alone
     /// so the environment can choose the account.
-    public static let strippedKeyPrefixes = ["CLAUDE_CODE_"]
+    public static let strippedKeyPrefixes = ["CLAUDE_CODE_"] + platformStrippedKeyPrefixes
+
+    #if os(Linux)
+    /// What a Linux launch hands *us* that describes our own process or whatever started it, and
+    /// would be wrong in every pane:
+    /// - systemd's per-unit markers: they name tkzmux's unit (or the launcher's), not the pane's.
+    /// - the launch's activation token and startup id: single-use, and meant for our window.
+    /// - the identity of a host terminal (VTE, an X11 `WINDOWID`); the prefixes cover the rest.
+    /// - `VK_LOADER_DRIVERS_SELECT`, which the release launcher may set to pin our renderer's
+    ///   Vulkan driver (WOR-323): a GPU program run in a pane picks its own.
+    static let platformStrippedKeys = [
+        "JOURNAL_STREAM", "INVOCATION_ID", "MANAGERPID", "MANAGERPIDFDID", "SYSTEMD_EXEC_PID",
+        "XDG_ACTIVATION_TOKEN", "DESKTOP_STARTUP_ID",
+        "GIO_LAUNCHED_DESKTOP_FILE", "GIO_LAUNCHED_DESKTOP_FILE_PID",
+        "VTE_VERSION", "WINDOWID",
+        "VK_LOADER_DRIVERS_SELECT",
+    ]
+
+    /// A host terminal's own variables (window ids, control sockets, resource dirs). Inherited, they
+    /// point a pane's tools at a terminal that is not the one they run in; `GHOSTTY_*` most of
+    /// all, since a pane identifies as Ghostty and Ghostty's shell integration keys on them.
+    static let platformStrippedKeyPrefixes = ["KITTY_", "ALACRITTY_", "WEZTERM_", "GHOSTTY_"]
+    #else
+    static let platformStrippedKeys: [String] = []
+    static let platformStrippedKeyPrefixes: [String] = []
+    #endif
+
+    /// `LANG` when the inherited environment has none. macOS always has `en_US.UTF-8`; a minimal
+    /// Linux image may not have generated it, and naming a missing locale leaves every child on
+    /// the ASCII `C` locale with a warning, so Linux falls back to glibc's built-in `C.UTF-8`.
+    #if os(Linux)
+    static let fallbackLanguage = pickFallbackLanguage(isAvailable: localeIsAvailable)
+    #else
+    static let fallbackLanguage = "en_US.UTF-8"
+    #endif
+
+    #if os(Linux)
+    static func pickFallbackLanguage(isAvailable: (String) -> Bool) -> String {
+        isAvailable("en_US.UTF-8") ? "en_US.UTF-8" : "C.UTF-8"
+    }
+
+    /// Whether glibc can load `name`. Only the `LC_CTYPE` category is asked for: `LC_ALL_MASK` is
+    /// a macro Swift cannot import, and the character set is what a UTF-8 `LANG` is for.
+    static func localeIsAvailable(_ name: String) -> Bool {
+        guard let locale = newlocale(LC_CTYPE_MASK, name, nil) else { return false }
+        freelocale(locale)
+        return true
+    }
+    #endif
 
     /// The terminfo database shipped with tkzmux, or nil if it is missing.
     ///
@@ -78,6 +129,10 @@ public enum TerminalEnvironment {
     ///     instance listens on its own, so a pane's frames come back to the instance that spawned
     ///     it and never to another tkzmux sharing the directory.
     ///   - baseEnvironment: what to inherit. Injectable so tests never depend on the real process env.
+    ///   - overrides: set on top of `baseEnvironment` after the strip lists are applied, so they
+    ///     reach the child even when the process environment no longer has them (Linux unsets
+    ///     `GDK_SCALE`/`GDK_DPI_SCALE` before GTK starts and hands the user's values back here).
+    ///     tkzmux's own variables and `agentEnvironment` still win over them.
     ///   - home: the user's home directory (`TKZMUX_USER_ZDOTDIR`). Defaults to `HOME` from
     ///     `baseEnvironment`, then to `NSHomeDirectory()`.
     ///   - terminfoDirectory: overrides the bundled terminfo database (tests, or a bundle-less build).
@@ -94,6 +149,7 @@ public enum TerminalEnvironment {
         agentEnvironment: [String: String] = [:],
         tkzmuxDir: URL,
         baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        overrides: [String: String] = [:],
         home: String? = nil,
         terminfoDirectory: URL? = TerminalEnvironment.bundledTerminfoDirectory,
         shell: LoginShell? = nil,
@@ -106,6 +162,7 @@ public enum TerminalEnvironment {
         for key in env.keys.filter({ name in strippedKeyPrefixes.contains(where: name.hasPrefix) }) {
             env.removeValue(forKey: key)
         }
+        for (key, value) in overrides { env[key] = value }
 
         let userHome = home ?? baseEnvironment["HOME"] ?? NSHomeDirectory()
 
@@ -117,7 +174,7 @@ public enum TerminalEnvironment {
         if let terminfoDirectory {
             env["TERMINFO"] = terminfoDirectory.path
         }
-        env["LANG"] = baseEnvironment["LANG"] ?? "en_US.UTF-8"
+        env["LANG"] = env["LANG"] ?? fallbackLanguage
 
         let bin = tkzmuxDir.appending(path: "bin", directoryHint: .isDirectory).path
         switch shell.family {
@@ -149,6 +206,7 @@ public enum TerminalEnvironment {
     ///
     /// - Parameters:
     ///   - shell: defaults to the login shell `baseEnvironment` names (`LoginShell.detect`).
+    ///   - overrides: see `make`; they do not take part in choosing the shell.
     ///   - wrapperPresent: whether the shell's entry wrapper exists under `tkzmuxDir`; decides
     ///     between the integrated and the plain login argv for bash and fish (see
     ///     `LoginShell.argv`). Defaults to looking at the disk.
@@ -159,6 +217,7 @@ public enum TerminalEnvironment {
         agentEnvironment: [String: String] = [:],
         tkzmuxDir: URL,
         baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        overrides: [String: String] = [:],
         home: String? = nil,
         terminfoDirectory: URL? = TerminalEnvironment.bundledTerminfoDirectory,
         shell: LoginShell? = nil,
@@ -177,6 +236,7 @@ public enum TerminalEnvironment {
                 agentEnvironment: agentEnvironment,
                 tkzmuxDir: tkzmuxDir,
                 baseEnvironment: baseEnvironment,
+                overrides: overrides,
                 home: home,
                 terminfoDirectory: terminfoDirectory,
                 shell: shell,

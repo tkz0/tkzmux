@@ -4,7 +4,11 @@
 // later tickets (M1.9 session semantics, M2 sidebar, M3 Claude integration) consume it and must not
 // need to edit this file. Every case is `Sendable` and carries only value types, because events are
 // produced on a session's IO queue and consumed on the main actor through an `AsyncStream`.
+#if canImport(Darwin)
 import Darwin
+#elseif os(Linux)
+import Glibc
+#endif
 
 /// How a session's child process ended.
 ///

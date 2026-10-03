@@ -41,7 +41,7 @@ Swift Build does not pass `LD_LIBRARY_PATH` on to the tasks it runs, so the tool
 
 ## Drift tests
 
-These are part of `swift test` (`Tests/TkzTerminalCoreTests/`). macOS CI runs them today; on Linux they run once WOR-305 builds TkzTerminalCore there. JSON is always compared in canonical form, because corelibs `JSONSerialization` pretty-prints differently from Darwin's.
+These are part of `swift test` (`Tests/TkzTerminalCoreTests/`). They run on both OSes; on Linux since WOR-305 S2 moved TkzTerminalCore into the shared graph. JSON is always compared in canonical form, because corelibs `JSONSerialization` pretty-prints differently from Darwin's.
 
 | Test | Fails when |
 |---|---|

@@ -1,5 +1,11 @@
-// `tkzmux-hook settings-merge` — the only subcommand allowed to write to stdout. `Darwin` only.
+// `tkzmux-hook settings-merge` — the only subcommand allowed to write to stdout. libc only.
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 private let injectedEvents = [
     "SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "Notification", "SubagentStart", "SubagentStop",

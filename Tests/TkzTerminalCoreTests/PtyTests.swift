@@ -1,10 +1,18 @@
+#if canImport(Darwin)
 import Darwin
+#elseif os(Linux)
+import Glibc
+#endif
 import Dispatch
 import Foundation
 import Synchronization
 import Testing
 
 @testable import TkzTerminalCore
+
+#if os(Linux)
+import TkzPtyShim
+#endif
 
 // MARK: - Helpers
 
@@ -74,6 +82,59 @@ private func openFileDescriptorCount() -> Int {
     (try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count) ?? -1
 }
 
+/// The interactive-shell tests drive zsh. Every Mac has it; a Linux dev box may not, and CI
+/// installs it, so there it is a visible skip rather than a failure. Shared with
+/// `TerminalEnvironmentTests`.
+#if os(Linux)
+let zshAvailable = FileManager.default.isExecutableFile(atPath: "/bin/zsh")
+#else
+let zshAvailable = true
+#endif
+let zshMissing: Comment = "zsh is not installed at /bin/zsh (CI installs it)"
+
+#if os(Linux)
+/// Both Linux spawn paths: clone3(CLONE_PIDFD), and the fork() + pidfd_open() fallback.
+private let spawnPaths: [UInt32] = [0, TKZ_PTY_SPAWN_FORCE_FORK]
+
+private func realPath(_ path: String) -> String {
+    guard let resolved = realpath(path, nil) else { return path }
+    defer { free(resolved) }
+    return String(cString: resolved)
+}
+
+/// `/bin/true` on the given spawn path.
+private func trueSpawn(flags: UInt32) -> PtySpawn {
+    var spawn = PtySpawn(
+        executablePath: "/bin/true",
+        argv: ["true"],
+        environment: ["PATH": "/usr/bin:/bin"],
+        size: TerminalSize(rows: 24, cols: 80)
+    )
+    spawn.shimFlags = flags
+    return spawn
+}
+
+/// Spawn, wait for the one exit event, drop the Pty. Woken by the event rather than polled, so a
+/// thousand cycles stay fast.
+private func spawnToExit(
+    _ spawn: PtySpawn, queue: DispatchQueue
+) async throws -> (exit: PtyExit?, pid: pid_t, pidFD: Int32) {
+    let (exits, continuation) = AsyncStream.makeStream(of: PtyExit.self)
+    let pty = try Pty(
+        spawn: spawn,
+        ioQueue: queue,
+        onData: { _ in },
+        onExit: {
+            continuation.yield($0)
+            continuation.finish()
+        }
+    )
+    var exit: PtyExit?
+    for await e in exits { exit = e }
+    return (exit, pty.pid, pty.pidFD)
+}
+#endif
+
 // MARK: - Tests
 
 @Suite(.serialized)
@@ -98,7 +159,11 @@ struct PtyTests {
 
         #expect(await waitUntil { sink.exit != nil }, "child never exited")
         #expect(sink.text.contains("40 120"), "stty size reported: \(sink.text)")
+        #if os(Linux)
+        #expect(sink.text.contains("/dev/pts/"), "tty reported: \(sink.text)")
+        #else
         #expect(sink.text.contains("/dev/ttys"), "tty reported: \(sink.text)")
+        #endif
         #expect(sink.exit?.exitCode == 3)
         #expect(sink.exit?.signal == nil)
         #expect(pty.hasExited)
@@ -109,7 +174,8 @@ struct PtyTests {
     }
 
     /// Acceptance: TIOCSWINSZ reaches a running shell.
-    @Test func resizeIsVisibleToTheShell() async throws {
+    @Test(.enabled(if: zshAvailable, zshMissing))
+    func resizeIsVisibleToTheShell() async throws {
         let dir = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
 
@@ -149,7 +215,8 @@ struct PtyTests {
 
     /// Acceptance: the foreground job of the pty is visible without any shell integration — which is
     /// also the observable proof that job control works (the child runs in its *own* process group).
-    @Test func foregroundProcessTracksTheRunningJob() async throws {
+    @Test(.enabled(if: zshAvailable, zshMissing))
+    func foregroundProcessTracksTheRunningJob() async throws {
         let dir = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
 
@@ -170,16 +237,22 @@ struct PtyTests {
         // At the prompt the shell itself is the foreground group.
         #expect(await waitUntil { pty.foregroundProcess()?.pgid == shellPid })
 
+        #if os(Linux)
+        // /proc/<pid>/exe is the resolved path, and /bin is a symlink on a merged-/usr system.
+        let sleepPath = realPath("/bin/sleep")
+        #else
+        let sleepPath = "/bin/sleep"
+        #endif
         send(pty, "/bin/sleep 5\r")
         #expect(
-            await waitUntil { pty.foregroundProcess()?.executablePath == "/bin/sleep" },
+            await waitUntil { pty.foregroundProcess()?.executablePath == sleepPath },
             "foreground never became sleep: \(String(describing: pty.foregroundProcess()))"
         )
         let fg = try #require(pty.foregroundProcess())
         #expect(fg.pgid > 0)
         // Job control: the job is in a different process group than the shell.
         #expect(fg.pgid != shellPid)
-        #expect(fg.executablePath == "/bin/sleep")
+        #expect(fg.executablePath == sleepPath)
         let expected = URL(fileURLWithPath: dir.path).resolvingSymlinksInPath().path
         let actual = URL(fileURLWithPath: fg.currentDirectory ?? "").resolvingSymlinksInPath().path
         #expect(actual == expected, "cwd of the job: \(actual)")
@@ -263,4 +336,105 @@ struct PtyTests {
         pty.terminate(signal: SIGKILL)
         #expect(await waitUntil { sink.exit != nil })
     }
+
+    #if os(Linux)
+    /// A child that is gone before the exit source is even resumed is still reaped (the pidfd is
+    /// readable from the start, and the one-shot poll after resume covers it too).
+    @Test(.timeLimit(.minutes(1)), arguments: spawnPaths)
+    func childThatExitsImmediatelyIsReaped(flags: UInt32) async throws {
+        let result = try await spawnToExit(trueSpawn(flags: flags), queue: DispatchQueue(label: "tkzmux.test.true"))
+        #expect(result.pidFD >= 0, "the shim returned no pidfd")
+        #expect(result.exit?.exitCode == 0)
+        #expect(kill(result.pid, 0) == -1 && errno == ESRCH, "child \(result.pid) was not reaped")
+    }
+
+    /// The exit is reported through the pidfd, not the hangup: a background job that ignores SIGHUP
+    /// keeps the slave open, so the master never reads EOF while it lives. Without the pidfd source
+    /// the exit would wait for the holder (60 s); the `sleep 0.2` puts the exit after the one-shot
+    /// poll that follows resume().
+    @Test(.timeLimit(.minutes(1)), arguments: spawnPaths)
+    func exitArrivesThroughThePidfdWhileTheSlaveIsHeldOpen(flags: UInt32) async throws {
+        var spawn = PtySpawn(
+            executablePath: "/bin/sh",
+            argv: ["/bin/sh", "-c", "(trap '' HUP; exec sleep 60) & echo \"holder=$!\"; sleep 0.2; exit 7"],
+            environment: ["PATH": "/usr/bin:/bin"],
+            size: TerminalSize(rows: 24, cols: 80)
+        )
+        spawn.shimFlags = flags
+        let (pty, sink) = try makePty(spawn, label: "pidfd")
+        #expect(pty.pidFD >= 0, "the shim returned no pidfd")
+
+        #expect(await waitUntil(.seconds(10)) { sink.exit != nil }, "exit never arrived: \(sink.text)")
+        let holder = try #require(
+            sink.text.split(whereSeparator: \.isNewline)
+                .first { $0.hasPrefix("holder=") }
+                .flatMap { pid_t($0.dropFirst("holder=".count).trimmingCharacters(in: .whitespaces)) },
+            "no holder pid in: \(sink.text)"
+        )
+        defer { kill(holder, SIGKILL) }
+        #expect(kill(holder, 0) == 0, "the holder was gone, so this proves nothing about the pidfd")
+        #expect(sink.exit?.exitCode == 7)
+        #expect(kill(pty.pid, 0) == -1 && errno == ESRCH, "child \(pty.pid) was not reaped")
+    }
+
+    /// 1000 spawn/exit cycles per spawn path leave no fd behind: not the master, not the pidfd
+    /// (closed by the exit source's cancel handler), not the shim's error pipe. The tolerance has the
+    /// same reasoning as `execFailureReportsErrnoWithoutLeaking`: the count is process-wide, and a
+    /// leak of one fd per cycle is twice the tolerance.
+    @Test(.timeLimit(.minutes(2)), arguments: spawnPaths)
+    func spawnExitCyclesLeakNoDescriptors(flags: UInt32) async throws {
+        let queue = DispatchQueue(label: "tkzmux.test.cycles")
+        let iterations = 1000
+        let before = openFileDescriptorCount()
+        var failures = 0
+        var noPidfd = 0
+        var lastPid: pid_t = 0
+        for _ in 0..<iterations {
+            let result = try await spawnToExit(trueSpawn(flags: flags), queue: queue)
+            if result.exit?.exitCode != 0 { failures += 1 }
+            if result.pidFD < 0 { noPidfd += 1 }
+            lastPid = result.pid
+        }
+        // The cancel handlers that close the last master and pidfd run on `queue` after the exit.
+        queue.sync {}
+        let after = openFileDescriptorCount()
+
+        #expect(failures == 0, "\(failures) of \(iterations) cycles did not exit 0")
+        #expect(noPidfd == 0, "\(noPidfd) of \(iterations) spawns had no pidfd")
+        #expect(
+            after - before < iterations / 2,
+            "fd count went \(before) → \(after) over \(iterations) spawn/exit cycles")
+        #expect(kill(lastPid, 0) == -1 && errno == ESRCH, "child \(lastPid) was not reaped")
+    }
+
+    /// glibc (2.44) makes sigaction(SIGABRT) take its abort lock, which posix_spawn() holds for
+    /// reading while it clones. A raw clone3() child inherits that lock in whatever state another
+    /// thread left it, so the child resets its signals with bare system calls. With the glibc
+    /// wrappers, a pane spawn racing any posix_spawn (Foundation's Process, `git` from GitStatus)
+    /// hung the child before exec, and the spawn with it; this reproduced it within 300 spawns.
+    @Test(.timeLimit(.minutes(1)), arguments: spawnPaths)
+    func spawnsWhileAnotherThreadPosixSpawns(flags: UInt32) async throws {
+        let stop = Mutex(false)
+        let hammer = Thread {
+            let argv: [UnsafeMutablePointer<CChar>?] = [strdup("true"), nil]
+            defer { free(argv[0]) }
+            while !stop.withLock({ $0 }) {
+                var pid: pid_t = 0
+                guard posix_spawn(&pid, "/bin/true", nil, nil, argv, nil) == 0 else { continue }
+                var status: Int32 = 0
+                while waitpid(pid, &status, 0) < 0 && errno == EINTR {}
+            }
+        }
+        hammer.start()
+        defer { stop.withLock { $0 = true } }
+
+        let queue = DispatchQueue(label: "tkzmux.test.posix-spawn")
+        var failures = 0
+        for _ in 0..<300 {
+            let result = try await spawnToExit(trueSpawn(flags: flags), queue: queue)
+            if result.exit?.exitCode != 0 { failures += 1 }
+        }
+        #expect(failures == 0, "\(failures) of 300 spawns did not exit 0")
+    }
+    #endif
 }

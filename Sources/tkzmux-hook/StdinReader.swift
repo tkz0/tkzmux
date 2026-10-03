@@ -1,5 +1,11 @@
-// Reads the hook payload from stdin. `Darwin` only.
+// Reads the hook payload from stdin. libc only.
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#elseif canImport(Musl)
+import Musl
+#endif
 
 /// Reads stdin to EOF, keeping at most `cap` bytes. Bytes beyond the cap are still drained (so
 /// Claude Code never sees a broken pipe / SIGPIPE while writing its side) but discarded; `hitCap`

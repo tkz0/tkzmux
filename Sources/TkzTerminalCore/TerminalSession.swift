@@ -33,7 +33,11 @@
 // (`write(ptyBytes:)`) is *synchronous* so it can also be driven straight from a test or from
 // `tkzmux-vtdump replay` with no scheduling in between. `renderSignal` is the seam the view layer
 // (M1.6) wires a `DispatchSourceUserDataOr` to; this module never touches AppKit.
+#if canImport(Darwin)
 import Darwin
+#elseif os(Linux)
+import Glibc
+#endif
 import Foundation
 import Synchronization
 import GhosttyVt

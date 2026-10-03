@@ -8,6 +8,7 @@ How to set up a Linux host to build and test the tkzmux Linux port. The referenc
 
 ```text
 pin swift  6.3.3    swift-6.3.3-RELEASE, swift.org ubuntu24.04 x86_64 tarball
+pin static-sdk 0.1.0 sha256:87c3eaf908e67c0e13a84367119e12273cec1d2cd3d81f7d74bb36722d6b607b swift-6.3.3-RELEASE_static-linux-0.1.0, the musl Static Linux SDK for the shipped tkzmux-hook (hook.md)
 pin image  swift:6.3.3-noble@sha256:cd45c27b3abc42310c33cfaf3008b18156cbdc9187834c9617e8f43a26d2675c
 pin zig    0.16     libghostty-vt archive (WOR-302)
 pin glslc  2026.3   shaderc 2026.3; SPIR-V output differs between glslc versions (WOR-313 drift check)
@@ -93,7 +94,7 @@ export PATH="$HOME/.local/share/swift/6.3.3/usr/bin:$PATH"   # plus zig 0.16.0 a
 ```
 
 - No `LD_LIBRARY_PATH` and no `SWIFT_EXEC` wrapper. Both build systems work as installed: `swift build`, `swift test` and `swift package describe` with `--build-system native` and with `--build-system swiftbuild` (WOR-303 S1 on this repo; [build.md](build.md)), and `--static-swift-stdlib` hello worlds with both (`dev-env.sh --smoke`).
-- **The toolchain's `ld.lld` is the exception.** It carries `RUNPATH $ORIGIN/../lib` (that is `usr/lib`, not `usr/lib/swift/linux`), so the copy above does not reach it and `ldd usr/bin/ld.lld` still reports `libxml2.so.2 => not found` on the reference machine. `-use-ld=lld` needs the installed `libxml2-legacy` package ([spikes.md](spikes.md#link-matrix)). The default linker is gold, so nothing in the build needs lld today.
+- **The toolchain's `ld.lld` is the exception.** It carries `RUNPATH $ORIGIN/../lib` (that is `usr/lib`, not `usr/lib/swift/linux`), so the copy above does not reach it and `ldd usr/bin/ld.lld` still reports `libxml2.so.2 => not found` on the reference machine. `-use-ld=lld` needs the installed `libxml2-legacy` package ([spikes.md](spikes.md#link-matrix)). The default linker is gold, so the host build does not need lld. The musl build of `tkzmux-hook` does, through the Static Linux SDK ([hook.md](hook.md#building-it-locally)).
 - Nothing in these steps is specific to this host, so the `archlinux` CI container (ADR-0002 D5) uses them as written: `.github/workflows/ci-linux.yml` installs the same tarball, checks its signature, makes the ncurses links and takes `libxml2.so.2` from the `libxml2-legacy` package ([build.md](build.md#linux-ci)).
 
 **Superseded: a compat directory on `LD_LIBRARY_PATH`.** The reference machine first ran with the ncurses links plus Ubuntu noble's `libxml2.so.2` 2.9.14 and its ICU 74 libraries in a separate directory on `LD_LIBRARY_PATH`. That works for `--build-system native` only. **The swiftbuild backend drops `LD_LIBRARY_PATH`** for the compiler and linker it spawns, so `swift build --build-system swiftbuild` compiled and then failed at the link step: `swiftc: error while loading shared libraries: libncurses.so.6: cannot open shared object file`. The noble `.deb`s could not move into the RUNPATH directory either: RUNPATH applies only to an object's direct dependencies, and the noble `libxml2.so.2` has no RUNPATH of its own to find ICU 74. `libxml2-legacy` links Arch's own ICU, which is why it replaced them. Nothing needs `LD_LIBRARY_PATH` or a `SWIFT_EXEC` wrapper any more; `dev-env.sh` reports a toolchain that still does as a gap.

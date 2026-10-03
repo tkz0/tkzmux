@@ -18,6 +18,9 @@
 // checked for RunLoop/Timer APIs, which never fire under the Linux main loop. A target moved into
 // `shared` or `linuxOnly` is covered without touching the test.
 import PackageDescription
+#if os(Linux)
+import Foundation
+#endif
 
 // MARK: - Shared (macOS and Linux)
 
@@ -29,6 +32,8 @@ let ghosttyVtPath = "vendor/ghostty-vt/ghostty-vt.xcframework"
 
 let sharedProducts: [Product] = [
     .library(name: "TkzCore", targets: ["TkzCore"]),
+    .library(name: "TkzTerminalCore", targets: ["TkzTerminalCore"]),
+    .executable(name: "tkzmux-hook", targets: ["tkzmux-hook"]),
 ]
 
 let sharedTargets: [Target] = [  // hygiene-scan
@@ -56,11 +61,38 @@ let sharedTargets: [Target] = [  // hygiene-scan
         publicHeadersPath: "include"
     ),
 
+    // fork/exec on a pty, the only C that runs in the child (WOR-305: clone3/pidfd on Linux).
+    .target(
+        name: "TkzPtyShim",
+        dependencies: ["TkzPlatformShim"],
+        path: "Sources/TkzPtyShim",
+        publicHeadersPath: "include"
+    ),
+
     .target(
         name: "TkzCore",
         dependencies: ["TkzPlatform"],
         path: "Sources/TkzCore"
     ),
+
+    // MARK: Terminal engine
+    .target(
+        name: "TkzTerminalCore",
+        dependencies: [
+            "TkzCore",
+            "TkzPtyShim",
+            "GhosttyVt",
+        ],
+        path: "Sources/TkzTerminalCore",
+        // The files live under the target (Sources/<target>/Resources), so `Bundle.module` works
+        // for `swift test` / `swift run`; the repo-root Resources/* entries are symlinks to them.
+        // make-app.sh copies the .bundle into the .app.
+        resources: [.copy("Resources/terminfo")],
+        // libghostty-vt's vendored simdutf/highway are built without libc++ (verified M1.1):
+        // no linkerSettings: [.linkedLibrary("c++")] needed. Linux needs libm (see GhosttyVt).
+        linkerSettings: [.linkedLibrary("m", .when(platforms: [.linux]))]
+    ),
+    .testTarget(name: "TkzTerminalCoreTests", dependencies: ["TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalCoreTests", resources: [.copy("Fixtures")]),
 
     .target(
         name: "Persistence",
@@ -90,9 +122,31 @@ let sharedTargets: [Target] = [  // hygiene-scan
     // geometry in.
     .target(name: "TkzRenderCore", dependencies: ["TkzShaderTypes"], path: "Sources/TkzRenderCore"),
     .testTarget(name: "TkzRenderCoreTests", dependencies: ["TkzRenderCore", "TkzShaderTypes"], path: "Tests/TkzRenderCoreTests"),
+
+    // The hook relay: libc only (Darwin, Glibc or Musl), never Foundation (WOR-305 S5). On Linux
+    // it carries the Swift runtime statically, per product and never through the global
+    // `--static-swift-stdlib` (ADR-0001), because it is copied out of the build tree and must run
+    // under `env -i`. The shipped hook is the musl build (docs/linux/hook.md, WOR-305 S6).
+    .executableTarget(
+        name: "tkzmux-hook",
+        path: "Sources/tkzmux-hook",
+        linkerSettings: [.unsafeFlags(["-static-stdlib"], .when(platforms: [.linux]))]
+    ),
 ]
 
 // MARK: - Linux only
+
+// Linux's AgentBridgeTests compiles only the hook's tests until AgentBridge joins the Linux graph
+// (WOR-306); neither file imports AgentBridge. The rest of the directory is excluded, listed here
+// so SwiftPM does not warn about it, and the Mac's AgentBridgeTests compiles all of it.
+let agentBridgeHookTests = ["HookHygieneTests.swift", "HookSupportPathTests.swift"]
+#if os(Linux)
+let agentBridgeTestsMacOnly = ((try? FileManager.default.contentsOfDirectory(
+    atPath: Context.packageDirectory + "/Tests/AgentBridgeTests")) ?? [])
+    .filter { !agentBridgeHookTests.contains($0) }.sorted()
+#else
+let agentBridgeTestsMacOnly: [String] = []
+#endif
 
 let linuxOnlyProducts: [Product] = [
     // Same product name as the Mac app, so the binary is `tkzmux` on both OSes.
@@ -148,6 +202,15 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
     // them, and neither is in the Linux graph yet (WOR-304 S3).
     .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzCore"], path: "Tests/PersistenceTests"),
 
+    // The hook's tests only (see agentBridgeHookTests above).
+    .testTarget(
+        name: "AgentBridgeTests",
+        dependencies: ["TkzPlatform"],
+        path: "Tests/AgentBridgeTests",
+        exclude: agentBridgeTestsMacOnly,
+        sources: agentBridgeHookTests
+    ),
+
     .testTarget(
         name: "GhosttyVtSmokeTests",
         dependencies: ["GhosttyVt"],
@@ -161,8 +224,6 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
 let macOnlyProducts: [Product] = [
     .executable(name: "tkzmux", targets: ["tkzmux"]),
     .executable(name: "tkzmux-vtdump", targets: ["tkzmux-vtdump"]),
-    .executable(name: "tkzmux-hook", targets: ["tkzmux-hook"]),
-    .library(name: "TkzTerminalCore", targets: ["TkzTerminalCore"]),
     .library(name: "TkzTerminalRender", targets: ["TkzTerminalRender"]),
     .library(name: "TkzTerminalView", targets: ["TkzTerminalView"]),
     .library(name: "AgentBridge", targets: ["AgentBridge"]),
@@ -172,29 +233,7 @@ let macOnlyProducts: [Product] = [
 ]
 
 let macOnlyTargets: [Target] = [
-    // MARK: C targets
-    .target(
-        name: "TkzPtyShim",
-        path: "Sources/TkzPtyShim",
-        publicHeadersPath: "include"
-    ),
-
     // MARK: Terminal engine
-    .target(
-        name: "TkzTerminalCore",
-        dependencies: [
-            "TkzCore",
-            "TkzPtyShim",
-            "GhosttyVt",
-        ],
-        path: "Sources/TkzTerminalCore",
-        // The files live under the target (Sources/<target>/Resources), so `Bundle.module` works
-        // for `swift test` / `swift run`; the repo-root Resources/* entries are symlinks to them.
-        // make-app.sh copies the .bundle into the .app.
-        resources: [.copy("Resources/terminfo")]
-        // libghostty-vt's vendored simdutf/highway are built without libc++ (verified M1.1):
-        // no linkerSettings: [.linkedLibrary("c++")] needed.
-    ),
     .target(
         name: "TkzTerminalRender",
         dependencies: ["TkzCore", "TkzTerminalCore", "TkzShaderTypes", "TkzRenderCore"],
@@ -240,13 +279,8 @@ let macOnlyTargets: [Target] = [
         dependencies: ["TkzTerminalCore", "TkzTerminalRender", "TkzRenderCore", "Persistence"],
         path: "Sources/tkzmux-vtdump"
     ),
-    .executableTarget(
-        name: "tkzmux-hook",
-        path: "Sources/tkzmux-hook"
-    ),
 
     // MARK: Tests (one per Swift library module; Swift Testing)
-    .testTarget(name: "TkzTerminalCoreTests", dependencies: ["TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalCoreTests", resources: [.copy("Fixtures")]),
     .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "TkzRenderCore", "GhosttyVt", "TkzPNG"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
     .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
     // TkzTerminalCore + GhosttyVt for the shell-integration harness, which spawns each login

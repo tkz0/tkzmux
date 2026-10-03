@@ -30,7 +30,7 @@ Docs that do not exist yet are listed by file name and become links when they ar
 | [vendoring.md](vendoring.md) | libghostty-vt for Linux: artifact bundle, compiler_rt localization, ABI files, terminfo, binary checks | WOR-302 S4 |
 | [build.md](build.md) | Two-platform Package.swift, build-system choice, Linux CI, resource lookup, version stamping | WOR-303 S1; extended by WOR-303 S2, S3, S4 |
 | [platform.md](platform.md) | TkzPlatform: logging and signposts on Linux, the path table (XDG) and platform back-ends | WOR-304 S2; extended by WOR-304 S3 |
-| `hook.md` | `tkzmux-hook` on Linux: timing results and linkage choice | WOR-305 S6 |
+| [hook.md](hook.md) | `tkzmux-hook` on Linux: timing results and linkage choice | WOR-305 S6 |
 | `agents.md` | AgentBridge on Linux, real-agent probe traces, dotfile-sync collisions | WOR-306 S1 |
 | `parity.md` | Layout-dump schema, snapping kinds, golden update flow; then the parity runner and reference regeneration | WOR-307 S2; extended by WOR-322 |
 | `seams.md` | Seam protocols and their Linux owners | WOR-308 S2 |
