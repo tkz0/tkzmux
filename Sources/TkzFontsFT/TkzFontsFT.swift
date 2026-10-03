@@ -14,7 +14,9 @@
 // WOR-312 fills it in:
 //   S3  the FreeType library, bundled faces and their metrics (FreeTypeLibrary.swift,
 //       FreeTypeFace.swift, TerminalFaces.swift, BundledFonts.swift)
-//   S4  the private FcConfig, fallback and HarfBuzz cluster shaping
+//   S4  the private FcConfig, fallback and HarfBuzz cluster shaping (FontconfigConfiguration.swift,
+//       FontFallback.swift, ClusterShaper.swift; the pinned parity fonts are fetched by
+//       scripts/fetch-parity-fonts.sh from Tests/Parity/Fonts/fonts.lock.json)
 //   S5  the A8 rasterizer (dilation, synthetic bold, CBDT, COLRv1 skipping)
 //   S6  the thicken calibration; S7 the symbol subset; S8 Inter for chrome text
 

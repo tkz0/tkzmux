@@ -8,6 +8,10 @@
 //
 // Pixel size is `pointSize * scale` in Double, exactly as the Mac's `FontSet` builds its CTFonts
 // (14 pt at 1.6 is 22.400000000000002 px there too).
+//
+// Shaping (S4) runs in the same owner: `ClusterShaper` resolves a cluster to a bundled face or a
+// `FontFallback` face and shapes it. Fontconfig is only reached on a cache miss and never from
+// `init`; call `prewarm()` once, early, so the first miss does not build the fallback lists.
 
 import Foundation
 import Synchronization
@@ -27,28 +31,32 @@ public final class TerminalFaces: Sendable {
     public let pixelSize: CGFloat
     /// Cell geometry of the regular face, from its raw tables.
     public let metrics: CellMetrics
+    /// Where clusters the bundled faces cannot draw are resolved.
+    public let fallback: FontFallback
 
     private let owner: Mutex<Owner>
 
-    /// The library and the four faces. Only ever touched inside `owner.withLock`.
+    /// The library, the four faces and the shaper. Only ever touched inside `owner.withLock`.
     private final class Owner {
         let library: FreeTypeLibrary
         let faces: [FontStyle: FreeTypeFace]
+        let shaper: ClusterShaper
 
-        init(library: FreeTypeLibrary, faces: [FontStyle: FreeTypeFace]) {
+        init(library: FreeTypeLibrary, faces: [FontStyle: FreeTypeFace], shaper: ClusterShaper) {
             self.library = library
             self.faces = faces
+            self.shaper = shaper
         }
     }
 
     /// Opens the bundled faces.
-    public convenience init(pointSize: CGFloat, scale: CGFloat) throws {
+    public convenience init(pointSize: CGFloat, scale: CGFloat, fallback: FontFallback = .system) throws {
         guard let directory = BundledFonts.directory else { throw TerminalFacesError.bundledFontsNotFound }
-        try self.init(pointSize: pointSize, scale: scale, fontDirectory: directory)
+        try self.init(pointSize: pointSize, scale: scale, fontDirectory: directory, fallback: fallback)
     }
 
     /// Opens the four `BundledFonts.jetBrainsMonoFile` faces from `fontDirectory`.
-    public init(pointSize: CGFloat, scale: CGFloat, fontDirectory: URL) throws {
+    public init(pointSize: CGFloat, scale: CGFloat, fontDirectory: URL, fallback: FontFallback = .system) throws {
         let pixelSize = pointSize * scale
         let library = try FreeTypeLibrary()
         var faces: [FontStyle: FreeTypeFace] = [:]
@@ -68,7 +76,9 @@ public final class TerminalFaces: Sendable {
         self.scale = scale
         self.pixelSize = pixelSize
         self.metrics = metrics
-        self.owner = Mutex(Owner(library: library, faces: faces))
+        self.fallback = fallback
+        let shaper = ClusterShaper(library: library, primaries: faces, fallback: fallback, pixelSize: pixelSize)
+        self.owner = Mutex(Owner(library: library, faces: faces, shaper: shaper))
     }
 
     /// The PostScript name of `style`'s face.
@@ -89,5 +99,38 @@ public final class TerminalFaces: Sendable {
     /// `no-stem-darkening` as this stack's library reports it for `module` (`nil`: module absent).
     public func isStemDarkeningDisabled(module: String) -> Bool? {
         owner.withLock { $0.library.isStemDarkeningDisabled(module: module) }
+    }
+
+    // MARK: - Shaping (WOR-312 S4)
+
+    /// Shapes one grapheme cluster; `cellSpan` `nil` takes `CellSpan.guess`. Cached per scalars,
+    /// style and span.
+    public func shape(_ scalars: [Unicode.Scalar], style: FontStyle = .regular, cellSpan: Int? = nil) -> ShapedCluster {
+        owner.withLock { $0.shaper.shape(scalars, style: style, cellSpan: cellSpan) }
+    }
+
+    /// Convenience for a Swift `Character` (already a grapheme cluster).
+    public func shape(_ character: Character, style: FontStyle = .regular, cellSpan: Int? = nil) -> ShapedCluster {
+        shape(Array(character.unicodeScalars), style: style, cellSpan: cellSpan)
+    }
+
+    /// The PostScript name of a face `shape` returned, `"?"` for a handle it did not mint.
+    public func name(of face: FontFace) -> String {
+        owner.withLock { $0.shaper.name(of: face) } ?? "?"
+    }
+
+    /// The fontconfig font behind a fallback face, `nil` for a bundled face.
+    public func fallbackFace(of face: FontFace) -> FallbackFace? {
+        owner.withLock { $0.shaper.fallbackFace(of: face) }
+    }
+
+    /// Number of cached clusters (test/diagnostic hook).
+    var cachedClusterCount: Int {
+        owner.withLock { $0.shaper.cachedCount }
+    }
+
+    /// Builds the fallback lists off the calling thread (`FontFallback.prewarm`).
+    public func prewarm() async {
+        await fallback.prewarm()
     }
 }

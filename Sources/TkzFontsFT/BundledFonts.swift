@@ -27,6 +27,12 @@ public enum BundledFonts {
         ModuleResources.bundle.resourceURL?.appendingPathComponent("Fonts", isDirectory: true)
     }
 
+    /// The bundled font directories, first in every private fontconfig configuration
+    /// (`FontconfigConfiguration`). Empty when the bundle is missing.
+    public static var fontDirectories: [URL] {
+        directory.map { [$0] } ?? []
+    }
+
     /// The file name of `style`'s JetBrains Mono face.
     public static func jetBrainsMonoFile(_ style: FontStyle) -> String {
         switch style {

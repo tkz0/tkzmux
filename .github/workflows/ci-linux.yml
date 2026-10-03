@@ -73,6 +73,8 @@ jobs:
       # The Arch Linux Archive day the image was built from, so `pacman -Syu` installs the same
       # package set on every run. Empty means live mirrors (arch-latest).
       ARCH_SNAPSHOT: '2026/09/27'
+      # ParityFontsTests fails instead of skipping when the fetched parity fonts are missing.
+      TKZMUX_REQUIRE_PARITY_FONTS: '1'
     steps: &arch-steps
       # Before checkout: actions/checkout needs git in the container to fetch a real repository,
       # and actions/cache needs zstd.
@@ -92,6 +94,21 @@ jobs:
           pacman -Q glibc gcc binutils freetype2 harfbuzz fontconfig
 
       - uses: actions/checkout@v5
+
+      # WOR-312 S4: the pinned parity fonts (Tests/Parity/Fonts/fonts.lock.json), downloaded once
+      # per lockfile and SHA-256-checked by the script, into the directory the tests read
+      # ($HOME/.cache/tkzmux/parity-fonts). Parity mode resolves fallback faces from them alone, so
+      # this job and `ubuntu` must pin the same faces (ParityFontsTests).
+      - &parity-fonts-cache
+        name: Cache the parity fonts
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/tkzmux/parity-fonts
+          key: parity-fonts-${{ hashFiles('Tests/Parity/Fonts/fonts.lock.json') }}
+
+      - &parity-fonts-fetch
+        name: Fetch the parity fonts
+        run: scripts/fetch-parity-fonts.sh
 
       - name: Read the Swift pin
         id: pin
@@ -203,19 +220,23 @@ jobs:
       # system-library targets CFreeType, CHarfBuzz and CFontconfig. A target that joins the Linux
       # graph without GTK is added here (WOR-304 onwards).
       NON_GTK_TARGETS: TkzPlatformShim TkzPlatform TkzCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPlatformTests TkzCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzShadersSPIRVTests TkzFontsFT TkzFontsFTTests
+      TKZMUX_REQUIRE_PARITY_FONTS: '1'
     steps:
       - name: Install system packages
         run: |
           apt-get update -q
           # iproute2: `ss`, which ListeningPortsTests compares against (Arch has it in `base`).
           # libfreetype-dev, libharfbuzz-dev, libfontconfig-dev: TkzFontsFT's system libraries
-          # (WOR-312).
+          # (WOR-312). curl, ca-certificates: scripts/fetch-parity-fonts.sh.
           DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
             zsh fish git python3 ncurses-bin binutils pkg-config iproute2 \
-            libfreetype-dev libharfbuzz-dev libfontconfig-dev
+            libfreetype-dev libharfbuzz-dev libfontconfig-dev curl ca-certificates
           dpkg-query -W libfreetype-dev libharfbuzz-dev libfontconfig-dev
 
       - uses: actions/checkout@v5
+
+      - *parity-fonts-cache
+      - *parity-fonts-fetch
 
       - name: Read the Swift pin
         id: pin
@@ -252,4 +273,5 @@ jobs:
       image: archlinux:latest
     env:
       ARCH_SNAPSHOT: ''
+      TKZMUX_REQUIRE_PARITY_FONTS: '1'
     steps: *arch-steps

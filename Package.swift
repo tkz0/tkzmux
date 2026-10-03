@@ -134,7 +134,7 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
     // (Tests/TkzFontsFTTests guards it).
     .target(
         name: "TkzFontsFT",
-        dependencies: ["CFreeType", "CHarfBuzz", "CFontconfig", "TkzRenderCore", "TkzCore"],
+        dependencies: ["CFreeType", "CHarfBuzz", "CFontconfig", "TkzRenderCore", "TkzCore", "TkzPlatform"],
         path: "Sources/TkzFontsFT",
         resources: [.copy("Resources/Fonts")]
     ),
