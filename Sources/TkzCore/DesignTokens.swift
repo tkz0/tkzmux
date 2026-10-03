@@ -15,8 +15,9 @@
 // device pixels by construction.
 //
 // Filled so far: `Metrics` (the 13 `*Metrics` enums, window geometry, the status-bar hairline),
-// the radii and the font sizes those enums held. WOR-307 S4 adds the typography roles, S5 the
-// inline Auto Layout constants, S6 the private statics, radii, borders, surfaces and motion.
+// the radii and the font sizes those enums held (S3), and the typography roles with their tracking
+// and line metrics (S4, `DesignTokens+Typography.swift`). S5 adds the inline Auto Layout
+// constants, S6 the private statics, radii, borders, surfaces and motion.
 
 import Foundation
 
@@ -61,8 +62,8 @@ public enum DesignTokens {
     /// Lengths: rows, bars, panes, cards, insets, gaps, window geometry. `DesignTokens+Metrics.swift`.
     public enum Metrics {}
 
-    /// Text sizes. WOR-307 S4 turns these into roles (size, weight, effective face, tracking, line
-    /// height, baseline) and adds the literal-size font calls.
+    /// Text: the roles (size, effective face and weight, tracking, measured line height and
+    /// baseline) and the single-value text tokens. `DesignTokens+Typography.swift`.
     public enum Typography {
         /// The changes viewer's diff text (`ChangesMetrics.fontSize`).
         public static let changesDiffSize = DesignToken("Typography.changesDiffSize", 11.5, .unrounded)
@@ -92,8 +93,7 @@ public enum DesignTokens {
     public enum Surfaces {}
 
     /// Every token, in declaration order, for the design table and the tests.
-    public static let all: [DesignToken] = Metrics.all + [
-        Typography.changesDiffSize, Typography.changesFileSize,
+    public static let all: [DesignToken] = Metrics.all + Typography.all + [
         Radii.tab, Radii.glassSheet, Radii.promptCard, Radii.cheatSheet, Radii.settingsCard,
     ]
 

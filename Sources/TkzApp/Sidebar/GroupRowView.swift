@@ -39,7 +39,7 @@ public final class GroupRowView: NSTableCellView {
     // MARK: Fonts
 
     private let nameFont = Theme.Fonts.ui(Theme.Fonts.ui.caption, weight: .semibold)
-    private let addFont = Theme.Fonts.ui(12)
+    private let addFont = Theme.Fonts.font(DesignTokens.Typography.groupAdd)
 
     // MARK: Layers & subviews
 

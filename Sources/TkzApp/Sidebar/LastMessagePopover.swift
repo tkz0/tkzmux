@@ -83,7 +83,8 @@ public final class LastMessagePopover {
     public func show(message: String, relativeTo rect: NSRect, of view: NSView) {
         guard !message.isEmpty else { return }
         textView.string = message
-        popover.contentSize = Self.contentSize(for: message, font: textView.font ?? .systemFont(ofSize: 11))
+        popover.contentSize = Self.contentSize(for: message, font: textView.font
+            ?? .systemFont(ofSize: CGFloat(DesignTokens.Typography.lastMessage.size)))
         popover.show(relativeTo: rect, of: view, preferredEdge: .maxX)
     }
 

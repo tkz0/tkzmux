@@ -122,7 +122,7 @@ The same suite also lists every dumped edge that is off the 0.5 pt grid at 2.0. 
 | Namespace | Holds | Filled by |
 |---|---|---|
 | `DesignTokens.Metrics` | Lengths: the values of the 13 `*Metrics` enums, the window geometry (1240×820, minimum 720×420, sidebar 300/240/520, detail minimum 400), the status-bar hairline | WOR-307 S3; S5 adds the inline Auto Layout constants, S6 the private statics |
-| `DesignTokens.Typography` | Text sizes (so far only the changes viewer's) | S3; S4 turns them into roles with weight, effective face, tracking, line height and baseline |
+| `DesignTokens.Typography` | The text roles (below), the changes viewer's sizes, line spacing (`lineHeightMultiple`) and the Markdown indent | S3 (sizes); S4 (roles, line spacing) |
 | `DesignTokens.Radii` | Corner radii | S3 (the radii the Metrics enums held); S6 the inline ones |
 | `DesignTokens.Motion`, `DesignTokens.Surfaces` | Durations; per-surface radius and border, such as the palette's two modes | S6 |
 
@@ -137,6 +137,31 @@ Three suites hold this in place:
 `swift test --filter ThemeTests/printsDesignTable` prints every token with its value and tag after the colour table.
 
 To add a token, declare it in its namespace with its path as its name, add it to `all`, pin the literal it replaces in `DesignTokensTests.pins`, and forward the old name to it. Never change a value in a migration commit: a different number is a Mac-visible change.
+
+### Typography roles
+
+A `DesignTokens.Typography.Role` (`Sources/TkzCore/DesignTokens+Typography.swift`, WOR-307 S4) is one text style as the Mac draws it. It holds:
+
+- `size`, in points. It snaps `.unrounded`: text snaps at its baseline, not at its size.
+- `face`: `.ui` (the system font; `Theme.Fonts.ui.family` is nil) or `.mono` (`Theme.Fonts.mono`, JetBrains Mono).
+- `weight`: the weight drawn. A mono role is always `.regular`, because `Theme.Fonts.mono(_:weight:)` ignores its weight whenever JetBrains Mono or Menlo resolves. Five Mac sites still ask for another weight (MainToolbarController's cluster glyphs, `StatusBarView.pillFont`, SearchRowViews' status, MarkdownRenderer's bold code). They draw Regular, and the tokens record that rather than fix it.
+- `tracking` (points, the Mac's `.kern`) or `trackingEm` (a fraction of the size, which the Mac multiplies by the point size). `kern` gives the points at the role's size, computed the way the Mac computes it. WOR-312 calibrates Inter against these values, so they stay exactly as the Mac applies them.
+- `lineHeight` and `baseline`, plus the font name, ascender, descender and leading in `lineMetrics`. They are measured, never typed in (below).
+
+The Mac reads a role through `Theme.Fonts.font(_:)` (`ThemeAppKit.swift`). It calls `ui(size, weight:)` for a UI role and `mono(size)` for a mono role, which is what the literal calls it replaced passed. Where the Mac computes with a value (`.kern`, `MarkdownRenderer.bodySize`, `headerSize`, the `lineHeightMultiple`s), the site converts it with `CGFloat(…)` and keeps the arithmetic it had. The roles cover the 46 literal-size font calls, the 3 `.kern` literals, `StatusBarView.pillTracking` and the MarkdownRenderer sizes. The preset-wide sizes (`Theme.Fonts.ui.title`, `.body`, `.caption`, and the mono `.detail` and `.statusBar`) stay in `Theme.Fonts`.
+
+**Line metrics.** `Sources/TkzCore/DesignTokens+LineMetrics.swift` is generated. With `TKZMUX_UPDATE_SNAPSHOTS=1`, `ComponentSnapshotTypographyTests` (TkzAppTests, in the `ComponentSnapshot` filter) resolves every role to its `NSFont` and records:
+
+- `fontName`, `ascender`, `descender` and `leading`, which are what CoreText lines are built from;
+- `NSLayoutManager.defaultLineHeight(for:)` as `lineHeight`;
+- `defaultBaselineOffset(for:)` as `baseline`.
+
+It measures twice, refuses a measurement that is not reproducible, and writes the file with the macOS build in `measuredOn`. Until the file is generated it is an empty stub, the roles' `lineHeight` and `baseline` are nil, and the check is skipped with a message. Once it is generated, the check works like the goldens. On the `measuredOn` build the file must be exactly what the run measures. On any other build the values must agree within ±0.5 pt and the font names must match.
+
+Two more suites hold the roles in place:
+
+- `TypographyTokensTests` (TkzCoreTests, runs on Linux) pins every role to the literal call, `.kern` value or static it replaced, bit for bit. It lists every migrated TkzApp site, checks that the old expression is gone and the new one reads the pinned role, and parses each old plain font call back to its role. It also runs the S4 grep, `\.(ui|mono)\([0-9]|ofSize: [0-9]|\.kern: [^,\]]*[0-9]` over `Sources/TkzApp`, which must find nothing outside `// token-exempt: <reason>` lines.
+- `ComponentSnapshotTypographyTests.rolesResolveToTheFontsTheLiteralCallsMade` (macOS) compares each role's font with the literal call it replaced, as AppKit resolves both. It also confirms that every mono role, the semibold status pill included, draws JetBrains Mono Regular.
 
 ## How a render is checked
 
@@ -189,8 +214,8 @@ Goldens are generated only on the reference runner: the GitHub-hosted `macos-26`
    swift test --no-parallel --filter ComponentSnapshot
    ```
 
-   The first `swift test` writes the PNGs, the JSONs and `manifest.json` into the source tree through `#filePath`. The second checks them byte for byte from a fresh process. The workflow uploads the folder as the `component-snapshots` artifact, and the per-render artifacts and any diffs as `component-snapshot-renders`.
-2. Download `component-snapshots`, replace the contents of `Tests/TkzAppTests/ComponentSnapshots/` with it, and commit it on its own in a reviewed PR. Review checklist:
+   The first `swift test` writes the PNGs, the JSONs and `manifest.json` into the source tree through `#filePath`, and `Sources/TkzCore/DesignTokens+LineMetrics.swift` (the typography line metrics, above). The second checks them byte for byte from a fresh process. The workflow uploads the folder as the `component-snapshots` artifact, the line metrics as `typography-line-metrics`, and the per-render artifacts and any diffs as `component-snapshot-renders`.
+2. Download `component-snapshots`, replace the contents of `Tests/TkzAppTests/ComponentSnapshots/` with it, put `typography-line-metrics` at `Sources/TkzCore/DesignTokens+LineMetrics.swift`, and commit them on their own in a reviewed PR. Review checklist:
    - `manifest.json`'s `reference` names the runner image.
    - `totalBytes` is within `budgetBytes`.
    - The off-grid lists have gone into ADR-0003's exception table.

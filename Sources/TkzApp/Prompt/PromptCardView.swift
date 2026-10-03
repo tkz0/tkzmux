@@ -287,12 +287,12 @@ final class PromptCardView: NSView {
     private func applyTheme() {
         let accent = theme.accent
         promptPill.configure(
-            font: Theme.Fonts.ui(9, weight: .bold),
+            font: Theme.Fonts.font(DesignTokens.Typography.promptPill),
             foreground: accent,
             background: RGB(r: accent.r, g: accent.g, b: accent.b, a: 0.22))
         let green = theme.working
         recapPill.configure(
-            font: Theme.Fonts.ui(9, weight: .bold),
+            font: Theme.Fonts.font(DesignTokens.Typography.promptPill),
             foreground: green,
             background: RGB(r: green.r, g: green.g, b: green.b, a: 0.14))
         for meta in [promptMeta, recapMeta] {
@@ -364,7 +364,7 @@ final class PromptCardView: NSView {
         leading: Run? = nil
     ) {
         let paragraph = NSMutableParagraphStyle()
-        paragraph.lineHeightMultiple = 1.25
+        paragraph.lineHeightMultiple = CGFloat(DesignTokens.Typography.promptCardLineHeightMultiple.value)
         let body = text ?? placeholder
         let string = NSMutableAttributedString()
         if let leading {
@@ -466,7 +466,10 @@ final class PillView: NSView {
         // Letterspaced like the artboard's `letter-spacing: 0.06em`.
         label.attributedStringValue = NSAttributedString(
             string: label.stringValue,
-            attributes: [.font: font, .foregroundColor: foreground.nsColor, .kern: font.pointSize * 0.06])
+            attributes: [
+                .font: font, .foregroundColor: foreground.nsColor,
+                .kern: font.pointSize * CGFloat(DesignTokens.Typography.promptPill.trackingEm),
+            ])
         layer?.backgroundColor = background.cgColor
         invalidateIntrinsicContentSize()
     }

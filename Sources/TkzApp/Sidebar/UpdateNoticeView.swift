@@ -40,10 +40,10 @@ public final class UpdateNoticeView: NSView {
 
     // 12 / 11 rather than the artboard's 11 / 10: read next to the session rows they were too
     // small (2026-09-11). The two lines still stack inside the 40 pt card with room to spare.
-    private let titleFont = Theme.Fonts.ui(12, weight: .semibold)
+    private let titleFont = Theme.Fonts.font(DesignTokens.Typography.updateTitle)
     private let lineFont = Theme.Fonts.ui(Theme.Fonts.ui.body)
-    private let glyphFont = Theme.Fonts.ui(12, weight: .semibold)
-    private let closeFont = Theme.Fonts.ui(11)
+    private let glyphFont = Theme.Fonts.font(DesignTokens.Typography.updateGlyph)
+    private let closeFont = Theme.Fonts.font(DesignTokens.Typography.updateClose)
 
     private let cardLayer = SidebarLayers.fill(cornerRadius: UpdateNoticeView.cornerRadius)
     private let tileLayer = SidebarLayers.fill(cornerRadius: UpdateNoticeView.tileRadius)

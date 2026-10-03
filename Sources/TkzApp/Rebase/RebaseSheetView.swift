@@ -107,13 +107,15 @@ final class RebaseSheetView: NSView {
     }
 
     private func applyTheme() {
-        titleLabel.font = Theme.Fonts.ui(13, weight: .semibold)
+        titleLabel.font = Theme.Fonts.font(DesignTokens.Typography.sheetTitle)
         titleLabel.textColor = theme.foreground.nsColor
-        shortcutLabel.font = Theme.Fonts.mono(10)
+        shortcutLabel.font = Theme.Fonts.font(DesignTokens.Typography.shortcutHint)
         shortcutLabel.textColor = theme.foregroundDim.nsColor
-        bodyLabel.font = Theme.Fonts.mono(11.5)
+        bodyLabel.font = Theme.Fonts.font(DesignTokens.Typography.sheetBody)
         for button in [cancelButton, rebaseButton] {
-            button.font = Theme.Fonts.ui(11.5, weight: button === rebaseButton ? .semibold : .regular)
+            button.font = Theme.Fonts.font(
+                button === rebaseButton
+                    ? DesignTokens.Typography.sheetButtonPrimary : DesignTokens.Typography.sheetButton)
         }
         rebaseButton.bezelColor = theme.accent.nsColor
         rebaseButton.contentTintColor = theme.accentText.nsColor
@@ -129,11 +131,17 @@ final class RebaseSheetView: NSView {
         let body = model.body
         let text = NSMutableAttributedString(
             string: body.lead,
-            attributes: [.font: Theme.Fonts.mono(11.5), .foregroundColor: theme.foregroundDim.nsColor])
+            attributes: [
+                .font: Theme.Fonts.font(DesignTokens.Typography.sheetBody),
+                .foregroundColor: theme.foregroundDim.nsColor,
+            ])
         if let emphasis = body.emphasis {
             text.append(NSAttributedString(
                 string: emphasis,
-                attributes: [.font: Theme.Fonts.mono(11.5), .foregroundColor: theme.terminalForeground.nsColor]))
+                attributes: [
+                    .font: Theme.Fonts.font(DesignTokens.Typography.sheetBody),
+                    .foregroundColor: theme.terminalForeground.nsColor,
+                ]))
         }
         bodyLabel.attributedStringValue = text
 

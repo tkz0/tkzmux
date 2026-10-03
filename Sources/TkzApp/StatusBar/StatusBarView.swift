@@ -176,7 +176,7 @@ public final class StatusBarView: NSView {
     private static let pillHeight: CGFloat = 16
     private static let pillRadius: CGFloat = 3
     /// 2c.1's `letter-spacing:0.03em` on the model badge, in points at the pill's size.
-    static let pillTracking: Double = 0.03 * Theme.Fonts.mono.detail
+    static let pillTracking: Double = DesignTokens.Typography.statusPill.trackingEm * Theme.Fonts.mono.detail
     /// A segment that does not fit is drawn truncated only if at least this much room is left;
     /// below that it is dropped entirely (a two-character stub reads as damage, not as data).
     private static let minTruncatedWidth: CGFloat = 30

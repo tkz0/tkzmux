@@ -157,6 +157,20 @@ import Testing
         Pin("MainWindowController.detailMinWidth", 400, .points, M.Window.detailMinWidth),
         // Sources/TkzApp/StatusBar/StatusBarView.swift: `1 / backingScaleFactor`
         Pin("StatusBarView.draw.hairline", 1, .hairline, M.StatusBar.topLine),
+        // WOR-307 S4 (`git show 7f8068b:<file>`): line spacing and the Markdown indent. The roles
+        // are pinned in TypographyTokensTests.
+        // Sources/TkzApp/FileViewer/FileViewerView.swift
+        Pin("FileViewerView.text.lineHeightMultiple", 1.1, .scalar,
+            DesignTokens.Typography.fileViewerLineHeightMultiple),
+        // Sources/TkzApp/FileViewer/MarkdownRenderer.swift
+        Pin("MarkdownRenderer.paragraphStyle.lineHeightMultiple", 1.15, .scalar,
+            DesignTokens.Typography.markdownLineHeightMultiple),
+        Pin("MarkdownRenderer.paragraphStyle.codeLineHeightMultiple", 1.05, .scalar,
+            DesignTokens.Typography.markdownCodeLineHeightMultiple),
+        Pin("MarkdownRenderer.indentStep", 22, .points, DesignTokens.Typography.markdownIndentStep),
+        // Sources/TkzApp/Prompt/PromptCardView.swift
+        Pin("PromptCardView.set.lineHeightMultiple", 1.25, .scalar,
+            DesignTokens.Typography.promptCardLineHeightMultiple),
     ]
 
     // MARK: 1. Values
@@ -185,7 +199,7 @@ import Testing
     @Test func namesAreUniqueAndResolve() {
         let names = DesignTokens.all.map(\.name)
         #expect(Set(names).count == names.count, "duplicate token names")
-        #expect(names.count == 87)
+        #expect(names.count == 92)
         for token in DesignTokens.all {
             #expect(DesignTokens.token(named: token.name) == token)
             #expect(token.value.isFinite && token.value >= 0, "\(token.name)")
@@ -348,6 +362,34 @@ import Testing
             "let hairline = CGFloat(DesignTokens.Metrics.StatusBar.topLine.value)\n"
             + "            / max(window?.backingScaleFactor ?? 2, 1)"))
         #expect(!statusBar.contains("let hairline = 1 /"))
+    }
+
+    /// WOR-307 S4: the line spacing and the Markdown indent read their tokens, through the type the
+    /// property always had.
+    @Test func lineSpacingSitesReadTheirTokens() throws {
+        func source(_ file: String) throws -> String {
+            try String(contentsOf: SourceHygieneTests.repoRoot.appendingPathComponent("Sources/TkzApp/" + file),
+                       encoding: .utf8)
+        }
+        let viewer = try source("FileViewer/FileViewerView.swift")
+        #expect(viewer.contains(
+            "style.lineHeightMultiple = CGFloat(DesignTokens.Typography.fileViewerLineHeightMultiple.value)\n"))
+        #expect(!viewer.contains("lineHeightMultiple = 1"))
+        let markdown = try source("FileViewer/MarkdownRenderer.swift")
+        for line in [
+            "static let indentStep = CGFloat(DesignTokens.Typography.markdownIndentStep.value)\n",
+            "style.lineHeightMultiple = CGFloat(DesignTokens.Typography.markdownLineHeightMultiple.value)\n",
+            "style.lineHeightMultiple = CGFloat(DesignTokens.Typography.markdownCodeLineHeightMultiple.value)\n",
+        ] {
+            #expect(markdown.components(separatedBy: line).count == 2, "\(line)")
+        }
+        for gone in ["indentStep: CGFloat = 22", "lineHeightMultiple = 1"] {
+            #expect(!markdown.contains(gone), "MarkdownRenderer still has `\(gone)`")
+        }
+        let prompt = try source("Prompt/PromptCardView.swift")
+        #expect(prompt.contains(
+            "paragraph.lineHeightMultiple = CGFloat(DesignTokens.Typography.promptCardLineHeightMultiple.value)\n"))
+        #expect(!prompt.contains("lineHeightMultiple = 1"))
     }
 
     // MARK: Helpers

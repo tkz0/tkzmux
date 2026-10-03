@@ -114,7 +114,7 @@ public final class SidebarHeaderView: NSView {
         captionLabel.attributedStringValue = NSAttributedString(string: Self.caption, attributes: [
             .font: Theme.Fonts.ui(theme.fontUI.caption, weight: .semibold),
             .foregroundColor: theme.foregroundDim.nsColor,
-            .kern: 0.6,
+            .kern: DesignTokens.Typography.sidebarHeaderCaption.tracking,
         ])
         newGroupButton.image = Self.symbol("folder.badge.plus", size: 12, weight: .regular)
         newGroupButton.contentTintColor = theme.foregroundMuted.nsColor

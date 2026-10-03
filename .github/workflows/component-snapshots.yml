@@ -6,7 +6,9 @@
 # reproducible; the second step then runs the suite in a fresh process against what was just
 # written, which on the same build must match byte for byte. The folder (`component-snapshots`)
 # and the per-render artifacts and diffs (`component-snapshot-renders`) are uploaded either way.
-# docs/linux/parity.md, "Updating the goldens".
+# The same filter runs ComponentSnapshotTypographyTests (WOR-307 S4), which measures the typography
+# roles and writes Sources/TkzCore/DesignTokens+LineMetrics.swift; that file is uploaded as
+# `typography-line-metrics`. docs/linux/parity.md, "Updating the goldens".
 #
 # Both test steps go through the summary-line guard of ci-linux.yml: `swift test` can exit 0
 # mid-run (Tests/TkzAppTests/SheetTestSupport.swift), which here would leave a partial set.
@@ -66,6 +68,13 @@ jobs:
         with:
           name: component-snapshots
           path: Tests/TkzAppTests/ComponentSnapshots
+
+      - name: Upload the typography line metrics
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: typography-line-metrics
+          path: Sources/TkzCore/DesignTokens+LineMetrics.swift
 
       - name: Upload the renders and diffs
         uses: actions/upload-artifact@v7

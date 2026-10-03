@@ -314,7 +314,9 @@ final class SidebarBadgeLayer: CALayer {
 
     override init(layer: Any) {
         let other = layer as? SidebarBadgeLayer
-        self.font = other?.font ?? NSFont.systemFont(ofSize: 9, weight: .semibold)
+        self.font = other?.font ?? NSFont.systemFont(
+            ofSize: CGFloat(DesignTokens.Typography.badge.size),
+            weight: DesignTokens.Typography.badge.weight.nsWeight)
         self.label = other?.label ?? CATextLayer()
         super.init(layer: layer)
     }

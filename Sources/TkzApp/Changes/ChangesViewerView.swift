@@ -465,7 +465,7 @@ final class ChangesHeaderBar: NSView {
         super.init(frame: .zero)
         wantsLayer = true
 
-        title.font = Theme.Fonts.ui(12, weight: .semibold)
+        title.font = Theme.Fonts.font(DesignTokens.Typography.changesTitle)
         counts.font = Theme.Fonts.ui(Theme.Fonts.ui.body)
         viewOnly.font = Theme.Fonts.ui(Theme.Fonts.ui.caption)
         escHint.font = Theme.Fonts.ui(Theme.Fonts.ui.caption)
@@ -569,7 +569,7 @@ final class ChangesHeaderBar: NSView {
         viewOnly.layer?.backgroundColor = palette.hunkWash.cgColor
         escHint.textColor = palette.textDim
         closeButton.attributedTitle = NSAttributedString(string: "\u{2715}", attributes: [
-            .font: Theme.Fonts.ui(13, weight: .medium), .foregroundColor: palette.textMuted,
+            .font: Theme.Fonts.font(DesignTokens.Typography.closeGlyph), .foregroundColor: palette.textMuted,
         ])
         counts.attributedStringValue = Self.attributedCounts(counts.stringValue, palette: palette, font: counts.font!)
     }

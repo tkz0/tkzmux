@@ -19,7 +19,7 @@ final class TabStripView: NSView {
     private var hoveredIndex: Int?
 
     private let titleFont = Theme.Fonts.ui(Theme.Fonts.ui.title, weight: .medium)
-    private let badgeFont = Theme.Fonts.ui(9, weight: .semibold)
+    private let badgeFont = Theme.Fonts.font(DesignTokens.Typography.badge)
 
     private let bottomBorder = SidebarLayers.fill(cornerRadius: 0)
     private var tabLayers: [TabLayers] = []

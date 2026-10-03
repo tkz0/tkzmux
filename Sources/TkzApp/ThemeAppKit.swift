@@ -40,3 +40,26 @@ public extension Theme.Fonts {
         return NSFont.monospacedSystemFont(ofSize: size, weight: weight)
     }
 }
+
+public extension DesignTokens.Typography.Role.Weight {
+    /// The `NSFont.Weight` constant of the same name.
+    var nsWeight: NSFont.Weight {
+        switch self {
+        case .regular: .regular
+        case .medium: .medium
+        case .semibold: .semibold
+        case .bold: .bold
+        }
+    }
+}
+
+public extension Theme.Fonts {
+    /// The font a typography role names (WOR-307 S4): `ui(size, weight:)` for a UI role, and
+    /// `mono(size)` for a mono one, which is what the literal-size calls it replaced passed.
+    static func font(_ role: DesignTokens.Typography.Role) -> NSFont {
+        switch role.face {
+        case .ui: ui(role.size, weight: role.weight.nsWeight)
+        case .mono: mono(role.size)
+        }
+    }
+}

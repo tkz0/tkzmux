@@ -309,6 +309,18 @@ import Testing
         }
         print("\n" + metrics.joined(separator: "\n") + "\n")
         #expect(metrics.count == 2 + DesignTokens.all.count)
+
+        // The typography roles (WOR-307 S4), with their measured line metrics once generated.
+        var roles = ["| Role | Size | Face | Weight | Tracking | Line height | Baseline |", "|---|---|---|---|---|---|---|"]
+        for role in DesignTokens.Typography.roles {
+            let tracking = role.trackingEm != 0 ? "\(role.trackingEm) em" : role.tracking != 0 ? "\(role.tracking) pt" : "-"
+            let line = role.lineHeight.map { "\($0)" } ?? "-"
+            let baseline = role.baseline.map { "\($0)" } ?? "-"
+            roles.append("| \(role.name) | \(role.size) | \(role.face.rawValue) | \(role.weight.rawValue) | \(tracking)"
+                         + " | \(line) | \(baseline) |")
+        }
+        print("\n" + roles.joined(separator: "\n") + "\n")
+        #expect(roles.count == 2 + DesignTokens.Typography.roles.count)
     }
 }
 

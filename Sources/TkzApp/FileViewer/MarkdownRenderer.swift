@@ -11,10 +11,10 @@ import Foundation
 import TkzCore
 
 enum MarkdownRenderer {
-    static let bodySize: CGFloat = 13.5
-    static let codeSize: CGFloat = 12.5
+    static let bodySize = CGFloat(DesignTokens.Typography.markdownBody.size)
+    static let codeSize = CGFloat(DesignTokens.Typography.markdownCode.size)
     /// How far each list or quote level indents.
-    static let indentStep: CGFloat = 22
+    static let indentStep = CGFloat(DesignTokens.Typography.markdownIndentStep.value)
 
     static func render(_ source: String, theme: Theme) -> NSAttributedString {
         let options = AttributedString.MarkdownParsingOptions(
@@ -114,7 +114,7 @@ enum MarkdownRenderer {
 
     static func paragraphStyle(for intent: PresentationIntent?) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
-        style.lineHeightMultiple = 1.15
+        style.lineHeightMultiple = CGFloat(DesignTokens.Typography.markdownLineHeightMultiple.value)
         style.paragraphSpacing = 8
         style.paragraphSpacingBefore = 2
 
@@ -136,7 +136,7 @@ enum MarkdownRenderer {
         }
         if listDepth > 0 { style.paragraphSpacing = 3 }
         if isCode {
-            style.lineHeightMultiple = 1.05
+            style.lineHeightMultiple = CGFloat(DesignTokens.Typography.markdownCodeLineHeightMultiple.value)
             style.paragraphSpacing = 0
             style.paragraphSpacingBefore = 0
         }
@@ -216,10 +216,10 @@ enum MarkdownRenderer {
 
     static func headerSize(_ level: Int) -> CGFloat {
         switch level {
-        case 1: 22
-        case 2: 18
-        case 3: 15.5
-        default: 14
+        case 1: CGFloat(DesignTokens.Typography.markdownHeading1.size)
+        case 2: CGFloat(DesignTokens.Typography.markdownHeading2.size)
+        case 3: CGFloat(DesignTokens.Typography.markdownHeading3.size)
+        default: CGFloat(DesignTokens.Typography.markdownHeading4.size)
         }
     }
 

@@ -20,5 +20,8 @@ TKZMUX_UPDATE_SNAPSHOTS=1 swift test --no-parallel --filter ComponentSnapshot
 swift test --no-parallel --filter ComponentSnapshot
 ```
 
+The same run measures the typography roles and writes `Sources/TkzCore/DesignTokens+LineMetrics.swift`
+(the workflow's `typography-line-metrics` artifact); commit it with the set.
+
 Until a set is committed the golden suite is skipped. The schema, the snapping kinds and the
 whole update flow are in [docs/linux/parity.md](../../../docs/linux/parity.md).

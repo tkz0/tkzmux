@@ -22,7 +22,7 @@ final class PaneHeaderView: NSView {
 
     private let titleFont = Theme.Fonts.ui(Theme.Fonts.ui.body, weight: .medium)
     private let pathFont = Theme.Fonts.mono(Theme.Fonts.mono.detail)
-    private let badgeFont = Theme.Fonts.ui(9, weight: .semibold)
+    private let badgeFont = Theme.Fonts.font(DesignTokens.Typography.badge)
 
     private let bottomBorder = SidebarLayers.fill(cornerRadius: 0)
     private let dot = StatusDotLayer()

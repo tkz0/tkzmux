@@ -76,7 +76,7 @@ public final class SessionRowView: NSTableCellView {
 
     private static let titleFont = Theme.Fonts.ui(Theme.Fonts.ui.title, weight: .medium)
     private static let branchFont = Theme.Fonts.mono(Theme.Fonts.mono.detail)
-    private static let badgeFont = Theme.Fonts.ui(9, weight: .semibold)
+    private static let badgeFont = Theme.Fonts.font(DesignTokens.Typography.badge)
     private var titleFont: NSFont { Self.titleFont }
     private var branchFont: NSFont { Self.branchFont }
     private var badgeFont: NSFont { Self.badgeFont }
@@ -156,7 +156,7 @@ public final class SessionRowView: NSTableCellView {
     }
     /// The `×` glyph; a text layer, hit-tested in `mouseDown`.
     private lazy var closeLayer = SidebarLayers.text(closeFont, color: NSColor.clear.cgColor, alignment: .center)
-    private let closeFont = Theme.Fonts.ui(13, weight: .medium)
+    private let closeFont = Theme.Fonts.font(DesignTokens.Typography.closeGlyph)
     private static let closeSize: CGFloat = 18
     private var trackingArea: NSTrackingArea?
     /// Extra hit-test margin around the 7 pt dot — a 7 pt target is not reliably clickable on its

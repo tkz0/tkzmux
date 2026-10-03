@@ -195,7 +195,7 @@ final class SettingsView: NSView {
         layer?.backgroundColor = theme.windowBackground.cgColor
         navColumn.layer?.backgroundColor = theme.sidebarBackground.cgColor
         navBorder.layer?.backgroundColor = theme.border.cgColor
-        shortcutLabel.font = Theme.Fonts.mono(10)
+        shortcutLabel.font = Theme.Fonts.font(DesignTokens.Typography.shortcutHint)
         shortcutLabel.textColor = theme.foregroundDim.nsColor
         for row in navRows.values { row.setTheme(theme) }
         for section in sectionViews { section.setTheme(theme) }
@@ -261,8 +261,9 @@ final class NavRowView: NSView {
     }
 
     private func applyTheme() {
-        title.font = Theme.Fonts.ui(12.5, weight: isSelected ? .medium : .regular)
-        glyph.font = Theme.Fonts.ui(12)
+        title.font = Theme.Fonts.font(
+            isSelected ? DesignTokens.Typography.settingsNavTitleSelected : DesignTokens.Typography.settingsNavTitle)
+        glyph.font = Theme.Fonts.font(DesignTokens.Typography.settingsNavGlyph)
         title.textColor = (isSelected ? theme.foreground : theme.foregroundMuted).nsColor
         glyph.textColor = (isSelected ? theme.accent : theme.foregroundDim).nsColor
         layer?.backgroundColor = isSelected ? theme.selection.cgColor : nil
@@ -363,9 +364,9 @@ final class SectionView: NSView {
         caption.attributedStringValue = NSAttributedString(
             string: captionText.uppercased(),
             attributes: [
-                .font: Theme.Fonts.ui(11, weight: .semibold),
+                .font: Theme.Fonts.font(DesignTokens.Typography.settingsSectionCaption),
                 .foregroundColor: theme.foregroundDim.nsColor,
-                .kern: 0.5,
+                .kern: DesignTokens.Typography.settingsSectionCaption.tracking,
             ])
         card.layer?.borderColor = theme.border.cgColor
         card.layer?.backgroundColor = theme.windowBackground.cgColor
@@ -521,17 +522,17 @@ final class RowView: NSView {
     @objc private func popupChanged() { onPopup?((control as? NSPopUpButton)?.indexOfSelectedItem ?? 0) }
 
     private func applyTheme() {
-        title.font = Theme.Fonts.ui(13)
+        title.font = Theme.Fonts.font(DesignTokens.Typography.settingsRowTitle)
         title.textColor = theme.foreground.nsColor
-        detail.font = Theme.Fonts.ui(11.5)
+        detail.font = Theme.Fonts.font(DesignTokens.Typography.settingsRowDetail)
         detail.textColor = theme.foregroundMuted.nsColor
         switch control {
         case let toggle as ThemedSwitch:
             toggle.setTheme(theme)
         case let popup as NSPopUpButton:
-            popup.font = Theme.Fonts.ui(12)
+            popup.font = Theme.Fonts.font(DesignTokens.Typography.settingsControl)
         case let button as NSButton:
-            button.font = Theme.Fonts.ui(12)
+            button.font = Theme.Fonts.font(DesignTokens.Typography.settingsControl)
             if case .button(_, let destructive) = row.control, destructive {
                 button.contentTintColor = theme.meterDanger.nsColor
             } else {
@@ -598,7 +599,7 @@ final class StatusChipView: NSView {
 
     private func applyTheme() {
         let color = active ? theme.working : theme.foregroundDim
-        label.font = Theme.Fonts.mono(11)
+        label.font = Theme.Fonts.font(DesignTokens.Typography.settingsStatusChip)
         label.textColor = color.nsColor
         dot.layer?.backgroundColor = color.cgColor
     }

@@ -40,7 +40,7 @@ final class ActivityKindPill: NSView {
         wantsLayer = true
         layer?.cornerRadius = 3
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = Theme.Fonts.ui(9, weight: .semibold)
+        label.font = Theme.Fonts.font(DesignTokens.Typography.activityKindPill)
         label.stringValue = ActivityFeedModel.kindLabel(kind)
         singleLine(label).setContentCompressionResistancePriority(.required, for: .horizontal)
         addSubview(label)

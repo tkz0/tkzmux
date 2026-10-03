@@ -169,12 +169,12 @@ final class DeleteMergedWorktreesSheetView: NSView {
     }
 
     private func applyTheme() {
-        titleLabel.font = Theme.Fonts.ui(13, weight: .semibold)
+        titleLabel.font = Theme.Fonts.font(DesignTokens.Typography.sheetTitle)
         titleLabel.textColor = theme.foreground.nsColor
-        bodyLabel.font = Theme.Fonts.mono(11.5)
+        bodyLabel.font = Theme.Fonts.font(DesignTokens.Typography.sheetBody)
         bodyLabel.textColor = theme.foregroundDim.nsColor
-        cancelButton.font = Theme.Fonts.ui(11.5)
-        deleteButton.font = Theme.Fonts.ui(11.5, weight: .semibold)
+        cancelButton.font = Theme.Fonts.font(DesignTokens.Typography.sheetButton)
+        deleteButton.font = Theme.Fonts.font(DesignTokens.Typography.sheetButtonPrimary)
         deleteButton.bezelColor = theme.diffRemove.nsColor
         deleteButton.contentTintColor = theme.accentText.nsColor
         cancelButton.bezelColor = nil
@@ -191,14 +191,14 @@ final class DeleteMergedWorktreesSheetView: NSView {
             views.checkbox.attributedTitle = NSAttributedString(
                 string: label,
                 attributes: [
-                    .font: Theme.Fonts.ui(11.5),
+                    .font: Theme.Fonts.font(DesignTokens.Typography.sheetCheckbox),
                     .foregroundColor: (row.isEnabled ? theme.foreground : theme.foregroundDim).nsColor,
                 ])
             views.checkbox.state = row.isChecked ? .on : .off
             views.checkbox.isEnabled = row.isEnabled && model.phase != .deleting
             views.checkbox.toolTip = row.disabledReason
             views.status.stringValue = row.statusLine
-            views.status.font = Theme.Fonts.mono(10.5)
+            views.status.font = Theme.Fonts.font(DesignTokens.Typography.sheetListStatus)
             views.status.textColor = theme.foregroundDim.nsColor
         }
 

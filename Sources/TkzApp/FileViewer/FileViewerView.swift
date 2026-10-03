@@ -155,11 +155,11 @@ final class FileViewerView: NSView, NSTextViewDelegate {
             rendered = MarkdownRenderer.render(source, theme: theme)
         case .text(let text):
             let style = NSMutableParagraphStyle()
-            style.lineHeightMultiple = 1.1
+            style.lineHeightMultiple = CGFloat(DesignTokens.Typography.fileViewerLineHeightMultiple.value)
             rendered = NSAttributedString(
                 string: text,
                 attributes: [
-                    .font: Theme.Fonts.mono(13),
+                    .font: Theme.Fonts.font(DesignTokens.Typography.fileViewerText),
                     .foregroundColor: theme.terminalForeground.nsColor,
                     .paragraphStyle: style,
                 ])

@@ -159,28 +159,28 @@ final class DeleteWorktreeSheetView: NSView {
     private var cancelTrailingToPrimary: NSLayoutConstraint?
 
     private func applyTheme() {
-        titleLabel.font = Theme.Fonts.ui(13, weight: .semibold)
+        titleLabel.font = Theme.Fonts.font(DesignTokens.Typography.sheetTitle)
         titleLabel.textColor = theme.foreground.nsColor
 
-        pathLabel.font = Theme.Fonts.mono(11)
+        pathLabel.font = Theme.Fonts.font(DesignTokens.Typography.sheetPath)
         pathLabel.textColor = theme.foregroundDim.nsColor
-        branchLabel.font = Theme.Fonts.mono(11.5)
+        branchLabel.font = Theme.Fonts.font(DesignTokens.Typography.sheetBody)
         branchLabel.textColor = theme.foregroundMuted.nsColor
-        statusLabel.font = Theme.Fonts.mono(11.5)
-        dirtyLabel.font = Theme.Fonts.mono(11.5)
+        statusLabel.font = Theme.Fonts.font(DesignTokens.Typography.sheetBody)
+        dirtyLabel.font = Theme.Fonts.font(DesignTokens.Typography.sheetBody)
         dirtyLabel.textColor = theme.needsYouText.nsColor
 
         dirtyCheckbox.attributedTitle = NSAttributedString(
             string: DeleteWorktreeSheetModel.dirtyAcknowledgementTitle,
             attributes: [
-                .font: Theme.Fonts.ui(11.5),
+                .font: Theme.Fonts.font(DesignTokens.Typography.sheetCheckbox),
                 .foregroundColor: theme.foreground.nsColor,
             ])
         dirtyCheckbox.contentTintColor = theme.needsYouText.nsColor
 
-        cancelButton.font = Theme.Fonts.ui(11.5)
-        deleteButton.font = Theme.Fonts.ui(11.5, weight: .semibold)
-        deleteBranchButton.font = Theme.Fonts.ui(11.5, weight: .semibold)
+        cancelButton.font = Theme.Fonts.font(DesignTokens.Typography.sheetButton)
+        deleteButton.font = Theme.Fonts.font(DesignTokens.Typography.sheetButtonPrimary)
+        deleteBranchButton.font = Theme.Fonts.font(DesignTokens.Typography.sheetButtonPrimary)
 
         deleteButton.bezelColor = theme.accent.nsColor
         deleteButton.contentTintColor = theme.accentText.nsColor
