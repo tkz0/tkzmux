@@ -8,6 +8,7 @@
 //   replay   --snapshot   <file.tkzrec>   snapshot round-trip: encoded size + restore time
 //   compare  <a> <b>                       parity compare of two PNGs or two dumps (WOR-322)
 //   framedump <file.tkzrec> …               FrameBuilder buffers and glyph table, L2 (WOR-322)
+//   fontmetrics / shaping / symbols --json  the Mac font references (WOR-312 S1, macOS only)
 //
 // Hand-rolled argument parsing on purpose: no third-party dependencies (CLAUDE.md).
 //
@@ -69,8 +70,19 @@ usage: tkzmux-vtdump <command> [options]
                             replay a recording and rasterise the screen offscreen (M1.5) at backing
                             scale s (default 2); Linux: Vulkan, plus [--fonts system|parity]
                             [--no-validation] (WOR-313)
-  atlas   --out <prefix> [--point-size n] [--scale n] [--sample <text>] [--thicken 0|1]
-                            dump the glyph atlas textures as PNGs (M1.4) (macOS only for now: WOR-312)
+  atlas   --out <prefix> [--point-size n] [--scale n] [--sample <text>] [--thicken 0|1] [--json]
+                            dump the glyph atlas textures as PNGs (M1.4) (macOS only for now: WOR-312);
+                            --json adds <prefix>.json: every glyph's slot, bearings, appliedScale,
+                            ink box and CoreText face (WOR-312 S1)
+  fontmetrics --json [--out <file>]
+                            CellMetrics and the CoreText inputs of the terminal font at 11, 12.5, 13,
+                            14 and 16 pt at 1.6x and 2x, and 40 pt at 2x (macOS only; WOR-312 S1)
+  shaping --json [--out <file>] [--point-size n] [--scale s]
+                            the shaping corpus (ZWJ, flags, keycaps, combining marks, CJK, emoji,
+                            agent glyphs) in four styles: cellSpan, glyph count, run fonts (macOS only)
+  symbols --json [--out <file>] [--point-size n] [--scale s]
+                            the symbol inventory: JetBrains Mono coverage, CoreText's fallback font,
+                            advance and ink box per style (macOS only; WOR-312 S1)
   bench-frame [--cols n] [--rows n] [--frames n] [--warmup n] [--fill blank|spaces|text]
           [--json <file>] [<file.tkzrec>]
                             time a full-rebuild frame: FrameBuilder and the encode; Linux adds
@@ -687,6 +699,16 @@ do {
 
     case "atlas":
         try RenderCommands.runAtlas(Array(argv.dropFirst()))
+
+    case "fontmetrics":
+        // WOR-312 S1: the Mac font references (FontDumpCommands.swift); exit 1 on Linux.
+        try FontDumpCommands.runFontMetrics(Array(argv.dropFirst()))
+
+    case "shaping":
+        try FontDumpCommands.runShaping(Array(argv.dropFirst()))
+
+    case "symbols":
+        try FontDumpCommands.runSymbols(Array(argv.dropFirst()))
 
     case "compare":
         // WOR-322 S1: the parity toolkit's one comparison command, on both OSes.

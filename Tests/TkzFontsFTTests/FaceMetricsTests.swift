@@ -5,8 +5,8 @@
 // the tables come out of the real font files through `FT_Get_Sfnt_Table`, so a wrong table, field
 // or unit conversion in the FreeType path shows up as a changed number.
 //
-// The Mac's own export (`vtdump fontmetrics --json`, WOR-312 S1) is compared too when it is
-// committed; until then that test is skipped.
+// The Mac's own export (`vtdump fontmetrics --json`, WOR-312 S1) is compared too; the test skips
+// while Tests/Parity/References/fonts/fontmetrics.json is missing.
 
 import Foundation
 import Testing
@@ -136,9 +136,10 @@ struct FaceMetricsTests {
         .deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("Parity/References/fonts/fontmetrics.json")
 
-    /// TODO(WOR-312 S1): the exporter owns this schema. This decoder is the Linux side's
-    /// expectation of it — one entry per configuration, with every `CellMetrics` field — and must be
-    /// aligned with whatever S1 commits. Unknown keys are ignored.
+    /// The part of the exporter's schema (`FontMetricsDump` in
+    /// Sources/tkzmux-vtdump/FontDumpCommands.swift) this test reads: one entry per configuration,
+    /// with every `CellMetrics` field. Unknown keys (the CoreText inputs, the style faces) are
+    /// ignored.
     struct Reference: Decodable {
         struct Configuration: Decodable {
             /// PostScript name of the measured face (the regular face).
