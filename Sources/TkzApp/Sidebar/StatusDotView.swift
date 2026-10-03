@@ -230,7 +230,7 @@ enum SidebarLayers {
         layer.alignmentMode = alignment
         layer.isWrapped = false
         layer.truncationMode = .end
-        layer.contentsScale = 2
+        layer.contentsScale = LayerContentsScale.current
         layer.actions = ["contents": NSNull(), "position": NSNull(), "bounds": NSNull(), "hidden": NSNull()]
         return layer
     }
@@ -256,7 +256,7 @@ enum SidebarLayers {
         layer.lineWidth = lineWidth
         layer.lineCap = .round
         layer.lineJoin = .round
-        layer.contentsScale = 2
+        layer.contentsScale = LayerContentsScale.current
         layer.actions = [
             "path": NSNull(), "strokeColor": NSNull(), "transform": NSNull(),
             "position": NSNull(), "bounds": NSNull(), "hidden": NSNull(),

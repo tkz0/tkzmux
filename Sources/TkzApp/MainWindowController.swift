@@ -287,7 +287,7 @@ final class EmptyStateView: NSView {
         layer?.addSublayer(textLayer)
         textLayer.alignmentMode = .center
         textLayer.truncationMode = .end
-        textLayer.contentsScale = 2
+        textLayer.contentsScale = LayerContentsScale.current
     }
 
     @available(*, unavailable)

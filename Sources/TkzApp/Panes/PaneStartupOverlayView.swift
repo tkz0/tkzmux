@@ -59,7 +59,7 @@ final class PaneStartupOverlayView: NSView {
         spinner.fillColor = nil
         spinner.lineWidth = Self.spinnerLineWidth
         spinner.lineCap = .round
-        spinner.contentsScale = 2
+        spinner.contentsScale = LayerContentsScale.current
         spinner.bounds = CGRect(
             x: 0, y: 0, width: Self.spinnerDiameter, height: Self.spinnerDiameter)
         // Three quarters of a ring; the gap is what makes the rotation visible.

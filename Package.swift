@@ -259,7 +259,9 @@ let macOnlyTargets: [Target] = [
     // shell on a real `Pty`, like PersistenceTests does for snapshots.
     .testTarget(name: "AgentBridgeTests", dependencies: ["AgentBridge", "TkzTerminalCore", "GhosttyVt"], path: "Tests/AgentBridgeTests", resources: [.copy("Fixtures")]),
     .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzTerminalCore", "GhosttyVt"], path: "Tests/PersistenceTests"),
-    .testTarget(name: "TkzAppTests", dependencies: ["TkzApp"], path: "Tests/TkzAppTests"),
+    // TkzPNG: the component snapshots (WOR-307) encode their PNGs with the same codec the Linux
+    // parity harness decodes them with.
+    .testTarget(name: "TkzAppTests", dependencies: ["TkzApp", "TkzPNG"], path: "Tests/TkzAppTests"),
 ]
 
 // MARK: - Package
