@@ -22,6 +22,9 @@ import AppKit
 import GitStatus
 import TkzCore
 
+/// The Auto Layout constants in this file (WOR-307 S5).
+private typealias LayoutTokens = DesignTokens.Metrics
+
 enum ChangesMetrics {
     static let headerHeight = CGFloat(DesignTokens.Metrics.Changes.headerHeight.value)
     static let fileListWidth = CGFloat(DesignTokens.Metrics.Changes.fileListWidth.value)
@@ -510,16 +513,16 @@ final class ChangesHeaderBar: NSView {
             addSubview(view)
         }
         NSLayoutConstraint.activate([
-            leading.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            leading.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.Changes.headerInsetX.value)),
             leading.centerYAnchor.constraint(equalTo: centerYAnchor),
-            trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CGFloat(LayoutTokens.Changes.headerInsetX.value)),
             trailing.centerYAnchor.constraint(equalTo: centerYAnchor),
-            trailing.leadingAnchor.constraint(greaterThanOrEqualTo: leading.trailingAnchor, constant: 12),
-            viewOnly.widthAnchor.constraint(equalToConstant: 62),
+            trailing.leadingAnchor.constraint(greaterThanOrEqualTo: leading.trailingAnchor, constant: CGFloat(LayoutTokens.Changes.headerMinGap.value)),
+            viewOnly.widthAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.Changes.viewOnlyWidth.value)),
             bottomBorder.leadingAnchor.constraint(equalTo: leadingAnchor),
             bottomBorder.trailingAnchor.constraint(equalTo: trailingAnchor),
             bottomBorder.bottomAnchor.constraint(equalTo: bottomAnchor),
-            bottomBorder.heightAnchor.constraint(equalToConstant: 1),
+            bottomBorder.heightAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.Changes.headerBorder.value)),
         ])
         // The hints yield first when the window is narrow; the counts and the base menu are data.
         escHint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)

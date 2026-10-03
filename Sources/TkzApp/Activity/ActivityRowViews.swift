@@ -8,6 +8,9 @@
 import AppKit
 import TkzCore
 
+/// The Auto Layout constants in this file (WOR-307 S5).
+private typealias LayoutTokens = DesignTokens.Metrics
+
 // MARK: - Shared
 
 @MainActor
@@ -45,10 +48,10 @@ final class ActivityKindPill: NSView {
         singleLine(label).setContentCompressionResistancePriority(.required, for: .horizontal)
         addSubview(label)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4.5),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4.5),
-            label.topAnchor.constraint(equalTo: topAnchor, constant: 1),
-            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.ActivityRow.pillPaddingX.value)),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.pillPaddingX.value)),
+            label.topAnchor.constraint(equalTo: topAnchor, constant: CGFloat(LayoutTokens.ActivityRow.pillPaddingY.value)),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.pillPaddingY.value)),
         ])
         setContentHuggingPriority(.required, for: .horizontal)
         setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -92,13 +95,13 @@ final class ActivityWorkingRowView: NSTableCellView {
             view.centerYAnchor.constraint(equalTo: centerYAnchor).isActive = true
         }
         NSLayoutConstraint.activate([
-            dot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            dot.widthAnchor.constraint(equalToConstant: 10),
-            dot.heightAnchor.constraint(equalToConstant: 10),
-            title.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 9),
-            group.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 9),
-            group.trailingAnchor.constraint(lessThanOrEqualTo: trailing.leadingAnchor, constant: -9),
-            trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            dot.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.ActivityRow.insetX.value)),
+            dot.widthAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.ActivityRow.dotSize.value)),
+            dot.heightAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.ActivityRow.dotSize.value)),
+            title.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: CGFloat(LayoutTokens.ActivityRow.gap.value)),
+            group.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: CGFloat(LayoutTokens.ActivityRow.gap.value)),
+            group.trailingAnchor.constraint(lessThanOrEqualTo: trailing.leadingAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.gap.value)),
+            trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.insetX.value)),
         ])
     }
 
@@ -158,19 +161,19 @@ final class ActivityThreadRowView: NSTableCellView {
             addSubview(view)
         }
         NSLayoutConstraint.activate([
-            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            title.topAnchor.constraint(equalTo: topAnchor, constant: 6),
-            meta.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 9),
+            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.ActivityRow.insetX.value)),
+            title.topAnchor.constraint(equalTo: topAnchor, constant: CGFloat(LayoutTokens.ActivityRow.threadTop.value)),
+            meta.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: CGFloat(LayoutTokens.ActivityRow.gap.value)),
             meta.centerYAnchor.constraint(equalTo: title.centerYAnchor),
-            meta.trailingAnchor.constraint(lessThanOrEqualTo: pill.leadingAnchor, constant: -9),
-            pill.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            meta.trailingAnchor.constraint(lessThanOrEqualTo: pill.leadingAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.gap.value)),
+            pill.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.insetX.value)),
             pill.centerYAnchor.constraint(equalTo: title.centerYAnchor),
-            preview.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            preview.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 3),
-            preview.trailingAnchor.constraint(lessThanOrEqualTo: olderButton.leadingAnchor, constant: -9),
-            preview.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -4),
-            olderButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            olderButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5),
+            preview.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.ActivityRow.insetX.value)),
+            preview.topAnchor.constraint(equalTo: title.bottomAnchor, constant: CGFloat(LayoutTokens.ActivityRow.previewGap.value)),
+            preview.trailingAnchor.constraint(lessThanOrEqualTo: olderButton.leadingAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.gap.value)),
+            preview.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.previewBottomInset.value)),
+            olderButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.olderTrailingInset.value)),
+            olderButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.olderBottomInset.value)),
         ])
     }
 
@@ -246,10 +249,10 @@ final class ActivityFoldedRowView: NSTableCellView {
             view.centerYAnchor.constraint(equalTo: centerYAnchor).isActive = true
         }
         NSLayoutConstraint.activate([
-            pill.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 28),
-            preview.leadingAnchor.constraint(equalTo: pill.trailingAnchor, constant: 9),
-            preview.trailingAnchor.constraint(lessThanOrEqualTo: trailing.leadingAnchor, constant: -9),
-            trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            pill.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.ActivityRow.foldedIndent.value)),
+            preview.leadingAnchor.constraint(equalTo: pill.trailingAnchor, constant: CGFloat(LayoutTokens.ActivityRow.gap.value)),
+            preview.trailingAnchor.constraint(lessThanOrEqualTo: trailing.leadingAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.gap.value)),
+            trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CGFloat(LayoutTokens.ActivityRow.insetX.value)),
         ])
     }
 
@@ -278,7 +281,7 @@ final class ActivityEmptyRowView: NSTableCellView {
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.ActivityRow.insetX.value)),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
@@ -302,7 +305,7 @@ final class ActivityFooterView: NSView {
         addSubview(label)
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Self.height),
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.ActivityRow.insetX.value)),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         apply(theme: theme)

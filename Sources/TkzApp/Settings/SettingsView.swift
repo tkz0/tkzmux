@@ -10,6 +10,9 @@
 import AppKit
 import TkzCore
 
+/// The Auto Layout constants in this file (WOR-307 S5).
+private typealias LayoutTokens = DesignTokens.Metrics
+
 @MainActor
 final class SettingsView: NSView {
 
@@ -148,16 +151,16 @@ final class SettingsView: NSView {
             navBorder.leadingAnchor.constraint(equalTo: navColumn.trailingAnchor),
             navBorder.topAnchor.constraint(equalTo: topAnchor),
             navBorder.bottomAnchor.constraint(equalTo: bottomAnchor),
-            navBorder.widthAnchor.constraint(equalToConstant: 1),
+            navBorder.widthAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.Settings.navBorder.value)),
 
             // Under the title bar: the window is `fullSizeContentView`, and the traffic lights
             // sit in the nav column's top-left.
-            navStack.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 12),
+            navStack.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: CGFloat(LayoutTokens.Settings.navTop.value)),
             navStack.leadingAnchor.constraint(equalTo: navColumn.leadingAnchor, constant: Metrics.navInset),
             navStack.trailingAnchor.constraint(equalTo: navColumn.trailingAnchor, constant: -Metrics.navInset),
 
-            shortcutLabel.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            shortcutLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            shortcutLabel.topAnchor.constraint(equalTo: topAnchor, constant: CGFloat(LayoutTokens.Settings.shortcutTop.value)),
+            shortcutLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CGFloat(LayoutTokens.Settings.shortcutTrailing.value)),
 
             scrollView.leadingAnchor.constraint(equalTo: navBorder.trailingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -239,11 +242,11 @@ final class NavRowView: NSView {
         }
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: SettingsView.Metrics.navRowHeight),
-            glyph.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            glyph.widthAnchor.constraint(equalToConstant: 16),
+            glyph.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.Settings.navRowInsetX.value)),
+            glyph.widthAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.Settings.navGlyphWidth.value)),
             glyph.centerYAnchor.constraint(equalTo: centerYAnchor),
-            title.leadingAnchor.constraint(equalTo: glyph.trailingAnchor, constant: 9),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
+            title.leadingAnchor.constraint(equalTo: glyph.trailingAnchor, constant: CGFloat(LayoutTokens.Settings.navGlyphGap.value)),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -CGFloat(LayoutTokens.Settings.navRowInsetX.value)),
             title.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         setAccessibilityElement(true)
@@ -322,7 +325,7 @@ final class SectionView: NSView {
                 let line = NSView()
                 line.translatesAutoresizingMaskIntoConstraints = false
                 line.wantsLayer = true
-                line.heightAnchor.constraint(equalToConstant: 1).isActive = true
+                line.heightAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.Settings.rowSeparator.value)).isActive = true
                 separators.append(line)
                 stack.addArrangedSubview(line)
                 line.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -338,8 +341,8 @@ final class SectionView: NSView {
 
         NSLayoutConstraint.activate([
             caption.topAnchor.constraint(equalTo: topAnchor),
-            caption.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            card.topAnchor.constraint(equalTo: caption.bottomAnchor, constant: 7),
+            caption.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.Settings.captionIndent.value)),
+            card.topAnchor.constraint(equalTo: caption.bottomAnchor, constant: CGFloat(LayoutTokens.Settings.captionGap.value)),
             card.leadingAnchor.constraint(equalTo: leadingAnchor),
             card.trailingAnchor.constraint(equalTo: trailingAnchor),
             card.bottomAnchor.constraint(equalTo: bottomAnchor),
@@ -429,7 +432,7 @@ final class RowView: NSView {
             title.topAnchor.constraint(equalTo: textColumn.topAnchor),
             title.leadingAnchor.constraint(equalTo: textColumn.leadingAnchor),
             title.trailingAnchor.constraint(lessThanOrEqualTo: textColumn.trailingAnchor),
-            detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),
+            detail.topAnchor.constraint(equalTo: title.bottomAnchor, constant: CGFloat(LayoutTokens.Settings.rowDetailGap.value)),
             detail.leadingAnchor.constraint(equalTo: textColumn.leadingAnchor),
             detail.trailingAnchor.constraint(equalTo: textColumn.trailingAnchor),
             detail.bottomAnchor.constraint(equalTo: textColumn.bottomAnchor),
@@ -570,11 +573,11 @@ final class StatusChipView: NSView {
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([
-            dot.widthAnchor.constraint(equalToConstant: 7),
-            dot.heightAnchor.constraint(equalToConstant: 7),
+            dot.widthAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.Settings.statusDot.value)),
+            dot.heightAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.Settings.statusDot.value)),
             dot.leadingAnchor.constraint(equalTo: leadingAnchor),
             dot.centerYAnchor.constraint(equalTo: label.centerYAnchor),
-            label.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 6),
+            label.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: CGFloat(LayoutTokens.Settings.statusDotGap.value)),
             label.trailingAnchor.constraint(equalTo: trailingAnchor),
             label.topAnchor.constraint(equalTo: topAnchor),
             label.bottomAnchor.constraint(equalTo: bottomAnchor),

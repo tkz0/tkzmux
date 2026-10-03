@@ -45,7 +45,7 @@ public final class HeaderBackdropView: NSView {
             border.leadingAnchor.constraint(equalTo: leadingAnchor),
             border.trailingAnchor.constraint(equalTo: trailingAnchor),
             border.bottomAnchor.constraint(equalTo: bottomAnchor),
-            border.heightAnchor.constraint(equalToConstant: 1),
+            border.heightAnchor.constraint(equalToConstant: CGFloat(DesignTokens.Metrics.HeaderBackdrop.bottomBorder.value)),
         ])
     }
 

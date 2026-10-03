@@ -24,6 +24,9 @@
 import AppKit
 import TkzCore
 
+/// The Auto Layout constants in this file (WOR-307 S5).
+private typealias LayoutTokens = DesignTokens.Metrics
+
 @MainActor
 final class DeleteWorktreeSheetView: NSView {
 
@@ -131,16 +134,16 @@ final class DeleteWorktreeSheetView: NSView {
             titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
 
-            body.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 7),
+            body.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: CGFloat(LayoutTokens.DeleteWorktreeSheet.titleToBody.value)),
             body.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             body.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
 
-            deleteButton.topAnchor.constraint(equalTo: body.bottomAnchor, constant: 14),
+            deleteButton.topAnchor.constraint(equalTo: body.bottomAnchor, constant: CGFloat(LayoutTokens.DeleteWorktreeSheet.bodyToButtons.value)),
             deleteButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
             deleteButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Metrics.bottomPadding),
             deleteButton.heightAnchor.constraint(equalToConstant: Metrics.buttonHeight),
             deleteBranchButton.centerYAnchor.constraint(equalTo: deleteButton.centerYAnchor),
-            deleteBranchButton.trailingAnchor.constraint(equalTo: deleteButton.leadingAnchor, constant: -8),
+            deleteBranchButton.trailingAnchor.constraint(equalTo: deleteButton.leadingAnchor, constant: -CGFloat(LayoutTokens.GlassSheet.buttonSpacing.value)),
             deleteBranchButton.heightAnchor.constraint(equalToConstant: Metrics.buttonHeight),
             cancelButton.centerYAnchor.constraint(equalTo: deleteButton.centerYAnchor),
             cancelButton.heightAnchor.constraint(equalToConstant: Metrics.buttonHeight),
@@ -149,9 +152,9 @@ final class DeleteWorktreeSheetView: NSView {
         // Cancel sits left of whichever destructive button is showing, so hiding the red one does
         // not leave a gap.
         cancelTrailingToRed = cancelButton.trailingAnchor.constraint(
-            equalTo: deleteBranchButton.leadingAnchor, constant: -8)
+            equalTo: deleteBranchButton.leadingAnchor, constant: -CGFloat(LayoutTokens.GlassSheet.buttonSpacing.value))
         cancelTrailingToPrimary = cancelButton.trailingAnchor.constraint(
-            equalTo: deleteButton.leadingAnchor, constant: -8)
+            equalTo: deleteButton.leadingAnchor, constant: -CGFloat(LayoutTokens.GlassSheet.buttonSpacing.value))
         cancelTrailingToRed?.isActive = true
     }
 

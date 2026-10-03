@@ -10,6 +10,9 @@
 import AppKit
 import TkzCore
 
+/// The Auto Layout constants in this file (WOR-307 S5).
+private typealias LayoutTokens = DesignTokens.Metrics
+
 // MARK: - Shared highlighting
 
 @MainActor
@@ -80,13 +83,13 @@ private func layOut(_ row: NSView, _ views: [NSView], trailing: NSView, leading:
         row.addSubview(view)
         view.centerYAnchor.constraint(equalTo: row.centerYAnchor).isActive = true
         if let previous {
-            view.leadingAnchor.constraint(equalTo: previous.trailingAnchor, constant: 9).isActive = true
+            view.leadingAnchor.constraint(equalTo: previous.trailingAnchor, constant: CGFloat(LayoutTokens.SearchRow.gap.value)).isActive = true
         } else {
             view.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: leading).isActive = true
         }
         previous = view
     }
-    trailing.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -12).isActive = true
+    trailing.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -CGFloat(LayoutTokens.SearchRow.insetX.value)).isActive = true
 }
 
 // MARK: - Session
@@ -151,7 +154,7 @@ final class SearchTranscriptRowView: NSTableCellView {
         session.textColor = theme.foregroundMuted.nsColor
         // 2c.6 gives the session column a fixed 150 pt so the excerpts line up.
         session.translatesAutoresizingMaskIntoConstraints = false
-        session.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        session.widthAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.SearchRow.sessionColumnWidth.value)).isActive = true
 
         let excerpt = singleLine(
             NSTextField(labelWithAttributedString: Self.excerptString(hit, theme: theme)))
@@ -218,7 +221,7 @@ final class SearchFileRowView: NSTableCellView {
         session.font = Theme.Fonts.ui(theme.fontUI.caption)
         session.textColor = theme.foregroundMuted.nsColor
         session.translatesAutoresizingMaskIntoConstraints = false
-        session.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        session.widthAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.SearchRow.sessionColumnWidth.value)).isActive = true
 
         let status = singleLine(NSTextField(labelWithString: hit.status))
         status.font = Theme.Fonts.mono(theme.fontMono.detail, weight: .semibold)
@@ -303,12 +306,12 @@ final class SearchChipBarView: NSView {
 
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Self.height),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.SearchRow.insetX.value)),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            filterLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            filterLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CGFloat(LayoutTokens.SearchRow.insetX.value)),
             filterLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             filterLabel.leadingAnchor.constraint(
-                greaterThanOrEqualTo: stack.trailingAnchor, constant: 8),
+                greaterThanOrEqualTo: stack.trailingAnchor, constant: CGFloat(LayoutTokens.SearchRow.chipBarMinGap.value)),
         ])
     }
 
@@ -355,7 +358,7 @@ final class SearchFooterView: NSView {
         addSubview(label)
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Self.height),
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.SearchRow.insetX.value)),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         apply(theme: theme)

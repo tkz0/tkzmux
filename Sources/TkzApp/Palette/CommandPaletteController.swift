@@ -24,6 +24,9 @@
 import AppKit
 import TkzCore
 
+/// The Auto Layout constants in this file (WOR-307 S5).
+private typealias LayoutTokens = DesignTokens.Metrics
+
 @MainActor
 public final class CommandPaletteController: NSObject {
 
@@ -647,11 +650,11 @@ public final class CommandPaletteController: NSObject {
         // The field is always at the top. The chip bar slots in under it in ⌘F's overlay,
         // and is parked behind it (hidden) otherwise, so the list hangs off whichever of the two is
         // the last visible thing above it (``applyPresentation``).
-        let scrollTopToField = scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 10)
-        let scrollTopToChips = scroll.topAnchor.constraint(equalTo: chips.bottomAnchor, constant: 2)
-        let scrollBottomToEffect = scroll.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -8)
+        let scrollTopToField = scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: CGFloat(LayoutTokens.Palette.fieldToList.value))
+        let scrollTopToChips = scroll.topAnchor.constraint(equalTo: chips.bottomAnchor, constant: CGFloat(LayoutTokens.Palette.chipsToList.value))
+        let scrollBottomToEffect = scroll.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -CGFloat(LayoutTokens.Palette.listBottomInset.value))
         let scrollBottomToFooter = scroll.bottomAnchor.constraint(equalTo: hints.topAnchor)
-        let chipsTopToField = chips.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 8)
+        let chipsTopToField = chips.topAnchor.constraint(equalTo: field.bottomAnchor, constant: CGFloat(LayoutTokens.Palette.fieldToChips.value))
         let chipsTopToEffect = chips.topAnchor.constraint(equalTo: effect.topAnchor)
         self.scrollTopToField = scrollTopToField
         self.scrollTopToChips = scrollTopToChips
@@ -660,9 +663,9 @@ public final class CommandPaletteController: NSObject {
         self.chipsTopToField = chipsTopToField
         self.chipsTopToEffect = chipsTopToEffect
         NSLayoutConstraint.activate([
-            field.topAnchor.constraint(equalTo: effect.topAnchor, constant: 14),
-            field.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 14),
-            field.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -14),
+            field.topAnchor.constraint(equalTo: effect.topAnchor, constant: CGFloat(LayoutTokens.Palette.fieldInset.value)),
+            field.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: CGFloat(LayoutTokens.Palette.fieldInset.value)),
+            field.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -CGFloat(LayoutTokens.Palette.fieldInset.value)),
             chips.leadingAnchor.constraint(equalTo: effect.leadingAnchor),
             chips.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
             hints.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
@@ -671,8 +674,8 @@ public final class CommandPaletteController: NSObject {
             chipsTopToEffect,
             scrollTopToField,
             scrollBottomToEffect,
-            scroll.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 6),
-            scroll.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -6),
+            scroll.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: CGFloat(LayoutTokens.Palette.listInset.value)),
+            scroll.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -CGFloat(LayoutTokens.Palette.listInset.value)),
         ])
 
         // The overlay hangs off the window it is searching, so a click anywhere in that window is
@@ -875,7 +878,7 @@ extension CommandPaletteController: NSTableViewDataSource, NSTableViewDelegate {
         NSLayoutConstraint.activate([
             view.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: leading),
             view.topAnchor.constraint(equalTo: container.topAnchor, constant: top),
-            view.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -8),
+            view.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -CGFloat(LayoutTokens.Palette.labelTrailingInset.value)),
         ])
         return container
     }
@@ -903,13 +906,13 @@ final class PaletteRowView: NSTableCellView {
         }
         trailing.setContentCompressionResistancePriority(.required, for: .horizontal)
         NSLayoutConstraint.activate([
-            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            title.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: trailing.leadingAnchor, constant: -8),
+            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: CGFloat(LayoutTokens.PaletteRow.insetX.value)),
+            title.topAnchor.constraint(equalTo: topAnchor, constant: CGFloat(LayoutTokens.PaletteRow.titleTop.value)),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: trailing.leadingAnchor, constant: -CGFloat(LayoutTokens.PaletteRow.trailingGap.value)),
             subtitle.leadingAnchor.constraint(equalTo: title.leadingAnchor),
-            subtitle.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),
-            subtitle.trailingAnchor.constraint(lessThanOrEqualTo: trailing.leadingAnchor, constant: -8),
-            trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            subtitle.topAnchor.constraint(equalTo: title.bottomAnchor, constant: CGFloat(LayoutTokens.PaletteRow.subtitleGap.value)),
+            subtitle.trailingAnchor.constraint(lessThanOrEqualTo: trailing.leadingAnchor, constant: -CGFloat(LayoutTokens.PaletteRow.trailingGap.value)),
+            trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CGFloat(LayoutTokens.PaletteRow.insetX.value)),
             trailing.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }

@@ -12,6 +12,9 @@
 import AppKit
 import TkzCore
 
+/// The Auto Layout constants in this file (WOR-307 S5).
+private typealias LayoutTokens = DesignTokens.Metrics
+
 @MainActor
 public final class ActivityFeedController: NSObject, NSWindowDelegate {
     public static let width: CGFloat = 640
@@ -254,12 +257,12 @@ public final class ActivityFeedController: NSObject, NSWindowDelegate {
         effect.addSubview(hints)
         panel.contentView = effect
         NSLayoutConstraint.activate([
-            field.topAnchor.constraint(equalTo: effect.topAnchor, constant: 14),
-            field.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 14),
-            field.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -14),
-            scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 10),
-            scroll.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 6),
-            scroll.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -6),
+            field.topAnchor.constraint(equalTo: effect.topAnchor, constant: CGFloat(LayoutTokens.ActivityFeed.fieldInset.value)),
+            field.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: CGFloat(LayoutTokens.ActivityFeed.fieldInset.value)),
+            field.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -CGFloat(LayoutTokens.ActivityFeed.fieldInset.value)),
+            scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: CGFloat(LayoutTokens.ActivityFeed.fieldToList.value)),
+            scroll.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: CGFloat(LayoutTokens.ActivityFeed.listInset.value)),
+            scroll.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -CGFloat(LayoutTokens.ActivityFeed.listInset.value)),
             scroll.bottomAnchor.constraint(equalTo: hints.topAnchor),
             hints.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
             hints.leadingAnchor.constraint(equalTo: effect.leadingAnchor),

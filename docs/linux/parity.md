@@ -121,7 +121,7 @@ The same suite also lists every dumped edge that is off the 0.5 pt grid at 2.0. 
 
 | Namespace | Holds | Filled by |
 |---|---|---|
-| `DesignTokens.Metrics` | Lengths: the values of the 13 `*Metrics` enums, the window geometry (1240×820, minimum 720×420, sidebar 300/240/520, detail minimum 400), the status-bar hairline | WOR-307 S3; S5 adds the inline Auto Layout constants, S6 the private statics |
+| `DesignTokens.Metrics` | Lengths: the values of the 13 `*Metrics` enums, the window geometry (1240×820, minimum 720×420, sidebar 300/240/520, detail minimum 400), the status-bar hairline, and the inline Auto Layout constants | WOR-307 S3; S5 (Auto Layout constants, `DesignTokens+Layout.swift`); S6 the private statics |
 | `DesignTokens.Typography` | The text roles (below), the changes viewer's sizes, line spacing (`lineHeightMultiple`) and the Markdown indent | S3 (sizes); S4 (roles, line spacing) |
 | `DesignTokens.Radii` | Corner radii | S3 (the radii the Metrics enums held); S6 the inline ones |
 | `DesignTokens.Motion`, `DesignTokens.Surfaces` | Durations; per-surface radius and border, such as the palette's two modes | S6 |
@@ -136,7 +136,7 @@ Three suites hold this in place:
 
 `swift test --filter ThemeTests/printsDesignTable` prints every token with its value and tag after the colour table.
 
-To add a token, declare it in its namespace with its path as its name, add it to `all`, pin the literal it replaces in `DesignTokensTests.pins`, and forward the old name to it. Never change a value in a migration commit: a different number is a Mac-visible change.
+To add a token, declare it in its namespace with its path as its name, add it to `all`, pin the literal it replaces in `DesignTokensTests.pins` (an Auto Layout constant: `LayoutTokensTests`), and forward the old name to it. Never change a value in a migration commit: a different number is a Mac-visible change.
 
 ### Typography roles
 
@@ -162,6 +162,14 @@ Two more suites hold the roles in place:
 
 - `TypographyTokensTests` (TkzCoreTests, runs on Linux) pins every role to the literal call, `.kern` value or static it replaced, bit for bit. It lists every migrated TkzApp site, checks that the old expression is gone and the new one reads the pinned role, and parses each old plain font call back to its role. It also runs the S4 grep, `\.(ui|mono)\([0-9]|ofSize: [0-9]|\.kern: [^,\]]*[0-9]` over `Sources/TkzApp`, which must find nothing outside `// token-exempt: <reason>` lines.
 - `ComponentSnapshotTypographyTests.rolesResolveToTheFontsTheLiteralCallsMade` (macOS) compares each role's font with the literal call it replaced, as AppKit resolves both. It also confirms that every mono role, the semibold status pill included, draws JetBrains Mono Regular.
+
+### Auto Layout constants
+
+WOR-307 S5 moved every literal `constant:` and `equalToConstant:` that TkzApp passed to an anchor into `DesignTokens.Metrics` (`Sources/TkzCore/DesignTokens+Layout.swift`). There is one token per role in its component, for example `Metrics.ActivityRow.gap` or `Metrics.PaletteRow.titleTop`. The component's namespace is new where it had none and extends the S3 enum where it had one (`Metrics.PromptCard`, `Metrics.Settings`). The 1 pt border, divider and separator views are `.stroke`. The dots and icon boxes are `.mark`. Everything else is `.points`.
+
+A site reads its token as `CGFloat(LayoutTokens.<Component>.<name>.value)`. `LayoutTokens` is a file-private alias for `DesignTokens.Metrics`; the one-site `ChromeViewController.swift` spells the path out instead. A trailing or bottom constant keeps its sign at the site (`constant: -CGFloat(…)`), so a token always holds the magnitude. Each site differs from the line it replaced in the literal alone, and `-CGFloat(v)` is exactly the literal `-v`, so AppKit gets the constant it had. Two zero placeholders stay literal under `// token-exempt:`: the tab strip's starting height and the merged-worktrees list's. The code sets both before they are shown.
+
+`LayoutTokensTests` (TkzCoreTests, runs on Linux) holds this in place. It pins every S5 token to the literal its sites held, bit for bit, with its tag. It lists every migrated line as it read before the move, rebuilds the line the migration writes from it, and requires that line in the file and the old one gone. It also runs the S5 grep, `constant: -?[0-9]|equalToConstant: [0-9]` over `Sources/TkzApp`, which must find nothing outside the two exempt lines.
 
 ## How a render is checked
 

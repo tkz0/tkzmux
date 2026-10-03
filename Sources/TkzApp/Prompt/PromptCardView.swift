@@ -13,6 +13,9 @@ import AppKit
 import AgentBridge
 import TkzCore
 
+/// The Auto Layout constants in this file (WOR-307 S5).
+private typealias LayoutTokens = DesignTokens.Metrics
+
 @MainActor
 final class PromptCardView: NSView {
 
@@ -235,8 +238,8 @@ final class PromptCardView: NSView {
             promptPill.topAnchor.constraint(equalTo: topAnchor, constant: v),
             promptPill.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             promptMeta.centerYAnchor.constraint(equalTo: promptPill.centerYAnchor),
-            promptMeta.leadingAnchor.constraint(equalTo: promptPill.trailingAnchor, constant: 8),
-            promptMeta.trailingAnchor.constraint(lessThanOrEqualTo: closeHint.leadingAnchor, constant: -8),
+            promptMeta.leadingAnchor.constraint(equalTo: promptPill.trailingAnchor, constant: CGFloat(LayoutTokens.PromptCard.pillMetaGap.value)),
+            promptMeta.trailingAnchor.constraint(lessThanOrEqualTo: closeHint.leadingAnchor, constant: -CGFloat(LayoutTokens.PromptCard.metaHintGap.value)),
             closeHint.centerYAnchor.constraint(equalTo: promptPill.centerYAnchor),
             closeHint.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
 
@@ -245,26 +248,26 @@ final class PromptCardView: NSView {
             promptScroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
             promptHeight,
 
-            divider.topAnchor.constraint(equalTo: promptScroll.bottomAnchor, constant: 14),
+            divider.topAnchor.constraint(equalTo: promptScroll.bottomAnchor, constant: CGFloat(LayoutTokens.PromptCard.dividerGap.value)),
             divider.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             divider.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
-            divider.heightAnchor.constraint(equalToConstant: 1),
+            divider.heightAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.PromptCard.dividerThickness.value)),
 
             recapPill.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: s),
             recapPill.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             recapMeta.centerYAnchor.constraint(equalTo: recapPill.centerYAnchor),
-            recapMeta.leadingAnchor.constraint(equalTo: recapPill.trailingAnchor, constant: 8),
+            recapMeta.leadingAnchor.constraint(equalTo: recapPill.trailingAnchor, constant: CGFloat(LayoutTokens.PromptCard.pillMetaGap.value)),
             recapMeta.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -p),
 
-            recapScroll.topAnchor.constraint(equalTo: recapPill.bottomAnchor, constant: 6),
+            recapScroll.topAnchor.constraint(equalTo: recapPill.bottomAnchor, constant: CGFloat(LayoutTokens.PromptCard.recapTextGap.value)),
             recapScroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             recapScroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
             recapHeight,
 
-            copyPromptButton.topAnchor.constraint(equalTo: recapScroll.bottomAnchor, constant: 14),
+            copyPromptButton.topAnchor.constraint(equalTo: recapScroll.bottomAnchor, constant: CGFloat(LayoutTokens.PromptCard.recapToButtons.value)),
             copyPromptButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             copyRecapButton.centerYAnchor.constraint(equalTo: copyPromptButton.centerYAnchor),
-            copyRecapButton.leadingAnchor.constraint(equalTo: copyPromptButton.trailingAnchor, constant: 8),
+            copyRecapButton.leadingAnchor.constraint(equalTo: copyPromptButton.trailingAnchor, constant: CGFloat(LayoutTokens.PromptCard.buttonSpacing.value)),
             copyPromptButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -v),
         ])
     }

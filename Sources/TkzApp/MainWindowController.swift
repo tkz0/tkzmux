@@ -234,7 +234,7 @@ final class DetailViewController: NSViewController {
             statusBar.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
 
-        tabStripHeight = tabStrip.heightAnchor.constraint(equalToConstant: 0)
+        tabStripHeight = tabStrip.heightAnchor.constraint(equalToConstant: 0)  // token-exempt: starts hidden; setTabStripVisible sets it
         tabStripHeight.isActive = true
 
         view = root

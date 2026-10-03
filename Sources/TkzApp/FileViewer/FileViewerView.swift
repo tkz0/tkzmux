@@ -7,6 +7,9 @@
 import AppKit
 import TkzCore
 
+/// The Auto Layout constants in this file (WOR-307 S5).
+private typealias LayoutTokens = DesignTokens.Metrics
+
 final class FileViewerView: NSView, NSTextViewDelegate {
     /// A relative link in a rendered Markdown file that names another local file.
     var onOpenFile: ((URL) -> Void)?
@@ -72,16 +75,16 @@ final class FileViewerView: NSView, NSTextViewDelegate {
             header.trailingAnchor.constraint(equalTo: trailingAnchor),
             header.heightAnchor.constraint(equalToConstant: Self.headerHeight),
 
-            pathLabel.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 12),
+            pathLabel.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: CGFloat(LayoutTokens.FileViewer.headerInsetX.value)),
             pathLabel.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-            pathLabel.trailingAnchor.constraint(lessThanOrEqualTo: readOnlyLabel.leadingAnchor, constant: -12),
-            readOnlyLabel.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -12),
+            pathLabel.trailingAnchor.constraint(lessThanOrEqualTo: readOnlyLabel.leadingAnchor, constant: -CGFloat(LayoutTokens.FileViewer.headerGap.value)),
+            readOnlyLabel.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -CGFloat(LayoutTokens.FileViewer.headerInsetX.value)),
             readOnlyLabel.centerYAnchor.constraint(equalTo: header.centerYAnchor),
 
             headerBorder.leadingAnchor.constraint(equalTo: header.leadingAnchor),
             headerBorder.trailingAnchor.constraint(equalTo: header.trailingAnchor),
             headerBorder.bottomAnchor.constraint(equalTo: header.bottomAnchor),
-            headerBorder.heightAnchor.constraint(equalToConstant: 1),
+            headerBorder.heightAnchor.constraint(equalToConstant: CGFloat(LayoutTokens.FileViewer.headerBorder.value)),
 
             scrollView.topAnchor.constraint(equalTo: header.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),

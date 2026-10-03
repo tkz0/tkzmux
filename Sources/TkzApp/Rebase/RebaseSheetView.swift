@@ -6,6 +6,9 @@
 import AppKit
 import TkzCore
 
+/// The Auto Layout constants in this file (WOR-307 S5).
+private typealias LayoutTokens = DesignTokens.Metrics
+
 @MainActor
 final class RebaseSheetView: NSView {
 
@@ -90,18 +93,18 @@ final class RebaseSheetView: NSView {
             titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             shortcutLabel.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
             shortcutLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
-            shortcutLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 10),
+            shortcutLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: CGFloat(LayoutTokens.RebaseSheet.titleShortcutGap.value)),
 
-            bodyLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 6),
+            bodyLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: CGFloat(LayoutTokens.RebaseSheet.titleToBody.value)),
             bodyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             bodyLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
 
-            rebaseButton.topAnchor.constraint(equalTo: bodyLabel.bottomAnchor, constant: 14),
+            rebaseButton.topAnchor.constraint(equalTo: bodyLabel.bottomAnchor, constant: CGFloat(LayoutTokens.RebaseSheet.bodyToButtons.value)),
             rebaseButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
             rebaseButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Metrics.bottomPadding),
             rebaseButton.heightAnchor.constraint(equalToConstant: Metrics.buttonHeight),
             cancelButton.centerYAnchor.constraint(equalTo: rebaseButton.centerYAnchor),
-            cancelButton.trailingAnchor.constraint(equalTo: rebaseButton.leadingAnchor, constant: -8),
+            cancelButton.trailingAnchor.constraint(equalTo: rebaseButton.leadingAnchor, constant: -CGFloat(LayoutTokens.GlassSheet.buttonSpacing.value)),
             cancelButton.heightAnchor.constraint(equalToConstant: Metrics.buttonHeight),
         ])
     }

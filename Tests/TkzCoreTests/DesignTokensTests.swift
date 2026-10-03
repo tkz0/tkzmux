@@ -184,7 +184,8 @@ import Testing
     }
 
     @Test func everyTokenIsPinned() {
-        let pinned = Set(Self.pins.map(\.token.name))
+        // The S5 Auto Layout constants are pinned, with their sites, in `LayoutTokensTests`.
+        let pinned = Set(Self.pins.map(\.token.name) + LayoutTokensTests.pins.map(\.token.name))
         let unpinned = DesignTokens.all.map(\.name).filter { !pinned.contains($0) }
         #expect(unpinned.isEmpty, "tokens with no old constant pinned to them: \(unpinned)")
     }
@@ -199,7 +200,7 @@ import Testing
     @Test func namesAreUniqueAndResolve() {
         let names = DesignTokens.all.map(\.name)
         #expect(Set(names).count == names.count, "duplicate token names")
-        #expect(names.count == 92)
+        #expect(names.count == 158)
         for token in DesignTokens.all {
             #expect(DesignTokens.token(named: token.name) == token)
             #expect(token.value.isFinite && token.value >= 0, "\(token.name)")
@@ -228,7 +229,7 @@ import Testing
                     pending = nil
                 }
                 if let match = Self.firstMatch(
-                    #"^\s*(?:extension\s+DesignTokens\.(\w+)|(?:public\s+)?enum\s+(\w+))\s*\{"#, in: code) {
+                    #"^\s*(?:extension\s+DesignTokens\.([\w.]+)|(?:public\s+)?enum\s+(\w+))\s*\{"#, in: code) {
                     enums.append((match[1] ?? match[2]!, depth))
                 }
                 if let match = Self.firstMatch(#"static let (\w+) = DesignToken\(\s*"([\w.]+)""#, in: code) {

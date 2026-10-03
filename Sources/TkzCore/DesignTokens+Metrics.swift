@@ -223,7 +223,8 @@ extension DesignTokens.Metrics {
         public static let topLine = DesignToken("Metrics.StatusBar.topLine", 1, .hairline)
     }
 
-    /// Every metric, in declaration order.
+    /// Every metric, in declaration order, then the inline Auto Layout constants
+    /// (`DesignTokens+Layout.swift`).
     static let all: [DesignToken] = [
         Sidebar.groupRowHeight, Sidebar.sessionRowHeight, Sidebar.sessionRowWrappedHeight,
         Sidebar.headerHeight, Sidebar.updateNoticeHeight, Sidebar.sessionIndent, Sidebar.groupEdgeWidth,
@@ -249,5 +250,5 @@ extension DesignTokens.Metrics {
         Window.width, Window.height, Window.minWidth, Window.minHeight, Window.sidebarWidth,
         Window.sidebarMinWidth, Window.sidebarMaxWidth, Window.detailMinWidth,
         StatusBar.topLine,
-    ]
+    ] + layout
 }

@@ -16,8 +16,9 @@
 //
 // Filled so far: `Metrics` (the 13 `*Metrics` enums, window geometry, the status-bar hairline),
 // the radii and the font sizes those enums held (S3), and the typography roles with their tracking
-// and line metrics (S4, `DesignTokens+Typography.swift`). S5 adds the inline Auto Layout
-// constants, S6 the private statics, radii, borders, surfaces and motion.
+// and line metrics (S4, `DesignTokens+Typography.swift`), and the inline Auto Layout constants
+// (S5, `DesignTokens+Layout.swift`). S6 adds the private statics, radii, borders, surfaces and
+// motion.
 
 import Foundation
 
@@ -59,7 +60,8 @@ public struct DesignToken: Hashable, Sendable {
 
 /// The namespace. Nothing here is a colour: colours stay per preset in `Theme`.
 public enum DesignTokens {
-    /// Lengths: rows, bars, panes, cards, insets, gaps, window geometry. `DesignTokens+Metrics.swift`.
+    /// Lengths: rows, bars, panes, cards, insets, gaps, window geometry. `DesignTokens+Metrics.swift`,
+    /// and `DesignTokens+Layout.swift` for the inline Auto Layout constants.
     public enum Metrics {}
 
     /// Text: the roles (size, effective face and weight, tracking, measured line height and

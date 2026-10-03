@@ -10,6 +10,9 @@
 import AppKit
 import TkzCore
 
+/// The Auto Layout constants in this file (WOR-307 S5).
+private typealias LayoutTokens = DesignTokens.Metrics
+
 @MainActor
 final class DeleteMergedWorktreesSheetView: NSView {
 
@@ -113,7 +116,7 @@ final class DeleteMergedWorktreesSheetView: NSView {
         deleteButton.hasDestructiveAction = true
 
         let p = Metrics.padding
-        let height = scroll.heightAnchor.constraint(equalToConstant: 0)
+        let height = scroll.heightAnchor.constraint(equalToConstant: 0)  // token-exempt: placeholder; render() sizes it
         listHeight = height
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: Metrics.width),
@@ -122,22 +125,22 @@ final class DeleteMergedWorktreesSheetView: NSView {
             titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
 
-            bodyLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 6),
+            bodyLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: CGFloat(LayoutTokens.DeleteMergedSheet.titleToBody.value)),
             bodyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             bodyLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
 
-            scroll.topAnchor.constraint(equalTo: bodyLabel.bottomAnchor, constant: 10),
+            scroll.topAnchor.constraint(equalTo: bodyLabel.bottomAnchor, constant: CGFloat(LayoutTokens.DeleteMergedSheet.bodyToList.value)),
             scroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: p),
             scroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
             height,
             list.widthAnchor.constraint(equalTo: scroll.widthAnchor),
 
-            deleteButton.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 12),
+            deleteButton.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: CGFloat(LayoutTokens.DeleteMergedSheet.listToButtons.value)),
             deleteButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -p),
             deleteButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Metrics.bottomPadding),
             deleteButton.heightAnchor.constraint(equalToConstant: Metrics.buttonHeight),
             cancelButton.centerYAnchor.constraint(equalTo: deleteButton.centerYAnchor),
-            cancelButton.trailingAnchor.constraint(equalTo: deleteButton.leadingAnchor, constant: -8),
+            cancelButton.trailingAnchor.constraint(equalTo: deleteButton.leadingAnchor, constant: -CGFloat(LayoutTokens.GlassSheet.buttonSpacing.value)),
             cancelButton.heightAnchor.constraint(equalToConstant: Metrics.buttonHeight),
             cancelButton.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: p),
         ])
