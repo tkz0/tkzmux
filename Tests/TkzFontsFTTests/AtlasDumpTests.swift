@@ -3,10 +3,10 @@
 //
 // The Mac comparisons skip until those files exist. Each reference is one `AtlasDump` JSON (the
 // schema in TkzRenderCore, shared with the Mac exporter) plus the PNG pages it names.
-// TODO(WOR-312 S1): write the references under `MacAtlasReference.fileName` for 14 pt at 1.6x and
-// 2x, thicken 0 and 1. TODO(WOR-322 S1): score masks with the TkzParity comparator once it exists;
-// `MacAtlasReference.meanAbsoluteDifference` is a stand-in with the same alignment rule (pen
-// origin to pen origin).
+// scripts/parity-font-references.sh writes them under `MacAtlasReference.fileName`, 14 pt at 1.6x
+// and 2x with thicken 0 and 1 among them. TODO(WOR-322 S1): score masks with the TkzParity
+// comparator once it exists; `MacAtlasReference.meanAbsoluteDifference` is a stand-in with the
+// same alignment rule (pen origin to pen origin).
 
 import Foundation
 import Testing
@@ -207,7 +207,12 @@ struct AtlasDumpTests {
                         let label = "U+\(String(code, radix: 16)) \(style) at \(configuration.pointSize)@\(configuration.scale) thicken \(thicken)"
                         let m = try #require(mac.dump.glyphs.first { $0.scalars == [UInt32(code)] && $0.style == style }, "\(label): missing on the Mac")
                         let l = try #require(linux.glyphs.first { $0.scalars == [UInt32(code)] && $0.style == style }, "\(label): missing on Linux")
-                        #expect(abs(m.width - l.width) <= 1 && abs(m.height - l.height) <= 1, "\(label): size")
+                        withKnownIssue("WOR-312 S5: CoreText's bounding rect is the control box, FreeType's the exact outline box",
+                                       isIntermittent: true) {
+                            #expect(abs(m.width - l.width) <= 1 && abs(m.height - l.height) <= 1, "\(label): size")
+                        } when: {
+                            Self.controlBoxMismatches.contains("\(String(code, radix: 16)) \(style)")
+                        }
                         #expect(abs(m.bearingX - l.bearingX) <= 1 && abs(m.bearingTop - l.bearingTop) <= 1, "\(label): bearings")
                         #expect(m.face == l.face, "\(label): face")
                     }
@@ -215,6 +220,15 @@ struct AtlasDumpTests {
             }
         }
     }
+
+    /// Round italic glyphs whose bitmap is a pixel off the Mac's at one of the two sizes, measured
+    /// against the first reference atlases (WOR-312 S1). The Mac sizes the bitmap from the glyph's
+    /// control box (whole font units: BoldItalic '0' at 22.4 px is 0.918–13.126 on the Mac, the
+    /// control box 0.922–13.125, the exact box `FT_Outline_Get_BBox` 1.203–12.844). WOR-312 S5 moves
+    /// to `FT_Outline_Get_CBox` and empties this list.
+    static let controlBoxMismatches: Set<String> = [
+        "30 boldItalic", "36 italic", "40 italic", "40 boldItalic", "43 italic", "47 boldItalic", "6f italic",
+    ]
 
     @Test("with thicken=0 the ASCII masks differ from the Mac's by a mean |Δ| ≤ 2/255",
           .enabled(if: MacAtlasReference.configurations.contains { MacAtlasReference.exists(pointSize: $0.pointSize, scale: $0.scale, thicken: false) },
@@ -253,7 +267,11 @@ struct AtlasDumpTests {
                     let m = try #require(mac.dump.glyphs.first { $0.scalars == [scalar] && $0.style == "regular" })
                     let l = try #require(linux.glyphs.first { $0.scalars == [scalar] && $0.style == "regular" })
                     let label = "U+\(String(scalar, radix: 16)) at \(configuration.pointSize)@\(configuration.scale)"
-                    #expect(abs(m.width - l.width) <= 1 && abs(m.height - l.height) <= 1, "\(label): size")
+                    // Intermittent: the box depends on which Noto Color Emoji the machine has.
+                    withKnownIssue("WOR-312 S5: Noto Color Emoji's box is not fitted to Apple Color Emoji's yet",
+                                   isIntermittent: true) {
+                        #expect(abs(m.width - l.width) <= 1 && abs(m.height - l.height) <= 1, "\(label): size")
+                    }
                     #expect(abs(m.bearingX - l.bearingX) <= 1 && abs(m.bearingTop - l.bearingTop) <= 1, "\(label): bearings")
                 }
             }

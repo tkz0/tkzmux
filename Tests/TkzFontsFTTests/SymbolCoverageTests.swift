@@ -313,22 +313,29 @@ struct SymbolCoverageTests {
     static let symbolInventoryURL = referenceDirectory.appendingPathComponent("symbols.json")
     static let chromeMetricsURL = referenceDirectory.appendingPathComponent("chrome-metrics.json")
 
-    /// TODO(WOR-312 S1): the exporter owns this schema. The Linux side expects, per scalar
-    /// JetBrains Mono lacks, the CoreText fallback font and the glyph's ink box in device pixels
-    /// (x right, y up from the baseline) at each configuration. Unknown keys are ignored.
+    /// The part of the exporter's schema (`SymbolsDump` in
+    /// Sources/tkzmux-vtdump/FontDumpCommands.swift) this test reads: one configuration, and per
+    /// scalar and style whether JetBrains Mono covers it, the font CoreText draws it with, and that
+    /// glyph's ink box in device pixels (x right, y up from the baseline). Unknown keys are ignored.
     struct SymbolInventory: Decodable {
-        struct Entry: Decodable {
-            let scalar: String
+        struct Symbol: Decodable {
+            let scalar: UInt32
+            let hex: String
+            let styles: [Style]
+        }
+        struct Style: Decodable {
+            let style: String
+            let covered: Bool
             let font: String
-            let pointSize: Double
-            let scale: Double
-            let advance: Double
-            let bbox: Box
+            let advance: Double?
+            let bbox: Box?
         }
         struct Box: Decodable {
-            let x, y, width, height: Double
+            let minX, minY, maxX, maxY: Double
         }
-        let symbols: [Entry]
+        let pointSize: Double
+        let scale: Double
+        let symbols: [Symbol]
     }
 
     @Test("every subset glyph's ink box is within ±1 px of the Mac's",
@@ -338,19 +345,37 @@ struct SymbolCoverageTests {
         let inventory = try JSONDecoder().decode(SymbolInventory.self, from: Data(contentsOf: Self.symbolInventoryURL))
         let library = try FreeTypeLibrary()
         let face = try FreeTypeFace(library: library, url: try #require(BundledSymbols.url))
+        try face.requestPixelSize(inventory.pointSize * inventory.scale)
         var compared = 0
-        for entry in inventory.symbols {
-            guard let value = UInt32(entry.scalar, radix: 16), let scalar = Unicode.Scalar(value),
-                  FT_Get_Char_Index(face.handle, FT_ULong(value)) != 0 else { continue }
-            try face.requestPixelSize(entry.pointSize * entry.scale)
+        // The scalars the Mac draws from a fallback font and the subset carries.
+        for symbol in inventory.symbols {
+            guard let scalar = Unicode.Scalar(symbol.scalar),
+                  let regular = symbol.styles.first(where: { $0.style == "regular" }), !regular.covered,
+                  let mac = regular.bbox,
+                  FT_Get_Char_Index(face.handle, FT_ULong(symbol.scalar)) != 0 else { continue }
             let linux = try #require(face.outlineMetrics(of: scalar))
-            let mac = entry.bbox
-            #expect(abs(linux.xMin - mac.x) <= 1 && abs(linux.yMin - mac.y) <= 1, "\(entry.scalar) origin")
-            #expect(abs(linux.width - mac.width) <= 1 && abs(linux.height - mac.height) <= 1, "\(entry.scalar) size")
+            withKnownIssue("WOR-312 S7: the subset's pick for \(symbol.hex) is not the shape of the Mac's \(regular.font)") {
+                #expect(abs(linux.xMin - mac.minX) <= 1 && abs(linux.yMin - mac.minY) <= 1,
+                        "\(symbol.hex) origin (Mac: \(regular.font))")
+                #expect(abs(linux.width - (mac.maxX - mac.minX)) <= 1 && abs(linux.height - (mac.maxY - mac.minY)) <= 1,
+                        "\(symbol.hex) size (Mac: \(regular.font))")
+            } when: {
+                Self.knownMismatches.contains(symbol.scalar)
+            }
             compared += 1
         }
         #expect(compared > 0)
     }
+
+    /// The subset glyphs whose ink box is off the Mac's by more than 1 px, measured against the
+    /// first reference symbols.json (WOR-312 S1): the Mac draws most of them from Menlo, the rest
+    /// from STIXTwoMath, Hiragino Sans, Lucida Grande, Apple Symbols and PingFang. WOR-312 S7 picks
+    /// glyphs that match and empties this list; a listed scalar that starts to match fails the test,
+    /// so the list cannot go stale.
+    static let knownMismatches: Set<UInt32> = [
+        0x21AF, 0x21B5, 0x2387, 0x23BF, 0x23F5, 0x23FA, 0x25AC, 0x25D0, 0x2600, 0x263E,
+        0x2699, 0x2714, 0x2722, 0x2733, 0x273B, 0x273D, 0x27F3, 0x293F, 0x2B13, 0xFF0B,
+    ]
 
     /// TODO(WOR-312 S2): the dump owns this schema. The Linux side expects advances of single
     /// strings per font role and size, in points. Unknown keys are ignored.

@@ -7,9 +7,10 @@
 // actually drew it. The encoding is deterministic: sorted keys, and the ink box rounded to 1/10000
 // px, so two runs of the same build give byte-identical files.
 //
-// TODO(WOR-312 S1): the Mac exporter fills this from CoreText (`bbox` is the union of
-// `CTFontGetBoundingRectsForGlyphs` before the fit scale; `environment` carries the macOS build and
-// `defaults read -g AppleFontSmoothing`). Bump `currentSchema` on any change to the fields.
+// The Mac exporter (`AtlasRecorder` in Sources/tkzmux-vtdump/FontDumpCommands.swift, WOR-312 S1)
+// fills it from CoreText: `bbox` is the union of `CTFontGetBoundingRectsForGlyphs` before the fit
+// scale, and `environment` carries the macOS build, the CoreText version, `defaults read -g
+// AppleFontSmoothing` and the display profile. Bump `currentSchema` on any change to the fields.
 
 import Foundation
 
@@ -158,10 +159,25 @@ public struct AtlasDump: Codable, Sendable, Equatable {
         (Double(value) * 10_000).rounded() / 10_000
     }
 
-    /// Pretty, key-sorted JSON with a trailing newline.
+    /// Key-sorted, compact JSON with one glyph per line and a trailing newline. Not pretty-printed:
+    /// a dump holds some 400 glyphs, and the references share ADR-0003's budget (pretty, one
+    /// dump is 190 KB; this way 107 KB). A changed glyph is still a one-line diff.
     public func encoded() throws -> Data {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        return try encoder.encode(self) + Data("\n".utf8)
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        var header = self
+        header.glyphs = []
+        let marker = Data(#""glyphs":[]"#.utf8)
+        let outer = try encoder.encode(header)
+        guard let slot = outer.range(of: marker) else { return outer + Data("\n".utf8) }
+        var out = Data(outer[..<slot.lowerBound])
+        out += Data(#""glyphs":["#.utf8)
+        for (index, glyph) in glyphs.enumerated() {
+            out += Data((index == 0 ? "\n" : ",\n").utf8)
+            out += try encoder.encode(glyph)
+        }
+        out += Data((glyphs.isEmpty ? "]" : "\n]").utf8)
+        out += outer[slot.upperBound...]
+        return out + Data("\n".utf8)
     }
 }
