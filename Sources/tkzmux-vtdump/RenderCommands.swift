@@ -9,7 +9,7 @@
 //   tkzmux-vtdump atlas --out <prefix> [--point-size n --scale n --sample "…"]
 //       Rasterizes a sample string (printable ASCII plus a CJK/emoji tail by default) and dumps
 //       both atlases: `<prefix>-grayscale.png` and `<prefix>-color.png`. Runs with no Metal device
-//       at all — `GlyphAtlas` keeps a CPU staging copy precisely so this works headless.
+//       at all — `GlyphAtlas` (TkzRenderCore) is a CPU staging buffer; only the renderer uploads it.
 
 import Foundation
 import Metal
@@ -75,8 +75,8 @@ public enum RenderCommands {
                              thicken: Bool = true) throws {
         let fontSet = FontSet(pointSize: pointSize, scale: scale)
         // Small atlases so the dump is legible rather than a postage stamp in a 2048² field.
-        let cache = GlyphCache(fontSet: fontSet, device: nil,
-                               grayscaleInitialSize: 512, colorInitialSize: 256, thicken: thicken)
+        let cache = GlyphCache(fontSet: fontSet, grayscaleInitialSize: 512, colorInitialSize: 256,
+                               thicken: thicken)
 
         let text = sample ?? defaultSample
         for character in text where !character.isNewline {

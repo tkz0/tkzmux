@@ -2,7 +2,8 @@
 //
 // Shaping and rasterizing go to `TerminalFaces`; this adds the rasterizer options a glyph cache is
 // built with (`thicken`, and synthetic bold when the family needs it), the way the Mac's
-// GlyphCache builds its GlyphRasterizer. One source per (size, scale, thicken), like the Mac's.
+// CoreTextGlyphSource builds its GlyphRasterizer. One source per (size, scale, thicken), like the
+// Mac's.
 //
 // Box-drawing sprites are not drawn here yet: `sprite(for:)` returns nil until WOR-311 S5 lands
 // the shared box-sprite geometry and its pure-Swift rasterizer.

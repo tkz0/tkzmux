@@ -75,7 +75,7 @@ public final class TerminalRenderContext {
         self.fontSet = fontSet
         self.renderer = try TerminalRenderer(
             device: device,
-            glyphCache: GlyphCache(fontSet: fontSet, device: device, thicken: theme.fontMono.thicken),
+            glyphCache: GlyphCache(fontSet: fontSet, thicken: theme.fontMono.thicken),
             theme: theme)
     }
 
@@ -127,7 +127,7 @@ public final class TerminalRenderContext {
         let fontSet = TerminalRenderContext.makeFontSet(theme: theme, scale: clamped)
         let renderer = try TerminalRenderer(
             device: device,
-            glyphCache: GlyphCache(fontSet: fontSet, device: device, thicken: theme.fontMono.thicken),
+            glyphCache: GlyphCache(fontSet: fontSet, thicken: theme.fontMono.thicken),
             theme: theme)
 
         self.fontSet = fontSet

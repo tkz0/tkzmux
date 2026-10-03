@@ -14,9 +14,9 @@
 //     writes `pages` with TkzPNG (`AtlasPage.pngLayout`) and the JSON beside them. TkzPNG is not a
 //     dependency of this module, which ships in the app.
 //
-// The packer below is a CPU-only stand-in for the device-free GlyphAtlas packer WOR-311 S3 moves
-// into TkzRenderCore: same best-fit shelves, same doubling, no rebuild (a dump that overflows a
-// 2048² page throws instead of silently dropping glyphs).
+// The packer below follows TkzRenderCore's `GlyphAtlas` (WOR-311 S3): same best-fit shelves, same
+// doubling, but no rebuild (a dump that overflows a 2048² page throws instead of silently dropping
+// glyphs) and a value type, so a dump is `Sendable`.
 
 import Foundation
 import TkzRenderCore
@@ -129,9 +129,9 @@ public enum AtlasDumper {
         return ascii + "─│┌┐└┘├┤┬┴┼█▀▄░▒▓你好世界😀🎉"
     }()
 
-    /// The scalars the Mac draws as box sprites instead of font glyphs (`BoxSprites.covers`).
+    /// The scalars the Mac draws as box sprites instead of font glyphs (`BoxSpriteGeometry.covers`).
     static func isSprite(_ scalars: [Unicode.Scalar]) -> Bool {
-        scalars.count == 1 && (0x2500...0x259F).contains(scalars[0].value)
+        BoxSpriteGeometry.covers(scalars)
     }
 
     public struct Output: Sendable {

@@ -117,9 +117,9 @@ let sharedTargets: [Target] = [  // hygiene-scan
         publicHeadersPath: "include"
     ),
 
-    // The device-free half of the renderer, shared by Metal and Vulkan (WOR-311): the font seam
-    // and CellMetrics so far; WOR-311 S3-S5 move the atlas packer, FrameBuilder and the box-sprite
-    // geometry in.
+    // The device-free half of the renderer, shared by Metal and Vulkan (WOR-311): the font seam,
+    // CellMetrics, the atlas packer and GlyphCache so far; WOR-311 S4-S5 move FrameBuilder and the
+    // box-sprite geometry in.
     .target(name: "TkzRenderCore", dependencies: ["TkzShaderTypes"], path: "Sources/TkzRenderCore"),
     .testTarget(name: "TkzRenderCoreTests", dependencies: ["TkzRenderCore", "TkzShaderTypes"], path: "Tests/TkzRenderCoreTests"),
 

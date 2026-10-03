@@ -10,5 +10,7 @@
 //   S2  `FontFace`/`GlyphID`/`GlyphSource` (GlyphSource.swift) and the CellMetrics formulas, from
 //       pixel values or raw font tables (CellMetrics.swift, FontTables.swift)
 //   S3  the glyph-atlas packer (staging buffer, dirty bbox, grow generation) and `GlyphCache`
+//       over `any GlyphSource` (GlyphAtlas.swift, GlyphCache.swift), and which scalars are box
+//       sprites (BoxSpriteGeometry.swift)
 //   S4  `FrameBuilder` and `TerminalSurface`
 //   S5  the box-sprite geometry and the pure-Swift box-sprite rasterizer

@@ -19,7 +19,7 @@ import TkzRenderCore
 
 /// Draws the box-drawing and block-element ranges as cell-exact bitmaps.
 ///
-/// Not `Sendable` (CoreGraphics state); owned by `GlyphCache` on the render thread.
+/// Not `Sendable` (CoreGraphics state); owned by `CoreTextGlyphSource` on the render thread.
 public struct BoxSprites {
     public let metrics: CellMetrics
     /// Transparent border, matching `GlyphRasterizer.padding`.
@@ -32,13 +32,14 @@ public struct BoxSprites {
         self.padding = max(0, padding)
     }
 
-    /// True for the single-scalar clusters this type draws.
+    /// True for the single-scalar clusters this type draws (`BoxSpriteGeometry.covers`, shared with
+    /// the glyph cache in TkzRenderCore).
     public static func covers(_ scalars: [Unicode.Scalar]) -> Bool {
-        scalars.count == 1 && covers(scalars[0])
+        BoxSpriteGeometry.covers(scalars)
     }
 
     public static func covers(_ scalar: Unicode.Scalar) -> Bool {
-        (0x2500...0x259F).contains(scalar.value)
+        BoxSpriteGeometry.covers(scalar)
     }
 
     // MARK: - Geometry

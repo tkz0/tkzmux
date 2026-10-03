@@ -1,6 +1,5 @@
 import CoreGraphics
 import Foundation
-import Metal
 import Testing
 import TkzRenderCore
 @testable import TkzTerminalRender
@@ -163,16 +162,16 @@ struct BoxSpritesTests {
 
     @Test("the cache draws sprites instead of shaping them, once for every style")
     func cacheUsesSprites() {
-        let cache = GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2),
-                               device: MTLCreateSystemDefaultDevice())
+        let source = CoreTextGlyphSource(fontSet: FontSet(pointSize: 12.5, scale: 2))
+        let cache = GlyphCache(source: source)
         let regular = cache.glyph(for: "█", style: .regular)
         let bold = cache.glyph(for: "█", style: .bold)
         #expect(regular != nil)
         #expect(regular == bold)  // one sprite, shared by every style
         #expect(cache.cachedCount == 1)
         #expect(regular?.cellSpan == 1)
-        #expect(regular?.slot.width == cache.metrics.width + 2 * cache.rasterizer.padding)
+        #expect(regular?.slot.width == cache.metrics.width + 2 * source.rasterizer.padding)
         // The shaper was never asked for it.
-        #expect(cache.shaper.cachedCount == 0)
+        #expect(source.shaper.cachedCount == 0)
     }
 }

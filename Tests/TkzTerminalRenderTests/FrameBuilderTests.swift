@@ -9,12 +9,13 @@
 //   * spike 6  — SPACER_TAIL cells report GRAPHEMES_LEN == 0 and must not produce a glyph
 //   * spike 7  — BG_COLOR returns GHOSTTY_INVALID_VALUE when unset → theme background
 //
-// `GlyphCache(device: nil)` is a fully working CPU atlas, which is what makes this possible.
+// `GlyphCache` is a fully working CPU atlas with no Metal device, which is what makes this possible.
 
 import Foundation
 import GhosttyVt
 import Testing
 import TkzCore
+import TkzRenderCore
 import TkzShaderTypes
 import TkzTerminalCore
 @testable import TkzTerminalRender
@@ -65,7 +66,7 @@ struct SurfaceFixture {
 /// parallel. (`FontSet` serialises CoreText registration and matching internally, which is what
 /// keeps building one per test from wedging the XType XPC connection.)
 func makeTestGlyphCache() -> GlyphCache {
-    GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2), device: nil)
+    GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2))
 }
 
 // MARK: - Attach / detach

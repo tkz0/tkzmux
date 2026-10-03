@@ -1,20 +1,29 @@
 // GlyphSourceTests — the font seam is implementable with no platform font stack (WOR-311 S2).
 //
 // `BlockGlyphSource` is the deterministic stand-in the core's tests shape and rasterize with: every
-// printable scalar is one glyph whose id is its code point, drawn as a solid cell-sized block.
+// printable scalar is one glyph whose id is its code point, drawn as a solid cell-sized block. It
+// counts its calls, so the glyph-cache tests can tell a hit from a miss.
 
 import Foundation
 import Testing
 import TkzRenderCore
 
-/// A synthetic `GlyphSource`: one face, glyph id = code point, a solid block per glyph.
+/// A synthetic `GlyphSource`: one face, glyph id = code point, a solid block per glyph. Scalars
+/// in `colorScalars` shape as colour glyphs and rasterize as opaque white BGRA. With `drawsSprites`
+/// it draws every box-sprite scalar as a cell-exact block of `0x80`.
 final class BlockGlyphSource: GlyphSource {
     let metrics: CellMetrics
     let padding = 1
+    let drawsSprites: Bool
+    let colorScalars: Set<Unicode.Scalar>
     private(set) var shapeCalls = 0
+    private(set) var rasterizeCalls = 0
+    private(set) var spriteCalls = 0
 
-    init(metrics: CellMetrics) {
+    init(metrics: CellMetrics, drawsSprites: Bool = false, colorScalars: Set<Unicode.Scalar> = []) {
         self.metrics = metrics
+        self.drawsSprites = drawsSprites
+        self.colorScalars = colorScalars
     }
 
     func shape(_ scalars: [Unicode.Scalar], style: FontStyle, cellSpan: Int?) -> ShapedCluster {
@@ -23,21 +32,34 @@ final class BlockGlyphSource: GlyphSource {
             ClusterGlyph(glyph: scalar.properties.generalCategory == .control || scalar == " "
                 ? .notdef : GlyphID(rawValue: scalar.value))
         }
+        let isColor = scalars.contains { colorScalars.contains($0) }
         return ShapedCluster(face: FontFace(rawValue: UInt32(style.rawValue)), glyphs: glyphs,
-                             isColor: false, cellSpan: cellSpan ?? 1)
+                             isColor: isColor, cellSpan: cellSpan ?? (isColor ? 2 : 1))
     }
 
     func rasterize(_ cluster: ShapedCluster, style: FontStyle) -> RasterizedGlyph? {
+        rasterizeCalls += 1
         guard !cluster.isEmpty else { return nil }
+        let bytesPerPixel = cluster.isColor ? 4 : 1
         let width = metrics.width * cluster.cellSpan + 2 * padding
+        let height = metrics.height + 2 * padding
+        return RasterizedGlyph(width: width, height: height, bytesPerRow: width * bytesPerPixel,
+                               bytesPerPixel: bytesPerPixel,
+                               bearingX: -padding, bearingTop: metrics.baseline + padding,
+                               isColor: cluster.isColor, appliedScale: 1,
+                               pixels: [UInt8](repeating: 0xFF, count: width * height * bytesPerPixel))
+    }
+
+    func sprite(for scalar: Unicode.Scalar) -> RasterizedGlyph? {
+        spriteCalls += 1
+        guard drawsSprites, BoxSpriteGeometry.covers(scalar) else { return nil }
+        let width = metrics.width + 2 * padding
         let height = metrics.height + 2 * padding
         return RasterizedGlyph(width: width, height: height, bytesPerRow: width, bytesPerPixel: 1,
                                bearingX: -padding, bearingTop: metrics.baseline + padding,
                                isColor: false, appliedScale: 1,
-                               pixels: [UInt8](repeating: 0xFF, count: width * height))
+                               pixels: [UInt8](repeating: 0x80, count: width * height))
     }
-
-    func sprite(for scalar: Unicode.Scalar) -> RasterizedGlyph? { nil }
 
     func name(of face: FontFace) -> String { "Block-\(face.rawValue)" }
 }
