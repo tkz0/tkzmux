@@ -31,7 +31,18 @@ let sharedProducts: [Product] = [
     .library(name: "TkzCore", targets: ["TkzCore"]),
     .library(name: "TkzTerminalCore", targets: ["TkzTerminalCore"]),
     .executable(name: "tkzmux-hook", targets: ["tkzmux-hook"]),
+    .executable(name: "tkzmux-vtdump", targets: ["tkzmux-vtdump"]),
 ]
+
+// vtdump's `render`, `atlas` and `bench-frame` draw through the Metal renderer, so only the macOS
+// graph links it. The Linux graph links the Vulkan renderer for the Linux-only `gpu` subcommand
+// (WOR-313 S1) and for `render` and `bench-frame`, with FreeType glyphs and TkzPNG (WOR-313 S6);
+// `atlas` is a stub there until WOR-312.
+#if os(Linux)
+let vtdumpRendererDependencies: [Target.Dependency] = ["TkzRenderVK", "TkzRenderCore", "TkzFontsFT", "TkzPNG"]
+#else
+let vtdumpRendererDependencies: [Target.Dependency] = ["TkzTerminalRender", "TkzRenderCore"]
+#endif
 
 let sharedTargets: [Target] = [  // hygiene-scan
     // MARK: Vendored libghostty-vt (M1.1).
@@ -138,11 +149,15 @@ let sharedTargets: [Target] = [  // hygiene-scan
         publicHeadersPath: "include"
     ),
 
-    // The device-free half of the renderer, shared by Metal and Vulkan (WOR-311): the font seam
-    // and CellMetrics so far; WOR-311 S3-S5 move the atlas packer, FrameBuilder and the box-sprite
-    // geometry in.
-    .target(name: "TkzRenderCore", dependencies: ["TkzShaderTypes"], path: "Sources/TkzRenderCore"),
-    .testTarget(name: "TkzRenderCoreTests", dependencies: ["TkzRenderCore", "TkzShaderTypes"], path: "Tests/TkzRenderCoreTests"),
+    // The device-free half of the renderer, shared by Metal and Vulkan (WOR-311): the font seam,
+    // CellMetrics, the atlas packer and GlyphCache, TerminalSurface and FrameBuilder (which read
+    // libghostty's render state, hence TkzTerminalCore), the box-sprite geometry and its rasterizer.
+    .target(
+        name: "TkzRenderCore",
+        dependencies: ["TkzShaderTypes", "TkzCore", "TkzTerminalCore", "GhosttyVt"],
+        path: "Sources/TkzRenderCore"
+    ),
+    .testTarget(name: "TkzRenderCoreTests", dependencies: ["TkzRenderCore", "TkzShaderTypes", "TkzCore", "TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzRenderCoreTests"),
 
     // The hook relay: libc only (Darwin, Glibc or Musl), never Foundation (WOR-305 S5). On Linux
     // it carries the Swift runtime statically, per product and never through the global
@@ -152,6 +167,15 @@ let sharedTargets: [Target] = [  // hygiene-scan
         name: "tkzmux-hook",
         path: "Sources/tkzmux-hook",
         linkerSettings: [.unsafeFlags(["-static-stdlib"], .when(platforms: [.linux]))]
+    ),
+
+    // Headless VT tooling (record, replay, bench, state-churn/-validate; WOR-311 S7 on Linux).
+    // TkzPlatform for the ProcessMetrics sampler and HeapStats.
+    .executableTarget(
+        name: "tkzmux-vtdump",
+        dependencies: ["TkzTerminalCore", "Persistence", "TkzPlatform"] + vtdumpRendererDependencies,
+        path: "Sources/tkzmux-vtdump",
+        linkerSettings: [.linkedLibrary("m", .when(platforms: [.linux]))]
     ),
 ]
 
@@ -163,14 +187,39 @@ let linuxOnlyProducts: [Product] = [
 ]
 
 let linuxOnlyTargets: [Target] = [  // hygiene-scan
-    // The Linux entry point: `--version` and a libghostty-vt smoke check until WOR-314 brings the
-    // GTK application.
+    // The Linux entry point: `--version`, a libghostty-vt smoke check, the main-loop, canvas-cycle
+    // and presentation self-checks until WOR-314 brings the GTK application.
     .executableTarget(
         name: "TkzmuxLinux",
-        dependencies: ["TkzCore", "GhosttyVt"],
+        dependencies: ["TkzCore", "GhosttyVt", "TkzGtkShell", "TkzCanvasHost", "TkzRenderVK"],
         path: "Sources/tkzmux-linux",
         linkerSettings: [.linkedLibrary("m")]
     ),
+
+    // MARK: GTK platform shell (WOR-314). GTK 4.16+ from pkg-config, declared only in this branch;
+    // its headers reach TkzLinuxShim, TkzGtkShell and the app, never TkzPlatform or tkzmux-hook.
+    // The .pc is CGtk's own, by absolute path: gtk4's cflags, but only the four libraries tkzmux
+    // calls, so pangocairo, cairo, gdk_pixbuf and graphene never become NEEDED (see the file).
+    .systemLibrary(name: "CGtk", pkgConfig: Context.packageDirectory + "/Sources/CGtk/tkzmux-gtk4.pc",
+                   providers: [.apt(["libgtk-4-dev"])]),
+    // The C glue: the libdispatch main-queue GSource (libdispatch.so exports its SPI), casts,
+    // signal connection and the runtime symbol gate for APIs above 4.16.
+    .target(
+        name: "TkzLinuxShim",
+        dependencies: ["CGtk"],
+        path: "Sources/TkzLinuxShim",
+        publicHeadersPath: "include",
+        linkerSettings: [.linkedLibrary("dispatch")]
+    ),
+    // GObjectRef, signal closures, the main-queue bridge, the runtime GTK gate, and
+    // `GtkCanvasHost`, the GTK implementation of TkzCanvasHost's seam (S4).
+    .target(
+        name: "TkzGtkShell",
+        dependencies: ["CGtk", "TkzLinuxShim", "TkzCanvasHost", "TkzRenderVK", "TkzPlatform"],
+        path: "Sources/TkzGtkShell"
+    ),
+    .testTarget(name: "TkzGtkShellTests", dependencies: ["TkzGtkShell", "TkzLinuxShim", "CGtk"],
+                path: "Tests/TkzGtkShellTests"),
 
     // Committed SPIR-V for the Vulkan renderer (WOR-313 S2); regenerate with
     // scripts/build-shaders-linux.sh.
@@ -185,6 +234,53 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
         dependencies: ["TkzShadersSPIRV", "TkzShaderTypes"],
         path: "Tests/TkzShadersSPIRVTests"
     ),
+
+    // MARK: Vulkan renderer (WOR-313). The loader from pkg-config, declared only in this branch
+    // like the font stack below; Sources/CVulkan/shim.h wraps the macros Swift cannot import.
+    .systemLibrary(name: "CVulkan", pkgConfig: "vulkan", providers: [.apt(["libvulkan-dev"])]),
+    // Instance, device selection, queues, the debug messenger and the headless target; the
+    // per-surface FrameRing and the atlas uploader over TkzRenderCore's GlyphCache (S4a); the
+    // pipelines over the committed SPIR-V and the terminal renderer (S4b).
+    .target(
+        name: "TkzRenderVK",
+        dependencies: ["CVulkan", "TkzPlatform", "TkzRenderCore", "TkzShaderTypes", "TkzShadersSPIRV", "TkzCore"],
+        path: "Sources/TkzRenderVK"
+    ),
+    // TkzFontsFT puts real glyphs in the atlases the upload tests copy; TkzTerminalCore's sessions
+    // feed the renderer's idle twins. TkzPNG decodes the Mac goldens the golden twins compare with,
+    // GhosttyVt sets their selection and TkzPlatform hashes their frames (S6).
+    .testTarget(name: "TkzRenderVKTests", dependencies: ["TkzRenderVK", "CVulkan", "TkzRenderCore", "TkzFontsFT",
+                                                         "TkzTerminalCore", "TkzCore", "TkzShaderTypes",
+                                                         "TkzPNG", "TkzPlatform", "GhosttyVt"],
+                path: "Tests/TkzRenderVKTests"),
+
+    // The seam between tkzmux's pixels and the platform shell (WOR-314 S4): `CanvasHost`, the
+    // offscreen `FakeCanvasHost` and the per-host ring. No GTK: TkzCanvasUI and the app reach the
+    // shell only through it, and TkzGtkShell implements it.
+    .target(name: "TkzCanvasHost", dependencies: ["TkzRenderVK"], path: "Sources/TkzCanvasHost"),
+    .testTarget(name: "TkzCanvasHostTests", dependencies: ["TkzCanvasHost", "TkzRenderVK"],
+                path: "Tests/TkzCanvasHostTests"),
+
+    // MARK: Font stack (WOR-312). System libraries from pkg-config, declared only in this branch:
+    // a `canImport` check would turn on with Homebrew's freetype on a Mac. Their module maps are
+    // on SwiftPM's default path, Sources/<name> (no Swift in them for the hygiene scan to read).
+    .systemLibrary(name: "CFreeType", pkgConfig: "freetype2", providers: [.apt(["libfreetype-dev"])]),
+    .systemLibrary(name: "CHarfBuzz", pkgConfig: "harfbuzz", providers: [.apt(["libharfbuzz-dev"])]),
+    .systemLibrary(name: "CFontconfig", pkgConfig: "fontconfig", providers: [.apt(["libfontconfig-dev"])]),
+    // FreeType faces and metrics, HarfBuzz shaping and the private fontconfig fallback behind the
+    // TkzRenderCore font seam. Resources/Fonts is a byte-identical copy of TkzTerminalRender's
+    // (Tests/TkzFontsFTTests guards it); Resources/Symbols is the Linux-only symbol subset that
+    // scripts/make-symbol-subset.py writes.
+    .target(
+        name: "TkzFontsFT",
+        dependencies: ["CFreeType", "CHarfBuzz", "CFontconfig", "TkzRenderCore", "TkzCore", "TkzPlatform"],
+        path: "Sources/TkzFontsFT",
+        resources: [.copy("Resources/Fonts"), .copy("Resources/Symbols")]
+    ),
+    // Fixtures/ (the generated COLRv1 test font) is read through #filePath; TkzPNG decodes the Mac
+    // reference atlases.
+    .testTarget(name: "TkzFontsFTTests", dependencies: ["TkzFontsFT", "TkzRenderCore", "TkzPlatform", "CFreeType", "TkzPNG", "TkzTerminalCore"],
+                path: "Tests/TkzFontsFTTests", exclude: ["Fixtures"]),
 
     // The Mac's PersistenceTests also lists TkzTerminalCore and GhosttyVt; nothing in it imports
     // them, and neither is in the Linux graph yet (WOR-304 S3).
@@ -209,7 +305,6 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
 
 let macOnlyProducts: [Product] = [
     .executable(name: "tkzmux", targets: ["tkzmux"]),
-    .executable(name: "tkzmux-vtdump", targets: ["tkzmux-vtdump"]),
     .library(name: "TkzTerminalRender", targets: ["TkzTerminalRender"]),
     .library(name: "TkzTerminalView", targets: ["TkzTerminalView"]),
     .library(name: "AgentBridge", targets: ["AgentBridge"]),
@@ -235,7 +330,7 @@ let macOnlyTargets: [Target] = [
     // MARK: App core and services
     .target(
         name: "TkzApp",
-        dependencies: ["TkzCore", "TkzPlatform", "TkzTerminalCore", "TkzTerminalView", "AgentBridge", "GitStatus", "Persistence"],
+        dependencies: ["TkzCore", "TkzPlatform", "TkzTerminalCore", "TkzRenderCore", "TkzTerminalView", "AgentBridge", "GitStatus", "Persistence"],
         path: "Sources/TkzApp"
     ),
 
@@ -246,15 +341,10 @@ let macOnlyTargets: [Target] = [
         dependencies: ["TkzApp", "TkzCore"],
         path: "Sources/tkzmux"
     ),
-    .executableTarget(
-        name: "tkzmux-vtdump",
-        dependencies: ["TkzTerminalCore", "TkzTerminalRender", "TkzRenderCore", "Persistence"],
-        path: "Sources/tkzmux-vtdump"
-    ),
 
     // MARK: Tests (one per Swift library module; Swift Testing)
     .testTarget(name: "TkzTerminalRenderTests", dependencies: ["TkzTerminalRender", "TkzRenderCore", "GhosttyVt", "TkzPNG"], path: "Tests/TkzTerminalRenderTests", resources: [.copy("Fixtures")]),
-    .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "TkzTerminalCore", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
+    .testTarget(name: "TkzTerminalViewTests", dependencies: ["TkzTerminalView", "TkzTerminalCore", "TkzRenderCore", "GhosttyVt"], path: "Tests/TkzTerminalViewTests"),
     // TkzTerminalCore + GhosttyVt for the shell-integration harness, which spawns each login
     // shell on a real `Pty`, like PersistenceTests does for snapshots.
     .testTarget(name: "AgentBridgeTests", dependencies: ["AgentBridge", "TkzTerminalCore", "GhosttyVt"], path: "Tests/AgentBridgeTests", resources: [.copy("Fixtures")]),
@@ -262,7 +352,7 @@ let macOnlyTargets: [Target] = [
     // TkzPNG: the component snapshots (WOR-307) encode their PNGs with the same codec the Linux
     // parity harness decodes them with. Their goldens (ComponentSnapshots/) are read through
     // #filePath, not bundled.
-    .testTarget(name: "TkzAppTests", dependencies: ["TkzApp", "TkzPNG"], path: "Tests/TkzAppTests", exclude: ["ComponentSnapshots"]),
+    .testTarget(name: "TkzAppTests", dependencies: ["TkzApp", "TkzPNG", "TkzRenderCore"], path: "Tests/TkzAppTests", exclude: ["ComponentSnapshots"]),
 ]
 
 // MARK: - Package

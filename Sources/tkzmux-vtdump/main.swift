@@ -8,13 +8,22 @@
 //   replay   --snapshot   <file.tkzrec>   snapshot round-trip: encoded size + restore time
 //
 // Hand-rolled argument parsing on purpose: no third-party dependencies (CLAUDE.md).
+//
+// Builds on macOS and Linux (WOR-311 S7). `render`, `atlas` and `bench-frame` draw through the
+// Metal renderer in `#if canImport(Metal)` code; on Linux `render` and `bench-frame` draw through
+// Vulkan (VulkanRenderCommands.swift, FrameBenchVulkan.swift; WOR-313 S6) and `atlas` is a stub
+// that exits 1 until WOR-312 wires the FreeType dump. `gpu` exists on Linux only (GPUCommand.swift,
+// WOR-313 S1).
+#if canImport(Darwin)
 import Darwin
+#elseif os(Linux)
+import Glibc
+#endif
 import Dispatch
 import Foundation
 import GhosttyVt
 import Synchronization
 import TkzTerminalCore
-import TkzTerminalRender
 
 let usage = """
 usage: tkzmux-vtdump <command> [options]
@@ -51,16 +60,31 @@ usage: tkzmux-vtdump <command> [options]
                             mutate and save <dir>/state.json in a tight loop until killed. The
                             crash-safety harness for M5.1: scripts/state-crash-test.sh SIGKILLs it
                             at random moments and asserts the survivor still parses.
+  state-validate <file>     exit 0 when <file> decodes as a state.json of the schema version this
+                            build writes and has groups, sessions and sidebar; else 1 and why
 
-  render  --out <file.png> [--cols n] [--rows n] <file.tkzrec>
-                            replay a recording and rasterise the screen offscreen (M1.5)
+  render  --out <file.png> [--cols n] [--rows n] [--scale s] <file.tkzrec>
+                            replay a recording and rasterise the screen offscreen (M1.5) at backing
+                            scale s (default 2); Linux: Vulkan, plus [--fonts system|parity]
+                            [--no-validation] (WOR-313)
   atlas   --out <prefix> [--point-size n] [--scale n] [--sample <text>] [--thicken 0|1]
-                            dump the glyph atlas textures as PNGs (M1.4)
+                            dump the glyph atlas textures as PNGs (M1.4) (macOS only for now: WOR-312)
+  bench-frame [--cols n] [--rows n] [--frames n] [--warmup n] [--fill blank|spaces|text]
+          [--json <file>] [<file.tkzrec>]
+                            time a full-rebuild frame: FrameBuilder and the encode; Linux adds
+                            [--size <w>x<h>] [--scale s] [--fonts system|parity] [--validation]
+                            and the GPU time from a timestamp-query pair (WOR-313)
+  gpu     [--headless] [--main-device <major:minor>] [--no-validation] [--size <w>x<h>] [--no-clear]
+                            Linux only: list the Vulkan devices, select one as the app does
+                            (TKZMUX_GPU=auto|integrated|discrete) and log why, then clear an
+                            offscreen target and check the readback (WOR-313)
 
   bench   --sessions <n> [--busy <k>] [--seconds <s>] [--fill uniform|varied] [--lines <n>]
-          [--no-compress] [--json <file>]
-                            spawn <n> real zsh sessions, fill <k>, idle for <s>, then snapshot and
-                            restore all of them; prints RSS, phys_footprint, threads, CPU, timings
+          [--shell "<path> [args …]"] [--no-compress] [--json <file>]
+                            spawn <n> real shell sessions, fill <k>, idle for <s>, then snapshot and
+                            restore all of them; prints RSS, footprint, threads, CPU, timings.
+                            The shell is the login shell (macOS) or `bash --norc --noprofile`
+                            (Linux) unless --shell names one
   bench   <file.tkzrec> --compress [--full] [--repeats <n>] [--json <file>]
                             replay a recording and measure ghostty_terminal_compress
   bench   <file.tkzrec> [--points 1,10,50,200] [--json <file>]
@@ -256,7 +280,7 @@ final class Recorder: Sendable {
 
     init(url: URL, header: RecordingHeader) throws {
         let writer = RecordingWriter(header: header)
-        FileManager.default.createFile(atPath: url.path, contents: nil)
+        _ = FileManager.default.createFile(atPath: url.path, contents: nil)
         let handle = try FileHandle(forWritingTo: url)
         start = ContinuousClock.now
         try handle.write(contentsOf: writer.headerLine())
@@ -394,7 +418,8 @@ func parseScript(_ text: String) throws -> [ScriptStep] {
 /// The size of the real terminal we are running in, if any.
 func currentTerminalSize() -> (cols: UInt16, rows: UInt16)? {
     var window = winsize()
-    guard ioctl(STDOUT_FILENO, TIOCGWINSZ, &window) == 0, window.ws_col > 0, window.ws_row > 0 else { return nil }
+    // `UInt(…)`: Glibc imports the request as Int32, Darwin as UInt already.
+    guard ioctl(STDOUT_FILENO, UInt(TIOCGWINSZ), &window) == 0, window.ws_col > 0, window.ws_row > 0 else { return nil }
     return (window.ws_col, window.ws_row)
 }
 
@@ -520,7 +545,11 @@ func runRecord(_ argv: [String]) throws {
         let source = DispatchSource.makeReadSource(fileDescriptor: STDIN_FILENO, queue: ioQueue)
         source.setEventHandler {
             var buffer = [UInt8](repeating: 0, count: 4096)
+            #if canImport(Darwin)
             let count = buffer.withUnsafeMutableBytes { Darwin.read(STDIN_FILENO, $0.baseAddress, 4096) }
+            #else
+            let count = buffer.withUnsafeMutableBytes { Glibc.read(STDIN_FILENO, $0.baseAddress, 4096) }
+            #endif
             if count > 0 { try? pty.write(Data(buffer[0..<count])) }
         }
         source.resume()
@@ -628,6 +657,10 @@ do {
         // M5.1 — the SIGKILL harness for state.json; see scripts/state-crash-test.sh.
         try StateChurnCommand.run(Array(argv.dropFirst()))
 
+    case "state-validate":
+        // The harness's other half: does what state-churn left behind still parse?
+        try StateValidateCommand.run(Array(argv.dropFirst()))
+
     case "replay":
         try runReplay(Array(argv.dropFirst()))
 
@@ -635,28 +668,16 @@ do {
         try runRecord(Array(argv.dropFirst()))
 
     case "render":
-        let arguments = Arguments(Array(argv.dropFirst()), valueFlags: ["out", "cols", "rows"])
-        guard let input = arguments.positionals.first else {
-            fail("tkzmux-vtdump render: missing <file.tkzrec>", code: 2)
-        }
-        guard let out = arguments.value("out") else { fail("tkzmux-vtdump render: --out is required", code: 2) }
-        try RenderCommands.render(
-            recording: URL(fileURLWithPath: input),
-            png: URL(fileURLWithPath: out),
-            cols: arguments.uint16("cols"),
-            rows: arguments.uint16("rows")
-        )
+        try RenderCommands.runRender(Array(argv.dropFirst()))
 
     case "atlas":
-        let arguments = Arguments(Array(argv.dropFirst()), valueFlags: ["out", "point-size", "scale", "sample", "thicken"])
-        guard let out = arguments.value("out") else { fail("tkzmux-vtdump atlas: --out is required", code: 2) }
-        try RenderCommands.atlas(
-            pngPrefix: URL(fileURLWithPath: out),
-            pointSize: Double(arguments.value("point-size") ?? "") ?? 12.5,
-            scale: Double(arguments.value("scale") ?? "") ?? 2,
-            sample: arguments.value("sample"),
-            thicken: arguments.value("thicken") != "0"
-        )
+        try RenderCommands.runAtlas(Array(argv.dropFirst()))
+
+    #if os(Linux)
+    case "gpu":
+        // WOR-313 S1: the Vulkan bootstrap and device selection on their own.
+        try GPUCommand.run(Array(argv.dropFirst()))
+    #endif
 
     default:
         fail(usage, code: 2)

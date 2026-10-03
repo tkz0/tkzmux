@@ -6,6 +6,9 @@
 // an older kernel the calls fail with ENOSYS. accept4 (glibc 2.10) is here because the Glibc module
 // hides it: glibc declares it only under _GNU_SOURCE (WOR-306 S1).
 //
+// It also wraps `mallinfo2()` for `HeapStats` (WOR-311 S7): <malloc.h> is not part of Swift's Glibc
+// module.
+//
 // Dependency-free: libc only. Everything here is Linux-only, so on macOS this target is empty.
 // WOR-320 adds `tkz_spawn_clean` here.
 #pragma once
@@ -30,6 +33,11 @@ int tkz_pidfd_send_signal(int pidfd, int sig, unsigned int flags);
 /// (SOCK_NONBLOCK, SOCK_CLOEXEC) set atomically. Swift's Glibc module does not see accept4,
 /// which glibc declares only under _GNU_SOURCE. Returns the new fd, or -1 and sets errno.
 int tkz_accept4(int fd, int flags);
+
+/// mallinfo2(3) `uordblks + hblkhd`: bytes in allocated chunks in every arena plus bytes in chunks
+/// served by mmap. A byte count, not a block count; glibc keeps no count of live blocks. Always 0
+/// on a C library without mallinfo2 (musl).
+size_t tkz_heap_bytes_in_use(void);
 
 #ifdef __cplusplus
 }

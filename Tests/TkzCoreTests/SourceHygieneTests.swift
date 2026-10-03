@@ -70,7 +70,7 @@ import Testing
     /// guards do not hide an import from this, by design: WOR-303's temporary CoreGraphics guards
     /// are gone and must not come back.
     static let platformImport =
-        #"^\s*(@_exported\s+)?import\s+(Gtk|Gdk|CGtk|Vulkan|FreeType|HarfBuzz|Fontconfig|CoreGraphics|os|CryptoKit)\b"#
+        #"^\s*(@_exported\s+)?import\s+(Gtk|Gdk|CGtk|TkzLinuxShim|TkzGtkShell|Vulkan|FreeType|HarfBuzz|Fontconfig|CoreGraphics|os|CryptoKit)\b"#
 
     static let coreGraphicsImport = #"^\s*(@_exported\s+)?import\s+CoreGraphics\b"#
 
@@ -179,7 +179,8 @@ import Testing
         let offenders = [
             "import CoreGraphics", "  import CoreGraphics", "@_exported import os", "import os",
             "import CryptoKit", "import Gtk", "import CGtk", "import Vulkan", "import HarfBuzz",
-            "import FreeType", "import Fontconfig", "import Gdk",
+            "import FreeType", "import Fontconfig", "import Gdk", "import TkzLinuxShim",
+            "@_exported import TkzGtkShell",
         ]
         for line in offenders {
             #expect(pattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil, "\(line)")
@@ -190,6 +191,51 @@ import Testing
             "import TkzPlatform",
         ]
         for line in fine {
+            #expect(pattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) == nil, "\(line)")
+        }
+    }
+
+    // MARK: GTK shell (WOR-314 S1)
+
+    /// `@unchecked Sendable` would hide exactly the races the GTK shell must not have: GObject
+    /// pointers are main-thread state, so its handles stay non-Sendable and main-actor isolated
+    /// (CLAUDE.md). Comment lines are skipped.
+    static let uncheckedSendable = #"^(?!\s*//).*@unchecked\s+Sendable"#
+
+    @Test func noUncheckedSendableInTheGtkShell() throws {
+        let files = try Self.swiftSources(under: "Sources/TkzGtkShell")
+        #expect(files.contains { $0.lastPathComponent == "GObjectRef.swift" })
+        let offences = try Self.offences(of: Self.uncheckedSendable, in: files)
+        #expect(offences.isEmpty, "TkzGtkShell keeps handles non-Sendable: \(offences)")
+    }
+
+    // MARK: Canvas host seam (WOR-314 S4)
+
+    /// TkzCanvasHost is the seam TkzCanvasUI and the app reach the platform shell through, so a
+    /// raw-Wayland host can replace GTK behind it: it never imports GTK or the GTK shell, and, like
+    /// the shell, never opts out of Sendable checking.
+    static let gtkImport = #"^\s*(@_exported\s+)?import\s+(Gtk|Gdk|CGtk|TkzLinuxShim|TkzGtkShell)\b"#
+
+    @Test func theCanvasHostSeamHasNoGtk() throws {
+        let files = try Self.swiftSources(under: "Sources/TkzCanvasHost")
+        #expect(files.contains { $0.lastPathComponent == "CanvasHost.swift" })
+        let imports = try Self.offences(of: Self.gtkImport, in: files)
+        #expect(imports.isEmpty, "TkzCanvasHost stays GTK-free: \(imports)")
+        let unchecked = try Self.offences(of: Self.uncheckedSendable, in: files)
+        #expect(unchecked.isEmpty, "TkzCanvasHost keeps Sendable checked: \(unchecked)")
+        let pattern = try NSRegularExpression(pattern: Self.gtkImport)
+        for line in ["import CGtk", "@_exported import TkzGtkShell", "  import TkzLinuxShim"] {
+            #expect(pattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil, "\(line)")
+        }
+        #expect(pattern.firstMatch(in: "import TkzRenderVK", range: NSRange(location: 0, length: 18)) == nil)
+    }
+
+    @Test func theUncheckedSendableCheckWouldCatchAnOffender() throws {
+        let pattern = try NSRegularExpression(pattern: Self.uncheckedSendable)
+        for line in ["final class Box: @unchecked Sendable {", "extension GObjectRef: @unchecked  Sendable {}"] {
+            #expect(pattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil, "\(line)")
+        }
+        for line in ["// never @unchecked Sendable", "final class Box: Sendable {", "    /// no @unchecked Sendable"] {
             #expect(pattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) == nil, "\(line)")
         }
     }

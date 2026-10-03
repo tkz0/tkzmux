@@ -31,7 +31,6 @@
 import Foundation
 import GhosttyVt
 import TkzCore
-import TkzRenderCore
 import TkzShaderTypes
 import TkzTerminalCore
 
@@ -43,6 +42,14 @@ public struct FrameUpdate: Sendable, Hashable {
     public var rowsRebuilt: Int
     public var glyphCount: Int
     public var rectCount: Int
+
+    /// Public, because both renderers build the outcome of a frame skipped before `update`.
+    public init(dirty: SurfaceDirty, rowsRebuilt: Int, glyphCount: Int, rectCount: Int) {
+        self.dirty = dirty
+        self.rowsRebuilt = rowsRebuilt
+        self.glyphCount = glyphCount
+        self.rectCount = rectCount
+    }
 
     /// True when the surface has nothing new to draw and the renderer must return early.
     public var isClean: Bool { dirty == .none }
@@ -627,7 +634,7 @@ func pack(_ color: RGB) -> UInt32 {
 
 extension RGB {
     /// The inverse of `pack(_: RGB)`.
-    init(packed: UInt32) {
+    public init(packed: UInt32) {
         self.init(
             r: Double(packed & 0xFF) / 255,
             g: Double((packed >> 8) & 0xFF) / 255,

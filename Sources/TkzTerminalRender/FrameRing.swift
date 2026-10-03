@@ -13,6 +13,7 @@
 // had ever drawn.
 
 import Metal
+import TkzRenderCore
 
 /// Three sets of instance buffers, cycled so the CPU can write frame N+2 while the GPU still reads
 /// frame N.
@@ -74,5 +75,17 @@ public final class FrameRing {
             total + [slot.background, slot.glyphs, slot.rectsBelow, slot.rectsAbove]
                 .reduce(0) { $0 + ($1?.length ?? 0) }
         }
+    }
+}
+
+// The surface is device-free (TkzRenderCore) and holds its GPU state as an opaque
+// `SurfaceRenderResources`; this is the Metal renderer's typed view of that slot.
+extension FrameRing: SurfaceRenderResources {}
+
+extension TerminalSurface {
+    /// The surface's `FrameRing`, created by the renderer on first encode and dropped by `detach()`.
+    public var frameRing: FrameRing? {
+        get { renderResources as? FrameRing }
+        set { renderResources = newValue }
     }
 }

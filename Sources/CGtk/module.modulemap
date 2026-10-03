@@ -1,0 +1,13 @@
+// GTK 4 as a Swift module (WOR-314 S1). Linux only: Package.swift declares this target in the
+// Linux branch, and only TkzLinuxShim, TkzGtkShell and the app import it, never TkzPlatform or
+// tkzmux-hook. Flags come from tkzmux-gtk4.pc beside this file: gtk4's cflags, and only the
+// libraries below, so pangocairo, cairo, gdk_pixbuf and graphene never become NEEDED
+// (ADR-0002 D10, linkage-policy.txt).
+module CGtk [system] {
+    header "CGtk.h"
+    link "gtk-4"
+    link "gio-2.0"
+    link "gobject-2.0"
+    link "glib-2.0"
+    export *
+}

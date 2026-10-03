@@ -4,6 +4,7 @@
 import AppKit
 import Metal
 import Testing
+import TkzRenderCore
 import TkzTerminalCore
 import TkzTerminalRender
 @testable import TkzTerminalView

@@ -1,0 +1,8 @@
+// Vulkan as a Swift module (WOR-313). Linux only, like CFreeType: Package.swift declares this
+// target in the Linux branch. Only the loader (libvulkan.so.1) is linked; drivers are loaded by the
+// loader at runtime and are never NEEDED (ADR-0001). Flags come from `pkg-config vulkan`.
+module CVulkan [system] {
+    header "shim.h"
+    link "vulkan"
+    export *
+}

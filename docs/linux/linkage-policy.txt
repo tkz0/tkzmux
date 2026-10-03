@@ -102,14 +102,14 @@ deny libdecor-*.so*          | GTK owns the toplevel and tkzmux draws its own wi
 deny libX11*.so*             | No direct X11. X11 is not a target (GDK_BACKEND=wayland), and libX11 reaches the closure only through GTK.
 deny libxcb*.so*             | No direct X11, for the same reason as libX11.
 deny libX[a-z]*.so*          | No direct X11 extension libraries (Xi, Xext, Xrandr, Xcursor, ...). The pattern does not match libXCTest.
-deny libwayland-*.so*        | No direct Wayland client. GDK owns the connection, and WOR-313's `vtdump gpu` is headless.
+deny libwayland-*.so*        | No direct Wayland client. GDK owns the connection, and WOR-313's `vtdump gpu` is headless. The one read GDK does not publish (dmabuf main_device, WOR-314 S4) uses GDK's connection through dlsym, never a link.
 deny libadwaita-1.so*        | GTK is a shell only. No Adwaita widgets or styling.
 deny libnotify.so*           | Notifications use org.freedesktop.Notifications over GDBus directly.
 deny libSDL*.so*             | No second windowing or input toolkit.
 deny libsentry*.so*          | No telemetry or crash reporting (CLAUDE.md: no Sentry, telemetry).
 deny libcrashpad*.so*        | No telemetry or crash reporting.
 deny libbreakpad*.so*        | No telemetry or crash reporting.
-deny libpangocairo-*.so*     | Pango is allowed for layout only ([@text-layout]). Drawing through cairo is GTK's path, and tkzmux draws every pixel with Vulkan. `pkg-config --libs gtk4` lists it, so CGtk links with --as-needed (ADR-0002 D10).
+deny libpangocairo-*.so*     | Pango is allowed for layout only ([@text-layout]). Drawing through cairo is GTK's path, and tkzmux draws every pixel with Vulkan. `pkg-config --libs gtk4` lists it, so CGtk links through its own Sources/CGtk/tkzmux-gtk4.pc, which leaves it out (ADR-0002 D10, build.md).
 deny libpangoxft-*.so*       | X11 text rendering. No X11, and Pango is used for layout only.
 deny libcairo*.so*           | 2D drawing library. GTK may use it internally, but tkzmux never draws through it. `pkg-config --libs gtk4` lists it (ADR-0002 D10).
 deny libheif.so*             | HEIC decodes through GdkTexture and glycin at runtime, never through a direct link (ADR-0001 section 8).

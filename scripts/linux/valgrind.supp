@@ -1,0 +1,51 @@
+# Valgrind suppressions for the asan-valgrind job (WOR-314 S2, scripts/linux/asan-valgrind.sh).
+#
+# Only third-party noise belongs here, each entry anchored on the library it comes from. Never
+# suppress anything whose innermost frames are tkzmux's (tkz_*, Tkz* Swift symbols): the job's
+# gate is "no definite leak and no invalid access in Tkz frames", and a suppression would hide
+# exactly that. The job runs the canvas cycle check with GSK_RENDERER=cairo, which keeps GPU
+# drivers out of most of the process; the driver entries cover a local run with the default
+# renderer.
+
+# NVIDIA's proprietary GL/EGL libraries allocate zero bytes while initialising (loaded through
+# libglvnd even when nothing renders with them).
+{
+   nvidia-realloc-zero
+   Memcheck:ReallocZero
+   fun:realloc
+   obj:*/libnvidia-*.so*
+}
+{
+   nvidia-posix-memalign-zero
+   Memcheck:BadSize
+   fun:posix_memalign
+   obj:*/libnvidia-*.so*
+}
+
+# Mesa's Vulkan drivers read memory the kernel filled through ioctls, which Valgrind cannot see.
+{
+   mesa-vulkan-cond
+   Memcheck:Cond
+   obj:*/libvulkan_*.so*
+}
+{
+   mesa-vulkan-value8
+   Memcheck:Value8
+   obj:*/libvulkan_*.so*
+}
+
+# One-time allocations made while a display or bus connection is set up, never freed by design.
+{
+   mesa-egl-display
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:calloc
+   obj:*/libEGL_mesa.so*
+}
+{
+   libdbus-message-loader
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:calloc
+   fun:dbus_message_new_empty_header
+}

@@ -14,6 +14,7 @@ import Foundation
 import ImageIO
 import Testing
 import TkzPNG
+import TkzRenderCore
 @testable import TkzTerminalRender
 
 /// The decode `TerminalRendererTests` used before TkzPNG: ImageIO, drawn into a DeviceRGB
@@ -63,7 +64,7 @@ struct TkzPNGParityTests {
 
     @Test("an ImageIO-written greyscale atlas reads back as its staging bytes")
     func grayAtlas() throws {
-        let cache = GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2), device: nil,
+        let cache = GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2),
                                grayscaleInitialSize: 128, colorInitialSize: 128)
         for text in ["A", "g", "你", "─"] { _ = cache.glyph(for: Character(text)) }
         let atlas = cache.grayscale
@@ -90,7 +91,7 @@ struct TkzPNGParityTests {
     /// directions round to nearest, and off by one where ImageIO truncates.
     @Test("an ImageIO-written colour atlas reads back as its staging bytes (±1 after un/premultiply)")
     func colorAtlas() throws {
-        let cache = GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2), device: nil,
+        let cache = GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2),
                                grayscaleInitialSize: 128, colorInitialSize: 128)
         _ = cache.glyph(for: "😀")
         let atlas = cache.color

@@ -1,0 +1,20 @@
+# LeakSanitizer suppressions for the asan-valgrind job (WOR-314 S2, scripts/linux/asan-valgrind.sh).
+#
+# A `leak:` pattern hides a leak when it matches ANY frame of the allocation stack, so only
+# libraries that tkzmux code never calls into belong here: a pattern for GTK, GLib, fontconfig or
+# Vulkan would also hide a tkzmux leak allocated through them, and everything tkzmux runs under
+# the GTK main loop has GTK frames further out. The job does not depend on the third-party entries:
+# it fails only on leaks owned by Tkz code and lists the rest; they just keep known one-time
+# allocations out of that list. A Tkz entry is a false positive named down to its symbol.
+
+# swift-corelibs-xctest's runner keeps its suite tree until exit (the test bundle's XCTest pass).
+leak:libXCTest.so
+
+# Mesa's EGL display, made once when GDK probes GL (gdk_display_prepare_gl), never freed.
+leak:libEGL_mesa.so
+
+# Swift layout, not a leak: `SymbolIcon.Layer` is a two-case enum over one array, so Swift keeps
+# the case in the array pointer's spare high bits, and LeakSanitizer does not recognise a `.clear`
+# layer's tagged pointer in the `SymbolIcons` statics as one (two "direct" leaks of path storage,
+# allocated once). The pattern is the mangled `TkzFontsFT.SymbolIcons` static initializers'.
+leak:10TkzFontsFT11SymbolIconsO

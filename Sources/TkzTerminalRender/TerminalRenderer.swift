@@ -1,9 +1,10 @@
 // TerminalRenderer — the three-pass Metal renderer (M1.5).
 // See TkzShaderTypes.h for the contract.
 //
-// One instance app-wide: it owns the pipelines, the shared `GlyphCache` (both atlases), the
-// `FrameBuilder` and a 3-deep ring of shared `MTLBuffer`s guarded by a semaphore. Sessions come and
-// go through `TerminalSurface`; the renderer itself never changes.
+// One instance app-wide: it owns the pipelines, the shared `GlyphCache` (both atlases) and the
+// textures that mirror them (`MetalAtlasUploader`), the `FrameBuilder` and a 3-deep ring of shared
+// `MTLBuffer`s guarded by a semaphore. Sessions come and go through `TerminalSurface`; the renderer
+// itself never changes.
 //
 // Draw order, all into one `.bgra8Unorm` attachment (see Terminal.metal):
 //
@@ -25,6 +26,7 @@ import ImageIO
 import Metal
 import QuartzCore
 import TkzCore
+import TkzRenderCore
 import TkzShaderTypes
 import UniformTypeIdentifiers
 
@@ -68,6 +70,8 @@ public final class TerminalRenderer {
     public let device: MTLDevice
     public let commandQueue: MTLCommandQueue
     public let glyphCache: GlyphCache
+    /// The atlas textures the glyph pass samples, kept in step with `glyphCache` once per frame.
+    public let atlasUploader: MetalAtlasUploader
     public let frameBuilder: FrameBuilder
 
     /// Theme used for the letterbox, the selection tint and `TkzUniforms.minContrast`.
@@ -92,20 +96,23 @@ public final class TerminalRenderer {
     ///   - device: the Metal device; defaults to the system default.
     ///   - fontSet: the font set the glyph cache rasterizes with.
     ///   - theme: colours for the letterbox and the selection tint.
+    ///   - scale: the backing scale the theme's font set is built at when `fontSet` is nil
+    ///     (`tkzmux-vtdump render --scale`); ignored otherwise.
     public convenience init(
         device: MTLDevice? = MTLCreateSystemDefaultDevice(),
         fontSet: FontSet? = nil,
-        theme: Theme = .default
+        theme: Theme = .default,
+        scale: CGFloat = 2
     ) throws {
         guard let device else { throw RenderError(result: -1, operation: "MTLCreateSystemDefaultDevice") }
         let resolvedFontSet = fontSet ?? FontSet(
             family: theme.fontMono.family,
             fallback: theme.fontMono.fallback,
             pointSize: theme.fontMono.terminal,
-            scale: 2)
+            scale: scale)
         try self.init(
             device: device,
-            glyphCache: GlyphCache(fontSet: resolvedFontSet, device: device, thicken: theme.fontMono.thicken),
+            glyphCache: GlyphCache(fontSet: resolvedFontSet, thicken: theme.fontMono.thicken),
             theme: theme)
     }
 
@@ -118,12 +125,11 @@ public final class TerminalRenderer {
         }
         self.commandQueue = queue
         // The glyph pipeline declares both atlas textures; Metal validation faults on an unbound
-        // argument even when the branch that samples it is not taken, so a CPU-only GlyphCache
-        // (`device: nil`) can never drive a real renderer.
-        guard glyphCache.grayscale.texture != nil, glyphCache.color.texture != nil else {
-            throw RenderError(result: -1,
-                              operation: "TerminalRenderer needs a GlyphCache built with a device")
+        // argument even when the branch that samples it is not taken, so both must exist up front.
+        guard let uploader = MetalAtlasUploader(device: device, cache: glyphCache) else {
+            throw RenderError(result: -1, operation: "MTLDevice.makeTexture (glyph atlases)")
         }
+        self.atlasUploader = uploader
 
         let library = try TerminalRenderer.makeLibrary(device: device)
         func function(_ name: String) throws -> MTLFunction {
@@ -297,7 +303,7 @@ public final class TerminalRenderer {
         let rectsBelow = surface.rectInstancesBelow(geometry: geometry)
 
         // One `replace(region:)` per atlas per frame, before anything is encoded.
-        glyphCache.flushUploads()
+        atlasUploader.upload(glyphCache)
 
         // Lazily, because a `TerminalSurface` has no `MTLDevice` of its own: it holds the ring,
         // the renderer creates it on first encode.
@@ -321,8 +327,9 @@ public final class TerminalRenderer {
 
         // The command buffer is created *before* the drawable is acquired. A drawable that is
         // acquired and never presented is only returned to the layer's pool when it deallocates,
-        // and with `maximumDrawableCount = 2` a couple of those make `nextDrawable()` block for
-        // about a second each — which looks exactly like a frozen window.
+        // and the pool holds three (`maximumDrawableCount`, set in `TerminalMetalView`), so a
+        // couple of those with a frame in flight make `nextDrawable()` block for up to a second
+        // each — which looks exactly like a frozen window.
         guard let commandBuffer = commandQueue.makeCommandBuffer() else {
             ring.release()
             stats.framesSkipped += 1
@@ -374,8 +381,8 @@ public final class TerminalRenderer {
             encoder.setRenderPipelineState(glyphPipeline)
             setUniforms(&uniforms, on: encoder)
             encoder.setVertexBuffer(glyphBuffer, offset: 0, index: Int(TKZ_BUFFER_INDEX_INSTANCES))
-            encoder.setFragmentTexture(glyphCache.grayscale.texture, index: Int(TKZ_TEXTURE_INDEX_GRAYSCALE))
-            encoder.setFragmentTexture(glyphCache.color.texture, index: Int(TKZ_TEXTURE_INDEX_COLOR))
+            encoder.setFragmentTexture(atlasUploader.grayscale, index: Int(TKZ_TEXTURE_INDEX_GRAYSCALE))
+            encoder.setFragmentTexture(atlasUploader.color, index: Int(TKZ_TEXTURE_INDEX_COLOR))
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4,
                                    instanceCount: glyphInstanceCount)
         }

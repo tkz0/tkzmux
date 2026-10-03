@@ -13,11 +13,13 @@
 // Not `Sendable`: it holds raw libghostty handles and is touched only from the render thread.
 // The only place it reaches into the session is `FrameBuilder`'s one-line `withTerminal` closure
 // around `ghostty_render_state_begin_update`.
+//
+// Device-free since WOR-311 S4: the GPU half of a surface (the Metal `FrameRing`, the Vulkan
+// renderer's equivalent) hangs off `renderResources`, which the surface only holds and drops.
 
 import Foundation
 import GhosttyVt
 import TkzCore
-import TkzRenderCore
 import TkzShaderTypes
 import TkzTerminalCore
 
@@ -97,6 +99,14 @@ public struct SurfaceColors: Sendable, Hashable {
     public var effectiveCursor: UInt32 { cursor ?? foreground }
 }
 
+// MARK: - Renderer resources
+
+/// A renderer's per-surface GPU state: the Metal `FrameRing`, or the Vulkan renderer's equivalent.
+///
+/// The surface never looks inside. It holds the object so the resources live exactly as long as the
+/// attachment, and `detach()` drops it; each renderer reads it back as its own concrete type.
+public protocol SurfaceRenderResources: AnyObject {}
+
 // MARK: - TerminalSurface
 
 public final class TerminalSurface {
@@ -116,8 +126,8 @@ public final class TerminalSurface {
     /// This surface's instance buffers, created by the renderer on first encode and dropped by
     /// `detach()`. Per surface rather than per renderer so N panes in one tick do not contend for
     /// one ring's slots — and so a pane's buffers are sized to that pane, not to the widest one on
-    /// screen (see `FrameRing`).
-    public var frameRing: FrameRing?
+    /// screen (see `FrameRing`, which the Metal renderer reads back as `frameRing`).
+    public var renderResources: (any SurfaceRenderResources)?
 
     // MARK: Grid state
 
@@ -231,7 +241,7 @@ public final class TerminalSurface {
         session = nil
         // Load-bearing for "an unattached terminal costs only IO": a hidden tab's panes must give
         // their instance buffers back, not merely stop drawing.
-        frameRing = nil
+        renderResources = nil
         columns = 0
         rowCount = 0
         backgroundCells.removeAll(keepingCapacity: false)
@@ -358,7 +368,9 @@ public final class TerminalSurface {
     /// the *next* flatten's `removeAll(keepingCapacity:)` has to reallocate — which is precisely the
     /// copy-on-write trap `store(row:)` documents, kept off the hot path rather than fixed, because
     /// returning an array is the whole point of that entry point.
-    func withGlyphInstances<T>(_ body: (UnsafeBufferPointer<TkzGlyphInstance>) throws -> T) rethrows -> T {
+    public func withGlyphInstances<T>(
+        _ body: (UnsafeBufferPointer<TkzGlyphInstance>) throws -> T
+    ) rethrows -> T {
         flattenGlyphs()
         return try glyphFlatten.withUnsafeBufferPointer(body)
     }
@@ -389,7 +401,7 @@ public final class TerminalSurface {
     }
 
     /// `rectInstancesAbove` without the copy out — see `withGlyphInstances`.
-    func withRectInstancesAbove<T>(
+    public func withRectInstancesAbove<T>(
         geometry: GridGeometry, _ body: (UnsafeBufferPointer<TkzRectInstance>) throws -> T
     ) rethrows -> T {
         flattenRectsAbove(geometry: geometry)

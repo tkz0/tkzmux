@@ -12,6 +12,7 @@
 
 import AppKit
 import Foundation
+import TkzRenderCore
 import TkzTerminalCore
 
 // `NSTextInputClient`'s requirements are `nonisolated` in the SDK while every implementation below

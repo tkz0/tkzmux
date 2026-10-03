@@ -176,7 +176,7 @@ Arch's build prints bare version numbers; upstream builds print `shaderc v2026.3
 
 - It pins the whole Arch package set behind that output: `shaderc 2026.3-1`, `spirv-tools 1:1.4.357.0-1` and `glslang 1:1.4.357.0-1`, each by sha256.
 - It refuses any `glslc` whose three version lines differ.
-- `--fetch` downloads that set from the Arch Linux Archive into `~/.cache/tkzmux/`, checks it, and runs it from there. Use it when the host's packages have moved on. The Arch full-build job of `ci-linux.yml` is to run the drift check this way (`--fetch --check`); that step lands with the job's Vulkan packages (WOR-313 S1).
+- `--fetch` downloads that set from the Arch Linux Archive into `~/.cache/tkzmux/`, checks it, and runs it from there. Use it when the host's packages have moved on. The Arch full-build job of `ci-linux.yml` runs the drift check this way (`--fetch --check`), with the fetched packages cached under `~/.cache/tkzmux/shaderc-cache` (WOR-313 S1).
 - Upstream shaderc publishes no versioned binaries, so the Arch packages are the pinned release.
 
 ## `scripts/linux/dev-env.sh`

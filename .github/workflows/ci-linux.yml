@@ -13,9 +13,31 @@
 #                never gated) and scripts/linux/check-binary.sh. Then the musl release build of
 #                `tkzmux-hook` through the pinned Static Linux SDK, run under `env -i` from a
 #                copied location, and the same two checks against [tkzmux-hook] (WOR-305 S6).
+#                Then tkzmux-vtdump: its ABI manifest, 50 rounds of scripts/state-crash-test.sh and
+#                its linkage against [tkzmux-vtdump] (WOR-311 S7). Vulkan (WOR-313 S1): lavapipe
+#                and the Khronos validation layer are installed, and TKZMUX_REQUIRE_VULKAN=1 turns
+#                every GPU test that would skip without a device into a failure; `vtdump gpu` runs
+#                the bootstrap and its clear + readback, `vtdump render` and `bench-frame` draw
+#                through Vulkan (S6); the SPIR-V drift check regenerates the
+#                committed shaders with the pinned shaderc (scripts/build-shaders-linux.sh --fetch).
+#                GTK (WOR-314 S1): gtk4 is installed, `tkzmux --main-loop-check` runs on the
+#                release build, and TkzGtkShellTests run headless (no display: GLib only).
 #   ubuntu       ubuntu-24.04 + the pinned swift:<pin>-noble image (never the runner's own Swift):
-#                one `swift build --target` per non-GTK target, then the tests. WOR-314 S1
-#                restricts the list or retires the job once a GTK target exists (noble has GTK 4.14).
+#                one `swift build --target` per non-GTK target, and no tests. Restricted, not
+#                retired, by WOR-314 S1: noble's GTK 4.14 is below the floor, so the test bundle
+#                (which links GTK) cannot build there, but the per-target builds still check the
+#                non-GTK code against glibc 2.39 and noble's older Vulkan, FreeType and HarfBuzz
+#                headers, which the Arch image cannot (ADR-0002 D5).
+#   asan-valgrind  REQUIRED (WOR-314 S2). The `arch` image, snapshot and toolchain, plus sway,
+#                valgrind and dbus. scripts/linux/asan-valgrind.sh, inside a headless sway
+#                (WLR_BACKENDS=headless, WLR_RENDERER=pixman; scripts/linux/headless-sway.sh) and a
+#                private session bus (dbus-run-session): the whole suite under AddressSanitizer with
+#                TKZMUX_REQUIRE_DISPLAY=1, so CanvasCycleTests opens and closes 100 windows, then
+#                Memcheck on `tkzmux --canvas-cycle-check --cycles 100`. Both fail on any memory error
+#                in Tkz frames or leak owned by Tkz code, and list third-party leaks. Valgrind runs through a
+#                current glibc + glibc-debug pair from scripts/linux/fetch-glibc-debug.sh, because the
+#                snapshot's glibc-debug is gone from the mirrors. No Vulkan driver: the GPU tests
+#                skip here and run in `arch`. The reports are uploaded when it fails.
 #   arch-latest  Scheduled, NOT required: archlinux:latest with live mirrors, same steps as `arch`,
 #                to catch rolling-release breakage before the pin is bumped.
 #
@@ -75,6 +97,13 @@ jobs:
       # The Arch Linux Archive day the image was built from, so `pacman -Syu` installs the same
       # package set on every run. Empty means live mirrors (arch-latest).
       ARCH_SNAPSHOT: '2026/09/27'
+      # ParityFontsTests fails instead of skipping when the fetched parity fonts are missing.
+      TKZMUX_REQUIRE_PARITY_FONTS: '1'
+      # TkzRenderVKTests fails instead of skipping without a Vulkan device or the validation layer.
+      TKZMUX_REQUIRE_VULKAN: '1'
+      # The layer's synchronization validation too: a missing barrier in the ring or the atlas
+      # uploads (WOR-313 S4a) is a hazard error, which the tests count.
+      VK_KHRONOS_VALIDATION_VALIDATE_SYNC: '1'
     steps: &arch-steps
       # Before checkout: actions/checkout needs git in the container to fetch a real repository,
       # and actions/cache needs zstd.
@@ -86,22 +115,43 @@ jobs:
           # gcc: crt objects and libstdc++ for the toolchain's clang; binutils: ld.gold (the
           # default linker), readelf, nm, objdump; sqlite, curl, util-linux-libs, zlib, icu: the
           # toolchain binaries' own libraries; ncurses + libxml2-legacy: the compat sonames from
-          # docs/linux/dev.md ("Compat libraries"); zsh: the interactive-shell PtyTests, which skip
-          # without it (WOR-305); zsh, fish, bash-completion, git, python: AgentBridgeTests' shell
-          # harness covers bash, zsh and fish against Arch's own system files (a missing shell
-          # fails under CI), and GitStatusTests drive git (WOR-306 S5).
+          # docs/linux/dev.md ("Compat libraries"); freetype2, harfbuzz, fontconfig: TkzFontsFT's
+          # system libraries (WOR-312); zsh: the interactive-shell PtyTests, which skip without it
+          # (WOR-305); zsh, fish, bash-completion, git, python: AgentBridgeTests' shell harness
+          # covers bash, zsh and fish against Arch's own system files (a missing shell fails under
+          # CI), and GitStatusTests drive git (WOR-306 S5); vulkan-icd-loader, vulkan-headers:
+          # CVulkan (WOR-313); vulkan-swrast (lavapipe) and vulkan-validation-layers: the device and
+          # the layer the GPU tests require here; gtk4: CGtk (WOR-314; headers and libraries, floor
+          # 4.16). No shaderc: the drift check fetches its own pinned build.
           pacman -Syu --noconfirm --needed \
             git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
-            gnupg zstd pkgconf zsh fish bash-completion python
-          pacman -Q glibc gcc binutils bash zsh fish
+            gnupg zstd pkgconf freetype2 harfbuzz fontconfig zsh fish bash-completion python \
+            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4
+          pacman -Q glibc gcc binutils bash zsh fish freetype2 harfbuzz fontconfig \
+            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4
 
       - uses: actions/checkout@v5
 
-      - name: Read the Swift pin
+      # WOR-312 S4: the pinned parity fonts (Tests/Parity/Fonts/fonts.lock.json), downloaded once
+      # per lockfile and SHA-256-checked by the script, into the directory the tests read
+      # ($HOME/.cache/tkzmux/parity-fonts). Parity mode resolves fallback faces from them alone
+      # (ParityFontsTests).
+      - name: Cache the parity fonts
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/tkzmux/parity-fonts
+          key: parity-fonts-${{ hashFiles('Tests/Parity/Fonts/fonts.lock.json') }}
+
+      - name: Fetch the parity fonts
+        run: scripts/fetch-parity-fonts.sh
+
+      - &swift-pin
+        name: Read the Swift pin
         id: pin
         run: echo "swift=$(awk '$1 == "pin" && $2 == "swift" { print $3; exit }' docs/linux/dev.md)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache the Swift toolchain tarball
+      - &swift-tarball-cache
+        name: Cache the Swift toolchain tarball
         uses: actions/cache@v5
         with:
           path: ~/.cache/swift-download
@@ -110,7 +160,8 @@ jobs:
       # docs/linux/dev.md, "Toolchain": the swift.org Ubuntu 24.04 tarball, signature-checked,
       # unpacked per user, with the ncurses compat links in the toolchain's RUNPATH directory.
       # libxml2.so.2 comes from the libxml2-legacy package installed above.
-      - name: Install Swift ${{ steps.pin.outputs.swift }}
+      - &swift-install
+        name: Install Swift ${{ steps.pin.outputs.swift }}
         env:
           PIN: ${{ steps.pin.outputs.swift }}
         run: |
@@ -133,7 +184,8 @@ jobs:
           "$root/usr/bin/swift" --version 2>&1 | tee "$RUNNER_TEMP/swift-version"
           grep -qF "Swift version $PIN (swift-$PIN-RELEASE)" "$RUNNER_TEMP/swift-version"
 
-      - name: Cache .build
+      - &build-cache
+        name: Cache .build
         if: env.ARCH_SNAPSHOT != ''
         uses: actions/cache@v5
         with:
@@ -143,6 +195,18 @@ jobs:
 
       - name: Lint the linkage policy
         run: scripts/linux/check-linkage.sh --lint
+
+      # WOR-313: the committed SPIR-V must be byte-for-byte what the pinned shaderc makes of the
+      # GLSL. --fetch downloads the pinned Arch packages by sha256 (docs/linux/dev.md, "glslc pin")
+      # instead of trusting whatever shaderc the image has.
+      - name: Cache the pinned shaderc
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/tkzmux/shaderc-cache
+          key: shaderc-${{ hashFiles('scripts/build-shaders-linux.sh', 'docs/linux/dev.md') }}
+
+      - name: SPIR-V drift check (pinned shaderc)
+        run: SHADERC_CACHE="$HOME/.cache/tkzmux/shaderc-cache" scripts/build-shaders-linux.sh --fetch --check
 
       # CLAUDE.md: tkzmux-hook imports libc only (Darwin/Glibc/Musl), never Foundation. Also
       # checked by HookHygieneTests; this fails before anything is built (WOR-305 S5). The `!`
@@ -154,19 +218,20 @@ jobs:
       - name: swift build
         run: swift build --build-system native
 
-      # The summary-line guard, shared by every job (see the header). --no-parallel is required:
+      # The summary-line guard, shared by the testing jobs (see the header). --no-parallel is required:
       # ci.yml explains why, and docs/linux/build.md ("Tests on Linux").
       # The arch job runs this step twice: the whole suite here, and once more after the release
-      # build, with TKZMUX_BIN set, for InstalledStubTests against the release stub (a relocated
-      # <prefix>/bin + <prefix>/lib/tkzmux tree; without TKZMUX_TEST_STUB it uses the debug stub).
+      # build, with TKZMUX_BIN set, for the tests that run the `tkzmux` binary against the
+      # release stub: InstalledStubTests (a relocated <prefix>/bin + <prefix>/lib/tkzmux tree) and
+      # MainLoopBridgeTests (`--main-loop-check`). Without TKZMUX_TEST_STUB they use the debug one.
       - &swift-test
-        name: swift test${{ env.TKZMUX_BIN && ' (InstalledStubTests, release stub)' || '' }}
+        name: swift test${{ env.TKZMUX_BIN && ' (InstalledStubTests, MainLoopBridgeTests, release stub)' || '' }}
         env:
           TKZMUX_TEST_STUB: ${{ env.TKZMUX_BIN }}
         run: |
           log="$RUNNER_TEMP/swift-test.log"
           filter=()
-          if [ -n "$TKZMUX_TEST_STUB" ]; then filter=(--filter InstalledStubTests); fi
+          if [ -n "$TKZMUX_TEST_STUB" ]; then filter=(--filter 'InstalledStubTests|MainLoopBridgeTests'); fi
           swift test --build-system native --no-parallel "${filter[@]}" 2>&1 | tee "$log"
           # Exit status 0 is not enough (header; scripts/test-memory-probe.sh): one
           # "Test run with N tests ..." line per finished run, every N > 0.
@@ -207,6 +272,7 @@ jobs:
           echo "TKZMUX_BIN=$bin" >> "$GITHUB_ENV"
           "$bin" --version
           [ "$("$bin" --vt-smoke)" = "hello" ]
+          "$bin" --main-loop-check
 
       - *swift-test
 
@@ -268,6 +334,31 @@ jobs:
       - name: check-binary.sh (tkzmux-hook)
         run: scripts/linux/check-binary.sh "$HOOK_BIN" --section tkzmux-hook
 
+      # WOR-311 S7. The crash harness builds the release vtdump itself; `abi` must print exactly
+      # the committed Linux manifest. `atlas` is a stub until WOR-312.
+      # `gpu` (WOR-313 S1) selects lavapipe, the only device here, under the validation layer and
+      # exits 1 on a readback mismatch or any validation error. `render` and `bench-frame`
+      # (WOR-313 S6) draw through Vulkan on lavapipe under the same layer and exit 1 on any
+      # validation error; a recording rendered twice must give the same PNG, and its sha256 is
+      # printed so two runs can be compared.
+      - name: tkzmux-vtdump (abi, state-crash-test.sh, gpu, render, bench-frame, linkage)
+        run: |
+          scripts/state-crash-test.sh 50
+          vtdump="$(swift build --build-system native -c release --show-bin-path)/tkzmux-vtdump"
+          "$vtdump" abi | diff - vendor/ghostty-vt/abi-types.x86_64-linux-gnu.json
+          "$vtdump" gpu | tee "$RUNNER_TEMP/vtdump-gpu.txt"
+          grep -q '^loader: .*validation on$' "$RUNNER_TEMP/vtdump-gpu.txt"
+          for scale in 2 1.6; do
+            for run in a b; do
+              "$vtdump" render --fonts parity --scale "$scale" --out "$RUNNER_TEMP/render-$scale-$run.png" \
+                Tests/TkzTerminalCoreTests/Fixtures/claude-tool-run.tkzrec
+            done
+            cmp "$RUNNER_TEMP/render-$scale-a.png" "$RUNNER_TEMP/render-$scale-b.png"
+            sha256sum "$RUNNER_TEMP/render-$scale-a.png"
+          done
+          "$vtdump" bench-frame --fonts parity --frames 20 --warmup 2 --validation
+          scripts/linux/check-linkage.sh "$vtdump" tkzmux-vtdump
+
   ubuntu:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
@@ -277,16 +368,25 @@ jobs:
       image: swift:6.3.3-noble@sha256:cd45c27b3abc42310c33cfaf3008b18156cbdc9187834c9617e8f43a26d2675c
     env:
       # Every non-GTK target, one `swift build --target` each. GhosttyVt is a binary target and
-      # cannot be built on its own; its dependents cover it. A target that joins the Linux graph
-      # without GTK is added here (WOR-304 onwards).
-      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzShadersSPIRVTests tkzmux-hook AgentBridge AgentBridgeTests GitStatus GitStatusTests
+      # cannot be built on its own; its dependents cover it, and so do TkzFontsFT's for the
+      # system-library targets CFreeType, CHarfBuzz and CFontconfig. A target that joins the Linux
+      # graph without GTK is added here (WOR-304 onwards). Never CGtk, TkzLinuxShim, TkzGtkShell
+      # or anything that depends on them: TkzmuxLinux (the `tkzmux` entry) left the list when it
+      # started linking TkzGtkShell (WOR-314 S1). SwiftPM warns that gtk4's .pc is missing; that
+      # is expected here.
+      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzShaderTypes TkzRenderCore TkzPNG TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzPNGTests TkzShadersSPIRVTests tkzmux-hook AgentBridgeTests TkzFontsFT TkzFontsFTTests TkzRenderVK TkzRenderVKTests TkzCanvasHost TkzCanvasHostTests tkzmux-vtdump AgentBridge GitStatus GitStatusTests
     steps:
       - name: Install system packages
         run: |
           apt-get update -q
-          # iproute2: `ss`, which ListeningPortsTests compares against (Arch has it in `base`).
+          # Build-only since WOR-314 S1, so the test-only packages (shells, iproute2, the parity
+          # font download) are gone. libfreetype-dev, libharfbuzz-dev, libfontconfig-dev:
+          # TkzFontsFT's system libraries (WOR-312). libvulkan-dev: CVulkan (WOR-313). Never
+          # libgtk-4-dev: 4.14, below the floor.
           DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
-            zsh fish git python3 ncurses-bin binutils pkg-config iproute2
+            git binutils pkg-config \
+            libfreetype-dev libharfbuzz-dev libfontconfig-dev libvulkan-dev
+          dpkg-query -W libfreetype-dev libharfbuzz-dev libfontconfig-dev libvulkan-dev
 
       - uses: actions/checkout@v5
 
@@ -314,8 +414,60 @@ jobs:
             echo "::endgroup::"
           done
 
-      # While the Linux graph has no GTK target, `swift test` builds and runs all of it.
-      - *swift-test
+      # No `swift test` here (WOR-314 S1): the test bundle links every test target, TkzGtkShellTests
+      # included, and noble's GTK 4.14 is below the floor. The `arch` job runs the tests.
+
+  asan-valgrind:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container:
+      # The `arch` image and snapshot; bump them together.
+      image: archlinux:base-20260927.0.600689@sha256:b21322c663be387c0ed9cbc7bbbfe18e41633ad4e7b7c77cfad45f128be20040
+    env:
+      ARCH_SNAPSHOT: '2026/09/27'
+    steps:
+      - name: Install system packages
+        run: |
+          if [ -n "$ARCH_SNAPSHOT" ]; then
+            echo "Server = https://archive.archlinux.org/repos/$ARCH_SNAPSHOT/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist
+          fi
+          # The `arch` job's build set without the Vulkan driver and layer, plus sway (the headless
+          # compositor), valgrind and dbus (dbus-run-session).
+          pacman -Syu --noconfirm --needed \
+            git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
+            gnupg zstd pkgconf freetype2 harfbuzz fontconfig zsh \
+            vulkan-icd-loader vulkan-headers gtk4 sway valgrind dbus
+          pacman -Q glibc gtk4 sway valgrind dbus
+
+      - uses: actions/checkout@v5
+
+      - *swift-pin
+      - *swift-tarball-cache
+      - *swift-install
+      - *build-cache
+
+      # Valgrind needs symbols for ld.so, which Arch ships only in the current glibc-debug.
+      - name: Fetch glibc with debug symbols for Valgrind
+        run: |
+          scripts/linux/fetch-glibc-debug.sh "$RUNNER_TEMP/glibc"
+          echo "TKZMUX_VALGRIND_GLIBC=$RUNNER_TEMP/glibc/usr/lib" >> "$GITHUB_ENV"
+
+      - name: swift test --sanitize=address (headless sway)
+        run: scripts/linux/headless-sway.sh dbus-run-session -- scripts/linux/asan-valgrind.sh asan
+
+      - name: Valgrind, 100 canvas open/close cycles (headless sway)
+        run: scripts/linux/headless-sway.sh dbus-run-session -- scripts/linux/asan-valgrind.sh valgrind 100
+
+      - name: Upload the sanitizer reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: asan-valgrind-reports
+          path: |
+            .build/asan-reports
+            .build/valgrind-canvas-cycle.log
+          if-no-files-found: ignore
 
   arch-latest:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -325,4 +477,7 @@ jobs:
       image: archlinux:latest
     env:
       ARCH_SNAPSHOT: ''
+      TKZMUX_REQUIRE_PARITY_FONTS: '1'
+      TKZMUX_REQUIRE_VULKAN: '1'
+      VK_KHRONOS_VALIDATION_VALIDATE_SYNC: '1'
     steps: *arch-steps

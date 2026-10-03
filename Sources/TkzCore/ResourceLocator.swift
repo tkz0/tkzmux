@@ -1,10 +1,11 @@
 // ResourceLocator — where tkzmux's read-only resources live outside the test bundle, on both OSes.
 // WOR-303 S3.
 //
-// Every module with resources (`TkzTerminalCore`, `TkzTerminalRender`, `AgentBridge`) finds its
-// SwiftPM resource bundle through `bundleURL(forModule:)` before falling back to `Bundle.module`
-// (see `Sources/TkzTerminalCore/ModuleResources.swift` for why `Bundle.module` alone cannot work in
-// the `.app`), and the terminfo probe goes through `terminfoDirectory(in:)`.
+// Every module with resources (`TkzTerminalCore`, `TkzTerminalRender`, `AgentBridge`, and the
+// Linux-only `TkzFontsFT`) finds its SwiftPM resource bundle through `bundleURL(forModule:)` before
+// falling back to `Bundle.module` (see `Sources/TkzTerminalCore/ModuleResources.swift` for why
+// `Bundle.module` alone cannot work in the `.app`), and the terminfo probe goes through
+// `terminfoDirectory(in:)`.
 //
 // **macOS** is exactly what each `ModuleResources.swift` did before: `Bundle.main.resourceURL`
 // (`Contents/Resources` in the `.app`, the executable's directory under `swift run`), probed for
@@ -55,7 +56,8 @@ public struct ResourceLocator: Sendable {
 
     /// Every module with a SwiftPM resource bundle, i.e. every non-test target in Package.swift with
     /// `resources:` (`ResourceLocatorTests` checks the manifest). An install ships one bundle each.
-    public static let resourceModules = ["TkzTerminalCore", "TkzTerminalRender", "AgentBridge"]
+    /// `TkzFontsFT` is in the Linux graph only, so the Mac `.app` has no bundle for it.
+    public static let resourceModules = ["TkzTerminalCore", "TkzTerminalRender", "AgentBridge", "TkzFontsFT"]
 
     /// The Linux stand-in for the `.app`'s stamped Info.plist, written by
     /// `scripts/linux-version-plist.sh` and read by `AppVersion.current`.

@@ -387,10 +387,11 @@ import CoreGraphics  // CGRect/CGFloat geometry API lives in the CoreGraphics ov
         let probe = Probe()
         let store = probe.store
         var seen: [Set<SessionID>] = []
-        store.addObserver { change in
+        // Weak, like Probe's observer: a strong capture is a store → observer → store cycle.
+        store.addObserver { [weak store] change in
             seen.append(change.sessions)
             if change.sessions == [self.sessionA] {
-                store.update { $0.setStatus(.idle, for: self.sessionB) }
+                store?.update { $0.setStatus(.idle, for: self.sessionB) }
             }
         }
         store.update { $0.setStatus(.waiting(.permission), for: sessionA) }

@@ -24,6 +24,7 @@ import QuartzCore
 import Testing
 import TkzCore
 import TkzPNG
+import TkzRenderCore
 import TkzShaderTypes
 import TkzTerminalCore
 @testable import TkzTerminalRender
@@ -201,7 +202,7 @@ private struct RendererFixture {
         self.device = device
         renderer = try TerminalRenderer(
             device: device,
-            glyphCache: GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2), device: device),
+            glyphCache: GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2)),
             theme: theme)
         session = try GoldenScreen.makeSession(theme: theme)
         surface = TerminalSurface()
@@ -485,7 +486,7 @@ struct TerminalRendererPixelTests {
         let theme = Theme.default
         let renderer = try TerminalRenderer(
             device: device,
-            glyphCache: GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2), device: device),
+            glyphCache: GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2)),
             theme: theme)
         let session = try TerminalSession(options: TerminalSessionOptions(cols: 4, rows: 2, theme: theme))
         // A red background in cell (1,0), and nothing anywhere else.
@@ -520,7 +521,7 @@ struct TerminalRendererPixelTests {
         let theme = Theme.light
         let renderer = try TerminalRenderer(
             device: device,
-            glyphCache: GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2), device: device),
+            glyphCache: GlyphCache(fontSet: FontSet(pointSize: 12.5, scale: 2)),
             theme: theme)
         let session = try TerminalSession(options: TerminalSessionOptions(cols: 4, rows: 1, theme: theme))
         // Cell 0: a full block in the pastel. Cell 2: a full block in the theme's own foreground.

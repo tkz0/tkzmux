@@ -38,7 +38,8 @@ Docs that do not exist yet are listed by file name and become links when they ar
 | `mainactor-audit.md` | @MainActor and main-queue audit for the GLib main loop | WOR-309 S7 |
 | `test-matrix.md` | Which suites stay macOS-only and which run on Linux | WOR-309 |
 | `markdown-parity.md` | Remaining Markdown-renderer differences | WOR-310 S7 |
-| `perf-budgets.md` | Linux performance budgets and measurements (Linux counterpart of the local-only `docs/perf.md`) | WOR-313 S1; extended by WOR-323 |
+| [perf-budgets.md](perf-budgets.md) | Linux performance budgets and measurements (Linux counterpart of the local-only `docs/perf.md`): `vkCreateInstance` per driver set, frame encode and GPU time (`vtdump bench-frame`) | WOR-313 S1; extended by WOR-313 S6, WOR-323 |
+| [presentation.md](presentation.md) | The `CanvasHost` seam, the offloaded canvas window, whole-device-pixel snapping at 1.6, slot release and wl_buffers, `--presentation-check` and `shell-local.sh` results | WOR-314 S4; extended by WOR-314 S5 |
 | `hyprland.md` | Hyprland snippet: opacity, `terminal` tag and Settings-float rules, plain-Hyprland form | WOR-314 S3; extended by WOR-324 |
 | `input.md` | Linux shortcut table, colliding window-manager binds, IME setup | WOR-315 S3 |
 | `canvas-toolkit.md` | Canvas toolkit core: display list, layout, overlays, glass parity numbers | WOR-316 S7 |
@@ -56,6 +57,7 @@ Docs that do not exist yet are listed by file name and become links when they ar
 |---|---|---|
 | `scripts/linux/check-linkage.sh <elf> <section>` | The only NEEDED check; reads [linkage-policy.txt](linkage-policy.txt) | WOR-299 S2 |
 | `scripts/linux/dev-env.sh [--smoke] [--container]` | Read-only host check against [dev.md](dev.md): toolchain pin, every package later issues rely on, each gap with its install command | WOR-300 S1 |
+| `scripts/linux/shell-local.sh [offload\|checkerboard]` | On the desktop: offload held for 10 s (`GDK_DEBUG=offload`, `WAYLAND_DEBUG=1`), and the byte-exact checkerboard at three window positions (Hyprland, grim) | WOR-314 S4 |
 | `scripts/linux/check-binary.sh` | compiler_rt `@plt`, GLIBC symbol ceiling and GNU_STACK checks; calls `check-linkage.sh` | WOR-302 S4 |
 
 ## Rules that apply to every Linux change

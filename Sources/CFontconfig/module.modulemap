@@ -1,0 +1,7 @@
+// fontconfig as a Swift module (WOR-312). Linux only, like CFreeType. TkzFontsFT only ever uses a
+// private FcConfig, never the desktop's (ADR-0002). Flags come from `pkg-config fontconfig`.
+module CFontconfig [system] {
+    header "shim.h"
+    link "fontconfig"
+    export *
+}

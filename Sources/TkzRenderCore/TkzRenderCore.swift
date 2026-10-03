@@ -10,5 +10,10 @@
 //   S2  `FontFace`/`GlyphID`/`GlyphSource` (GlyphSource.swift) and the CellMetrics formulas, from
 //       pixel values or raw font tables (CellMetrics.swift, FontTables.swift)
 //   S3  the glyph-atlas packer (staging buffer, dirty bbox, grow generation) and `GlyphCache`
-//   S4  `FrameBuilder` and `TerminalSurface`
-//   S5  the box-sprite geometry and the pure-Swift box-sprite rasterizer
+//       over `any GlyphSource` (GlyphAtlas.swift, GlyphCache.swift), and which scalars are box
+//       sprites (`BoxSpriteGeometry.covers`)
+//   S4  `TerminalSurface` and `FrameBuilder`: libghostty's render state → instance buffers. They
+//       read the terminal through TkzTerminalCore and hold a renderer's GPU state only as an
+//       opaque `SurfaceRenderResources` (TerminalSurface.swift, FrameBuilder.swift)
+//   S5  the box-sprite geometry both painters replay — CoreGraphics on the Mac — and the pure-Swift
+//       box-sprite rasterizer Linux draws with (BoxSpriteGeometry.swift, BoxSpriteRasterizer.swift)
