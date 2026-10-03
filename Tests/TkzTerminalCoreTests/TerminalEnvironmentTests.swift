@@ -152,9 +152,11 @@ private func hostEnvironment(home: String, shell: String = "/bin/zsh") -> [Strin
         let home = try tempDir("zdotdir")
         defer { try? FileManager.default.removeItem(at: home) }
         let support = home.appending(path: "support")
+        // The shell is passed rather than detected: `LoginShell.detect` skips a `SHELL` that is not
+        // installed, and a Linux machine may have no zsh.
         let env = TerminalEnvironment.make(
             sessionID: "S1", tkzmuxDir: support,
-            baseEnvironment: hostEnvironment(home: home.path), home: home.path
+            baseEnvironment: hostEnvironment(home: home.path), home: home.path, shell: .zsh
         )
         #expect(env["ZDOTDIR"] == support.appending(path: "zsh").path)
         #expect(env["TKZMUX_ZDOTDIR"] == env["ZDOTDIR"])
@@ -282,10 +284,16 @@ private func hostEnvironment(home: String, shell: String = "/bin/zsh") -> [Strin
         var base = hostEnvironment(home: home.path)
         base.removeValue(forKey: "LANG")
         let support = home.appending(path: "support")
+        #if os(Linux)
+        // `en_US.UTF-8` where glibc has it, else `C.UTF-8` (TerminalEnvironmentLinuxTests).
+        let fallback = TerminalEnvironment.fallbackLanguage
+        #else
+        let fallback = "en_US.UTF-8"
+        #endif
         #expect(
             TerminalEnvironment.make(
                 sessionID: "S1", tkzmuxDir: support, baseEnvironment: base, home: home.path
-            )["LANG"] == "en_US.UTF-8"
+            )["LANG"] == fallback
         )
         #expect(
             TerminalEnvironment.make(
@@ -329,7 +337,8 @@ private func hostEnvironment(home: String, shell: String = "/bin/zsh") -> [Strin
     /// `xterm-ghostty` from *our* bundled terminfo. `TERMINFO_DIRS` is absent from the child env
     /// (we strip it and the test's base env never sets it), so a machine-wide install cannot mask
     /// the result — the assertion is on the path infocmp reports, not merely on its exit code.
-    @Test func loginZshSeesTheEnvironmentContract() async throws {
+    @Test(.enabled(if: zshAvailable, zshMissing))
+    func loginZshSeesTheEnvironmentContract() async throws {
         let home = try tempDir("loginzsh")
         defer { try? FileManager.default.removeItem(at: home) }
         let support = home.appending(path: "support")

@@ -83,13 +83,14 @@ private func openFileDescriptorCount() -> Int {
 }
 
 /// The interactive-shell tests drive zsh. Every Mac has it; a Linux dev box may not, and CI
-/// installs it, so there it is a visible skip rather than a failure.
+/// installs it, so there it is a visible skip rather than a failure. Shared with
+/// `TerminalEnvironmentTests`.
 #if os(Linux)
-private let zshAvailable = FileManager.default.isExecutableFile(atPath: "/bin/zsh")
+let zshAvailable = FileManager.default.isExecutableFile(atPath: "/bin/zsh")
 #else
-private let zshAvailable = true
+let zshAvailable = true
 #endif
-private let zshMissing: Comment = "zsh is not installed at /bin/zsh (CI installs it)"
+let zshMissing: Comment = "zsh is not installed at /bin/zsh (CI installs it)"
 
 #if os(Linux)
 /// Both Linux spawn paths: clone3(CLONE_PIDFD), and the fork() + pidfd_open() fallback.
