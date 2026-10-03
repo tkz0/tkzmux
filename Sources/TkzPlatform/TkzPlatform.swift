@@ -18,6 +18,10 @@
 //                             /proc (Linux/), libproc (Darwin/)
 //   ListeningPorts.swift      `ListeningPorts`: listening TCP ports per pid; /proc/net joined with
 //                             /proc/<pid>/fd (Linux/), libproc (Darwin/)
+//   ProcessMetrics.swift      `ProcessMetrics`: this process's memory, threads and CPU from
+//                             /proc/self (Linux; the macOS back-end arrives with WOR-309 S1)
+//   HeapStats.swift           `HeapStats`: live malloc heap; blocks (macOS) or bytes (Linux, mallinfo2
+//                             through TkzPlatformShim)
 
 /// Module marker used by the smoke tests until the module has API on every OS.
 public enum TkzPlatformModule {

@@ -34,7 +34,16 @@ let sharedProducts: [Product] = [
     .library(name: "TkzCore", targets: ["TkzCore"]),
     .library(name: "TkzTerminalCore", targets: ["TkzTerminalCore"]),
     .executable(name: "tkzmux-hook", targets: ["tkzmux-hook"]),
+    .executable(name: "tkzmux-vtdump", targets: ["tkzmux-vtdump"]),
 ]
+
+// vtdump's `render`, `atlas` and `bench-frame` draw through the Metal renderer, so only the macOS
+// graph links it; on Linux those three are stubs until WOR-312/WOR-313 (WOR-311 S7).
+#if os(Linux)
+let vtdumpRendererDependencies: [Target.Dependency] = []
+#else
+let vtdumpRendererDependencies: [Target.Dependency] = ["TkzTerminalRender", "TkzRenderCore"]
+#endif
 
 let sharedTargets: [Target] = [  // hygiene-scan
     // MARK: Vendored libghostty-vt (M1.1).
@@ -136,6 +145,15 @@ let sharedTargets: [Target] = [  // hygiene-scan
         path: "Sources/tkzmux-hook",
         linkerSettings: [.unsafeFlags(["-static-stdlib"], .when(platforms: [.linux]))]
     ),
+
+    // Headless VT tooling (record, replay, bench, state-churn/-validate; WOR-311 S7 on Linux).
+    // TkzPlatform for the ProcessMetrics sampler and HeapStats.
+    .executableTarget(
+        name: "tkzmux-vtdump",
+        dependencies: ["TkzTerminalCore", "Persistence", "TkzPlatform"] + vtdumpRendererDependencies,
+        path: "Sources/tkzmux-vtdump",
+        linkerSettings: [.linkedLibrary("m", .when(platforms: [.linux]))]
+    ),
 ]
 
 // MARK: - Linux only
@@ -227,7 +245,6 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
 
 let macOnlyProducts: [Product] = [
     .executable(name: "tkzmux", targets: ["tkzmux"]),
-    .executable(name: "tkzmux-vtdump", targets: ["tkzmux-vtdump"]),
     .library(name: "TkzTerminalRender", targets: ["TkzTerminalRender"]),
     .library(name: "TkzTerminalView", targets: ["TkzTerminalView"]),
     .library(name: "AgentBridge", targets: ["AgentBridge"]),
@@ -277,11 +294,6 @@ let macOnlyTargets: [Target] = [
         // TkzCore for AppVersion: `--version` is answered before NSApplication exists (M6.1).
         dependencies: ["TkzApp", "TkzCore"],
         path: "Sources/tkzmux"
-    ),
-    .executableTarget(
-        name: "tkzmux-vtdump",
-        dependencies: ["TkzTerminalCore", "TkzTerminalRender", "TkzRenderCore", "Persistence"],
-        path: "Sources/tkzmux-vtdump"
     ),
 
     // MARK: Tests (one per Swift library module; Swift Testing)

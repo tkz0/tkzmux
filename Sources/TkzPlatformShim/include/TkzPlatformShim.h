@@ -5,6 +5,9 @@
 // glibc wrappers, which need glibc 2.36, above the 2.35 floor. pidfds need Linux 5.3 or later; on
 // an older kernel the calls fail with ENOSYS.
 //
+// It also wraps `mallinfo2()` for `HeapStats` (WOR-311 S7): <malloc.h> is not part of Swift's Glibc
+// module.
+//
 // Dependency-free: libc only. Everything here is Linux-only, so on macOS this target is empty.
 // WOR-320 adds `tkz_spawn_clean` here.
 #pragma once
@@ -24,6 +27,11 @@ int tkz_pidfd_open(pid_t pid, unsigned int flags);
 /// pidfd_send_signal(2) with no siginfo: sends `sig` to the process `pidfd` refers to, which
 /// cannot be a recycled pid. Returns 0, or -1 and sets errno (ESRCH once the process has exited).
 int tkz_pidfd_send_signal(int pidfd, int sig, unsigned int flags);
+
+/// mallinfo2(3) `uordblks + hblkhd`: bytes in allocated chunks in every arena plus bytes in chunks
+/// served by mmap. A byte count, not a block count; glibc keeps no count of live blocks. Always 0
+/// on a C library without mallinfo2 (musl).
+size_t tkz_heap_bytes_in_use(void);
 
 #ifdef __cplusplus
 }

@@ -96,17 +96,20 @@ public final class TerminalRenderer {
     ///   - device: the Metal device; defaults to the system default.
     ///   - fontSet: the font set the glyph cache rasterizes with.
     ///   - theme: colours for the letterbox and the selection tint.
+    ///   - scale: the backing scale the theme's font set is built at when `fontSet` is nil
+    ///     (`tkzmux-vtdump render --scale`); ignored otherwise.
     public convenience init(
         device: MTLDevice? = MTLCreateSystemDefaultDevice(),
         fontSet: FontSet? = nil,
-        theme: Theme = .default
+        theme: Theme = .default,
+        scale: CGFloat = 2
     ) throws {
         guard let device else { throw RenderError(result: -1, operation: "MTLCreateSystemDefaultDevice") }
         let resolvedFontSet = fontSet ?? FontSet(
             family: theme.fontMono.family,
             fallback: theme.fontMono.fallback,
             pointSize: theme.fontMono.terminal,
-            scale: 2)
+            scale: scale)
         try self.init(
             device: device,
             glyphCache: GlyphCache(fontSet: resolvedFontSet, thicken: theme.fontMono.thicken),

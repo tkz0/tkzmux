@@ -10,6 +10,9 @@
 # "primary missing, .bak present" state on purpose: that is the one a naive rotation
 # (`unlink(.bak); link(primary, .bak)`) loses, and it is invisible to a test that always starts
 # from a complete pair.
+#
+# Runs on macOS and Linux (WOR-311 S7): the survivor check is `tkzmux-vtdump state-validate` and
+# the delay is `sleep` with a fraction, so nothing beyond bash and the binary itself is needed.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -19,18 +22,18 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/tkzmux-state-crash.XXXXXX")"
 keep=0
 trap '[ "$keep" -eq 1 ] || rm -rf "$work"' EXIT
 
-echo "==> building tkzmux-vtdump (release)"
-swift build -c release --product tkzmux-vtdump >/dev/null
-churn="$(swift build -c release --product tkzmux-vtdump --show-bin-path)/tkzmux-vtdump"
+# Linux passes the build system explicitly (docs/linux/build.md); macOS keeps SwiftPM's default.
+build=(swift build -c release --product tkzmux-vtdump)
+if [ "$(uname -s)" = Linux ]; then build+=(--build-system native); fi
 
-# Parses as a v1 state file with the keys the schema requires. `plutil -extract` reads JSON and is
-# on every macOS, so this needs no python and no jq. (`plutil -lint` is not usable here: it assumes
-# a property list and rejects a perfectly good JSON object.)
+echo "==> building tkzmux-vtdump (release)"
+"${build[@]}" >/dev/null
+churn="$("${build[@]}" --show-bin-path)/tkzmux-vtdump"
+
+# Decodes through Persistence as a state file of the schema version this build writes, with the
+# keys the schema requires (StateValidateCommand.swift).
 parses() {
-  [ "$(plutil -extract schemaVersion raw -o - "$1" 2>/dev/null)" = "1" ] || return 1
-  plutil -extract groups raw -o - "$1" >/dev/null 2>&1 || return 1
-  plutil -extract sessions raw -o - "$1" >/dev/null 2>&1 || return 1
-  plutil -extract sidebar raw -o - "$1" >/dev/null 2>&1 || return 1
+  "$churn" state-validate "$1" >/dev/null 2>&1
 }
 
 failures=0
@@ -48,8 +51,9 @@ for ((round = 1; round <= rounds; round++)); do
 
   "$churn" state-churn "$dir" --seed "$((round * 7))" >/dev/null 2>&1 &
   pid=$!
-  # 5-120 ms: long enough to be mid-save, short enough that 50 rounds take a couple of seconds.
-  perl -e "select undef, undef, undef, (5 + int(rand(115))) / 1000"
+  # 5-119 ms: long enough to be mid-save, short enough that 50 rounds take a couple of seconds.
+  # A decimal fraction, which both GNU and BSD sleep accept.
+  sleep "0.$(printf '%03d' $((5 + RANDOM % 115)))"
   kill -9 "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 

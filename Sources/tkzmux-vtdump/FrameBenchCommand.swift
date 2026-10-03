@@ -21,10 +21,15 @@
 // So it does not measure churn — it measures what a frame *retains*, which is the thing that would
 // otherwise grow without anyone noticing (an unbounded cache, a leak). Churn shows up in the
 // nanoseconds-per-glyph figure instead, which is why that one is printed.
+//
+// macOS only until WOR-313 brings a Vulkan renderer; on Linux, UnavailableCommands.swift stands in.
+// The block counter is TkzPlatform's `HeapStats`, which on Linux counts bytes instead (mallinfo2),
+// so a Linux bench-frame will report bytes under its own key.
 
-import Darwin
+#if canImport(Metal)
 import Foundation
 import Metal
+import TkzPlatform
 import TkzRenderCore
 import TkzTerminalCore
 import TkzTerminalRender
@@ -34,11 +39,9 @@ enum FrameBenchCommand {
         let description: String
     }
 
-    /// Live `blocks_in_use` for the default malloc zone.
+    /// Live `blocks_in_use` across the malloc zones (`malloc_zone_statistics(nil, …)`).
     static func mallocBlocks() -> Int {
-        var statistics = malloc_statistics_t()
-        malloc_zone_statistics(nil, &statistics)
-        return Int(statistics.blocks_in_use)
+        HeapStats.sample().blocksInUse
     }
 
     static func nanos() -> UInt64 { DispatchTime.now().uptimeNanoseconds }
@@ -250,3 +253,4 @@ enum FrameBenchCommand {
         }
     }
 }
+#endif

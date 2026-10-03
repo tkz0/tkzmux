@@ -5,46 +5,64 @@
 //   tkzmux-vtdump bench-snapshot <file.tkzrec> [--repeats N]
 //
 // Everything here measures the *host process*: RSS and phys_footprint, thread count, and CPU over
-// the idle window. The N zsh children are separate processes and their cost is deliberately NOT in
-// these numbers — see docs/perf.md, which says so next to every table.
+// the idle window. The N shell children are separate processes and their cost is deliberately NOT
+// in these numbers — see docs/perf.md, which says so next to every table.
+//
+// On Linux (WOR-311 S7) the same JSON comes from TkzPlatform's `ProcessMetrics` sampler, so the
+// keys match the Mac's but two of the values mean something else: `footprint` is
+// RssAnon+RssShmem+VmSwap rather than `phys_footprint`, and `reusable` is smaps_rollup's
+// LazyFree. `compressed` has no Linux counterpart and is 0. Compare a Linux run with a Linux run.
 //
 // Self-contained on purpose: `tkzmux-vtdump` does not depend on `Persistence`, so the snapshot
 // file writing below is a local mirror of `SnapshotStore.save` rather than a call into it.
 // (Package.swift delta reported with the ticket.)
 
+#if canImport(Darwin)
 import Darwin
+#elseif os(Linux)
+import Glibc
+import TkzPlatform
+#endif
 import Dispatch
 import Foundation
 import Synchronization
+import TkzCore
 import TkzTerminalCore
 
 // MARK: - Process metrics
 
-/// A point-in-time reading of what this process costs the machine.
+/// A point-in-time reading of what this process costs the machine. The Linux sources are in
+/// brackets; they come from TkzPlatform's sampler, never from /proc parsing of vtdump's own.
 struct ProcessMetrics: Sendable {
-    /// `mach_task_basic_info.resident_size`.
+    /// `mach_task_basic_info.resident_size`. [VmRSS]
     var residentBytes: UInt64
     /// `task_vm_info.phys_footprint` — what Activity Monitor calls "Memory".
+    /// [RssAnon + RssShmem + VmSwap: not the same quantity]
     var footprintBytes: UInt64
-    /// `task_vm_info.internal` — anonymous pages the task owns.
+    /// `task_vm_info.internal` — anonymous pages the task owns. [RssAnon]
     var internalBytes: UInt64
     /// `task_vm_info.reusable` — pages the task has `MADV_FREE`'d. They stay in `resident_size`
     /// until the system needs them, so a reclamation that works shows up *here* before it shows up
     /// as a drop in RSS. Without this field "RSS unchanged" cannot tell "compressed nothing" from
-    /// "freed, but Darwin still counts it".
+    /// "freed, but Darwin still counts it". [smaps_rollup LazyFree, the same idea]
     var reusableBytes: UInt64
     /// `task_vm_info.compressed` — pages in the OS compressor (unrelated to libghostty's own
-    /// scrollback compression, but it moves when memory is reclaimed).
+    /// scrollback compression, but it moves when memory is reclaimed). [0: no counterpart; zram
+    /// swap is already in footprint through VmSwap]
     var compressedBytes: UInt64
-    /// `task_threads` count (Mach threads, not GCD queues).
+    /// `task_threads` count (Mach threads, not GCD queues). [Threads]
     var threadCount: Int
     /// `proc_pid_rusage` user + system CPU, in seconds. Includes *live* threads, which
-    /// `task_basic_info.user_time` does not.
+    /// `task_basic_info.user_time` does not. [CLOCK_PROCESS_CPUTIME_ID, live threads included]
     var cpuSeconds: Double
-    /// `mach_absolute_time`-based wall clock, in seconds.
+    /// `mach_absolute_time`-based wall clock, in seconds. [CLOCK_MONOTONIC, via the same
+    /// `DispatchTime`]
     var wallSeconds: Double
 
+    /// Called only at bench checkpoints (a dozen per run), which is what allows the Linux side to
+    /// read smaps_rollup here: it walks every mapping and must never run in a loop.
     static func sample() -> ProcessMetrics {
+        #if canImport(Darwin)
         let vm = machVMInfo()
         return ProcessMetrics(
             residentBytes: machResidentBytes(),
@@ -56,6 +74,19 @@ struct ProcessMetrics: Sendable {
             cpuSeconds: rusageCPUSeconds(),
             wallSeconds: Double(DispatchTime.now().uptimeNanoseconds) / 1e9
         )
+        #else
+        let sampled = TkzPlatform.ProcessMetrics.sample()
+        return ProcessMetrics(
+            residentBytes: sampled.residentBytes,
+            footprintBytes: sampled.footprintBytes,
+            internalBytes: sampled.anonymousBytes,
+            reusableBytes: TkzPlatform.ProcessMetrics.sampleLazyFreeBytes() ?? 0,
+            compressedBytes: 0,
+            threadCount: sampled.threadCount,
+            cpuSeconds: sampled.cpuSeconds,
+            wallSeconds: Double(DispatchTime.now().uptimeNanoseconds) / 1e9
+        )
+        #endif
     }
 
     /// CPU as a percentage of one core over the interval since `earlier`.
@@ -66,6 +97,7 @@ struct ProcessMetrics: Sendable {
     }
 }
 
+#if canImport(Darwin)
 private func machResidentBytes() -> UInt64 {
     var info = mach_task_basic_info()
     var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
@@ -122,6 +154,7 @@ private func rusageCPUSeconds() -> Double {
     return Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1e6
         + Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1e6
 }
+#endif
 
 // MARK: - Tiny JSON writer
 
@@ -181,6 +214,51 @@ indirect enum BenchJSON: Sendable {
     }
 }
 
+// MARK: - The shell
+
+/// The shell a bench session runs when it is not the login shell: an executable and its arguments.
+///
+/// The default bench relies on the login shell being zsh: the throwaway tkzmux dir's ZDOTDIR does
+/// not exist, so zsh reads no user rc file and the run is reproducible. Any other login shell would
+/// read the user's startup files (bash would source ~/.bashrc), so `--shell` names one explicitly,
+/// and on Linux, where the login shell is usually bash and zsh is often not installed, the default
+/// is `bash --norc --noprofile`.
+struct BenchShell: Sendable, Equatable {
+    var path: String
+    var arguments: [String]
+
+    /// `--shell "<path> [args …]"`, split on whitespace; a bare name is looked up on PATH. Nil when
+    /// the line is empty or names nothing executable.
+    init?(commandLine: String) {
+        let words = commandLine.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard let program = words.first, let path = resolveExecutable(program) else { return nil }
+        self.path = path
+        self.arguments = Array(words.dropFirst())
+    }
+
+    /// No startup files at all, so nothing from the user's account reaches the session.
+    static let linuxDefault = "bash --norc --noprofile"
+
+    /// What `bench --sessions` runs without `--shell`: nil (the login shell) on macOS, so its
+    /// numbers stay comparable with every earlier run, and `linuxDefault` on Linux.
+    static var platformDefault: BenchShell? {
+        #if os(Linux)
+        return BenchShell(commandLine: linuxDefault)
+        #else
+        return nil
+        #endif
+    }
+
+    /// The spawn for this shell: the tkzmux environment `loginShellSpawn` builds for it, with the
+    /// argv replaced by exactly these arguments (no wrapper, no login flag).
+    func spawn(_ loginSpawn: PtySpawn) -> PtySpawn {
+        var spawn = loginSpawn
+        spawn.executablePath = path
+        spawn.argv = [LoginShell(path: path).name] + arguments
+        return spawn
+    }
+}
+
 // MARK: - One benchmarked session
 
 /// A byte counter shared with the pty read callback. `Mutex` is `Sendable` for any state, which is
@@ -202,7 +280,8 @@ private final class BenchSession {
     var pty: Pty?
     let bytesIn = ByteCounter()
 
-    init(index: Int, cols: UInt16, rows: UInt16, scrollbackMaxBytes: Int, tkzmuxDir: URL) throws {
+    init(index: Int, cols: UInt16, rows: UInt16, scrollbackMaxBytes: Int, tkzmuxDir: URL,
+         shell: BenchShell? = nil) throws {
         self.id = String(format: "bench-%03d", index)
         var options = TerminalSessionOptions()
         options.cols = cols
@@ -213,12 +292,14 @@ private final class BenchSession {
 
         let session = self.session
         let counter = self.bytesIn
-        let spawn = TerminalEnvironment.loginShellSpawn(
+        var spawn = TerminalEnvironment.loginShellSpawn(
             sessionID: id,
             cwd: FileManager.default.currentDirectoryPath,
             size: TerminalSize(rows: rows, cols: cols, cellWidthPx: 8, cellHeightPx: 17),
-            tkzmuxDir: tkzmuxDir
+            tkzmuxDir: tkzmuxDir,
+            shell: shell.map { LoginShell(path: $0.path) }
         )
+        if let shell { spawn = shell.spawn(spawn) }
         self.pty = try Pty(
             spawn: spawn,
             ioQueue: queue,
@@ -290,9 +371,12 @@ public enum BenchCommands {
 
     // MARK: bench --sessions
 
-    /// `tkzmux-vtdump bench --sessions N [--busy K] [--seconds S] [--json out.json]`
-    public static func sessions(
-        count: Int, busy: Int, seconds: Double, json: URL?, fill: Fill = .uniform, lines: Int = 20_000, compress: Bool = true
+    /// `tkzmux-vtdump bench --sessions N [--busy K] [--seconds S] [--shell "…"] [--json out.json]`
+    ///
+    /// `shell` nil means the login shell (`LoginShell.detect`).
+    static func sessions(
+        count: Int, busy: Int, seconds: Double, json: URL?, fill: Fill = .uniform, lines: Int = 20_000, compress: Bool = true,
+        shell: BenchShell? = nil
     ) throws {
         guard count > 0 else { fail("--sessions must be > 0") }
         let busyCount = min(max(busy, 0), count)
@@ -307,6 +391,8 @@ public enum BenchCommands {
         try? FileManager.default.createDirectory(at: tkzmuxDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tkzmuxDir) }
 
+        // Named on stderr only, so the JSON keeps the keys every earlier run has.
+        if let shell { note("shell: \(([shell.path] + shell.arguments).joined(separator: " "))") }
         let baseline = ProcessMetrics.sample()
         note("baseline: rss \(mib(baseline.residentBytes)) MiB, threads \(baseline.threadCount)")
 
@@ -318,7 +404,7 @@ public enum BenchCommands {
             sessions.append(
                 try BenchSession(
                     index: index, cols: cols, rows: rows,
-                    scrollbackMaxBytes: scrollbackMaxBytes, tkzmuxDir: tkzmuxDir
+                    scrollbackMaxBytes: scrollbackMaxBytes, tkzmuxDir: tkzmuxDir, shell: shell
                 )
             )
         }
@@ -674,7 +760,7 @@ public enum BenchCommands {
         var flags: [String: String] = [:]
         var positionals: [String] = []
         var index = argv.startIndex
-        let valueFlags: Set<String> = ["sessions", "busy", "seconds", "json", "repeats", "points", "fill", "lines"]
+        let valueFlags: Set<String> = ["sessions", "busy", "seconds", "json", "repeats", "points", "fill", "lines", "shell"]
         while index < argv.endIndex {
             let argument = argv[index]
             if argument.hasPrefix("--") {
@@ -709,6 +795,13 @@ public enum BenchCommands {
             return
         }
 
+        var shell = BenchShell.platformDefault
+        if let line = flags["shell"] {
+            guard let named = BenchShell(commandLine: line) else {
+                fail("--shell \"\(line)\" names no executable")
+            }
+            shell = named
+        }
         try sessions(
             count: flags["sessions"].flatMap(Int.init) ?? 1,
             busy: flags["busy"].flatMap(Int.init) ?? 0,
@@ -716,7 +809,8 @@ public enum BenchCommands {
             json: json,
             fill: flags["fill"].flatMap(Fill.init(rawValue:)) ?? .uniform,
             lines: flags["lines"].flatMap(Int.init) ?? 20_000,
-            compress: flags["no-compress"] == nil
+            compress: flags["no-compress"] == nil,
+            shell: shell
         )
     }
 }

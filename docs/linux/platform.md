@@ -236,3 +236,34 @@ On 2026-10-03, on the reference machine (Swift 6.3.3):
 - **Fast enough.** The test process with 50 children was walked (`descendants`) and its ports joined (`scan`) in a median of 1.1 ms in a release build (`swift test -c release`) over 21 runs, and 1.5 ms in a debug build. The test fails a release build above 5 ms.
 - **`startTicks` is `procStart`.** For the two live Claude Code 2.1.287 sessions in `~/.claude/sessions/`, `ProcessTable.startTicks` equalled the descriptor's `procStart` exactly (1147318 and 1630842). `startTime` was 1 to 2 s before the descriptor's `startedAt`. `exe` was Claude's binary under mise's installs, and `cwd` matched the descriptor's `cwd`.
 - **The tree.** A 3-level tree (the test runner, `sh`, `sh`, `sleep`, with a second `sleep` beside the inner `sh`) came back exactly, from both the children files and the `/proc/*/stat` fallback.
+
+## Process metrics: `ProcessMetrics`
+
+`ProcessMetrics.sample()` (`Sources/TkzPlatform/ProcessMetrics.swift`) reads what this process costs the machine. It is the one `/proc` memory sampler; callers do not parse `/proc/self/status` themselves. It landed in WOR-311 S7 because `tkzmux-vtdump bench` needed it on Linux. The macOS back-end, and moving `HostProcessMetrics` onto this type, are WOR-309 S1. Until then the mach readings stay in their two callers.
+
+| Field | Linux source |
+|---|---|
+| `residentBytes` | `VmRSS` |
+| `anonymousBytes`, `sharedMemoryBytes`, `swapBytes` | `RssAnon`, `RssShmem`, `VmSwap` |
+| `footprintBytes` | `RssAnon + RssShmem + VmSwap`. This is not Darwin's `phys_footprint`, so label the two per OS. |
+| `threadCount` | `Threads` |
+| `cpuSeconds` | `CLOCK_PROCESS_CPUTIME_ID`, which includes live threads |
+| `sampleLazyFreeBytes()` | `LazyFree` from `/proc/self/smaps_rollup`. It is a separate call, made only at measurement checkpoints. |
+
+The two reads cost very different amounts. Each figure below is the best of 200 reads in a release build on the reference machine. Reading `status` took 2 µs whether the process had 100 mappings or 6,200. Reading `smaps_rollup` took 21 µs with 100 mappings and 839 µs with 6,200, because it walks every mapping under the mmap lock. That is why it is never on a timer or a frame path.
+
+`tkzmux-vtdump bench` keeps its JSON keys on Linux and fills them from this sampler:
+
+- `footprint` is the Linux formula above.
+- `internal` is `RssAnon`.
+- `reusable` is `LazyFree`.
+- `compressed` is 0, because Linux has nothing that matches it, and zram swap is already counted in `VmSwap`.
+
+## Heap: `HeapStats`
+
+`HeapStats.sample()` (`Sources/TkzPlatform/HeapStats.swift`) is the only heap helper.
+
+- **macOS:** `blocksInUse`, the live blocks across every zone from `malloc_zone_statistics(nil, …)`.
+- **Linux:** `bytesInUse`, from `mallinfo2()` `uordblks + hblkhd`.
+
+`<malloc.h>` is not part of Swift's Glibc module, so the Linux call goes through `tkz_heap_bytes_in_use` in TkzPlatformShim. glibc keeps no count of live blocks, so the two numbers measure different things. The field therefore has a different name on each OS, and `HeapStats.fieldName` (`blocks_in_use` or `bytes_in_use`) is the key a report writes it under. The Mac `bench-frame` reads `blocksInUse`, so its output is unchanged.

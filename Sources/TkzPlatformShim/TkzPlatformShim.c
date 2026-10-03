@@ -3,6 +3,9 @@
 #ifdef __linux__
 #include <stddef.h>
 #include <sys/syscall.h>
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
 #include <unistd.h>
 
 // Older kernel headers (before Linux 5.1/5.3) do not name these; the numbers are the same on
@@ -20,6 +23,16 @@ int tkz_pidfd_open(pid_t pid, unsigned int flags) {
 
 int tkz_pidfd_send_signal(int pidfd, int sig, unsigned int flags) {
     return (int)syscall(SYS_pidfd_send_signal, pidfd, sig, NULL, flags);
+}
+
+size_t tkz_heap_bytes_in_use(void) {
+#ifdef __GLIBC__
+    // mallinfo2 (glibc 2.33) rather than mallinfo, whose int fields wrap past 2 GiB.
+    struct mallinfo2 info = mallinfo2();
+    return info.uordblks + info.hblkhd;
+#else
+    return 0;
+#endif
 }
 #else
 // Nothing on macOS: kqueue covers what the pidfd calls do on Linux. An empty translation unit
