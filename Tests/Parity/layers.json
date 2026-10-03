@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "about": "Parity layers (ADR-0003 section 3): one row per layer and scale, each pending or enforced, each with its owner issue. The issue that lands a layer's producer switches its own rows to enforced. Read by TkzParity's LayerManifest; checked by Tests/TkzParityTests/LayerManifestTests.swift. See docs/linux/parity.md.",
+  "rows": [
+    {"layer": "L0-component", "scale": 1.6, "state": "pending", "owner": "WOR-316–WOR-319", "what": "Component layout dumps: frames, visibility, truncation and wrap decisions; JSON byte-equal after canonical key order"},
+    {"layer": "L0-component", "scale": 2.0, "state": "pending", "owner": "WOR-316–WOR-319", "what": "Component layout dumps: frames, visibility, truncation and wrap decisions; JSON byte-equal after canonical key order"},
+    {"layer": "L0-window", "scale": 1.6, "state": "pending", "owner": "WOR-318 S7", "what": "The full-window layout dump of the fixture; JSON byte-equal after canonical key order, window controls excluded"},
+    {"layer": "L0-window", "scale": 2.0, "state": "pending", "owner": "WOR-318 S7", "what": "The full-window layout dump of the fixture; JSON byte-equal after canonical key order, window controls excluded"},
+    {"layer": "L1", "scale": 1.6, "state": "pending", "owner": "WOR-312", "what": "Every CellMetrics field, including the rounding tie case (vtdump fontmetrics --json); exact"},
+    {"layer": "L1", "scale": 2.0, "state": "pending", "owner": "WOR-312", "what": "Every CellMetrics field, including the rounding tie case (vtdump fontmetrics --json); exact"},
+    {"layer": "L2", "scale": 1.6, "state": "pending", "owner": "WOR-322 S3", "what": "FrameBuilder instance buffers from the same metrics and atlas glyph table; byte-identical"},
+    {"layer": "L2", "scale": 2.0, "state": "pending", "owner": "WOR-322 S3", "what": "FrameBuilder instance buffers from the same metrics and atlas glyph table; byte-identical"},
+    {"layer": "L3", "scale": 1.6, "state": "pending", "owner": "WOR-313 S3", "what": "The conformance fixture's instance and atlas bytes through Metal and Vulkan; every pixel within 1 LSB"},
+    {"layer": "L3", "scale": 2.0, "state": "pending", "owner": "WOR-313 S3", "what": "The conformance fixture's instance and atlas bytes through Metal and Vulkan; every pixel within 1 LSB"},
+    {"layer": "L4", "scale": 1.6, "state": "pending", "owner": "WOR-312", "what": "Per-glyph atlas boxes, coverage and SSIM (vtdump atlas --json)"},
+    {"layer": "L4", "scale": 2.0, "state": "pending", "owner": "WOR-312", "what": "Per-glyph atlas boxes, coverage and SSIM (vtdump atlas --json)"},
+    {"layer": "L5", "scale": 1.6, "state": "pending", "owner": "WOR-316–WOR-319", "what": "ComponentSnapshot PNGs per component and preset: non-text channel rule, text-run and component SSIM"},
+    {"layer": "L5", "scale": 2.0, "state": "pending", "owner": "WOR-316–WOR-319", "what": "ComponentSnapshot PNGs per component and preset: non-text channel rule, text-run and component SSIM"},
+    {"layer": "L6", "scale": 1.6, "state": "pending", "owner": "WOR-318 S7", "what": "Full-window capture of the fixture, 1320×820 pt: SSIM with masks, masked area capped"},
+    {"layer": "L6", "scale": 2.0, "state": "pending", "owner": "WOR-318 S7", "what": "Full-window capture of the fixture, 1320×820 pt: SSIM with masks, masked area capped"}
+  ]
+}

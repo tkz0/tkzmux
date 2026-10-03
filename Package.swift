@@ -141,6 +141,12 @@ let sharedTargets: [Target] = [  // hygiene-scan
     .target(name: "TkzPNG", path: "Sources/TkzPNG"),
     .testTarget(name: "TkzPNGTests", dependencies: ["TkzPNG"], path: "Tests/TkzPNGTests"),
 
+    // The parity compare toolkit (WOR-322 S1): SSIM, the channel rule, masks, ΔE2000, heatmaps,
+    // byte compares and the layer manifest, over TkzPNG. No AppKit, Metal or GTK. The tests read
+    // ADR-0003 and Tests/Parity/layers.json through #filePath.
+    .target(name: "TkzParity", dependencies: ["TkzPNG"], path: "Sources/TkzParity"),
+    .testTarget(name: "TkzParityTests", dependencies: ["TkzParity", "TkzPNG"], path: "Tests/TkzParityTests"),
+
     // The Swift/C/Metal (and, through TkzShadersSPIRV, Vulkan) struct contract. Header-only; the
     // header falls back to `ext_vector_type` typedefs where <simd/simd.h> is absent (WOR-311 S1).
     .target(
@@ -170,10 +176,10 @@ let sharedTargets: [Target] = [  // hygiene-scan
     ),
 
     // Headless VT tooling (record, replay, bench, state-churn/-validate; WOR-311 S7 on Linux).
-    // TkzPlatform for the ProcessMetrics sampler and HeapStats.
+    // TkzPlatform for the ProcessMetrics sampler and HeapStats; TkzParity for `compare` (WOR-322).
     .executableTarget(
         name: "tkzmux-vtdump",
-        dependencies: ["TkzTerminalCore", "Persistence", "TkzPlatform"] + vtdumpRendererDependencies,
+        dependencies: ["TkzTerminalCore", "Persistence", "TkzPlatform", "TkzParity"] + vtdumpRendererDependencies,
         path: "Sources/tkzmux-vtdump",
         linkerSettings: [.linkedLibrary("m", .when(platforms: [.linux]))]
     ),

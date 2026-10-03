@@ -6,6 +6,7 @@
 //   replay   [--format …] <file.tkzrec>   feed a recording into a terminal and dump the screen
 //   replay   --modes      <file.tkzrec>   the modes / kitty flags the recording left behind
 //   replay   --snapshot   <file.tkzrec>   snapshot round-trip: encoded size + restore time
+//   compare  <a> <b>                       parity compare of two PNGs or two dumps (WOR-322)
 //
 // Hand-rolled argument parsing on purpose: no third-party dependencies (CLAUDE.md).
 //
@@ -74,6 +75,12 @@ usage: tkzmux-vtdump <command> [options]
                             time a full-rebuild frame: FrameBuilder and the encode; Linux adds
                             [--size <w>x<h>] [--scale s] [--fonts system|parity] [--validation]
                             and the GPU time from a timestamp-query pair (WOR-313)
+  compare <a> <b> [--mask <m.json>] [--json <out.json>] [--heatmap <out.png>]
+          [--layer golden|exact|L3|L4|L5|L6]
+                            parity compare (ADR-0003, WOR-322). Two PNGs: the channel rule, SSIM
+                            (global and per 64 px tile), masks and ΔE2000 (diagnostic), judged by
+                            the layer's gate (default golden: channel 2, 0.2 % of pixels). Anything
+                            else: byte for byte, JSON after canonical key order. Exit 0 pass, 1 fail
   gpu     [--headless] [--main-device <major:minor>] [--no-validation] [--size <w>x<h>] [--no-clear]
                             Linux only: list the Vulkan devices, select one as the app does
                             (TKZMUX_GPU=auto|integrated|discrete) and log why, then clear an
@@ -672,6 +679,10 @@ do {
 
     case "atlas":
         try RenderCommands.runAtlas(Array(argv.dropFirst()))
+
+    case "compare":
+        // WOR-322 S1: the parity toolkit's one comparison command, on both OSes.
+        try CompareCommand.run(Array(argv.dropFirst()))
 
     #if os(Linux)
     case "gpu":

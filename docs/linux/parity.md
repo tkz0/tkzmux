@@ -232,3 +232,79 @@ Goldens are generated only on the reference runner: the GitHub-hosted `macos-26`
 A regeneration that follows a runner image change must show that the old and new sets agree. L0 must be byte-identical or each difference explained, and L5 must pass between the two sets (ADR-0003, Consequences).
 
 Once a set is committed, the M3 refactors (WOR-308–WOR-310 and WOR-307 S3–S6) must leave every golden byte-identical. A changed golden in a refactor commit means the refactor changed what the Mac draws.
+
+## Comparing: `tkzmux-vtdump compare`
+
+Every parity comparison goes through one command, on both OSes (WOR-322 S1). The code is the portable `TkzParity` module (`Sources/TkzParity`: Foundation and TkzPNG only, no AppKit, Metal or GTK), so the Linux runner (WOR-322 S3) and the per-layer producers call the same functions the command does.
+
+```sh
+tkzmux-vtdump compare <a> <b> [--mask m.json] [--json out.json] [--heatmap out.png] \
+                              [--layer golden|exact|L3|L4|L5|L6]
+```
+
+| Inputs | What is measured | Passes when |
+|---|---|---|
+| Two PNGs | The sizes; the channel rule; SSIM, global and per 64 px tile; the masked pixels per kind; ΔE2000 mean and p99 | The gate `--layer` picks passes (below). A size mismatch always fails. |
+| Anything else, either side `*.json` | Bytes; on a difference, both sides again after canonical key order, with the first differing JSON paths | The JSON is equal after canonical key order (L0). |
+| Anything else | Bytes, with the first differing offset (and line and column) | The bytes are identical (L1, L2). |
+
+Exit status: 0 pass, 1 fail, 2 usage or unreadable input (an unknown option included, so a mistyped flag never falls back to the default gate). The summary goes to stdout; `--json` writes the full report as compact JSON with sorted keys, so two runs diff cleanly.
+
+**How the image metrics read pixels.** Both PNGs are decoded by TkzPNG and compared as stored, with no colour management (ADR-0003 §1). Alpha is premultiplied first, as a `bgra8Unorm` readback holds it: colour under alpha 0 is not a difference, and a translucent pixel counts as composited over black.
+
+- **Channel rule.** A pixel differs when any of its four premultiplied channels differs by more than the tolerance. The fraction is over the unmasked pixels. This is `assertMatchesGolden`'s rule (`TerminalRendererTests.swift`), so `--layer golden`, the default, gives the same verdict as the golden comparator on an unmasked pair.
+- **SSIM** follows ADR-0003 §3 to the letter. Two choices the ADR leaves open are fixed here:
+  - Every pixel is a window centre. A window that hangs over the image border uses the pixels it covers, with its weights renormalised; nothing is padded.
+  - Masked pixels have weight zero inside every window, not only as centres. A difference under a mask therefore cannot reach the score through a neighbouring window, and two images that differ only under their masks score exactly 1.0.
+
+  The Gaussian taps are literals, so the score does not depend on the platform's `exp`. Identical images score exactly 1.0.
+- **ΔE2000** (sRGB, D65, Sharma 2005) is in the report and the summary and never in a verdict.
+
+**Gates.** `--layer` picks one of `ParityGate`'s fixed rules, each built from `ParityThresholds` (`Sources/TkzParity/ParityThresholds.swift`, which mirrors ADR-0003 constant by constant). There is no flag that sets a number.
+
+| `--layer` | Rules applied |
+|---|---|
+| `golden` (default) | Channel rule at `l5ChannelTolerance` / `l5PixelTolerance`, the golden comparator's defaults |
+| `exact` | Every pixel identical |
+| `L3` | Channel rule at `l3ChannelTolerance` / `l3PixelTolerance` |
+| `L4` | Global SSIM ≥ `l4GlyphMinSSIM`, for one glyph image. The bbox and coverage rules need the atlas glyph table and are WOR-312's producer's. |
+| `L5` | The channel rule as `golden` over every unmasked pixel, and global SSIM ≥ `l5ComponentMinSSIM`. Restricting the channel rule to non-text pixels, the text-run SSIM and the 1.6 edge band need the L0 boxes and edges; the L5 producers (WOR-316–WOR-319) apply them on top, with their own `MaskBitmap`s. |
+| `L6` | Global SSIM ≥ `l6WindowMinSSIM`, and the masks cover at most `l6MaxMaskedFraction` of the window |
+
+`ParityThresholdTests` reads ADR-0003 and fails when a constant is missing from the ADR, when the ADR names a constant `ParityThresholds` lacks, or when a value the ADR writes as `name = value` differs.
+
+**The heatmap** (`--heatmap`) is an opaque PNG of the same size: dimmed grey where the pixels are identical, amber where they differ within the channel tolerance, red beyond it (brighter for a larger delta), and blue where a mask applies.
+
+### Mask files
+
+A mask file lists the regions a comparison leaves out (ADR-0003 §3, Masks). Producers write it from the L0 dump or the terminal grid; it is never drawn by hand for one run.
+
+```json
+{
+  "schema": 1,
+  "grid": {"cellWidth": 14, "cellHeight": 30, "originX": 0, "originY": 0},
+  "masks": [
+    {"kind": "vibrancy", "rect": {"x": 0, "y": 0, "width": 2112, "height": 84}, "source": "header"},
+    {"kind": "cjkEmoji", "cells": {"column": 3, "row": 1, "columns": 2, "rows": 1}}
+  ]
+}
+```
+
+- `kind` is one of ADR-0003's four: `fallbackGlyph`, `cjkEmoji`, `vibrancy`, `windowControls`. Any other kind is rejected. (The layout dump's own `searchField`, `accentSelection` and `scroller` masks are not parity masks; a producer that needs one maps it explicitly.)
+- Each mask has exactly one of `rect`, in device pixels with a top-left origin, and `cells`, on `grid` (needed only by cell rects; the origins default to 0).
+- A fractional `rect` (a frame in points times a fractional scale) covers every pixel it touches. Rects are clipped to the image.
+- `source` is free text for the report.
+
+## The layer manifest
+
+`Tests/Parity/layers.json` holds one row per layer and scale: `L0-component`, `L0-window`, `L1`–`L6`, each at 1.6 and 2.0. Each row has:
+
+- `state`: `pending` (no producer gates it yet; the runner reports it with its owner and does not fail) or `enforced`;
+- `owner`: the Linear issue that owns the layer, as `WOR-312`, `WOR-318 S7` or the range `WOR-316–WOR-319`;
+- `what`: a reader's description.
+
+The issue that lands a layer's producer switches its own rows to `enforced` in the same PR. WOR-324 S5 finally checks that every row is `enforced` or an approved ADR-0003 exception. `LayerManifestTests` requires every layer at both scales exactly once and an owner on every row, so a `pending` row without an owner fails. It also pins each layer's owner to the one ADR-0003 and WOR-322 name.
+
+## The reference budget
+
+ADR-0003 §5 sets one committed budget for every reference image and dump, `referenceBudgetBytes`, split into `componentSnapshotShareBytes` (`Tests/TkzAppTests/ComponentSnapshots/`, WOR-307) and `parityReferenceShareBytes` (`Tests/Parity/References/`, WOR-322, including WOR-312's font dumps and WOR-313's conformance outputs). `ParityThresholdTests.theReferenceTreesFitTheBudget` counts every regular file in both trees, manifests included, on both OSes. A tree that does not exist yet counts as empty: `Tests/Parity/References/` arrives with WOR-322 S2's exporter (`make parity-references`), which runs only on the reference runner.
