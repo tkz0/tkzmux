@@ -10,6 +10,9 @@
 // decision that a shell's working directory is process state (see `LiveSessionState.shellCwd`).
 
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // MARK: - Identifiers
 

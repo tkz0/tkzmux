@@ -14,6 +14,9 @@
 // so `underlineOffset` is positive (below the baseline) and `strikethroughOffset` is negative.
 
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 public struct CellMetrics: Sendable, Equatable, Hashable {
     /// Cell width: the widest advance over printable ASCII, rounded up.

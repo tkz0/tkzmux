@@ -9,6 +9,9 @@ import Testing
 import TkzCore
 
 @testable import Persistence
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 @MainActor
 private func withSaver(

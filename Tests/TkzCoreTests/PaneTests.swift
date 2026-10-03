@@ -4,6 +4,9 @@ import Foundation
 import Testing
 
 @testable import TkzCore
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 // MARK: - Fixtures
 

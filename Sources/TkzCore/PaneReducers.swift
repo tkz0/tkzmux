@@ -11,6 +11,9 @@
 // `SessionLauncher` learns that the row itself has to go.
 
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 extension AppState {
 

@@ -6,6 +6,9 @@
 
 import Foundation
 import TkzCore
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 public enum PaneHeaderMetrics {
     /// The artboard's 28 pt strip: dot · title · path · badge, a 1 pt border below.

@@ -7,6 +7,9 @@
 // Display order comes from the `order` field via the ordered accessors below.
 
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 public struct AppState: Hashable, Sendable {
     public var groups: [GroupID: Group]

@@ -7,6 +7,9 @@
 import Foundation
 import Testing
 import TkzRenderCore
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 @Suite("CellMetrics from font tables")
 struct CellMetricsTablesTests {

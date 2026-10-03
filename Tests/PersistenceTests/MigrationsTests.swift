@@ -5,6 +5,9 @@ import Testing
 import TkzCore
 
 @testable import Persistence
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 private func makeMinimalState() -> PersistedState {
     var state = AppState()

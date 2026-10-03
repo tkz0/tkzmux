@@ -14,6 +14,9 @@
 import Foundation
 import Persistence
 import TkzCore
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 enum StateChurnCommand {
     static func run(_ argv: [String]) throws {
