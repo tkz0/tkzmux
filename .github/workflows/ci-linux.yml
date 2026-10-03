@@ -123,10 +123,19 @@ jobs:
           # CVulkan (WOR-313); vulkan-swrast (lavapipe) and vulkan-validation-layers: the device and
           # the layer the GPU tests require here; gtk4: CGtk (WOR-314; headers and libraries, floor
           # 4.16). No shaderc: the drift check fetches its own pinned build.
-          pacman -Syu --noconfirm --needed \
-            git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
-            gnupg zstd pkgconf freetype2 harfbuzz fontconfig zsh fish bash-completion python \
-            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4
+          # diffutils: cmp and diff, which the drift check and the vtdump step use and the base
+          # image lacks.
+          # The archive can stall mid-download ("Operation too slow"), which fails the whole
+          # transaction: no low-speed abort, and up to three attempts.
+          for attempt in 1 2 3; do
+            pacman -Syu --noconfirm --needed --disable-download-timeout \
+              git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
+              gnupg zstd pkgconf freetype2 harfbuzz fontconfig zsh fish bash-completion python \
+              diffutils vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4 \
+              && break
+            [ "$attempt" -lt 3 ] || exit 1
+            echo "::warning::pacman -Syu failed (attempt $attempt), retrying"; sleep 15
+          done
           pacman -Q glibc gcc binutils bash zsh fish freetype2 harfbuzz fontconfig \
             vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4
 
@@ -424,6 +433,10 @@ jobs:
     container:
       # The `arch` image and snapshot; bump them together.
       image: archlinux:base-20260927.0.600689@sha256:b21322c663be387c0ed9cbc7bbbfe18e41633ad4e7b7c77cfad45f128be20040
+      # Arch's /usr/bin/sway carries the file capability cap_sys_nice=ep, and exec of a file whose
+      # capabilities are outside the container's bounding set fails with EPERM ("env: 'sway':
+      # Operation not permitted"); Docker's default set has no SYS_NICE.
+      options: --cap-add=SYS_NICE
     env:
       ARCH_SNAPSHOT: '2026/09/27'
     steps:
@@ -434,10 +447,16 @@ jobs:
           fi
           # The `arch` job's build set without the Vulkan driver and layer, plus sway (the headless
           # compositor), valgrind and dbus (dbus-run-session).
-          pacman -Syu --noconfirm --needed \
-            git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
-            gnupg zstd pkgconf freetype2 harfbuzz fontconfig zsh \
-            vulkan-icd-loader vulkan-headers gtk4 sway valgrind dbus
+          # Retried like the `arch` job's install.
+          for attempt in 1 2 3; do
+            pacman -Syu --noconfirm --needed --disable-download-timeout \
+              git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
+              gnupg zstd pkgconf freetype2 harfbuzz fontconfig zsh diffutils \
+              vulkan-icd-loader vulkan-headers gtk4 sway valgrind dbus \
+              && break
+            [ "$attempt" -lt 3 ] || exit 1
+            echo "::warning::pacman -Syu failed (attempt $attempt), retrying"; sleep 15
+          done
           pacman -Q glibc gtk4 sway valgrind dbus
 
       - uses: actions/checkout@v5
