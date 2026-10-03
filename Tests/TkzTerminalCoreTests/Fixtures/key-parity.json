@@ -1,0 +1,682 @@
+{
+  "about": [
+    "Key parity fixture (WOR-315 S1): each row is one keystroke on a US layout, as AppKit reports it",
+    "(mac) and as GDK reports it (linux: a chord and key of the libxkbcommon layout fixture",
+    "Fixtures/keymaps/<layout>.json), and the KeyPress both adapters must build from it (expected).",
+    "Read by LinuxKeyTranslatorTests (Linux translator, both OSes) and by",
+    "Tests/TkzTerminalViewTests/KeyParityTests.swift (TerminalInputController.keyPress, macOS, option",
+    "acting as Alt: Linux never consumes Alt). Keys are W3C code names. Rows the two platforms",
+    "cannot share are left out on purpose, and their bytes are covered by docs/keys.md and",
+    "LinuxKeyTranslatorTests: Caps Lock (the Mac consumes it, Linux does not), Right Ctrl and Right",
+    "Command (the Mac leaves the side bit in consumedMods), arrows and F-keys (the Mac's unshifted",
+    "codepoint is a function-key PUA value), Backspace (0x7F on the Mac, 0x08 from the BackSpace",
+    "keysym) and modifier keys (flagsChanged). The first two change no byte (measured there)."
+  ],
+  "rows": [
+    {
+      "name": "a",
+      "action": "press",
+      "mac": {
+        "keyCode": 0,
+        "flags": [],
+        "characters": "a",
+        "charactersIgnoringModifiers": "a"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "",
+        "evdev": 30
+      },
+      "expected": {
+        "key": "KeyA",
+        "mods": [],
+        "consumedMods": [],
+        "text": "a",
+        "unshiftedCodepoint": 97
+      }
+    },
+    {
+      "name": "Shift+A",
+      "action": "press",
+      "mac": {
+        "keyCode": 0,
+        "flags": [
+          "shift"
+        ],
+        "characters": "A",
+        "charactersIgnoringModifiers": "a"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftshift",
+        "evdev": 30
+      },
+      "expected": {
+        "key": "KeyA",
+        "mods": [
+          "shift"
+        ],
+        "consumedMods": [
+          "shift"
+        ],
+        "text": "A",
+        "unshiftedCodepoint": 97
+      }
+    },
+    {
+      "name": "Right Shift+A",
+      "action": "press",
+      "mac": {
+        "keyCode": 0,
+        "flags": [
+          "shift",
+          "rightShift"
+        ],
+        "characters": "A",
+        "charactersIgnoringModifiers": "a"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "rightshift",
+        "evdev": 30
+      },
+      "expected": {
+        "key": "KeyA",
+        "mods": [
+          "shift",
+          "shiftRight"
+        ],
+        "consumedMods": [
+          "shift",
+          "shiftRight"
+        ],
+        "text": "A",
+        "unshiftedCodepoint": 97
+      }
+    },
+    {
+      "name": "Ctrl+C",
+      "action": "press",
+      "mac": {
+        "keyCode": 8,
+        "flags": [
+          "control"
+        ],
+        "characters": "\u0003",
+        "charactersIgnoringModifiers": "c"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftctrl",
+        "evdev": 46
+      },
+      "expected": {
+        "key": "KeyC",
+        "mods": [
+          "control"
+        ],
+        "consumedMods": [],
+        "text": "c",
+        "unshiftedCodepoint": 99
+      }
+    },
+    {
+      "name": "Ctrl+Shift+A",
+      "action": "press",
+      "mac": {
+        "keyCode": 0,
+        "flags": [
+          "control",
+          "shift"
+        ],
+        "characters": "\u0001",
+        "charactersIgnoringModifiers": "a"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftctrl+leftshift",
+        "evdev": 30
+      },
+      "expected": {
+        "key": "KeyA",
+        "mods": [
+          "shift",
+          "control"
+        ],
+        "consumedMods": [
+          "shift"
+        ],
+        "text": "A",
+        "unshiftedCodepoint": 97
+      }
+    },
+    {
+      "name": "Ctrl+[",
+      "action": "press",
+      "mac": {
+        "keyCode": 33,
+        "flags": [
+          "control"
+        ],
+        "characters": "\u001b",
+        "charactersIgnoringModifiers": "["
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftctrl",
+        "evdev": 26
+      },
+      "expected": {
+        "key": "BracketLeft",
+        "mods": [
+          "control"
+        ],
+        "consumedMods": [],
+        "text": "[",
+        "unshiftedCodepoint": 91
+      }
+    },
+    {
+      "name": "Left Alt+B",
+      "action": "press",
+      "mac": {
+        "keyCode": 11,
+        "flags": [
+          "option"
+        ],
+        "characters": "∫",
+        "charactersIgnoringModifiers": "b"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftalt",
+        "evdev": 48
+      },
+      "expected": {
+        "key": "KeyB",
+        "mods": [
+          "alt"
+        ],
+        "consumedMods": [],
+        "text": "b",
+        "unshiftedCodepoint": 98
+      }
+    },
+    {
+      "name": "Right Alt+B",
+      "action": "press",
+      "mac": {
+        "keyCode": 11,
+        "flags": [
+          "option",
+          "rightOption"
+        ],
+        "characters": "∫",
+        "charactersIgnoringModifiers": "b"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "rightalt",
+        "evdev": 48
+      },
+      "expected": {
+        "key": "KeyB",
+        "mods": [
+          "alt",
+          "altRight"
+        ],
+        "consumedMods": [],
+        "text": "b",
+        "unshiftedCodepoint": 98
+      }
+    },
+    {
+      "name": "Alt+Shift+B",
+      "action": "press",
+      "mac": {
+        "keyCode": 11,
+        "flags": [
+          "option",
+          "shift"
+        ],
+        "characters": "ı",
+        "charactersIgnoringModifiers": "b"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftalt+leftshift",
+        "evdev": 48
+      },
+      "expected": {
+        "key": "KeyB",
+        "mods": [
+          "shift",
+          "alt"
+        ],
+        "consumedMods": [
+          "shift"
+        ],
+        "text": "B",
+        "unshiftedCodepoint": 98
+      }
+    },
+    {
+      "name": "Super+C",
+      "action": "press",
+      "mac": {
+        "keyCode": 8,
+        "flags": [
+          "command"
+        ],
+        "characters": "c",
+        "charactersIgnoringModifiers": "c"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftmeta",
+        "evdev": 46
+      },
+      "expected": {
+        "key": "KeyC",
+        "mods": [
+          "super"
+        ],
+        "consumedMods": [],
+        "text": "c",
+        "unshiftedCodepoint": 99
+      }
+    },
+    {
+      "name": "Super+Shift+P",
+      "action": "press",
+      "mac": {
+        "keyCode": 35,
+        "flags": [
+          "command",
+          "shift"
+        ],
+        "characters": "P",
+        "charactersIgnoringModifiers": "p"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftmeta+leftshift",
+        "evdev": 25
+      },
+      "expected": {
+        "key": "KeyP",
+        "mods": [
+          "shift",
+          "super"
+        ],
+        "consumedMods": [
+          "shift"
+        ],
+        "text": "P",
+        "unshiftedCodepoint": 112
+      }
+    },
+    {
+      "name": "8",
+      "action": "press",
+      "mac": {
+        "keyCode": 28,
+        "flags": [],
+        "characters": "8",
+        "charactersIgnoringModifiers": "8"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "",
+        "evdev": 9
+      },
+      "expected": {
+        "key": "Digit8",
+        "mods": [],
+        "consumedMods": [],
+        "text": "8",
+        "unshiftedCodepoint": 56
+      }
+    },
+    {
+      "name": "Shift+1",
+      "action": "press",
+      "mac": {
+        "keyCode": 18,
+        "flags": [
+          "shift"
+        ],
+        "characters": "!",
+        "charactersIgnoringModifiers": "1"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftshift",
+        "evdev": 2
+      },
+      "expected": {
+        "key": "Digit1",
+        "mods": [
+          "shift"
+        ],
+        "consumedMods": [
+          "shift"
+        ],
+        "text": "!",
+        "unshiftedCodepoint": 49
+      }
+    },
+    {
+      "name": "Ctrl+Shift+1",
+      "action": "press",
+      "mac": {
+        "keyCode": 18,
+        "flags": [
+          "control",
+          "shift"
+        ],
+        "characters": "!",
+        "charactersIgnoringModifiers": "1"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftctrl+leftshift",
+        "evdev": 2
+      },
+      "expected": {
+        "key": "Digit1",
+        "mods": [
+          "shift",
+          "control"
+        ],
+        "consumedMods": [
+          "shift"
+        ],
+        "text": "!",
+        "unshiftedCodepoint": 49
+      }
+    },
+    {
+      "name": "Minus",
+      "action": "press",
+      "mac": {
+        "keyCode": 27,
+        "flags": [],
+        "characters": "-",
+        "charactersIgnoringModifiers": "-"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "",
+        "evdev": 12
+      },
+      "expected": {
+        "key": "Minus",
+        "mods": [],
+        "consumedMods": [],
+        "text": "-",
+        "unshiftedCodepoint": 45
+      }
+    },
+    {
+      "name": "Equal",
+      "action": "press",
+      "mac": {
+        "keyCode": 24,
+        "flags": [],
+        "characters": "=",
+        "charactersIgnoringModifiers": "="
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "",
+        "evdev": 13
+      },
+      "expected": {
+        "key": "Equal",
+        "mods": [],
+        "consumedMods": [],
+        "text": "=",
+        "unshiftedCodepoint": 61
+      }
+    },
+    {
+      "name": "BracketLeft",
+      "action": "press",
+      "mac": {
+        "keyCode": 33,
+        "flags": [],
+        "characters": "[",
+        "charactersIgnoringModifiers": "["
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "",
+        "evdev": 26
+      },
+      "expected": {
+        "key": "BracketLeft",
+        "mods": [],
+        "consumedMods": [],
+        "text": "[",
+        "unshiftedCodepoint": 91
+      }
+    },
+    {
+      "name": "Space",
+      "action": "press",
+      "mac": {
+        "keyCode": 49,
+        "flags": [],
+        "characters": " ",
+        "charactersIgnoringModifiers": " "
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "",
+        "evdev": 57
+      },
+      "expected": {
+        "key": "Space",
+        "mods": [],
+        "consumedMods": [],
+        "text": " ",
+        "unshiftedCodepoint": 32
+      }
+    },
+    {
+      "name": "Shift+Space",
+      "action": "press",
+      "mac": {
+        "keyCode": 49,
+        "flags": [
+          "shift"
+        ],
+        "characters": " ",
+        "charactersIgnoringModifiers": " "
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftshift",
+        "evdev": 57
+      },
+      "expected": {
+        "key": "Space",
+        "mods": [
+          "shift"
+        ],
+        "consumedMods": [
+          "shift"
+        ],
+        "text": " ",
+        "unshiftedCodepoint": 32
+      }
+    },
+    {
+      "name": "Enter",
+      "action": "press",
+      "mac": {
+        "keyCode": 36,
+        "flags": [],
+        "characters": "\r",
+        "charactersIgnoringModifiers": "\r"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "",
+        "evdev": 28
+      },
+      "expected": {
+        "key": "Enter",
+        "mods": [],
+        "consumedMods": [],
+        "text": "",
+        "unshiftedCodepoint": 13
+      }
+    },
+    {
+      "name": "Shift+Enter",
+      "action": "press",
+      "mac": {
+        "keyCode": 36,
+        "flags": [
+          "shift"
+        ],
+        "characters": "\r",
+        "charactersIgnoringModifiers": "\r"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftshift",
+        "evdev": 28
+      },
+      "expected": {
+        "key": "Enter",
+        "mods": [
+          "shift"
+        ],
+        "consumedMods": [
+          "shift"
+        ],
+        "text": "",
+        "unshiftedCodepoint": 13
+      }
+    },
+    {
+      "name": "Tab",
+      "action": "press",
+      "mac": {
+        "keyCode": 48,
+        "flags": [],
+        "characters": "\t",
+        "charactersIgnoringModifiers": "\t"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "",
+        "evdev": 15
+      },
+      "expected": {
+        "key": "Tab",
+        "mods": [],
+        "consumedMods": [],
+        "text": "",
+        "unshiftedCodepoint": 9
+      }
+    },
+    {
+      "name": "Shift+Tab",
+      "action": "press",
+      "mac": {
+        "keyCode": 48,
+        "flags": [
+          "shift"
+        ],
+        "characters": "\u0019",
+        "charactersIgnoringModifiers": "\t"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "leftshift",
+        "evdev": 15
+      },
+      "expected": {
+        "key": "Tab",
+        "mods": [
+          "shift"
+        ],
+        "consumedMods": [
+          "shift"
+        ],
+        "text": "",
+        "unshiftedCodepoint": 9
+      }
+    },
+    {
+      "name": "Escape",
+      "action": "press",
+      "mac": {
+        "keyCode": 53,
+        "flags": [],
+        "characters": "\u001b",
+        "charactersIgnoringModifiers": "\u001b"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "",
+        "evdev": 1
+      },
+      "expected": {
+        "key": "Escape",
+        "mods": [],
+        "consumedMods": [],
+        "text": "",
+        "unshiftedCodepoint": 27
+      }
+    },
+    {
+      "name": "a, repeated",
+      "action": "repeated",
+      "mac": {
+        "keyCode": 0,
+        "flags": [],
+        "characters": "a",
+        "charactersIgnoringModifiers": "a"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "",
+        "evdev": 30
+      },
+      "expected": {
+        "key": "KeyA",
+        "mods": [],
+        "consumedMods": [],
+        "text": "a",
+        "unshiftedCodepoint": 97
+      }
+    },
+    {
+      "name": "a, released",
+      "action": "release",
+      "mac": {
+        "keyCode": 0,
+        "flags": [],
+        "characters": "a",
+        "charactersIgnoringModifiers": "a"
+      },
+      "linux": {
+        "layout": "us",
+        "chord": "",
+        "evdev": 30
+      },
+      "expected": {
+        "key": "KeyA",
+        "mods": [],
+        "consumedMods": [],
+        "text": "",
+        "unshiftedCodepoint": 97
+      }
+    }
+  ]
+}

@@ -22,6 +22,8 @@
 #                committed shaders with the pinned shaderc (scripts/build-shaders-linux.sh --fetch).
 #                GTK (WOR-314 S1): gtk4 is installed, `tkzmux --main-loop-check` runs on the
 #                release build, and TkzGtkShellTests run headless (no display: GLib only).
+#                GDBus (WOR-320 S1): dbus is installed; the GDBus tests start private
+#                dbus-daemons, and run once more under `dbus-run-session` for the session bus.
 #   ubuntu       ubuntu-24.04 + the pinned swift:<pin>-noble image (never the runner's own Swift):
 #                one `swift build --target` per non-GTK target, and no tests. Restricted, not
 #                retired, by WOR-314 S1: noble's GTK 4.14 is below the floor, so the test bundle
@@ -122,13 +124,14 @@ jobs:
           # CI), and GitStatusTests drive git (WOR-306 S5); vulkan-icd-loader, vulkan-headers:
           # CVulkan (WOR-313); vulkan-swrast (lavapipe) and vulkan-validation-layers: the device and
           # the layer the GPU tests require here; gtk4: CGtk (WOR-314; headers and libraries, floor
-          # 4.16). No shaderc: the drift check fetches its own pinned build.
+          # 4.16); dbus: dbus-daemon and dbus-run-session for the GDBus tests (WOR-320 S1; a test
+          # tool, never linked). No shaderc: the drift check fetches its own pinned build.
           pacman -Syu --noconfirm --needed \
             git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
             gnupg zstd pkgconf freetype2 harfbuzz fontconfig zsh fish bash-completion python \
-            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4
+            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4 dbus
           pacman -Q glibc gcc binutils bash zsh fish freetype2 harfbuzz fontconfig \
-            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4
+            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4 dbus
 
       - uses: actions/checkout@v5
 
@@ -260,6 +263,19 @@ jobs:
               exit 1
             fi
           done
+
+      # WOR-320 S1's gate: the GDBus wrapper's tests under a session bus of their own, so
+      # `bus(.session)` is exercised too (the whole-suite run above has no session bus and skips
+      # that one test; every other GDBus test starts its own private dbus-daemon).
+      - name: dbus-run-session -- swift test --filter GDBus
+        run: |
+          log="$RUNNER_TEMP/swift-test-gdbus.log"
+          dbus-run-session -- swift test --build-system native --no-parallel --skip-build --filter GDBus 2>&1 | tee "$log"
+          n="$(sed 's/\x1b\[[0-9;]*m//g' "$log" | sed -n 's/.*Test run with \([0-9][0-9]*\) tests\{0,1\} .*/\1/p')"
+          if [ -z "$n" ] || [ "$n" = 0 ]; then
+            echo "::error::swift test --filter GDBus: no 'Test run with N tests' line, or N = 0"
+            exit 1
+          fi
 
       - name: Check the test runner's linkage
         run: scripts/linux/check-linkage.sh "$(swift build --build-system native --show-bin-path)/tkzmuxPackageTests.xctest" tests

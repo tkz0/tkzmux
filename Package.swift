@@ -282,6 +282,14 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
     .testTarget(name: "TkzFontsFTTests", dependencies: ["TkzFontsFT", "TkzRenderCore", "TkzPlatform", "CFreeType", "TkzPNG", "TkzTerminalCore"],
                 path: "Tests/TkzFontsFTTests", exclude: ["Fixtures"]),
 
+    // MARK: Test-only libxkbcommon (WOR-315 S1, decision S6-3). LinuxKeymapTests compiles the
+    // `se`, `us`, `us(intl)`, `de` and `fr` keymaps headlessly and writes the layout fixtures that
+    // TkzTerminalCoreTests reads on both OSes. Only the test runner NEEDs libxkbcommon
+    // (linkage-policy.txt `[tests]`); the app takes keyvals from GDK.
+    .systemLibrary(name: "CXKBCommon", pkgConfig: "xkbcommon", providers: [.apt(["libxkbcommon-dev"])]),
+    .testTarget(name: "LinuxKeymapTests", dependencies: ["CXKBCommon", "TkzTerminalCore"],
+                path: "Tests/LinuxKeymapTests"),
+
     // The Mac's PersistenceTests also lists TkzTerminalCore and GhosttyVt; nothing in it imports
     // them, and neither is in the Linux graph yet (WOR-304 S3).
     .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzCore"], path: "Tests/PersistenceTests"),
