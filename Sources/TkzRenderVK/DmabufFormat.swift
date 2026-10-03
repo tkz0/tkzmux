@@ -14,7 +14,7 @@
 //
 // Pure: no Vulkan calls (`PresentationRing` gathers the device side), so the tests cover it
 // without a GPU. The implicit modifier (DRM_FORMAT_MOD_INVALID) never takes part: Vulkan never
-// reports it, and creating an image for it is the fallback ladder's business (WOR-313 S5b).
+// reports it, and making an image for it is the fallback ladder's job (`PresentationLadder`).
 
 /// A DRM fourcc (`drm_fourcc.h`), built from its four characters like `fourcc_code`.
 public struct DRMFourCC: RawRepresentable, Hashable, Sendable, CustomStringConvertible {
@@ -111,7 +111,7 @@ public enum ModifierNegotiationError: Error, Sendable, Equatable, CustomStringCo
     /// The fourcc is not one a B8G8R8A8_UNORM image can be presented as.
     case unsupportedFourCC(DRMFourCC)
     /// The consumer offers no explicit modifier for the fourcc that the device can export at this
-    /// size. WOR-313 S5b steps down the fallback ladder from here.
+    /// size. `PresentationLadder` steps down to LINEAR, implicit or readback from here.
     case noCommonModifier(fourcc: DRMFourCC, offered: [UInt64], device: [UInt64])
 
     public var description: String {

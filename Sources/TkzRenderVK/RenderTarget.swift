@@ -10,6 +10,11 @@
 //
 // `OffscreenTarget` is one (headless, tests, vtdump, the readback rung of S5b); the exportable
 // dma-buf images of S5a (`PresentationRing.Image`) are the other.
+//
+// Whatever draws into a target says where (`didDraw`): a ring image is not the previous frame, so
+// at present the ring copies every pixel it lacks from the image that is (WOR-313 S5b), and that
+// copy must not land on what this frame drew. The renderer reports each pane's rect; a target that
+// keeps no history ignores it.
 
 import CVulkan
 
@@ -20,6 +25,12 @@ public protocol VulkanRenderTarget: AnyObject {
     var height: UInt32 { get }
     /// The layout the last recorded command left the image in. UNDEFINED until the first.
     var layout: VkImageLayout { get set }
+    /// `rect` (inside the target) was drawn over since the target was acquired.
+    func didDraw(_ rect: PixelRect)
+}
+
+extension VulkanRenderTarget {
+    public func didDraw(_ rect: PixelRect) {}
 }
 
 /// The source scope of a barrier on an image last left in `layout` by tkzmux's own commands: the
@@ -33,6 +44,8 @@ func lastAccess(of layout: VkImageLayout) -> VulkanScope {
         (VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT)
     case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
         (VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_NONE)
+    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+        (VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT)
     default:
         (VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT)
     }

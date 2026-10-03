@@ -124,7 +124,7 @@ struct OwnershipBarrierTests {
 // MARK: - GPU fixture
 
 /// One device that can export, with everything a test needs to make another device on it.
-private struct ExportingGPU {
+struct ExportingGPU {
     let instance: VulkanInstance
     let physical: VkPhysicalDevice
     let candidate: GPUCandidate
@@ -135,6 +135,16 @@ private struct ExportingGPU {
     /// Every eligible device that reports the ring's extensions, each as a presenting device. The
     /// rest are logged; with none, the calling test is cancelled with the reason.
     static func all(sourceLocation: SourceLocation = #_sourceLocation) throws -> [ExportingGPU] {
+        let exporting = try available()
+        if exporting.isEmpty {
+            try Test.cancel("no Vulkan device reports \(PresentationRing.requiredExtensions.joined(separator: ", "))",
+                            sourceLocation: sourceLocation)
+        }
+        return exporting
+    }
+
+    /// `all()` for a test that also runs without one: the devices left out are logged.
+    static func available() throws -> [ExportingGPU] {
         let instance = try VulkanInstance(validation: VulkanTestEnvironment.validation)
         let physical = try instance.physicalDevices()
         var exporting: [ExportingGPU] = []
@@ -149,16 +159,14 @@ private struct ExportingGPU {
             let presenting = try VulkanDevice(instance: instance, physicalDevice: device, candidate: candidate, mode: .presenting)
             exporting.append(ExportingGPU(instance: instance, physical: device, candidate: candidate, device: presenting))
         }
-        if exporting.isEmpty {
-            try Test.cancel("no Vulkan device reports \(PresentationRing.requiredExtensions.joined(separator: ", "))",
-                            sourceLocation: sourceLocation)
-        }
         return exporting
     }
 
-    /// What a consumer that takes anything the device exports would offer.
-    func offered(_ fourcc: DRMFourCC = .xrgb8888) -> [DRMFormat] {
+    /// What a consumer that takes anything the device exports would offer; with `fallbacks`, also
+    /// LINEAR and the implicit modifier, as GTK lists them.
+    func offered(_ fourcc: DRMFourCC = .xrgb8888, fallbacks: Bool = false) -> [DRMFormat] {
         PresentationRing.deviceModifiers(physical).map { DRMFormat(fourcc: fourcc, modifier: $0.modifier) }
+            + (fallbacks ? [DRMModifier.linear, DRMModifier.invalid].map { DRMFormat(fourcc: fourcc, modifier: $0) } : [])
     }
 
     func expectNoValidationErrors(sourceLocation: SourceLocation = #_sourceLocation) {
@@ -170,8 +178,9 @@ private struct ExportingGPU {
 /// A compositor stand-in: a second VkDevice on the same GPU that imports a presented dma-buf from
 /// its fd, modifier and plane layout (VkImageDrmFormatModifierExplicitCreateInfoEXT), waits for
 /// the dma-buf's write fences, takes it from VK_QUEUE_FAMILY_FOREIGN_EXT, copies it out and hands
-/// it back in GENERAL, as a compositor's GPU does.
-private final class DmabufReader {
+/// it back in GENERAL, as a compositor's GPU does. An implicit-modifier frame is imported the way
+/// the same driver infers it: a VK_IMAGE_TILING_LINEAR image, whose row pitch must be the stride.
+final class DmabufReader {
     let device: VulkanDevice
     private let memoryFdProperties: PFN_vkGetMemoryFdPropertiesKHR
 
@@ -189,6 +198,7 @@ private final class DmabufReader {
         let layouts = dmabuf.planes.map {
             VkSubresourceLayout(offset: VkDeviceSize($0.offset), size: 0, rowPitch: VkDeviceSize($0.stride), arrayPitch: 0, depthPitch: 0)
         }
+        let implicit = dmabuf.modifier == DRMModifier.invalid
         let created = layouts.withUnsafeBufferPointer { layouts in
             var explicit = VkImageDrmFormatModifierExplicitCreateInfoEXT()
             explicit.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT
@@ -200,7 +210,7 @@ private final class DmabufReader {
             external.handleTypes = VkExternalMemoryHandleTypeFlags(VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT.rawValue)
             var chain = VulkanChain()
             chain.append(external)
-            chain.append(explicit)
+            if !implicit { chain.append(explicit) }
             var info = VkImageCreateInfo()
             info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO
             info.pNext = UnsafeRawPointer(chain.head)
@@ -210,7 +220,7 @@ private final class DmabufReader {
             info.mipLevels = 1
             info.arrayLayers = 1
             info.samples = VK_SAMPLE_COUNT_1_BIT
-            info.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT
+            info.tiling = implicit ? VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT
             info.usage = VkImageUsageFlags(VK_IMAGE_USAGE_TRANSFER_SRC_BIT.rawValue)
             info.sharingMode = VK_SHARING_MODE_EXCLUSIVE
             info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
@@ -218,6 +228,14 @@ private final class DmabufReader {
         }
         try vkCheck(created, "vkCreateImage (imported dma-buf)")
         defer { vkDestroyImage(vk, image, nil) }
+        if implicit, let image {
+            var subresource = VkImageSubresource()
+            subresource.aspectMask = VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT.rawValue)
+            var layout = VkSubresourceLayout()
+            vkGetImageSubresourceLayout(vk, image, &subresource, &layout)
+            #expect(layout.rowPitch == VkDeviceSize(dmabuf.planes[0].stride) && layout.offset == VkDeviceSize(dmabuf.planes[0].offset),
+                    "the inferred layout is the one presented")
+        }
 
         // The import takes ownership of the dup on success.
         let fd = dup(dmabuf.planes[0].fd)
@@ -281,7 +299,8 @@ private final class DmabufReader {
     }
 }
 
-/// Clears all of `target` to `color` and waits: a stand-in frame for the ring tests.
+/// Clears all of `target` to `color` and waits: a stand-in frame for the ring tests. Like the
+/// renderer, it tells the target what it drew.
 private func clear(_ target: some VulkanRenderTarget, to color: BGRA8, on device: VulkanDevice) throws {
     try device.submitOnce { commands in
         pipelineBarrier(commands, images: [imageBarrier(
@@ -308,6 +327,7 @@ private func clear(_ target: some VulkanRenderTarget, to color: BGRA8, on device
             vkCmdEndRendering(commands)
         }
     }
+    target.didDraw(PixelRect(width: Int(target.width), height: Int(target.height)))
 }
 
 /// Pixels of tightly packed BGRA bytes that are not `color`.
@@ -504,7 +524,7 @@ struct PresentationRingTests {
             #expect(presentedBytes.count == expected.count)
             #expect(presentedBytes == expected, "\(gpu.name): \(zip(presentedBytes, expected).count { $0 != $1 }) bytes differ")
 
-            // Unchanged state takes no ring image (the ring twin proper is WOR-313 S5b's).
+            // Unchanged state takes no ring image (the window-level twin is in PresentationDamageTests).
             acquired = nil
             renderer.resetStats()
             let idle = try renderIntoRing()

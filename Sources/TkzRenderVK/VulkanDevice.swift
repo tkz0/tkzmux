@@ -1,10 +1,12 @@
 // VulkanDevice — the logical device tkzmux draws with, on the GPU `DeviceSelector` picked
 // (WOR-313 S1).
 //
-// One graphics queue, with `dynamicRendering` and `synchronization2` enabled. When presenting,
-// the presentation extensions the device has are enabled too: all of them on a device the selector
-// considers able to export, and whichever it reports on a readback-only one (lavapipe has all but
-// VK_EXT_physical_device_drm), so WOR-313 S5a can still try an export there. Headless, none are.
+// One graphics queue, with `dynamicRendering` and `synchronization2` enabled, and the 1.2 core
+// `timelineSemaphore` every 1.2+ device has (the presentation ring orders its presents with one).
+// When presenting, the presentation extensions the device has are enabled too: all of them on a
+// device the selector considers able to export, and whichever it reports on a readback-only one
+// (lavapipe has all but VK_EXT_physical_device_drm), so WOR-313 S5a can still try an export there.
+// Headless, none are.
 //
 // Vulkan handles are not Sendable, and neither is this class: it lives where it was made (the main
 // actor in the app; one test function in tests).
@@ -33,11 +35,15 @@ public final class VulkanDevice {
             ? VulkanRequirements.presentationExtensions.filter { !candidate.missingPresentationExtensions.contains($0) }
             : []
 
+        var vulkan12 = VkPhysicalDeviceVulkan12Features()
+        vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES
+        vulkan12.timelineSemaphore = VkBool32(VK_TRUE)
         var vulkan13 = VkPhysicalDeviceVulkan13Features()
         vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES
         vulkan13.dynamicRendering = VkBool32(VK_TRUE)
         vulkan13.synchronization2 = VkBool32(VK_TRUE)
         var chain = VulkanChain()
+        chain.append(vulkan12)
         chain.append(vulkan13)
 
         var priority: Float = 1

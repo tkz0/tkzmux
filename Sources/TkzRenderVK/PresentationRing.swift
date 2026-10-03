@@ -12,7 +12,9 @@
 // fourcc and what the device can render to and export (`ModifierNegotiation`); the driver picks
 // among those for the first image, and the others are made with that one, so every image of a
 // ring has the same modifier and plane layout. XRGB8888 is the opaque window; ARGB8888 is the same
-// image with the fourth byte meaning alpha.
+// image with the fourth byte meaning alpha. The fallback ladder (`PresentationLadder`, WOR-313
+// S5b) also makes rings of LINEAR images, and of implicit ones: VK_IMAGE_TILING_LINEAR rows
+// presented as DRM_FORMAT_MOD_INVALID, for a consumer that infers the layout itself.
 //
 // ## A frame
 //
@@ -34,6 +36,24 @@
 //   releaseSlot   the consumer is done with the image (WOR-314: the texture's destroy-notify).
 //                 Reads it already submitted are covered by the fences waited on at re-acquire.
 //
+// ## Buffer age and damage (WOR-313 S5b)
+//
+// The image being drawn is not the previous frame: it holds the frame it last presented, `age`
+// presents ago (0: nothing yet). Each image accumulates the damage of every frame presented since
+// its own, and the renderer reports what this frame drew (`didDraw`). At present, everything the
+// image lacks and the frame did not draw is copied, on the GPU, from the previous image
+// (`copyRegion(_:fromPrevious:in:)`), in the present submission, before the release. So a frame
+// that redraws one pane of four encodes one pane, and the other three are a copy, not a re-encode.
+// The previous image is the consumer's at that point: it is borrowed from
+// VK_QUEUE_FAMILY_FOREIGN_EXT and handed back in GENERAL, read only. An acquire from the foreign
+// family has no source scope, so the copy is ordered after the previous image's own release by
+// the ring's timeline semaphore, which every present signals with its number. Until the first
+// present there is no previous image, so `needsFullRedraw` asks the caller to draw every pane, and
+// every image acquired until then is cleared to opaque black first (whatever no pane covers stays
+// black).
+// `PresentedFrame.damage` is what changed since the previous frame (everything, the first time):
+// what WOR-314 S5 forwards to `gdk_dmabuf_texture_builder_set_update_region`.
+//
 // The ownership transfers are not optional: without them the compositor's GPU may read stale or
 // compressed-but-unresolved data, and validation only notices sometimes. `GdkDmabufTextureBuilder`
 // takes no fence, so the sync_file import is what keeps NVIDIA correct without a CPU wait.
@@ -44,7 +64,7 @@
 // thread. Each image waits for its own submissions when it goes. A consumer still holding a
 // dma-buf keeps its memory alive in the kernel, but not its fd number (GDK reads the fd until the
 // texture's destroy-notify), so drop a ring only after every presented image has been released.
-// Per-image buffer age, damage and the fallback ladder are WOR-313 S5b's.
+// One frame at a time: present (or release) the acquired image before acquiring the next.
 
 import CVulkan
 import Glibc
@@ -76,6 +96,11 @@ public struct PresentationStats: Sendable, Hashable {
     public var cpuWaits = 0
     /// `releaseSlot` calls that freed an image.
     public var releases = 0
+    /// Images cleared at acquire because nothing had been presented yet.
+    public var firstFrameClears = 0
+    /// Presents that copied what the image lacked from the previous image, and the pixels copied.
+    public var regionCopies = 0
+    public var pixelsCopied = 0
 
     public init() {}
 }
@@ -87,6 +112,12 @@ public struct PresentedFrame: Sendable, Hashable {
     public var dmabuf: DmabufDescription
     /// How this frame's completion was signalled.
     public var sync: PresentationSync
+    /// The image's buffer age when it was acquired: it held the frame presented `age` presents
+    /// earlier (1: the previous frame), or nothing (0).
+    public var age: Int
+    /// Where this frame differs from the previous one: the panes drawn, or the whole image for the
+    /// ring's first frame. Disjoint rects (WOR-314 S5: `set_update_region`).
+    public var damage: [PixelRect]
 }
 
 public enum PresentationRingError: Error, Sendable, Equatable, CustomStringConvertible {
@@ -94,11 +125,14 @@ public enum PresentationRingError: Error, Sendable, Equatable, CustomStringConve
     case missingExtensions([String])
     /// The driver chose different modifiers for images made from the same list.
     case inconsistentModifiers([UInt64])
+    /// The device cannot render to, or export, a VK_IMAGE_TILING_LINEAR image of this size.
+    case implicitUnsupported
 
     public var description: String {
         switch self {
         case .missingExtensions(let names): "the device cannot export dma-bufs (missing \(names.joined(separator: ", ")))"
         case .inconsistentModifiers(let modifiers): "ring images got different modifiers: \(modifiers.map(DRMModifier.hex))"
+        case .implicitUnsupported: "the device cannot export a linear image of this size for an implicit-modifier import"
         }
     }
 }
@@ -127,11 +161,21 @@ public final class PresentationRing {
         VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT.rawValue | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT.rawValue
             | VK_FORMAT_FEATURE_TRANSFER_SRC_BIT.rawValue | VK_FORMAT_FEATURE_TRANSFER_DST_BIT.rawValue)
 
+    /// How a ring's images are tiled, and what the consumer is told.
+    public enum ImageLayout: Sendable, Hashable {
+        /// VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT with one of these modifiers, the driver's pick.
+        case modifiers([UInt64])
+        /// VK_IMAGE_TILING_LINEAR, presented as DRM_FORMAT_MOD_INVALID with its row pitch: the
+        /// consumer's driver infers the layout, which for a buffer without tiling metadata is rows.
+        case implicit
+    }
+
     public let device: VulkanDevice
     public let width: UInt32
     public let height: UInt32
     public let fourcc: DRMFourCC
-    /// The modifier every image was made with, and its memory plane count.
+    /// The modifier every image was made with (DRM_FORMAT_MOD_INVALID for `.implicit`), and its
+    /// memory plane count.
     public let modifier: UInt64
     public let planeCount: Int
     public let images: [Image]
@@ -139,26 +183,59 @@ public final class PresentationRing {
     /// told) and drops to `.cpuWait` for good if the kernel refuses a sync_file import.
     public private(set) var sync: PresentationSync
     public private(set) var stats = PresentationStats()
+    /// Frames presented so far; an image's contents are numbered by the present that made them.
+    public private(set) var presentCount = 0
 
     private let procs: DmabufProcs
+    /// Each present signals it with its number (`presentCount`); a copy from the previous image
+    /// waits for that image's number.
+    private let timeline: VkSemaphore
     /// The last image handed out; the first `acquire` hands out image 0.
     private var lastAcquired = PresentationRing.depth - 1
+    /// The image holding the latest presented frame: where present copies what an image lacks.
+    private var lastPresented: Image?
 
     /// Makes the ring's images for a `width × height` window presented as `fourcc`, with a
     /// modifier the consumer lists in `offered` (`gdk_display_get_dmabuf_formats`, WOR-314).
     /// `sync` forces a completion path; nil takes the best the device has.
-    public init(
+    public convenience init(
         device: VulkanDevice, width: UInt32, height: UInt32, fourcc: DRMFourCC = .xrgb8888,
         offered: [DRMFormat], sync: PresentationSync? = nil
     ) throws {
+        try Self.checkExtensions(device)
+        let candidates = try ModifierNegotiation.negotiate(
+            offered: offered, fourcc: fourcc, device: Self.deviceModifiers(device.physicalDevice), width: width, height: height)
+        try self.init(device: device, width: width, height: height, fourcc: fourcc, layout: .modifiers(candidates), sync: sync)
+    }
+
+    /// Makes the ring's images with `layout`, which the caller chose: the fallback ladder's LINEAR
+    /// and implicit rungs. A modifier the device cannot render to and export at this size is
+    /// dropped from the list; none left throws.
+    public init(
+        device: VulkanDevice, width: UInt32, height: UInt32, fourcc: DRMFourCC = .xrgb8888,
+        layout: ImageLayout, sync: PresentationSync? = nil
+    ) throws {
         precondition(width > 0 && height > 0, "PresentationRing needs a non-empty size")
-        let missing = Self.requiredExtensions.filter { !device.enabledExtensions.contains($0) }
-        guard missing.isEmpty else { throw PresentationRingError.missingExtensions(missing) }
+        guard DRMFourCC.b8g8r8a8.contains(fourcc) else { throw ModifierNegotiationError.unsupportedFourCC(fourcc) }
+        try Self.checkExtensions(device)
         let procs = try DmabufProcs(device)
 
         let supported = Self.deviceModifiers(device.physicalDevice)
-        let candidates = try ModifierNegotiation.negotiate(
-            offered: offered, fourcc: fourcc, device: supported, width: width, height: height)
+        let fitting = supported.filter { $0.fits(width: width, height: height) }
+        let firstLayout: Image.Tiling
+        switch layout {
+        case .modifiers(let wanted):
+            let usable = fitting.map(\.modifier).filter(wanted.contains)
+            guard !usable.isEmpty else {
+                throw ModifierNegotiationError.noCommonModifier(fourcc: fourcc, offered: wanted, device: fitting.map(\.modifier))
+            }
+            firstLayout = .modifiers(usable)
+        case .implicit:
+            guard Self.linearExportable(device.physicalDevice, width: width, height: height) else {
+                throw PresentationRingError.implicitUnsupported
+            }
+            firstLayout = .linear
+        }
 
         let semaphores = Self.semaphoreSupport(device, procs: procs)
         let resolvedSync: PresentationSync = switch sync {
@@ -170,9 +247,12 @@ public final class PresentationRing {
         // ring has one layout.
         var images: [Image] = []
         for index in 0..<Self.depth {
+            let tiling: Image.Tiling = switch (firstLayout, images.first) {
+            case (.modifiers, let first?): .modifiers([first.dmabuf.modifier])
+            default: firstLayout
+            }
             let image = try Image(
-                device: device, index: index, width: width, height: height, fourcc: fourcc,
-                modifiers: images.first.map { [$0.dmabuf.modifier] } ?? candidates,
+                device: device, index: index, width: width, height: height, fourcc: fourcc, tiling: tiling,
                 planeCounts: Dictionary(supported.map { ($0.modifier, $0.planeCount) }, uniquingKeysWith: { first, _ in first }),
                 procs: procs, exportsRenderDone: resolvedSync == .syncFile, importsConsumerFences: semaphores.importable)
             images.append(image)
@@ -181,6 +261,20 @@ public final class PresentationRing {
         guard chosen.count == 1, let modifier = chosen.first else {
             throw PresentationRingError.inconsistentModifiers(images.map(\.dmabuf.modifier))
         }
+
+        var timelineType = VkSemaphoreTypeCreateInfo()
+        timelineType.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO
+        timelineType.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE
+        timelineType.initialValue = 0
+        var timelineChain = VulkanChain()
+        timelineChain.append(timelineType)
+        var timelineInfo = VkSemaphoreCreateInfo()
+        timelineInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+        timelineInfo.pNext = UnsafeRawPointer(timelineChain.head)
+        var timeline: VkSemaphore?
+        try vkCheck(vkCreateSemaphore(device.handle, &timelineInfo, nil, &timeline), "vkCreateSemaphore (timeline)")
+        guard let timeline else { throw VulkanError("vkCreateSemaphore", VK_ERROR_INITIALIZATION_FAILED) }
+        self.timeline = timeline
 
         self.device = device
         self.width = width
@@ -193,9 +287,13 @@ public final class PresentationRing {
         self.procs = procs
 
         let planes = images[0].dmabuf.planes.map { "offset \($0.offset) stride \($0.stride)" }.joined(separator: ", ")
+        let choice = switch firstLayout {
+        case .modifiers(let list): "modifier \(DRMModifier.hex(modifier)) (of \(list.count) common)"
+        case .linear: "implicit modifier (linear rows)"
+        }
         vulkanLog.notice("""
             presentation ring \(width)×\(height) \(fourcc.description, privacy: .public) \
-            modifier \(DRMModifier.hex(modifier), privacy: .public) (of \(candidates.count) common), \
+            \(choice, privacy: .public), \
             \(images[0].dmabuf.planes.count) plane(s): \(planes, privacy: .public); sync \(resolvedSync.rawValue, privacy: .public)
             """)
         if resolvedSync == .cpuWait && sync != .cpuWait {
@@ -203,10 +301,33 @@ public final class PresentationRing {
         }
     }
 
+    deinit {
+        // An image's present may read another image (the copy from the previous one): wait for
+        // every image's submissions before any image goes.
+        images.forEach { $0.waitUntilIdle() }
+        vkDestroySemaphore(device.handle, timeline, nil)
+    }
+
+    private static func checkExtensions(_ device: VulkanDevice) throws {
+        let missing = requiredExtensions.filter { !device.enabledExtensions.contains($0) }
+        guard missing.isEmpty else { throw PresentationRingError.missingExtensions(missing) }
+    }
+
+    /// Nothing has been presented yet, so there is no previous frame to copy clean panes from:
+    /// the next frame must draw every pane (`forceEncode`).
+    public var needsFullRedraw: Bool { lastPresented == nil }
+
+    /// The buffer age of `image`: it holds the frame presented that many presents ago (1: the
+    /// latest), or 0 when it holds no presented frame.
+    public func age(of image: Image) -> Int {
+        image.presentedAt.map { presentCount - $0 + 1 } ?? 0
+    }
+
     // MARK: - A frame
 
     /// The next image the consumer is not holding, ready to be drawn into, or nil when it holds
     /// them all. Taking back an image the consumer had waits (on the GPU) for its reads to finish.
+    /// Before the first present, the image is cleared to opaque black.
     public func acquire() throws -> Image? {
         let order = (1...Self.depth).map { images[(lastAcquired + $0) % Self.depth] }
         guard let image = order.first(where: { $0.state == .free }) else {
@@ -218,21 +339,50 @@ public final class PresentationRing {
             stats.foreignAcquires += 1
             if waited { stats.consumerFenceWaits += 1 }
         }
+        if needsFullRedraw {
+            try image.clearToBlack()
+            stats.firstFrameClears += 1
+        }
+        image.drawn = DamageRegion()
         image.state = .acquired
         lastAcquired = image.index
         stats.acquires += 1
         return image
     }
 
-    /// Hands `image`, drawn into since `acquire`, to the consumer: release to the foreign queue
-    /// family, then the render-done fence onto the dma-buf (or a CPU wait). Returns what the
-    /// consumer imports.
+    /// Hands `image`, drawn into since `acquire`, to the consumer: what it lacks copied from the
+    /// previous image, the release to the foreign queue family, then the render-done fence onto
+    /// the dma-buf (or a CPU wait). Returns what the consumer imports.
     public func present(_ image: Image) throws -> PresentedFrame {
         precondition(images.indices.contains(image.index) && images[image.index] === image, "an image is presented to its own ring")
         precondition(image.state == .acquired, "only an acquired image can be presented")
-        let signalled = try image.release(signalRenderDone: sync == .syncFile)
+
+        // What the image lacks of the latest frame and this frame did not draw over. Its own
+        // contents are the latest frame when its age is 1: nothing to copy, nothing to copy from.
+        let age = age(of: image)
+        let previous = lastPresented.flatMap { $0 === image ? nil : $0 }
+        let fill = previous == nil ? DamageRegion() : image.accumulatedDamage.subtracting(image.drawn)
+        let signalled = try image.release(
+            signalRenderDone: sync == .syncFile, fill: fill.rects, from: previous,
+            timeline: (timeline, UInt64(presentCount + 1)))
         image.state = .presented
         stats.presents += 1
+        if !fill.isEmpty {
+            stats.regionCopies += 1
+            stats.pixelsCopied += fill.area
+        }
+
+        // The frame differs from the previous one where it drew (everywhere, the first time), and
+        // every other image now lacks that too.
+        let damage = lastPresented == nil ? DamageRegion(PixelRect(width: Int(width), height: Int(height))) : image.drawn
+        for other in images where other !== image {
+            other.accumulatedDamage.formUnion(damage)
+            other.accumulatedDamage.simplify()
+        }
+        presentCount += 1
+        image.presentedAt = presentCount
+        image.accumulatedDamage = DamageRegion()
+        lastPresented = image
 
         var frameSync = sync
         if sync == .syncFile {
@@ -250,16 +400,24 @@ public final class PresentationRing {
             try image.waitForPresent()
             stats.cpuWaits += 1
         }
-        return PresentedFrame(slot: image.index, dmabuf: image.dmabuf, sync: frameSync)
+        return PresentedFrame(slot: image.index, dmabuf: image.dmabuf, sync: frameSync, age: age, damage: damage.rects)
     }
 
     /// The consumer no longer needs image `slot` (WOR-314: a texture's destroy-notify). An
-    /// acquired image that will not be presented is handed back the same way. Releasing a free
-    /// image does nothing.
+    /// acquired image that will not be presented is handed back the same way; whatever was drawn
+    /// into it is forgotten, and it counts as holding no frame. Releasing a free image does nothing.
     public func releaseSlot(_ slot: Int) {
         precondition(images.indices.contains(slot), "slot \(slot) is not in the ring")
-        guard images[slot].state != .free else { return }
-        images[slot].state = .free
+        let image = images[slot]
+        guard image.state != .free else { return }
+        if image.state == .acquired {
+            // The latest frame may be what was drawn over: then no image holds it any more.
+            if image === lastPresented { lastPresented = nil }
+            image.presentedAt = nil
+            image.accumulatedDamage = DamageRegion(PixelRect(width: Int(width), height: Int(height)))
+            image.drawn = DamageRegion()
+        }
+        image.state = .free
         stats.releases += 1
     }
 
@@ -332,6 +490,40 @@ public final class PresentationRing {
                 extent.width, extent.height)
     }
 
+    /// Whether a VK_IMAGE_TILING_LINEAR image of the ring's usage and size can be rendered to,
+    /// blended into and exported as a dma-buf: the implicit rung.
+    static func linearExportable(_ physicalDevice: VkPhysicalDevice, width: UInt32, height: UInt32) -> Bool {
+        var formatProperties = VkFormatProperties()
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &formatProperties)
+        guard formatProperties.linearTilingFeatures & requiredFeatures == requiredFeatures else { return false }
+
+        var external = VkPhysicalDeviceExternalImageFormatInfo()
+        external.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO
+        external.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT
+        var input = VulkanChain()
+        input.append(external)
+        var info = VkPhysicalDeviceImageFormatInfo2()
+        info.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2
+        info.pNext = UnsafeRawPointer(input.head)
+        info.format = format
+        info.type = VK_IMAGE_TYPE_2D
+        info.tiling = VK_IMAGE_TILING_LINEAR
+        info.usage = usage
+
+        var externalProperties = VkExternalImageFormatProperties()
+        externalProperties.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES
+        var output = VulkanChain()
+        let reply = output.append(externalProperties)
+        var properties = VkImageFormatProperties2()
+        properties.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2
+        properties.pNext = output.head
+        guard vkGetPhysicalDeviceImageFormatProperties2(physicalDevice, &info, &properties) == VK_SUCCESS else { return false }
+        let features = reply.pointee.externalMemoryProperties.externalMemoryFeatures
+        let extent = properties.imageFormatProperties.maxExtent
+        return features & VkExternalMemoryFeatureFlags(VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT.rawValue) != 0
+            && width <= extent.width && height <= extent.height
+    }
+
     /// Whether a binary semaphore can be exported as, and receive an import of, a sync_file.
     private static func semaphoreSupport(_ device: VulkanDevice, procs: DmabufProcs) -> (exportable: Bool, importable: Bool) {
         guard device.enabledExtensions.contains(semaphoreExtension), procs.getSemaphoreFd != nil, procs.importSemaphoreFd != nil
@@ -399,6 +591,21 @@ extension PresentationRing {
         public internal(set) var state = State.free
         /// Released to VK_QUEUE_FAMILY_FOREIGN_EXT by the last present, not yet acquired back.
         public private(set) var ownedByConsumer = false
+        /// The ring's `presentCount` when this image's contents were presented; nil while it holds
+        /// no presented frame (`PresentationRing.age(of:)`).
+        public internal(set) var presentedAt: Int?
+        /// Where the image differs from the latest presented frame: the damage of every frame
+        /// presented since its own. Everything, until it holds a frame.
+        public internal(set) var accumulatedDamage: DamageRegion
+        /// What the frame drew into the image since `acquire` (`didDraw`): exact, never simplified.
+        public internal(set) var drawn = DamageRegion()
+
+        /// How an image is created: the ring's `ImageLayout`, resolved.
+        enum Tiling {
+            case modifiers([UInt64])
+            /// VK_IMAGE_TILING_LINEAR, described as DRM_FORMAT_MOD_INVALID.
+            case linear
+        }
 
         private let memory: VkDeviceMemory
         private let fd: Int32
@@ -413,7 +620,7 @@ extension PresentationRing {
         private let consumerDone: VkSemaphore?
 
         init(
-            device: VulkanDevice, index: Int, width: UInt32, height: UInt32, fourcc: DRMFourCC, modifiers: [UInt64],
+            device: VulkanDevice, index: Int, width: UInt32, height: UInt32, fourcc: DRMFourCC, tiling: Tiling,
             planeCounts: [UInt64: Int], procs: DmabufProcs, exportsRenderDone: Bool, importsConsumerFences: Bool
         ) throws {
             let vk = device.handle
@@ -422,19 +629,27 @@ extension PresentationRing {
             var committed = false
             defer { if !committed { cleanup.reversed().forEach { $0() } } }
 
-            // An image the driver tiles with one of `modifiers`, its memory exportable as a dma-buf.
+            // An image the driver tiles with one of `modifiers` (or in plain rows), its memory
+            // exportable as a dma-buf.
+            let modifiers: [UInt64]
+            switch tiling {
+            case .modifiers(let list): modifiers = list
+            case .linear: modifiers = []
+            }
             var image: VkImage?
             let created = modifiers.withUnsafeBufferPointer { modifiers in
-                var list = VkImageDrmFormatModifierListCreateInfoEXT()
-                list.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT
-                list.drmFormatModifierCount = UInt32(modifiers.count)
-                list.pDrmFormatModifiers = modifiers.baseAddress
                 var external = VkExternalMemoryImageCreateInfo()
                 external.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO
                 external.handleTypes = VkExternalMemoryHandleTypeFlags(VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT.rawValue)
                 var chain = VulkanChain()
                 chain.append(external)
-                chain.append(list)
+                if !modifiers.isEmpty {
+                    var list = VkImageDrmFormatModifierListCreateInfoEXT()
+                    list.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT
+                    list.drmFormatModifierCount = UInt32(modifiers.count)
+                    list.pDrmFormatModifiers = modifiers.baseAddress
+                    chain.append(list)
+                }
 
                 var info = VkImageCreateInfo()
                 info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO
@@ -445,13 +660,13 @@ extension PresentationRing {
                 info.mipLevels = 1
                 info.arrayLayers = 1
                 info.samples = VK_SAMPLE_COUNT_1_BIT
-                info.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT
+                info.tiling = modifiers.isEmpty ? VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT
                 info.usage = PresentationRing.usage
                 info.sharingMode = VK_SHARING_MODE_EXCLUSIVE
                 info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
                 return vkCreateImage(vk, &info, nil, &image)
             }
-            try vkCheck(created, "vkCreateImage (dma-buf, \(modifiers.count) modifier(s))")
+            try vkCheck(created, modifiers.isEmpty ? "vkCreateImage (dma-buf, linear)" : "vkCreateImage (dma-buf, \(modifiers.count) modifier(s))")
             guard let image else { throw VulkanError("vkCreateImage", VK_ERROR_INITIALIZATION_FAILED) }
             cleanup.append { vkDestroyImage(vk, image, nil) }
 
@@ -490,19 +705,26 @@ extension PresentationRing {
             try vkCheck(procs.getMemoryFd(vk, &fdInfo, &fd), "vkGetMemoryFdKHR")
             cleanup.append { close(fd) }
 
-            // The modifier the driver chose, and where each memory plane is.
-            var modifierProperties = VkImageDrmFormatModifierPropertiesEXT()
-            modifierProperties.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT
-            try vkCheck(procs.getImageModifier(vk, image, &modifierProperties), "vkGetImageDrmFormatModifierPropertiesEXT")
-            let modifier = modifierProperties.drmFormatModifier
-            let planeCount = planeCounts[modifier] ?? 1
+            // The modifier the driver chose, and where each memory plane is. A linear image has
+            // one, described by its colour aspect.
+            let modifier: UInt64
+            if modifiers.isEmpty {
+                modifier = DRMModifier.invalid
+            } else {
+                var modifierProperties = VkImageDrmFormatModifierPropertiesEXT()
+                modifierProperties.sType = VK_STRUCTURE_TYPE_IMAGE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT
+                try vkCheck(procs.getImageModifier(vk, image, &modifierProperties), "vkGetImageDrmFormatModifierPropertiesEXT")
+                modifier = modifierProperties.drmFormatModifier
+            }
+            let planeCount = modifiers.isEmpty ? 1 : planeCounts[modifier] ?? 1
             guard (1...DmabufDescription.maxPlanes).contains(planeCount) else {
                 throw VulkanError("PresentationRing (modifier \(DRMModifier.hex(modifier)) has \(planeCount) planes)", VK_ERROR_FORMAT_NOT_SUPPORTED)
             }
             var planes: [DmabufPlane] = []
             for plane in 0..<planeCount {
                 var subresource = VkImageSubresource()
-                subresource.aspectMask = VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT.rawValue << UInt32(plane)
+                subresource.aspectMask = modifiers.isEmpty
+                    ? VK_IMAGE_ASPECT_COLOR_BIT.rawValue : VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT.rawValue << UInt32(plane)
                 var layout = VkSubresourceLayout()
                 vkGetImageSubresourceLayout(vk, image, &subresource, &layout)
                 guard let offset = UInt32(exactly: layout.offset), let stride = UInt32(exactly: layout.rowPitch) else {
@@ -589,6 +811,7 @@ extension PresentationRing {
             self.presentFence = fences[1]
             self.renderDone = renderDone
             self.consumerDone = consumerDone
+            self.accumulatedDamage = DamageRegion(PixelRect(width: Int(width), height: Int(height)))
             committed = true
         }
 
@@ -662,32 +885,95 @@ extension PresentationRing {
             return !waits.isEmpty
         }
 
+        /// Clears the whole image to opaque black, in the acquire submission: an image acquired
+        /// before the ring's first present, where no copy can supply what the panes do not draw.
+        func clearToBlack() throws {
+            try wait(for: acquireFence)
+            try vkCheck(vkResetCommandBuffer(acquireCommands, 0), "vkResetCommandBuffer")
+            var begin = VkCommandBufferBeginInfo()
+            begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+            begin.flags = VkCommandBufferUsageFlags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT.rawValue)
+            try vkCheck(vkBeginCommandBuffer(acquireCommands, &begin), "vkBeginCommandBuffer")
+            // From UNDEFINED: the old contents go. The source scope still orders the clear after
+            // whatever last touched the image.
+            pipelineBarrier(acquireCommands, images: [imageBarrier(
+                image, from: VK_IMAGE_LAYOUT_UNDEFINED, to: VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                source: lastAccess(of: layout),
+                destination: (VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT))])
+            var attachment = VkRenderingAttachmentInfo()
+            attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO
+            attachment.imageView = view
+            attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+            attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR
+            attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE
+            attachment.clearValue = VkClearValue(color: VkClearColorValue(float32: (0, 0, 0, 1)))
+            withUnsafePointer(to: &attachment) { attachment in
+                var rendering = VkRenderingInfo()
+                rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO
+                rendering.renderArea = PixelRect(width: Int(width), height: Int(height)).vulkan
+                rendering.layerCount = 1
+                rendering.colorAttachmentCount = 1
+                rendering.pColorAttachments = attachment
+                vkCmdBeginRendering(acquireCommands, &rendering)
+                vkCmdEndRendering(acquireCommands)
+            }
+            try vkCheck(vkEndCommandBuffer(acquireCommands), "vkEndCommandBuffer")
+            try submit(acquireCommands, waits: [], signals: [], fence: acquireFence)
+            layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+        }
+
+        public func didDraw(_ rect: PixelRect) {
+            drawn.formUnion(rect.clamped(width: Int(width), height: Int(height)))
+        }
+
         // MARK: Present
 
-        /// Records and submits the release to VK_QUEUE_FAMILY_FOREIGN_EXT, in GENERAL, signalling
-        /// `renderDone` when asked and the image has one. Returns whether it was signalled.
-        func release(signalRenderDone: Bool) throws -> Bool {
+        /// Records and submits the present: `fill` copied from `previous` (`copyRegion`, after the
+        /// ring's timeline reaches the previous image's present), then the release to
+        /// VK_QUEUE_FAMILY_FOREIGN_EXT, in GENERAL, signalling the timeline with this present's
+        /// number, and `renderDone` when asked and the image has one. Returns whether `renderDone`
+        /// was signalled.
+        func release(
+            signalRenderDone: Bool, fill: [PixelRect], from previous: Image?, timeline: (semaphore: VkSemaphore, value: UInt64)
+        ) throws -> Bool {
             try wait(for: presentFence)
             try vkCheck(vkResetCommandBuffer(presentCommands, 0), "vkResetCommandBuffer")
             var begin = VkCommandBufferBeginInfo()
             begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
             begin.flags = VkCommandBufferUsageFlags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT.rawValue)
             try vkCheck(vkBeginCommandBuffer(presentCommands, &begin), "vkBeginCommandBuffer")
+            var waits: [VkSemaphoreSubmitInfo] = []
+            if let previous, let presentedAt = previous.presentedAt, !fill.isEmpty {
+                copyRegion(fill, fromPrevious: previous, in: presentCommands)
+                var wait = VkSemaphoreSubmitInfo()
+                wait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO
+                wait.semaphore = timeline.semaphore
+                wait.value = UInt64(presentedAt)
+                wait.stageMask = VK_PIPELINE_STAGE_2_COPY_BIT
+                waits.append(wait)
+            }
             pipelineBarrier(presentCommands, images: [Self.releaseBarrier(image, from: layout, family: device.queueFamily)])
             try vkCheck(vkEndCommandBuffer(presentCommands), "vkEndCommandBuffer")
 
-            var signals: [VkSemaphoreSubmitInfo] = []
+            var step = VkSemaphoreSubmitInfo()
+            step.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO
+            step.semaphore = timeline.semaphore
+            step.value = timeline.value
+            step.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+            var signals = [step]
+            var signalsRenderDone = false
             if signalRenderDone, let renderDone {
                 var signal = VkSemaphoreSubmitInfo()
                 signal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO
                 signal.semaphore = renderDone
                 signal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
                 signals.append(signal)
+                signalsRenderDone = true
             }
-            try submit(presentCommands, waits: [], signals: signals, fence: presentFence)
+            try submit(presentCommands, waits: waits, signals: signals, fence: presentFence)
             layout = VK_IMAGE_LAYOUT_GENERAL
             ownedByConsumer = true
-            return !signals.isEmpty
+            return signalsRenderDone
         }
 
         enum Attachment {
@@ -715,10 +1001,45 @@ extension PresentationRing {
             return .attached
         }
 
+        /// Blocks until the image's own submissions have finished.
+        func waitUntilIdle() {
+            var fences: [VkFence?] = [acquireFence, presentFence]
+            vkWaitForFences(device.handle, 2, &fences, VkBool32(VK_TRUE), UInt64.max)
+        }
+
         /// Blocks until the last present submission (and everything before it) has finished.
         func waitForPresent() throws {
             var fence: VkFence? = presentFence
             try vkCheck(vkWaitForFences(device.handle, 1, &fence, VkBool32(VK_TRUE), UInt64.max), "vkWaitForFences")
+        }
+
+        /// Records the copy of `rects` from `previous`, the image holding the latest frame, into
+        /// this one (left in TRANSFER_DST_OPTIMAL). `previous` is the consumer's: it is acquired
+        /// from VK_QUEUE_FAMILY_FOREIGN_EXT in GENERAL, read, and released back in GENERAL, its
+        /// layout never changed, so a compositor reading it meanwhile reads the same bytes. Its
+        /// last write is an earlier submission on this queue (its frame), ordered by the source
+        /// scope of the acquire. `rects` must be disjoint and inside the image.
+        func copyRegion(_ rects: [PixelRect], fromPrevious previous: Image, in commands: VkCommandBuffer) {
+            precondition(previous !== self && previous.ownedByConsumer && previous.layout == VK_IMAGE_LAYOUT_GENERAL,
+                         "the previous image is a presented one")
+            let family = device.queueFamily
+            pipelineBarrier(commands, images: [
+                imageBarrier(image, from: layout, to: VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, source: lastAccess(of: layout),
+                             destination: (VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT)),
+                Self.borrowBarrier(previous.image, family: family),
+            ])
+            layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+
+            let layers = VkImageSubresourceLayers(
+                aspectMask: VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT.rawValue), mipLevel: 0, baseArrayLayer: 0, layerCount: 1)
+            let regions = rects.map { rect in
+                VkImageCopy(srcSubresource: layers, srcOffset: VkOffset3D(x: Int32(rect.x), y: Int32(rect.y), z: 0),
+                            dstSubresource: layers, dstOffset: VkOffset3D(x: Int32(rect.x), y: Int32(rect.y), z: 0),
+                            extent: VkExtent3D(width: UInt32(rect.width), height: UInt32(rect.height), depth: 1))
+            }
+            vkCmdCopyImage(commands, previous.image, VK_IMAGE_LAYOUT_GENERAL, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                           UInt32(regions.count), regions)
+            pipelineBarrier(commands, images: [Self.returnBarrier(previous.image, family: family)])
         }
 
         // MARK: The ownership transfers
@@ -742,6 +1063,25 @@ extension PresentationRing {
             imageBarrier(
                 image, from: layout, to: VK_IMAGE_LAYOUT_GENERAL,
                 source: lastAccess(of: layout), destination: (VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE),
+                ownership: (family, VK_QUEUE_FAMILY_FOREIGN_EXT))
+        }
+
+        /// Borrowing the previous image to copy from it: an acquire from VK_QUEUE_FAMILY_FOREIGN_EXT
+        /// that keeps GENERAL, for transfer reads.
+        static func borrowBarrier(_ image: VkImage, family: UInt32) -> VkImageMemoryBarrier2 {
+            imageBarrier(
+                image, from: VK_IMAGE_LAYOUT_GENERAL, to: VK_IMAGE_LAYOUT_GENERAL,
+                source: (VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_NONE),
+                destination: (VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT),
+                ownership: (VK_QUEUE_FAMILY_FOREIGN_EXT, family))
+        }
+
+        /// Handing the borrowed image back: a release to VK_QUEUE_FAMILY_FOREIGN_EXT after the copy's
+        /// reads, still GENERAL. Reads leave nothing to make available.
+        static func returnBarrier(_ image: VkImage, family: UInt32) -> VkImageMemoryBarrier2 {
+            imageBarrier(
+                image, from: VK_IMAGE_LAYOUT_GENERAL, to: VK_IMAGE_LAYOUT_GENERAL,
+                source: (VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_NONE), destination: (VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_NONE),
                 ownership: (family, VK_QUEUE_FAMILY_FOREIGN_EXT))
         }
 

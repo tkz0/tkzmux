@@ -3,8 +3,9 @@
 // Linux twins of Tests/TkzTerminalRenderTests/TerminalRendererTests.swift, test for test under the
 // same names: the counters the Mac reads (`RenderStats`) carry the same names here, and the
 // properties they prove are the same. The golden frames are S6's; the presentation ring's twin of
-// `layerPathHonoursTheIdleGuarantee` is S5b's. The pane tests are Linux's own: every pane draws
-// into its own rect of a shared target, and must clear and touch that rect only.
+// `layerPathHonoursTheIdleGuarantee` is in PresentationDamageTests (S5b). The pane tests are
+// Linux's own: every pane draws into its own rect of a shared target, and must clear and touch that
+// rect only.
 //
 // Real sessions (libghostty-vt), real glyphs (FreeType over the bundled fonts), a real Vulkan
 // device; skipped by name without one, and a failure in CI (TKZMUX_REQUIRE_VULKAN=1). Every test
@@ -104,7 +105,7 @@ private func pixel(_ pixels: [UInt8], width: Int, x: Int, y: Int) -> (b: UInt8, 
 }
 
 /// The `rect` of a `width`-wide BGRA image, as tightly packed rows.
-private func crop(_ pixels: [UInt8], width: Int, to rect: PixelRect) -> [UInt8] {
+func crop(_ pixels: [UInt8], width: Int, to rect: PixelRect) -> [UInt8] {
     var rows: [UInt8] = []
     rows.reserveCapacity(rect.width * rect.height * 4)
     for row in rect.y..<rect.y + rect.height {
@@ -116,7 +117,7 @@ private func crop(_ pixels: [UInt8], width: Int, to rect: PixelRect) -> [UInt8] 
 
 /// How two equal-sized BGRA images differ: the number of differing pixels and the first one, for
 /// an assertion message that does not print megabytes of bytes. Nil when they are equal.
-private func difference(_ a: [UInt8], _ b: [UInt8], width: Int) -> String? {
+func difference(_ a: [UInt8], _ b: [UInt8], width: Int) -> String? {
     guard a.count == b.count else { return "sizes differ: \(a.count) and \(b.count) bytes" }
     var count = 0
     var first: Int?

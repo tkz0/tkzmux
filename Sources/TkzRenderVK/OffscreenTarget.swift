@@ -7,7 +7,9 @@
 //
 // S1 clears it (through dynamic rendering, so the bootstrap exercises both required 1.3
 // features). Since S4b it is also a `VulkanRenderTarget`: `VulkanTerminalRenderer` draws panes into
-// it from their own `FrameRing` slots, and `bgraBytes()` reads the result back.
+// it from their own `FrameRing` slots, and `bgraBytes()` reads the result back. The readback rung
+// of the presentation ladder (S5b) reads back only what a frame drew (`bgraBytes(updating:)`):
+// the readback buffer is persistent, so the rest of it still holds the previous frame.
 
 import CVulkan
 
@@ -217,20 +219,38 @@ public final class OffscreenTarget: VulkanRenderTarget {
         return Array(UnsafeRawBufferPointer(start: mapped, count: byteCount))
     }
 
+    /// `bgraBytes()` that copies only `regions` (inside the target) from the image: the rest of
+    /// the bytes are what the readback buffer held, which is the last readback (or `clear`). When
+    /// everything else is unchanged since then, these are the image's bytes for a fraction of the
+    /// copy. Waits for the GPU.
+    public func bgraBytes(updating regions: [PixelRect]) throws -> [UInt8] {
+        let inside = regions.map { $0.clamped(width: Int(width), height: Int(height)) }.filter { !$0.isEmpty }
+        if !inside.isEmpty { try record { recordReadback($0, regions: inside) } }
+        return Array(UnsafeRawBufferPointer(start: mapped, count: byteCount))
+    }
+
     // MARK: Helpers
 
-    /// Records the copy of the whole image into the readback buffer, made visible to the host.
-    private func recordReadback(_ commands: VkCommandBuffer) {
+    /// Records the copy of `regions` of the image (the whole image by default) into the same place
+    /// of the readback buffer, made visible to the host.
+    private func recordReadback(_ commands: VkCommandBuffer, regions: [PixelRect]? = nil) {
         pipelineBarrier(commands, images: [imageBarrier(
             image, from: layout, to: VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             source: lastAccess(of: layout), destination: (VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT))])
         layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
 
-        var region = VkBufferImageCopy()
-        region.imageSubresource = VkImageSubresourceLayers(
-            aspectMask: VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT.rawValue), mipLevel: 0, baseArrayLayer: 0, layerCount: 1)
-        region.imageExtent = VkExtent3D(width: width, height: height, depth: 1)
-        vkCmdCopyImageToBuffer(commands, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readback, 1, &region)
+        let copies = (regions ?? [PixelRect(width: Int(width), height: Int(height))]).map { rect in
+            var region = VkBufferImageCopy()
+            region.bufferOffset = VkDeviceSize((rect.y * Int(width) + rect.x) * 4)
+            region.bufferRowLength = width
+            region.bufferImageHeight = height
+            region.imageSubresource = VkImageSubresourceLayers(
+                aspectMask: VkImageAspectFlags(VK_IMAGE_ASPECT_COLOR_BIT.rawValue), mipLevel: 0, baseArrayLayer: 0, layerCount: 1)
+            region.imageOffset = VkOffset3D(x: Int32(rect.x), y: Int32(rect.y), z: 0)
+            region.imageExtent = VkExtent3D(width: UInt32(rect.width), height: UInt32(rect.height), depth: 1)
+            return region
+        }
+        vkCmdCopyImageToBuffer(commands, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, readback, UInt32(copies.count), copies)
 
         // Make the copy visible to the host read after the fence.
         pipelineBarrier(commands, buffers: [bufferBarrier(

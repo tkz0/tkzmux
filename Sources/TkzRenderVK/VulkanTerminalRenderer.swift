@@ -22,7 +22,9 @@
 // pane-local, exactly the Metal renderer's whole-drawable frame (grid origin 0; the decoration
 // rects the surface caches are grid-relative). Only the background fragment works in framebuffer
 // pixels (`gl_FragCoord`), so its draw is the one that sees the rect's origin as `gridOriginPx`.
-// With the rect covering the whole target, the frame is the Mac's, uniform for uniform.
+// With the rect covering the whole target, the frame is the Mac's, uniform for uniform. Once the
+// frame is submitted the target is told the rect (`didDraw`): the presentation ring copies the
+// panes nobody drew from the previous image, and must not copy over this one (WOR-313 S5b).
 //
 // ## The idle guarantee
 //
@@ -172,7 +174,9 @@ public final class VulkanTerminalRenderer {
     /// hands over only once the frame is known to need one: the presentation ring's path
     /// (WOR-313 S5a), where acquiring waits for the compositor to release an image. A skipped frame
     /// never calls `acquire`. `acquire` may return nil (no image to draw into); the frame is then
-    /// skipped and the surface stays dirty. The target it returns must have the size given.
+    /// skipped and the surface stays dirty. The target it returns must have the size given. Every
+    /// pane of a window frame calls it, so it hands all of them the same image
+    /// (`PresentationLadder.acquire`).
     ///
     /// `forceEncode` suspends the idle guarantee for this call: a clean surface is drawn anyway.
     /// The Mac needs it while `presentsWithTransaction` is set (a skipped frame stalls a live
@@ -269,6 +273,7 @@ public final class VulkanTerminalRenderer {
 
             reachedSubmit = true
             try ring.submit(slot)
+            target.didDraw(rect)
             surface.clearNeedsDisplay()
             stats.framesEncoded += 1
             return RenderOutcome(didEncode: true, frame: SubmittedFrame(ring: ring, slot: slot), update: update,
