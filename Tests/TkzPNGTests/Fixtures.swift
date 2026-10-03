@@ -24,8 +24,14 @@ enum FixturePNG {
     /// The pixel formula every embedded fixture was generated from. Rows with `y % 6 == 5` are
     /// constant, so the encoder produced long overlapping (distance < length) matches there.
     static func value(x: Int, y: Int, channel c: Int) -> UInt8 {
-        if y % 6 == 5 { return UInt8((y * 29 + c * 53) & 0xFF) }
-        return UInt8((((x >> 2) * 3 + y + c * 5) % 12) * 20 + (x & 1))
+        // Split into typed steps: as one expression this exceeds Swift 6.2's type-checker budget.
+        if y % 6 == 5 {
+            let constant: Int = (y * 29 + c * 53) & 0xFF
+            return UInt8(constant)
+        }
+        let band: Int = ((x >> 2) * 3 + y + c * 5) % 12
+        let level: Int = band * 20 + (x & 1)
+        return UInt8(level)
     }
 
     /// The straight RGBA a correct decoder must produce for a fixture of the given layout.
