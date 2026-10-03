@@ -17,15 +17,16 @@ import TkzCore
 final class PromptCardView: NSView {
 
     enum Metrics {
-        static let width: CGFloat = 640
-        static let padding: CGFloat = 20
-        static let verticalPadding: CGFloat = 18
-        static let rowSpacing: CGFloat = 10
-        static let cornerRadius: CGFloat = 12
+        static let width = CGFloat(DesignTokens.Metrics.PromptCard.width.value)
+        static let padding = CGFloat(DesignTokens.Metrics.PromptCard.padding.value)
+        static let verticalPadding = CGFloat(DesignTokens.Metrics.PromptCard.verticalPadding.value)
+        static let rowSpacing = CGFloat(DesignTokens.Metrics.PromptCard.rowSpacing.value)
+        static let cornerRadius = CGFloat(DesignTokens.Radii.promptCard.value)
         /// The most either text block grows before it scrolls. The controller lowers it on a short
         /// window so both blocks and the buttons always fit.
-        static let defaultMaxTextHeight: CGFloat = 220
-        static let minTextHeight: CGFloat = 22
+        static let defaultMaxTextHeight =
+            CGFloat(DesignTokens.Metrics.PromptCard.defaultMaxTextHeight.value)
+        static let minTextHeight = CGFloat(DesignTokens.Metrics.PromptCard.minTextHeight.value)
     }
 
     /// One transcript hit, when the card was opened from the search overlay (design 2c.6's

@@ -14,13 +14,13 @@ import TkzCore
 final class DeleteMergedWorktreesSheetView: NSView {
 
     enum Metrics {
-        static let width: CGFloat = 380
+        static let width = CGFloat(DesignTokens.Metrics.DeleteMergedSheet.width.value)
         static let padding = GlassSheetMetrics.padding
         static let topPadding = GlassSheetMetrics.topPadding
         static let bottomPadding = GlassSheetMetrics.bottomPadding
         static let buttonHeight = GlassSheetMetrics.buttonHeight
         /// Beyond this the list scrolls rather than the card growing without bound.
-        static let maxListHeight: CGFloat = 180
+        static let maxListHeight = CGFloat(DesignTokens.Metrics.DeleteMergedSheet.maxListHeight.value)
     }
 
     private(set) var model: DeleteMergedWorktreesSheetModel?

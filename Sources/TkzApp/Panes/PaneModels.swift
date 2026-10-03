@@ -11,17 +11,17 @@ public enum SplitMetrics {
     /// The 7 pt grip bar of artboards 2c.3/2c.4. `PaneSplitView` overrides `dividerThickness` to
     /// this, and the tree's geometry (`PaneNode.frames(in:divider:)`) has to agree with it or a
     /// pane's grid is computed for a width it does not have.
-    public static let dividerThickness: CGFloat = 7
+    public static let dividerThickness = CGFloat(DesignTokens.Metrics.Split.dividerThickness.value)
     /// The grip pill drawn in the middle of a divider: 3 pt across, 44 pt along.
-    public static let gripLength: CGFloat = 44
-    public static let gripThickness: CGFloat = 3
+    public static let gripLength = CGFloat(DesignTokens.Metrics.Split.gripLength.value)
+    public static let gripThickness = CGFloat(DesignTokens.Metrics.Split.gripThickness.value)
     /// A pane narrower or shorter than this is not a terminal any more. `PaneSplitView` clamps
     /// drags to it, and `PaneSplit.ratioRange` is the model's coarser version of the same idea.
     /// Includes the 28 pt pane header, so 92 pt of terminal remain at the minimum.
-    public static let minPaneSide: CGFloat = 120
+    public static let minPaneSide = CGFloat(DesignTokens.Metrics.Split.minPaneSide.value)
     /// Ratios closer than this are the same ratio. Guards the drag→store→drag round trip from
     /// oscillating on sub-pixel differences.
-    public static let ratioEpsilon: Double = 0.005
+    public static let ratioEpsilon: Double = DesignTokens.Metrics.Split.ratioEpsilon.value
 }
 
 // MARK: - Axis, in AppKit's terms

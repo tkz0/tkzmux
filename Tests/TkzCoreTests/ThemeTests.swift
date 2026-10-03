@@ -280,7 +280,7 @@ import Testing
 
     // MARK: Design table
 
-    /// Prints the token table from the real structs, one column per preset.
+    /// Prints the token table from the real structs, one column per preset, then the design tokens.
     /// Run with `swift test --filter ThemeTests/printsDesignTable` to eyeball the values.
     @Test func printsDesignTable() {
         let presets = Theme.allPresets
@@ -301,6 +301,14 @@ import Testing
         let table = lines.joined(separator: "\n")
         print("\n" + table + "\n")
         #expect(lines.count == 2 + names.count + 16)
+
+        // The preset-independent half: every design token, its value and its snapping kind.
+        var metrics = ["| Design token | Value | Snap |", "|---|---|---|"]
+        for token in DesignTokens.all {
+            metrics.append("| \(token.name) | \(token.value) | \(token.snap.rawValue) |")
+        }
+        print("\n" + metrics.joined(separator: "\n") + "\n")
+        #expect(metrics.count == 2 + DesignTokens.all.count)
     }
 }
 

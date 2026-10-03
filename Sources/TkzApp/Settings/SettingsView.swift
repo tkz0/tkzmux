@@ -14,18 +14,18 @@ import TkzCore
 final class SettingsView: NSView {
 
     enum Metrics {
-        static let width: CGFloat = 720
-        static let height: CGFloat = 600
-        static let navWidth: CGFloat = 176
-        static let navRowHeight: CGFloat = 28
-        static let navInset: CGFloat = 10
-        static let cardRadius: CGFloat = 9
-        static let contentTop: CGFloat = 20
-        static let contentSide: CGFloat = 22
-        static let sectionSpacing: CGFloat = 20
-        static let rowPaddingV: CGFloat = 12
-        static let rowPaddingH: CGFloat = 14
-        static let controlGap: CGFloat = 16
+        static let width = CGFloat(DesignTokens.Metrics.Settings.width.value)
+        static let height = CGFloat(DesignTokens.Metrics.Settings.height.value)
+        static let navWidth = CGFloat(DesignTokens.Metrics.Settings.navWidth.value)
+        static let navRowHeight = CGFloat(DesignTokens.Metrics.Settings.navRowHeight.value)
+        static let navInset = CGFloat(DesignTokens.Metrics.Settings.navInset.value)
+        static let cardRadius = CGFloat(DesignTokens.Radii.settingsCard.value)
+        static let contentTop = CGFloat(DesignTokens.Metrics.Settings.contentTop.value)
+        static let contentSide = CGFloat(DesignTokens.Metrics.Settings.contentSide.value)
+        static let sectionSpacing = CGFloat(DesignTokens.Metrics.Settings.sectionSpacing.value)
+        static let rowPaddingV = CGFloat(DesignTokens.Metrics.Settings.rowPaddingV.value)
+        static let rowPaddingH = CGFloat(DesignTokens.Metrics.Settings.rowPaddingH.value)
+        static let controlGap = CGFloat(DesignTokens.Metrics.Settings.controlGap.value)
     }
 
     var onSelectPage: ((SettingsPage) -> Void)?

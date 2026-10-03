@@ -325,11 +325,19 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     // MARK: Geometry (artboard 2c is 1240×820)
 
     /// The whole window, titlebar included — the artboard is drawn at this size.
-    public static let defaultWindowSize = NSSize(width: 1240, height: 820)
-    public static let minimumContentSize = NSSize(width: 720, height: 420)
+    public static let defaultWindowSize = NSSize(
+        width: CGFloat(DesignTokens.Metrics.Window.width.value),
+        height: CGFloat(DesignTokens.Metrics.Window.height.value))
+    public static let minimumContentSize = NSSize(
+        width: CGFloat(DesignTokens.Metrics.Window.minWidth.value),
+        height: CGFloat(DesignTokens.Metrics.Window.minHeight.value))
     /// Sidebar width and minimum, shared with the sidebar's own metrics so there is one number.
     public static let sidebarWidth = CGFloat(SidebarMetrics.sidebarWidth)
     public static let sidebarMinWidth = CGFloat(SidebarMetrics.sidebarMinWidth)
+    /// The sidebar item's `maximumThickness`, and the cap on a restored width.
+    static let sidebarMaxWidth = CGFloat(DesignTokens.Metrics.Window.sidebarMaxWidth.value)
+    /// The detail item's `minimumThickness`.
+    static let detailMinWidth = CGFloat(DesignTokens.Metrics.Window.detailMinWidth.value)
 
     // MARK: Pieces
 
@@ -690,7 +698,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             NSLayoutConstraint.Priority.defaultLow.rawValue + 1)
         sidebarWidthConstraint?.isActive = true
         sidebarItem.minimumThickness = Self.sidebarMinWidth
-        sidebarItem.maximumThickness = 520
+        sidebarItem.maximumThickness = Self.sidebarMaxWidth
         sidebarItem.canCollapse = true
         sidebarItem.holdingPriority = .defaultLow
         // `.automatic` would let AppKit collapse the sidebar behind our back on a narrow window,
@@ -698,7 +706,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         sidebarItem.collapseBehavior = .preferResizingSplitViewWithFixedSiblings
 
         let detailItem = NSSplitViewItem(viewController: detail)
-        detailItem.minimumThickness = 400
+        detailItem.minimumThickness = Self.detailMinWidth
         detailItem.canCollapse = false
 
         splitViewController.addSplitViewItem(sidebarItem)
@@ -777,7 +785,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         guard let width = store.state.sidebarWidth, width >= Self.sidebarMinWidth else {
             return Self.sidebarWidth
         }
-        return min(width, 520)
+        return min(width, Self.sidebarMaxWidth)
     }
 
     private func wireSidebar() {

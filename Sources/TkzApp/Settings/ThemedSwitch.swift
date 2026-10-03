@@ -14,10 +14,10 @@ import TkzCore
 final class ThemedSwitch: NSView {
 
     enum Metrics {
-        static let width: CGFloat = 30
-        static let height: CGFloat = 18
-        static let knob: CGFloat = 14
-        static let inset: CGFloat = 2
+        static let width = CGFloat(DesignTokens.Metrics.ThemedSwitch.width.value)
+        static let height = CGFloat(DesignTokens.Metrics.ThemedSwitch.height.value)
+        static let knob = CGFloat(DesignTokens.Metrics.ThemedSwitch.knob.value)
+        static let inset = CGFloat(DesignTokens.Metrics.ThemedSwitch.inset.value)
     }
 
     /// The user flipped it (a click or Space). Not called for programmatic `isOn` writes.

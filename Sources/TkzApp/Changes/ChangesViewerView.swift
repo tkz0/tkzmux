@@ -23,20 +23,20 @@ import GitStatus
 import TkzCore
 
 enum ChangesMetrics {
-    static let headerHeight: CGFloat = 38
-    static let fileListWidth: CGFloat = 264
-    static let fileRowHeight: CGFloat = 28
-    static let fileListInset: CGFloat = 6
-    static let pathHeaderHeight: CGFloat = 32
-    static let diffRowHeight: CGFloat = 20
+    static let headerHeight = CGFloat(DesignTokens.Metrics.Changes.headerHeight.value)
+    static let fileListWidth = CGFloat(DesignTokens.Metrics.Changes.fileListWidth.value)
+    static let fileRowHeight = CGFloat(DesignTokens.Metrics.Changes.fileRowHeight.value)
+    static let fileListInset = CGFloat(DesignTokens.Metrics.Changes.fileListInset.value)
+    static let pathHeaderHeight = CGFloat(DesignTokens.Metrics.Changes.pathHeaderHeight.value)
+    static let diffRowHeight = CGFloat(DesignTokens.Metrics.Changes.diffRowHeight.value)
     /// One line-number column (2c.2: 44 px, right-aligned, 8 px of air after it).
-    static let numberWidth: CGFloat = 44
-    static let numberGap: CGFloat = 8
-    static let textInset: CGFloat = 14
-    static let fontSize: Double = 11.5
-    static let fileFontSize: Double = 10.5
+    static let numberWidth = CGFloat(DesignTokens.Metrics.Changes.numberWidth.value)
+    static let numberGap = CGFloat(DesignTokens.Metrics.Changes.numberGap.value)
+    static let textInset = CGFloat(DesignTokens.Metrics.Changes.textInset.value)
+    static let fontSize: Double = DesignTokens.Typography.changesDiffSize.value
+    static let fileFontSize: Double = DesignTokens.Typography.changesFileSize.value
     /// Tabs are drawn as this many spaces; a tab stop would need a paragraph style per row.
-    static let tabWidth = 4
+    static let tabWidth = Int(DesignTokens.Metrics.Changes.tabWidth.value)
 }
 
 // MARK: - Palette

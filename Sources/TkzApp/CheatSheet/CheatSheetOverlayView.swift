@@ -20,14 +20,14 @@ final class CheatSheetOverlayView: NSView {
     /// Layout metrics. The sidebar keeps its own in `SidebarMetrics`; these are local because
     /// nothing else lays out a cheat sheet.
     private enum Metrics {
-        static let cardPadding: CGFloat = 24
-        static let columnSpacing: CGFloat = 36
-        static let sectionSpacing: CGFloat = 18
-        static let rowSpacing: CGFloat = 5
-        static let keyTitleSpacing: CGFloat = 14
-        static let cornerRadius: CGFloat = 12
+        static let cardPadding = CGFloat(DesignTokens.Metrics.CheatSheet.cardPadding.value)
+        static let columnSpacing = CGFloat(DesignTokens.Metrics.CheatSheet.columnSpacing.value)
+        static let sectionSpacing = CGFloat(DesignTokens.Metrics.CheatSheet.sectionSpacing.value)
+        static let rowSpacing = CGFloat(DesignTokens.Metrics.CheatSheet.rowSpacing.value)
+        static let keyTitleSpacing = CGFloat(DesignTokens.Metrics.CheatSheet.keyTitleSpacing.value)
+        static let cornerRadius = CGFloat(DesignTokens.Radii.cheatSheet.value)
         /// Sections are dealt into this many columns, balanced by row count.
-        static let columnCount = 2
+        static let columnCount = Int(DesignTokens.Metrics.CheatSheet.columnCount.value)
     }
 
     init(theme: Theme) {

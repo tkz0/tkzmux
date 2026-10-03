@@ -21,14 +21,14 @@ import TkzCore
 /// everything else is the family's.
 enum GlassSheetMetrics {
     /// The rebase sheet's width, and the default for a sheet that shows a few lines of text.
-    static let width: CGFloat = 318
-    static let padding: CGFloat = 14
-    static let topPadding: CGFloat = 13
-    static let bottomPadding: CGFloat = 12
-    static let cornerRadius: CGFloat = 11
-    static let buttonHeight: CGFloat = 27
+    static let width = CGFloat(DesignTokens.Metrics.GlassSheet.width.value)
+    static let padding = CGFloat(DesignTokens.Metrics.GlassSheet.padding.value)
+    static let topPadding = CGFloat(DesignTokens.Metrics.GlassSheet.topPadding.value)
+    static let bottomPadding = CGFloat(DesignTokens.Metrics.GlassSheet.bottomPadding.value)
+    static let cornerRadius = CGFloat(DesignTokens.Radii.glassSheet.value)
+    static let buttonHeight = CGFloat(DesignTokens.Metrics.GlassSheet.buttonHeight.value)
     /// How far the card sits in from the anchor's right and bottom edges.
-    static let inset: CGFloat = 14
+    static let inset = CGFloat(DesignTokens.Metrics.GlassSheet.inset.value)
 }
 
 @MainActor

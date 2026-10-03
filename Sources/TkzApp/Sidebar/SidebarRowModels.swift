@@ -259,20 +259,21 @@ public struct UpdateNoticeModel: Hashable, Sendable {
 /// `outlineView(_:heightOfRowByItem:)`, so they live next to the models rather than inside a view.
 public enum SidebarMetrics {
     /// Group header height, in points.
-    public static let groupRowHeight: Double = 28
+    public static let groupRowHeight: Double = DesignTokens.Metrics.Sidebar.groupRowHeight.value
     /// Session row height, in points — the single-detail-line row. The outline view no longer
     /// returns this blindly: it asks `SessionRowView.height(for:width:)` per row, which is this
     /// unless the row's `…/dir · ⎇ branch` line wraps.
-    public static let sessionRowHeight: Double = 44
+    public static let sessionRowHeight: Double = DesignTokens.Metrics.Sidebar.sessionRowHeight.value
     /// A session row whose detail line wrapped to two (`…/dir` above `⎇ branch [WT]`): one more
     /// 15 pt detail line. Never taller — two lines is the cap.
-    public static let sessionRowWrappedHeight: Double = 59
+    public static let sessionRowWrappedHeight: Double =
+        DesignTokens.Metrics.Sidebar.sessionRowWrappedHeight.value
     /// The header above the list: 4 pt margin, the 22 pt "GROUPS" caption row with its bell and
     /// folder buttons, and 2 pt below.
-    public static let sidebarHeaderHeight: Double = 28
+    public static let sidebarHeaderHeight: Double = DesignTokens.Metrics.Sidebar.headerHeight.value
     /// The "Update available" card under the list: a 40 pt card with 2 pt above and
     /// 6 pt below. Only laid out while a card is showing.
-    public static let updateNoticeHeight: Double = 48
+    public static let updateNoticeHeight: Double = DesignTokens.Metrics.Sidebar.updateNoticeHeight.value
     /// How far a session row's content sits inside its group header's.
     ///
     /// `NSOutlineView.indentationPerLevel` is 0 because the rows lay themselves out, so the
@@ -280,10 +281,10 @@ public enum SidebarMetrics {
     /// at x=25 — five points, which reads as no hierarchy at all (reported 2026-09-08).
     /// 16 pt matches AppKit's own default indentation per level. Raising it costs title width in a
     /// 300 pt sidebar, where long session titles already truncate, so it is a real trade.
-    public static let sessionIndent: Double = 16
+    public static let sessionIndent: Double = DesignTokens.Metrics.Sidebar.sessionIndent.value
     /// Width of the group colour edge (design says 2–3 pt).
-    public static let groupEdgeWidth: Double = 2.5
+    public static let groupEdgeWidth: Double = DesignTokens.Metrics.Sidebar.groupEdgeWidth.value
     /// Nominal sidebar width and its minimum — titles must truncate at the minimum.
-    public static let sidebarWidth: Double = 300
-    public static let sidebarMinWidth: Double = 240
+    public static let sidebarWidth: Double = DesignTokens.Metrics.Window.sidebarWidth.value
+    public static let sidebarMinWidth: Double = DesignTokens.Metrics.Window.sidebarMinWidth.value
 }

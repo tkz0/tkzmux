@@ -104,9 +104,39 @@ The Mac does not snap anything itself; its geometry lands on whole device pixels
 
 Rounding is Swift `.rounded()`, which rounds half away from zero.
 
+Two more tags mark the token values that the rules above never round:
+
+| Tag | Device pixels | Used for |
+|---|---|---|
+| `.unrounded` | `w × s`, never rounded. | Corner radii (vector paths, drawn antialiased) and font point sizes (text snaps at the baseline). |
+| `.scalar` | Not scaled at all. | Ratios, alphas and counts. |
+
 `SnapReference` (`Tests/TkzAppTests/ComponentGoldens.swift`) implements these rules for checking only. `ComponentSnapshotADRTests` renders the components that ADR-0003's worked examples 1–6 are about, applies the rules to the dumped frames, and requires the ADR's numbers at 1.6 and at 2.0. It runs on every macOS CI run, with or without goldens. A mismatch is fixed by amending ADR-0003 (WOR-299), never by changing the Mac.
 
 The same suite also lists every dumped edge that is off the 0.5 pt grid at 2.0. The list is printed, written to `$TKZMUX_TEST_ARTIFACTS/component-snapshots/offgrid-edges-2.0.txt`, and recorded per component in `manifest.json` (`offGridEdges`, read from the `midnightIndigo` dump, because frames do not depend on the preset). Each entry is an exception to "the Mac is snap-exact at 2.0". After the first generation, carry the list into ADR-0003's exception table in a WOR-299 amendment.
+
+## Design tokens
+
+`DesignTokens` (`Sources/TkzCore/DesignTokens*.swift`, WOR-307 S3) holds the design's numbers with no toolkit: `Double` and Foundation only, so both UIs read the same table. Each value is a `DesignToken`: its path name (`Metrics.Sidebar.sessionRowHeight`), its value in points (device pixels for `.hairline`, unitless for `.scalar`), and its `DesignToken.Snap` tag from the two tables above.
+
+| Namespace | Holds | Filled by |
+|---|---|---|
+| `DesignTokens.Metrics` | Lengths: the values of the 13 `*Metrics` enums, the window geometry (1240×820, minimum 720×420, sidebar 300/240/520, detail minimum 400), the status-bar hairline | WOR-307 S3; S5 adds the inline Auto Layout constants, S6 the private statics |
+| `DesignTokens.Typography` | Text sizes (so far only the changes viewer's) | S3; S4 turns them into roles with weight, effective face, tracking, line height and baseline |
+| `DesignTokens.Radii` | Corner radii | S3 (the radii the Metrics enums held); S6 the inline ones |
+| `DesignTokens.Motion`, `DesignTokens.Surfaces` | Durations; per-surface radius and border, such as the palette's two modes | S6 |
+
+How the Mac reads them: the old names stay and forward, with the type they always had. `SidebarMetrics.sessionRowHeight` is `DesignTokens.Metrics.Sidebar.sessionRowHeight.value`, a `CGFloat` constant is `CGFloat(token.value)`, and a count is `Int(token.value)`. Each conversion is exact, so the Mac draws what it drew before, and the goldens stay byte-identical. Tags are chosen from ADR-0003 §2: a layout length is `.points`; a fixed-size mark is `.mark` (dots, close boxes, the split grip, the switch knob); a line width is `.stroke` (the focus ring, the group colour edge); the status bar's top line is the only `.hairline`.
+
+Three suites hold this in place:
+
+- `DesignTokensTests` (TkzCoreTests, runs on Linux) pins every old constant to its token and to the literal it held before the move, bit for bit, together with its tag. It scans the 13 enum bodies in `Sources/TkzApp` for numeric literals and checks that every member forwards to its pinned token. It also checks that the window-geometry and hairline sites read their tokens.
+- `SourceHygieneTests.designTokensImportOnlyFoundation` keeps the token files on Foundation and `Double`. CoreGraphics in particular is a Mac-only import that the UI-framework check does not see.
+- `DesignTokenForwardingTests` (TkzAppTests, macOS) reads every reachable old constant through its old name at run time.
+
+`swift test --filter ThemeTests/printsDesignTable` prints every token with its value and tag after the colour table.
+
+To add a token, declare it in its namespace with its path as its name, add it to `all`, pin the literal it replaces in `DesignTokensTests.pins`, and forward the old name to it. Never change a value in a migration commit: a different number is a Mac-visible change.
 
 ## How a render is checked
 

@@ -673,7 +673,8 @@ public final class StatusBarView: NSView {
 
         // Hairline along the top edge, same token as the sidebar/title-bar separators.
         theme.border.nsColor.setFill()
-        let hairline = 1 / max(window?.backingScaleFactor ?? 2, 1)
+        let hairline = CGFloat(DesignTokens.Metrics.StatusBar.topLine.value)
+            / max(window?.backingScaleFactor ?? 2, 1)
         NSRect(x: 0, y: bounds.maxY - hairline, width: bounds.width, height: hairline).fill()
 
         if let hoveredFrame {

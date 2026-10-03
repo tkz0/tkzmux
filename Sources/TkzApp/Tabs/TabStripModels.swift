@@ -7,19 +7,20 @@
 
 import AppKit
 import Foundation
+import TkzCore
 
 public enum TabStripMetrics {
     /// Tall enough for a 12.5 pt title and a badge, short enough that a single-tab session loses
     /// nothing by hiding the strip.
-    public static let stripHeight: CGFloat = 28
-    public static let tabMinWidth: CGFloat = 90
-    public static let tabMaxWidth: CGFloat = 180
-    public static let tabGap: CGFloat = 1
-    public static let horizontalInset: CGFloat = 8
-    public static let cornerRadius: CGFloat = 6
+    public static let stripHeight = CGFloat(DesignTokens.Metrics.TabStrip.stripHeight.value)
+    public static let tabMinWidth = CGFloat(DesignTokens.Metrics.TabStrip.tabMinWidth.value)
+    public static let tabMaxWidth = CGFloat(DesignTokens.Metrics.TabStrip.tabMaxWidth.value)
+    public static let tabGap = CGFloat(DesignTokens.Metrics.TabStrip.tabGap.value)
+    public static let horizontalInset = CGFloat(DesignTokens.Metrics.TabStrip.horizontalInset.value)
+    public static let cornerRadius = CGFloat(DesignTokens.Radii.tab.value)
     /// Space between a tab's title and its pane-count badge.
-    public static let badgeGap: CGFloat = 6
-    public static let closeSize: CGFloat = 14
+    public static let badgeGap = CGFloat(DesignTokens.Metrics.TabStrip.badgeGap.value)
+    public static let closeSize = CGFloat(DesignTokens.Metrics.TabStrip.closeSize.value)
 }
 
 public struct TabStripItem: Hashable, Sendable {
