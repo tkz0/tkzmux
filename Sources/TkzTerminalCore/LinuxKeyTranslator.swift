@@ -24,7 +24,8 @@
 //   `us(intl)` is `ISO_Level3_Shift`: a level shift that composes text (`AltGr+8` → `[` on `se`)
 //   and has no GDK modifier bit. GDK_ALT_MASK is Mod1, which only the Alt keys set, so
 //   left Alt+B is `ESC b` / `CSI 98;3u` on every layout. There is no option-as-alt setting on
-//   Linux: the encoder's `MACOS_OPTION_AS_ALT` is irrelevant once Alt is never consumed.
+//   Linux: a Linux build of libghostty never reads `MACOS_OPTION_AS_ALT` (a Darwin build does,
+//   which is why LinuxKeyTranslatorTests encode with `.both` when they run on macOS).
 // * **`unshiftedCodepoint` comes from the level-0 keyval** of the active layout (the GTK layer
 //   looks it up with `gdk_display_map_keycode`). On `se` the key labelled 8 is `8` even with
 //   AltGr held, which is what kitty's alternate-key reporting wants.

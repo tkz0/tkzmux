@@ -102,7 +102,11 @@ private func encode(_ press: KeyPress, _ mode: Mode = .legacy, applicationCursor
     case .kitty5: terminal.write("\u{1b}[>5u")
     }
     if applicationCursorKeys { terminal.write("\u{1b}[?1h") }
-    return try KeyEncoder().encode(press, terminal: terminal)
+    // libghostty decides at comptime whether to read `MACOS_OPTION_AS_ALT`: a Darwin build drops
+    // the legacy `ESC` prefix for Alt unless the option says Option is Alt, a Linux build never
+    // reads it and always prefixes. `.both` makes the macOS run of these tests encode the way the
+    // Linux build does; on Linux it is a no-op.
+    return try KeyEncoder().encode(press, terminal: terminal, optionAsAlt: .both)
 }
 
 private func bytes(_ string: String) -> [UInt8] { Array(string.utf8) }
