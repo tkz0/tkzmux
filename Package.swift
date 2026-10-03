@@ -145,7 +145,7 @@ let sharedTargets: [Target] = [  // hygiene-scan
     // byte compares and the layer manifest, over TkzPNG. No AppKit, Metal or GTK. The tests read
     // ADR-0003 and Tests/Parity/layers.json through #filePath.
     .target(name: "TkzParity", dependencies: ["TkzPNG"], path: "Sources/TkzParity"),
-    .testTarget(name: "TkzParityTests", dependencies: ["TkzParity", "TkzPNG"], path: "Tests/TkzParityTests"),
+    .testTarget(name: "TkzParityTests", dependencies: ["TkzParity", "TkzPNG", "TkzPlatform"], path: "Tests/TkzParityTests"),
 
     // The Swift/C/Metal (and, through TkzShadersSPIRV, Vulkan) struct contract. Header-only; the
     // header falls back to `ext_vector_type` typedefs where <simd/simd.h> is absent (WOR-311 S1).

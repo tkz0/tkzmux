@@ -296,9 +296,9 @@
   "schema" : 1,
   "source" : {
     "environment" : {
-      "fonts" : "parity"
+
     },
-    "glyphSource" : "FreeType",
-    "platform" : "linux"
+    "glyphSource" : "CoreText",
+    "platform" : "macos"
   }
 }

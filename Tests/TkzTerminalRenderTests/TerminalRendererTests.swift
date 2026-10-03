@@ -250,6 +250,25 @@ struct TerminalRendererGoldenTests {
         #expect(fixture.surface.cursor.style == .bar)
         try assertMatchesGolden(texture: fixture.texture, named: "golden-bar-cursor.png")
     }
+
+    /// `Tests/Parity/Fixtures/golden-screen.tkzrec` is this screen as a file, for the terminal
+    /// references `scripts/parity-export-mac.sh` renders with `tkzmux-vtdump render` (WOR-322 S2).
+    /// Compared by content rather than by bytes, so the header's JSON spelling does not matter.
+    @Test("the parity recording of the golden screen is GoldenScreen.output")
+    func parityRecordingIsTheGoldenScreen() throws {
+        let url = repoRoot().appendingPathComponent("Tests/Parity/Fixtures/golden-screen.tkzrec")
+        if ProcessInfo.processInfo.environment["TKZMUX_UPDATE_PARITY_FIXTURES"] == "1" {
+            let source = try GoldenScreen.makeRecording()
+            try RecordingWriter(header: source.header).write(source.frames, to: url)
+        }
+        let committed = try RecordingReader(contentsOf: url)
+        #expect(committed.header.cols == GoldenScreen.columns && committed.header.rows == GoldenScreen.rows)
+        #expect(committed.header.env.isEmpty && committed.header.startedAt == 0)
+        #expect(committed.frames == [.output(elapsedNanos: 0, bytes: Data(GoldenScreen.output.utf8))], """
+            Tests/Parity/Fixtures/golden-screen.tkzrec is not GoldenScreen.output: regenerate it with \
+            TKZMUX_UPDATE_PARITY_FIXTURES=1, then the terminal references (docs/linux/parity.md)
+            """)
+    }
 }
 
 // MARK: - Several surfaces at once

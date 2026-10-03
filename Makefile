@@ -7,6 +7,8 @@
 #   VERSION         override the version derived from `git describe` (see scripts/lib/version.sh).
 #   SWIFT_FLAGS     extra flags for `swift build`/`test`/`run`, e.g. `-c release`. Never a target
 #                   selection: see the cross-compile refusal below.
+#   PARITY_FLAGS    flags for `make parity-references` (scripts/parity-export-mac.sh), e.g.
+#                   `--check` or `--regenerate`.
 #
 # Release runbook: docs/release.md.
 #
@@ -16,6 +18,7 @@
 SIGN_IDENTITY ?= -
 NOTARY_PROFILE ?= tkzmux-notary
 SWIFT_FLAGS ?=
+PARITY_FLAGS ?=
 
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
@@ -28,7 +31,7 @@ ifneq ($(filter $(CROSS_FLAGS) $(addsuffix =%,$(CROSS_FLAGS)),$(SWIFT_FLAGS)),)
 $(error cross-compiling is not supported: Package.swift branches on the host OS, so build on the target machine and drop $(filter $(CROSS_FLAGS) $(addsuffix =%,$(CROSS_FLAGS)),$(SWIFT_FLAGS)) from SWIFT_FLAGS)
 endif
 
-.PHONY: all build test app vendor vendor-linux run clean notarize dist
+.PHONY: all build test app vendor vendor-linux run clean notarize dist parity-references
 
 all: build
 
@@ -129,6 +132,12 @@ notarize:
 dist:
 	SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" scripts/make-dist.sh
 endif
+
+# The Mac parity references (WOR-322 S2; docs/linux/parity.md, "Regenerating the references").
+# The script refuses on Linux and outside the hosted reference runner (ADR-0003 §5), so this target
+# runs in .github/workflows/parity-references.yml.
+parity-references:
+	scripts/parity-export-mac.sh $(PARITY_FLAGS)
 
 clean:
 	rm -rf .build build

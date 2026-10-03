@@ -1170,18 +1170,18 @@
     },
     {
       "appliedScale" : 1,
-      "bearingTop" : 20,
-      "bearingX" : 2,
+      "bearingTop" : 19,
+      "bearingX" : 0,
       "cellSpan" : 1,
-      "face" : "TkzmuxSymbols-Regular",
-      "height" : 20,
+      "face" : "STIXTwoMath-Regular",
+      "height" : 19,
       "kind" : "glyph",
       "page" : "grayscale",
       "scalars" : [
         9205
       ],
       "style" : "regular",
-      "width" : 13,
+      "width" : 16,
       "x" : 1151,
       "y" : 0
     },
@@ -1199,7 +1199,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 1164,
+      "x" : 1167,
       "y" : 0
     },
     {
@@ -1216,7 +1216,7 @@
       ],
       "style" : "regular",
       "width" : 21,
-      "x" : 1181,
+      "x" : 1184,
       "y" : 0
     }
   ],
@@ -1240,9 +1240,9 @@
   "schema" : 1,
   "source" : {
     "environment" : {
-      "fonts" : "parity"
+
     },
-    "glyphSource" : "FreeType",
-    "platform" : "linux"
+    "glyphSource" : "CoreText",
+    "platform" : "macos"
   }
 }

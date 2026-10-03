@@ -976,28 +976,28 @@
       "y" : 0
     },
     {
-      "appliedScale" : 0.9248924892489249,
+      "appliedScale" : 1,
       "bearingTop" : 20,
-      "bearingX" : 1,
+      "bearingX" : -1,
       "cellSpan" : 1,
-      "face" : "TkzmuxSymbols-Regular",
-      "height" : 22,
+      "face" : "STIXTwoMath-Regular",
+      "height" : 21,
       "kind" : "glyph",
       "page" : "grayscale",
       "scalars" : [
         9210
       ],
       "style" : "regular",
-      "width" : 21,
+      "width" : 20,
       "x" : 953,
       "y" : 0
     },
     {
-      "appliedScale" : 0.884299101166571,
-      "bearingTop" : 19,
-      "bearingX" : -1,
+      "appliedScale" : 1,
+      "bearingTop" : 20,
+      "bearingX" : -2,
       "cellSpan" : 1,
-      "face" : "TkzmuxSymbols-Regular",
+      "face" : "Menlo-Regular",
       "height" : 23,
       "kind" : "glyph",
       "page" : "grayscale",
@@ -1006,7 +1006,7 @@
       ],
       "style" : "regular",
       "width" : 21,
-      "x" : 974,
+      "x" : 973,
       "y" : 0
     },
     {
@@ -1023,7 +1023,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 995,
+      "x" : 994,
       "y" : 0
     },
     {
@@ -1040,7 +1040,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 1012,
+      "x" : 1011,
       "y" : 0
     },
     {
@@ -1057,7 +1057,7 @@
       ],
       "style" : "regular",
       "width" : 19,
-      "x" : 1029,
+      "x" : 1028,
       "y" : 0
     },
     {
@@ -1074,7 +1074,7 @@
       ],
       "style" : "regular",
       "width" : 19,
-      "x" : 1048,
+      "x" : 1047,
       "y" : 0
     },
     {
@@ -1090,7 +1090,7 @@
       ],
       "style" : "regular",
       "width" : 21,
-      "x" : 1067,
+      "x" : 1066,
       "y" : 0
     },
     {
@@ -1116,7 +1116,7 @@
       ],
       "style" : "regular",
       "width" : 12,
-      "x" : 1088,
+      "x" : 1087,
       "y" : 0
     },
     {
@@ -1133,7 +1133,7 @@
       ],
       "style" : "regular",
       "width" : 12,
-      "x" : 1100,
+      "x" : 1099,
       "y" : 0
     },
     {
@@ -1149,7 +1149,7 @@
       ],
       "style" : "regular",
       "width" : 21,
-      "x" : 1112,
+      "x" : 1111,
       "y" : 0
     },
     {
@@ -1166,7 +1166,7 @@
       ],
       "style" : "regular",
       "width" : 18,
-      "x" : 1133,
+      "x" : 1132,
       "y" : 0
     },
     {
@@ -1182,7 +1182,7 @@
       ],
       "style" : "regular",
       "width" : 21,
-      "x" : 1151,
+      "x" : 1150,
       "y" : 0
     },
     {
@@ -1199,7 +1199,7 @@
       ],
       "style" : "regular",
       "width" : 21,
-      "x" : 1172,
+      "x" : 1171,
       "y" : 0
     },
     {
@@ -1216,7 +1216,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 1193,
+      "x" : 1192,
       "y" : 0
     },
     {
@@ -1233,24 +1233,24 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 1210,
+      "x" : 1209,
       "y" : 0
     },
     {
       "appliedScale" : 1,
-      "bearingTop" : 20,
-      "bearingX" : 2,
+      "bearingTop" : 19,
+      "bearingX" : 0,
       "cellSpan" : 1,
-      "face" : "TkzmuxSymbols-Regular",
-      "height" : 20,
+      "face" : "STIXTwoMath-Regular",
+      "height" : 19,
       "kind" : "glyph",
       "page" : "grayscale",
       "scalars" : [
         9205
       ],
       "style" : "regular",
-      "width" : 13,
-      "x" : 1227,
+      "width" : 16,
+      "x" : 1226,
       "y" : 0
     },
     {
@@ -1267,7 +1267,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 1240,
+      "x" : 1242,
       "y" : 0
     },
     {
@@ -1284,7 +1284,7 @@
       ],
       "style" : "regular",
       "width" : 19,
-      "x" : 1257,
+      "x" : 1259,
       "y" : 0
     },
     {
@@ -1301,7 +1301,7 @@
       ],
       "style" : "regular",
       "width" : 21,
-      "x" : 1276,
+      "x" : 1278,
       "y" : 0
     }
   ],
@@ -1325,9 +1325,9 @@
   "schema" : 1,
   "source" : {
     "environment" : {
-      "fonts" : "parity"
+
     },
-    "glyphSource" : "FreeType",
-    "platform" : "linux"
+    "glyphSource" : "CoreText",
+    "platform" : "macos"
   }
 }

@@ -307,7 +307,7 @@ The issue that lands a layer's producer switches its own rows to `enforced` in t
 
 ## The reference budget
 
-ADR-0003 §5 sets one committed budget for every reference image and dump, `referenceBudgetBytes`, split into `componentSnapshotShareBytes` (`Tests/TkzAppTests/ComponentSnapshots/`, WOR-307) and `parityReferenceShareBytes` (`Tests/Parity/References/`, WOR-322, including WOR-312's font dumps and WOR-313's conformance outputs). `ParityThresholdTests.theReferenceTreesFitTheBudget` counts every regular file in both trees, manifests included, on both OSes. A tree that does not exist yet counts as empty. `Tests/Parity/References/` holds only the L2 set so far ([below](#the-l2-references)); the rest arrives with WOR-322 S2's exporter (`make parity-references`), which runs only on the reference runner, and with WOR-312's and WOR-313's dumps.
+ADR-0003 §5 sets one committed budget for every reference image and dump, `referenceBudgetBytes`, split into `componentSnapshotShareBytes` (`Tests/TkzAppTests/ComponentSnapshots/`, WOR-307) and `parityReferenceShareBytes` (`Tests/Parity/References/`, WOR-322, including WOR-312's font dumps and WOR-313's conformance outputs). `ParityThresholdTests.theReferenceTreesFitTheBudget` counts every regular file in both trees, manifests included, on both OSes. A tree that does not exist yet counts as empty. `Tests/Parity/References/` holds WOR-312's font dumps, the L2 set, the terminal frames and the manifest, all written by WOR-322 S2's exporter (`make parity-references`) on the reference runner ([Regenerating the references](#regenerating-the-references)). WOR-313's conformance outputs and S4's full-window captures arrive through the same exporter.
 
 ## The Linux parity runner
 
@@ -391,7 +391,7 @@ The feature sheet is written from `L2FeatureSheet.output` with an empty environm
 
 ### The L2 references
 
-`Tests/Parity/References/framebuilder/` holds the five fixtures at 1.6 and 2.0: 20 files, about 340 KB of the 5 MiB WOR-322 share. `scripts/parity-framebuilder-references.sh` writes them on either OS, building the release `tkzmux-vtdump` first. `--check` writes them to a temporary directory instead and fails unless they equal the committed set.
+`Tests/Parity/References/framebuilder/` holds the five fixtures at 1.6 and 2.0: 20 files, about 340 KB of the 4.5 MiB WOR-322 share. `scripts/parity-framebuilder-references.sh` writes them on either OS, building the release `tkzmux-vtdump` first. `--check` writes them to a temporary directory instead and fails unless they equal the committed set.
 
 - **The reference set is the Mac's.** The command that produces it is:
 
@@ -429,6 +429,20 @@ The chrome metrics (`chrome-metrics.json`, WOR-312 S2) have their own producer, 
 
 Every dump carries the same `environment` block, so a file read on its own still says which machine it describes. The Linux tests in `Tests/TkzFontsFTTests` (`FaceMetricsTests`, `ShapingTests`, `SymbolCoverageTests`, `AtlasDumpTests`, `ChromeMetricsReferenceTests`) decode the parts they compare and skip while a file is missing. `ChromeMetricsReference` is the chrome dump's Linux decoder; its tests hold the file to the rules it records (the components add up, the row wraps exactly where they exceed the width, nothing is truncated into less than 30 pt).
 
+## The terminal references
+
+`Tests/Parity/References/terminal/<name>@<scale>.png` is the final screen of a recording, drawn by the release `tkzmux-vtdump render --scale <scale>` through the Metal pipelines into an offscreen texture and read back as bytes. It is never a screenshot. There is one PNG per recording at 1.6 and at 2.0:
+
+| Recording | What it shows |
+|---|---|
+| `Tests/Parity/Fixtures/golden-screen.tkzrec` | `GoldenScreen`, the screen of the Mac terminal goldens (`TerminalRendererTests`): bold, italic, underline, 256-colour and 24-bit runs, reverse video, CJK, emoji, strikethrough, curly and dashed underlines. It has no selection and no bar cursor: those are drawn by the test, not the recording. |
+| `Tests/TkzTerminalCoreTests/Fixtures/{claude-boot,claude-tool-run,synthetic-basic,zsh-ls-color}.tkzrec` | The four real and synthetic sessions L2 replays |
+| `Tests/Parity/Fixtures/glyph-sheet.tkzrec` | `GlyphSheet` (`Tests/TkzParityRunnerTests/GlyphSheet.swift`), 48×15 cells, one family per row so that a diff points at a glyph. Printable ASCII in the four styles; light, heavy, double and rounded box drawing; block elements, eighths, shades and quadrants; Claude Code's symbols ⏺ ⎿ ✢ ✳ ✶ ✻ ✽, regular then bold; Chinese, Japanese and Korean; colour emoji, a skin-tone modifier, ZWJ sequences and a flag. |
+
+Both new recordings are written from source with an empty environment and a zero timestamp, and a test pins each file to its source. `GlyphSheetTests.theCommittedRecordingIsItsSource` (Linux) pins the glyph sheet, and `theRowsFitTheGrid` checks that no row wraps. `TerminalRendererGoldenTests.parityRecordingIsTheGoldenScreen` (macOS) pins the golden screen. To regenerate the glyph sheet, run `TKZMUX_UPDATE_PARITY_FIXTURES=1 swift test --build-system native --filter GlyphSheetTests` on Linux. To regenerate the golden screen, run `TKZMUX_UPDATE_PARITY_FIXTURES=1 swift test --filter parityRecordingIsTheGoldenScreen` on a Mac. Then regenerate the references.
+
+The frames are the Mac's side of a terminal comparison at a matching scale. Linux at 1.6 is compared with the Mac at 1.6, never with the Mac at 2.0. At 14 pt, cells are 14×30 px at 1.6 and 17×37 px at 2.0. A comparison masks the fallback glyphs (CJK, emoji, and ✳ under Omarchy's fontconfig) as `cjkEmoji` or `fallbackGlyph` cell rects on the recording's grid ([Mask files](#mask-files)).
+
 ## Regenerating the references
 
 Every committed reference has exactly one producer:
@@ -436,9 +450,44 @@ Every committed reference has exactly one producer:
 | Tree | Producer | Where it runs |
 |---|---|---|
 | `Tests/TkzAppTests/ComponentSnapshots/` | the Component snapshots workflow (WOR-307; [Updating the goldens](#updating-the-goldens)) | reference runner |
-| `Tests/Parity/References/framebuilder/` | `scripts/parity-framebuilder-references.sh` (L2, above) | reference runner. A Linux bootstrap until WOR-322 S2 |
-| `Tests/Parity/References/fonts/` | `scripts/parity-font-references.sh` (WOR-312 S1, [above](#the-font-references)), and `scripts/parity-chrome-references.sh` for `chrome-metrics.json` (WOR-312 S2) | reference runner (WOR-312 S1, S2) |
-| `Tests/Parity/References/terminal/`, `manifest.json`, the full-window captures | `make parity-references` (`scripts/parity-export-mac.sh`) | reference runner (WOR-322 S2, S4) |
+| `Tests/Parity/References/fonts/` | `scripts/parity-font-references.sh` (WOR-312 S1, [above](#the-font-references)), and `scripts/parity-chrome-references.sh` for `chrome-metrics.json` (WOR-312 S2), both called by `make parity-references` | reference runner (WOR-312 S1, S2) |
 | WOR-313's conformance outputs | `TKZMUX_WRITE_CONFORMANCE_REFS`, a step that WOR-313 S3 adds to the exporter | reference runner |
+| `Tests/Parity/References/framebuilder/` | `scripts/parity-framebuilder-references.sh` (L2, above), called by `make parity-references` | reference runner |
+| `Tests/Parity/References/terminal/` ([above](#the-terminal-references)), `manifest.json`, the full-window captures | `make parity-references` (`scripts/parity-export-mac.sh`) | reference runner (WOR-322 S2, S4) |
 
 `ParityThresholdTests.theReferenceTreesFitTheBudget` counts all of them. Never copy one tree's files into another.
+
+### `make parity-references`
+
+`make parity-references` runs `scripts/parity-export-mac.sh`, which writes the whole of `Tests/Parity/References/` at 1.6 and 2.0 in this order:
+
+1. WOR-312's font and chrome dumps, by calling `scripts/parity-font-references.sh` and `scripts/parity-chrome-references.sh` unchanged. The exporter does not reimplement them.
+2. WOR-313 S3's conformance references (`TKZMUX_WRITE_CONFORMANCE_REFS`). Until WOR-313 S3 adds this step, the exporter skips it, logs the skip and records it in the manifest's `skipped` list.
+3. The L2 FrameBuilder dumps and their atlas glyph table, through `scripts/parity-framebuilder-references.sh`.
+4. The terminal frames ([above](#the-terminal-references)).
+5. `manifest.json`, described below.
+
+`PARITY_FLAGS` passes flags through, for example `make parity-references PARITY_FLAGS=--check`:
+
+| Flag | Effect |
+|---|---|
+| (none) | Writes the set into the tree. |
+| `--check` | Runs every producer again with its own `--check`, writes the terminal frames and the manifest into a temporary directory, and fails unless everything equals the committed set byte for byte, provenance lines aside. Every tree is checked before the exit, so one run names everything that differs. Nothing in the tree changes. |
+| `--regenerate` | Accepts a runner image other than the one the committed manifest names, and passes the flag on to WOR-312's scripts. |
+| `--unofficial --out DIR` | Runs outside a hosted runner and writes a set to look at into `DIR`, laid out like `Tests/Parity/References/`. Such a set never lands in the tree. |
+
+**Refusals.** The exporter exits 2 on Linux, outside a hosted runner (`CI` or `ImageOS` unset), and on an image other than the one the committed manifest names, unless `--regenerate` is given (ADR-0003 §5). A developer Mac is foreign hardware: it can only produce an unofficial set.
+
+**The manifest.** `Tests/Parity/References/manifest.json` contains:
+
+- `reference`: the fields WOR-312's font manifest defined. These are `ImageOS` and `ImageVersion` (the runner image), the macOS build and version, Xcode, Swift, `hw.model`, the CoreText version, `AppleFontSmoothing` and the display profile. The CoreText-side values come from the `environment` block of `fonts/fontmetrics.json`, so the two manifests cannot disagree.
+- `scales`, every command line, and the `skipped` steps.
+- `files`: a sha256 for every file under `Tests/Parity/References/`.
+- `componentSnapshots`: WOR-307's goldens in `Tests/TkzAppTests/ComponentSnapshots/` (every file but the README), listed by path and sha256. They are never copied.
+
+Neither list includes a `manifest.json`: this one, `fonts/manifest.json` or the goldens' manifest. Each carries a provenance block that every rerun changes, and the files it describes are listed one by one anyway.
+- `provenance`: the commit and the run id, on a line of its own. It is the only line two runs may differ in.
+
+The manifest holds no user names, host names or home paths. `scripts/scan-personal-data.sh` checks this, and so does `ReferenceManifestTests` (`Tests/TkzParityTests`, both OSes). The test finds the tree through `#filePath`. It requires the reference fields, and it requires `files` and `componentSnapshots` to match the trees on disk path for path and hash for hash. It also checks that no golden is copied and that every terminal frame decodes. A golden or a font dump regenerated on its own therefore fails the test until `make parity-references` has run again. The suite is disabled while no manifest is committed.
+
+**The workflow.** The *Parity references* workflow (`.github/workflows/parity-references.yml`) runs the export with `--regenerate`, then again with `--check`, on a manual dispatch or a push to a `mac-refs/*` branch. It uploads the folder as `parity-references`, whose contents go straight into `Tests/Parity/References/`. Commit the set on its own, in a reviewed PR, and explain every reference that changed. A set that follows a runner-image change must also show that the old and new sets agree (ADR-0003, Consequences).

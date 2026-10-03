@@ -176,7 +176,7 @@
     {
       "appliedScale" : 1,
       "bearingTop" : 18,
-      "bearingX" : 0,
+      "bearingX" : -1,
       "cellSpan" : 1,
       "face" : "JetBrainsMono-Italic",
       "height" : 21,
@@ -186,7 +186,7 @@
         99
       ],
       "style" : "italic",
-      "width" : 18,
+      "width" : 19,
       "x" : 145,
       "y" : 0
     },
@@ -204,7 +204,7 @@
       ],
       "style" : "boldItalic",
       "width" : 20,
-      "x" : 163,
+      "x" : 164,
       "y" : 0
     },
     {
@@ -221,7 +221,7 @@
       ],
       "style" : "boldItalic",
       "width" : 19,
-      "x" : 183,
+      "x" : 184,
       "y" : 0
     },
     {
@@ -238,7 +238,7 @@
       ],
       "style" : "boldItalic",
       "width" : 20,
-      "x" : 202,
+      "x" : 203,
       "y" : 0
     },
     {
@@ -255,7 +255,7 @@
       ],
       "style" : "boldItalic",
       "width" : 20,
-      "x" : 222,
+      "x" : 223,
       "y" : 0
     },
     {
@@ -272,7 +272,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 242,
+      "x" : 243,
       "y" : 0
     },
     {
@@ -289,7 +289,7 @@
       ],
       "style" : "regular",
       "width" : 18,
-      "x" : 259,
+      "x" : 260,
       "y" : 0
     },
     {
@@ -306,7 +306,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 277,
+      "x" : 278,
       "y" : 0
     },
     {
@@ -323,7 +323,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 294,
+      "x" : 295,
       "y" : 0
     },
     {
@@ -340,7 +340,7 @@
       ],
       "style" : "regular",
       "width" : 20,
-      "x" : 311,
+      "x" : 312,
       "y" : 0
     },
     {
@@ -357,7 +357,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 331,
+      "x" : 332,
       "y" : 0
     },
     {
@@ -374,7 +374,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 348,
+      "x" : 349,
       "y" : 0
     },
     {
@@ -391,7 +391,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 365,
+      "x" : 366,
       "y" : 0
     },
     {
@@ -408,7 +408,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 382,
+      "x" : 383,
       "y" : 0
     },
     {
@@ -425,7 +425,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 399,
+      "x" : 400,
       "y" : 0
     },
     {
@@ -442,7 +442,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 416,
+      "x" : 417,
       "y" : 0
     },
     {
@@ -459,7 +459,7 @@
       ],
       "style" : "regular",
       "width" : 16,
-      "x" : 433,
+      "x" : 434,
       "y" : 0
     },
     {
@@ -476,7 +476,7 @@
       ],
       "style" : "regular",
       "width" : 19,
-      "x" : 449,
+      "x" : 450,
       "y" : 0
     },
     {
@@ -493,7 +493,7 @@
       ],
       "style" : "regular",
       "width" : 18,
-      "x" : 468,
+      "x" : 469,
       "y" : 0
     },
     {
@@ -510,7 +510,7 @@
       ],
       "style" : "regular",
       "width" : 18,
-      "x" : 486,
+      "x" : 487,
       "y" : 0
     },
     {
@@ -527,7 +527,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 504,
+      "x" : 505,
       "y" : 0
     },
     {
@@ -544,7 +544,7 @@
       ],
       "style" : "regular",
       "width" : 18,
-      "x" : 521,
+      "x" : 522,
       "y" : 0
     },
     {
@@ -570,7 +570,7 @@
       ],
       "style" : "bold",
       "width" : 18,
-      "x" : 539,
+      "x" : 540,
       "y" : 0
     },
     {
@@ -587,7 +587,7 @@
       ],
       "style" : "bold",
       "width" : 18,
-      "x" : 557,
+      "x" : 558,
       "y" : 0
     },
     {
@@ -604,7 +604,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 575,
+      "x" : 576,
       "y" : 0
     },
     {
@@ -621,7 +621,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 592,
+      "x" : 593,
       "y" : 0
     },
     {
@@ -638,7 +638,7 @@
       ],
       "style" : "regular",
       "width" : 18,
-      "x" : 609,
+      "x" : 610,
       "y" : 0
     },
     {
@@ -655,7 +655,7 @@
       ],
       "style" : "regular",
       "width" : 19,
-      "x" : 627,
+      "x" : 628,
       "y" : 0
     },
     {
@@ -672,7 +672,7 @@
       ],
       "style" : "regular",
       "width" : 18,
-      "x" : 646,
+      "x" : 647,
       "y" : 0
     },
     {
@@ -689,7 +689,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 664,
+      "x" : 665,
       "y" : 0
     },
     {
@@ -706,7 +706,7 @@
       ],
       "style" : "regular",
       "width" : 20,
-      "x" : 681,
+      "x" : 682,
       "y" : 0
     },
     {
@@ -714,7 +714,7 @@
       "bearingTop" : 26,
       "bearingX" : -2,
       "cellSpan" : 2,
-      "face" : "NotoSansCJKsc-Regular",
+      "face" : "PingFangSC-Regular",
       "height" : 31,
       "kind" : "glyph",
       "page" : "grayscale",
@@ -729,9 +729,9 @@
     {
       "appliedScale" : 1,
       "bearingTop" : 26,
-      "bearingX" : -2,
+      "bearingX" : -1,
       "cellSpan" : 2,
-      "face" : "NotoSansCJKsc-Regular",
+      "face" : "PingFangSC-Regular",
       "height" : 31,
       "kind" : "glyph",
       "page" : "grayscale",
@@ -739,7 +739,7 @@
         22909
       ],
       "style" : "regular",
-      "width" : 31,
+      "width" : 30,
       "x" : 31,
       "y" : 26
     },
@@ -757,7 +757,7 @@
       ],
       "style" : "regular",
       "width" : 19,
-      "x" : 701,
+      "x" : 702,
       "y" : 0
     },
     {
@@ -778,19 +778,19 @@
       "y" : 57
     },
     {
-      "appliedScale" : 0.9732142857142856,
-      "bearingTop" : 28,
+      "appliedScale" : 1,
+      "bearingTop" : 27,
       "bearingX" : -2,
       "cellSpan" : 2,
-      "face" : "NotoColorEmoji",
-      "height" : 37,
+      "face" : "AppleColorEmoji",
+      "height" : 33,
       "kind" : "glyph",
       "page" : "color",
       "scalars" : [
         128512
       ],
       "style" : "regular",
-      "width" : 38,
+      "width" : 33,
       "x" : 0,
       "y" : 0
     },
@@ -808,16 +808,16 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 720,
+      "x" : 721,
       "y" : 0
     },
     {
-      "appliedScale" : 0.9732142857142856,
-      "bearingTop" : 28,
+      "appliedScale" : 1,
+      "bearingTop" : 27,
       "bearingX" : -2,
       "cellSpan" : 2,
-      "face" : "NotoColorEmoji",
-      "height" : 37,
+      "face" : "AppleColorEmoji",
+      "height" : 33,
       "kind" : "glyph",
       "page" : "color",
       "scalars" : [
@@ -825,59 +825,59 @@
         8205
       ],
       "style" : "regular",
-      "width" : 38,
-      "x" : 38,
+      "width" : 33,
+      "x" : 33,
       "y" : 0
     },
     {
-      "appliedScale" : 0.9732142857142856,
-      "bearingTop" : 28,
+      "appliedScale" : 1,
+      "bearingTop" : 27,
       "bearingX" : -2,
       "cellSpan" : 2,
-      "face" : "NotoColorEmoji",
-      "height" : 37,
+      "face" : "AppleColorEmoji",
+      "height" : 33,
       "kind" : "glyph",
       "page" : "color",
       "scalars" : [
         128187
       ],
       "style" : "regular",
-      "width" : 38,
-      "x" : 76,
+      "width" : 33,
+      "x" : 66,
       "y" : 0
     },
     {
-      "appliedScale" : 0.9732142857142856,
-      "bearingTop" : 28,
-      "bearingX" : -2,
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : 0,
       "cellSpan" : 2,
-      "face" : "NotoColorEmoji",
-      "height" : 37,
+      "face" : "AppleColorEmoji",
+      "height" : 28,
       "kind" : "glyph",
       "page" : "color",
       "scalars" : [
         127480
       ],
       "style" : "regular",
-      "width" : 38,
-      "x" : 114,
+      "width" : 28,
+      "x" : 99,
       "y" : 0
     },
     {
-      "appliedScale" : 0.9732142857142856,
-      "bearingTop" : 28,
-      "bearingX" : -2,
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : 0,
       "cellSpan" : 2,
-      "face" : "NotoColorEmoji",
-      "height" : 37,
+      "face" : "AppleColorEmoji",
+      "height" : 28,
       "kind" : "glyph",
       "page" : "color",
       "scalars" : [
         127466
       ],
       "style" : "regular",
-      "width" : 38,
-      "x" : 152,
+      "width" : 28,
+      "x" : 127,
       "y" : 0
     },
     {
@@ -895,7 +895,7 @@
       ],
       "style" : "regular",
       "width" : 17,
-      "x" : 62,
+      "x" : 61,
       "y" : 26
     },
     {
@@ -1123,45 +1123,45 @@
       "y" : 89
     },
     {
-      "appliedScale" : 0.9248924892489249,
+      "appliedScale" : 1,
       "bearingTop" : 20,
-      "bearingX" : 1,
+      "bearingX" : -1,
       "cellSpan" : 1,
-      "face" : "TkzmuxSymbols-Regular",
-      "height" : 22,
+      "face" : "STIXTwoMath-Regular",
+      "height" : 21,
       "kind" : "glyph",
       "page" : "grayscale",
       "scalars" : [
         9210
       ],
       "style" : "regular",
-      "width" : 21,
-      "x" : 737,
+      "width" : 20,
+      "x" : 738,
       "y" : 0
     },
     {
       "appliedScale" : 1,
-      "bearingTop" : 22,
-      "bearingX" : 6,
+      "bearingTop" : 27,
+      "bearingX" : 11,
       "cellSpan" : 1,
-      "face" : "TkzmuxSymbols-Regular",
-      "height" : 24,
+      "face" : "HiraginoSans-W3",
+      "height" : 33,
       "kind" : "glyph",
       "page" : "grayscale",
       "scalars" : [
         9151
       ],
       "style" : "regular",
-      "width" : 16,
-      "x" : 758,
-      "y" : 0
+      "width" : 19,
+      "x" : 294,
+      "y" : 89
     },
     {
-      "appliedScale" : 0.7408475526716334,
-      "bearingTop" : 17,
-      "bearingX" : -1,
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : -2,
       "cellSpan" : 1,
-      "face" : "TkzmuxSymbols-Regular",
+      "face" : "Menlo-Regular",
       "height" : 21,
       "kind" : "glyph",
       "page" : "grayscale",
@@ -1170,15 +1170,15 @@
       ],
       "style" : "regular",
       "width" : 21,
-      "x" : 774,
+      "x" : 758,
       "y" : 0
     },
     {
-      "appliedScale" : 0.7749287749287749,
+      "appliedScale" : 1,
       "bearingTop" : 18,
-      "bearingX" : -1,
+      "bearingX" : -2,
       "cellSpan" : 1,
-      "face" : "TkzmuxSymbols-Regular",
+      "face" : "Menlo-Regular",
       "height" : 21,
       "kind" : "glyph",
       "page" : "grayscale",
@@ -1187,7 +1187,7 @@
       ],
       "style" : "regular",
       "width" : 21,
-      "x" : 795,
+      "x" : 779,
       "y" : 0
     },
     {
@@ -1204,15 +1204,15 @@
       ],
       "style" : "regular",
       "width" : 19,
-      "x" : 816,
+      "x" : 800,
       "y" : 0
     },
     {
-      "appliedScale" : 0.884299101166571,
-      "bearingTop" : 19,
-      "bearingX" : -1,
+      "appliedScale" : 1,
+      "bearingTop" : 20,
+      "bearingX" : -2,
       "cellSpan" : 1,
-      "face" : "TkzmuxSymbols-Regular",
+      "face" : "Menlo-Regular",
       "height" : 23,
       "kind" : "glyph",
       "page" : "grayscale",
@@ -1221,16 +1221,16 @@
       ],
       "style" : "regular",
       "width" : 21,
-      "x" : 835,
+      "x" : 819,
       "y" : 0
     },
     {
-      "appliedScale" : 0.8958636055410248,
+      "appliedScale" : 1,
       "bearingTop" : 20,
-      "bearingX" : -1,
+      "bearingX" : -2,
       "cellSpan" : 1,
-      "face" : "TkzmuxSymbols-Regular",
-      "height" : 24,
+      "face" : "Menlo-Regular",
+      "height" : 23,
       "kind" : "glyph",
       "page" : "grayscale",
       "scalars" : [
@@ -1238,7 +1238,7 @@
       ],
       "style" : "regular",
       "width" : 21,
-      "x" : 856,
+      "x" : 840,
       "y" : 0
     }
   ],
@@ -1262,9 +1262,9 @@
   "schema" : 1,
   "source" : {
     "environment" : {
-      "fonts" : "parity"
+
     },
-    "glyphSource" : "FreeType",
-    "platform" : "linux"
+    "glyphSource" : "CoreText",
+    "platform" : "macos"
   }
 }
