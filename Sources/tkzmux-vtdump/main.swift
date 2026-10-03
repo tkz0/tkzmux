@@ -11,7 +11,8 @@
 //
 // Builds on macOS and Linux (WOR-311 S7). `render`, `atlas` and `bench-frame` draw through the
 // Metal renderer and live in `#if canImport(Metal)` files; on Linux they are stubs that exit 1
-// (UnavailableCommands.swift) until WOR-312/WOR-313 bring FreeType and Vulkan.
+// (UnavailableCommands.swift) until WOR-312/WOR-313 bring FreeType and Vulkan. `gpu` exists on
+// Linux only (GPUCommand.swift, WOR-313 S1).
 #if canImport(Darwin)
 import Darwin
 #elseif os(Linux)
@@ -67,6 +68,10 @@ usage: tkzmux-vtdump <command> [options]
   atlas   --out <prefix> [--point-size n] [--scale n] [--sample <text>] [--thicken 0|1]
                             dump the glyph atlas textures as PNGs (M1.4)
                             (render, atlas and bench-frame are macOS-only for now: WOR-312/WOR-313)
+  gpu     [--headless] [--main-device <major:minor>] [--no-validation] [--size <w>x<h>] [--no-clear]
+                            Linux only: list the Vulkan devices, select one as the app does
+                            (TKZMUX_GPU=auto|integrated|discrete) and log why, then clear an
+                            offscreen target and check the readback (WOR-313)
 
   bench   --sessions <n> [--busy <k>] [--seconds <s>] [--fill uniform|varied] [--lines <n>]
           [--shell "<path> [args …]"] [--no-compress] [--json <file>]
@@ -661,6 +666,12 @@ do {
 
     case "atlas":
         try RenderCommands.runAtlas(Array(argv.dropFirst()))
+
+    #if os(Linux)
+    case "gpu":
+        // WOR-313 S1: the Vulkan bootstrap and device selection on their own.
+        try GPUCommand.run(Array(argv.dropFirst()))
+    #endif
 
     default:
         fail(usage, code: 2)

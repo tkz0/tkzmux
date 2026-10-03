@@ -14,7 +14,11 @@
 #                `tkzmux-hook` through the pinned Static Linux SDK, run under `env -i` from a
 #                copied location, and the same two checks against [tkzmux-hook] (WOR-305 S6).
 #                Then tkzmux-vtdump: its ABI manifest, 50 rounds of scripts/state-crash-test.sh and
-#                its linkage against [tkzmux-vtdump] (WOR-311 S7).
+#                its linkage against [tkzmux-vtdump] (WOR-311 S7). Vulkan (WOR-313 S1): lavapipe
+#                and the Khronos validation layer are installed, and TKZMUX_REQUIRE_VULKAN=1 turns
+#                every GPU test that would skip without a device into a failure; `vtdump gpu` runs
+#                the bootstrap and its clear + readback; the SPIR-V drift check regenerates the
+#                committed shaders with the pinned shaderc (scripts/build-shaders-linux.sh --fetch).
 #   ubuntu       ubuntu-24.04 + the pinned swift:<pin>-noble image (never the runner's own Swift):
 #                one `swift build --target` per non-GTK target, then the tests. WOR-314 S1
 #                restricts the list or retires the job once a GTK target exists (noble has GTK 4.14).
@@ -79,6 +83,8 @@ jobs:
       ARCH_SNAPSHOT: '2026/09/27'
       # ParityFontsTests fails instead of skipping when the fetched parity fonts are missing.
       TKZMUX_REQUIRE_PARITY_FONTS: '1'
+      # TkzRenderVKTests fails instead of skipping without a Vulkan device or the validation layer.
+      TKZMUX_REQUIRE_VULKAN: '1'
     steps: &arch-steps
       # Before checkout: actions/checkout needs git in the container to fetch a real repository,
       # and actions/cache needs zstd.
@@ -92,11 +98,15 @@ jobs:
           # toolchain binaries' own libraries; ncurses + libxml2-legacy: the compat sonames from
           # docs/linux/dev.md ("Compat libraries"); freetype2, harfbuzz, fontconfig: TkzFontsFT's
           # system libraries (WOR-312); zsh: the interactive-shell PtyTests, which skip without it
-          # (WOR-305).
+          # (WOR-305); vulkan-icd-loader, vulkan-headers: CVulkan (WOR-313); vulkan-swrast
+          # (lavapipe) and vulkan-validation-layers: the device and the layer the GPU tests
+          # require here. No shaderc: the drift check fetches its own pinned build.
           pacman -Syu --noconfirm --needed \
             git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
-            gnupg zstd pkgconf freetype2 harfbuzz fontconfig zsh
-          pacman -Q glibc gcc binutils freetype2 harfbuzz fontconfig
+            gnupg zstd pkgconf freetype2 harfbuzz fontconfig zsh \
+            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers
+          pacman -Q glibc gcc binutils freetype2 harfbuzz fontconfig \
+            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers
 
       - uses: actions/checkout@v5
 
@@ -161,6 +171,18 @@ jobs:
 
       - name: Lint the linkage policy
         run: scripts/linux/check-linkage.sh --lint
+
+      # WOR-313: the committed SPIR-V must be byte-for-byte what the pinned shaderc makes of the
+      # GLSL. --fetch downloads the pinned Arch packages by sha256 (docs/linux/dev.md, "glslc pin")
+      # instead of trusting whatever shaderc the image has.
+      - name: Cache the pinned shaderc
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/tkzmux/shaderc-cache
+          key: shaderc-${{ hashFiles('scripts/build-shaders-linux.sh', 'docs/linux/dev.md') }}
+
+      - name: SPIR-V drift check (pinned shaderc)
+        run: SHADERC_CACHE="$HOME/.cache/tkzmux/shaderc-cache" scripts/build-shaders-linux.sh --fetch --check
 
       # CLAUDE.md: tkzmux-hook imports libc only (Darwin/Glibc/Musl), never Foundation. Also
       # checked by HookHygieneTests; this fails before anything is built (WOR-305 S5). The `!`
@@ -273,11 +295,15 @@ jobs:
 
       # WOR-311 S7. The crash harness builds the release vtdump itself; `abi` must print exactly
       # the committed Linux manifest. render/atlas/bench-frame are stubs until WOR-312/WOR-313.
-      - name: tkzmux-vtdump (abi, state-crash-test.sh, linkage)
+      # `gpu` (WOR-313 S1) selects lavapipe, the only device here, under the validation layer and
+      # exits 1 on a readback mismatch or any validation error.
+      - name: tkzmux-vtdump (abi, state-crash-test.sh, gpu, linkage)
         run: |
           scripts/state-crash-test.sh 50
           vtdump="$(swift build --build-system native -c release --show-bin-path)/tkzmux-vtdump"
           "$vtdump" abi | diff - vendor/ghostty-vt/abi-types.x86_64-linux-gnu.json
+          "$vtdump" gpu | tee "$RUNNER_TEMP/vtdump-gpu.txt"
+          grep -q '^loader: .*validation on$' "$RUNNER_TEMP/vtdump-gpu.txt"
           scripts/linux/check-linkage.sh "$vtdump" tkzmux-vtdump
 
   ubuntu:
@@ -292,7 +318,7 @@ jobs:
       # cannot be built on its own; its dependents cover it, and so do TkzFontsFT's for the
       # system-library targets CFreeType, CHarfBuzz and CFontconfig. A target that joins the Linux
       # graph without GTK is added here (WOR-304 onwards).
-      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPNG TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzPNGTests TkzShadersSPIRVTests tkzmux-hook AgentBridgeTests TkzFontsFT TkzFontsFTTests tkzmux-vtdump
+      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzmuxLinux TkzShaderTypes TkzRenderCore TkzPNG TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzPNGTests TkzShadersSPIRVTests tkzmux-hook AgentBridgeTests TkzFontsFT TkzFontsFTTests TkzRenderVK TkzRenderVKTests tkzmux-vtdump
       TKZMUX_REQUIRE_PARITY_FONTS: '1'
     steps:
       - name: Install system packages
@@ -300,11 +326,12 @@ jobs:
           apt-get update -q
           # iproute2: `ss`, which ListeningPortsTests compares against (Arch has it in `base`).
           # libfreetype-dev, libharfbuzz-dev, libfontconfig-dev: TkzFontsFT's system libraries
-          # (WOR-312). curl, ca-certificates: scripts/fetch-parity-fonts.sh.
+          # (WOR-312). curl, ca-certificates: scripts/fetch-parity-fonts.sh. libvulkan-dev: CVulkan
+          # (WOR-313); no driver is installed, so the GPU tests skip here and run in `arch`.
           DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
             zsh fish git python3 ncurses-bin binutils pkg-config iproute2 \
-            libfreetype-dev libharfbuzz-dev libfontconfig-dev curl ca-certificates
-          dpkg-query -W libfreetype-dev libharfbuzz-dev libfontconfig-dev
+            libfreetype-dev libharfbuzz-dev libfontconfig-dev libvulkan-dev curl ca-certificates
+          dpkg-query -W libfreetype-dev libharfbuzz-dev libfontconfig-dev libvulkan-dev
 
       - uses: actions/checkout@v5
 
@@ -347,4 +374,5 @@ jobs:
     env:
       ARCH_SNAPSHOT: ''
       TKZMUX_REQUIRE_PARITY_FONTS: '1'
+      TKZMUX_REQUIRE_VULKAN: '1'
     steps: *arch-steps

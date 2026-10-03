@@ -38,9 +38,10 @@ let sharedProducts: [Product] = [
 ]
 
 // vtdump's `render`, `atlas` and `bench-frame` draw through the Metal renderer, so only the macOS
-// graph links it; on Linux those three are stubs until WOR-312/WOR-313 (WOR-311 S7).
+// graph links it; on Linux those three are stubs until WOR-312/WOR-313 (WOR-311 S7). The Linux
+// graph links the Vulkan bootstrap for the Linux-only `gpu` subcommand (WOR-313 S1).
 #if os(Linux)
-let vtdumpRendererDependencies: [Target.Dependency] = []
+let vtdumpRendererDependencies: [Target.Dependency] = ["TkzRenderVK"]
 #else
 let vtdumpRendererDependencies: [Target.Dependency] = ["TkzTerminalRender", "TkzRenderCore"]
 #endif
@@ -198,6 +199,17 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
         dependencies: ["TkzShadersSPIRV", "TkzShaderTypes"],
         path: "Tests/TkzShadersSPIRVTests"
     ),
+
+    // MARK: Vulkan renderer (WOR-313). The loader from pkg-config, declared only in this branch
+    // like the font stack below; Sources/CVulkan/shim.h wraps the macros Swift cannot import.
+    .systemLibrary(name: "CVulkan", pkgConfig: "vulkan", providers: [.apt(["libvulkan-dev"])]),
+    // Instance, device selection, queues, the debug messenger and the headless target.
+    .target(
+        name: "TkzRenderVK",
+        dependencies: ["CVulkan", "TkzPlatform"],
+        path: "Sources/TkzRenderVK"
+    ),
+    .testTarget(name: "TkzRenderVKTests", dependencies: ["TkzRenderVK", "CVulkan"], path: "Tests/TkzRenderVKTests"),
 
     // MARK: Font stack (WOR-312). System libraries from pkg-config, declared only in this branch:
     // a `canImport` check would turn on with Homebrew's freetype on a Mac. Their module maps are

@@ -38,7 +38,7 @@ Docs that do not exist yet are listed by file name and become links when they ar
 | `mainactor-audit.md` | @MainActor and main-queue audit for the GLib main loop | WOR-309 S7 |
 | `test-matrix.md` | Which suites stay macOS-only and which run on Linux | WOR-309 |
 | `markdown-parity.md` | Remaining Markdown-renderer differences | WOR-310 S7 |
-| `perf-budgets.md` | Linux performance budgets and measurements (Linux counterpart of the local-only `docs/perf.md`) | WOR-313 S1; extended by WOR-323 |
+| [perf-budgets.md](perf-budgets.md) | Linux performance budgets and measurements (Linux counterpart of the local-only `docs/perf.md`): `vkCreateInstance` per driver set so far | WOR-313 S1; extended by WOR-313 S6, WOR-323 |
 | `hyprland.md` | Hyprland snippet: opacity, `terminal` tag and Settings-float rules, plain-Hyprland form | WOR-314 S3; extended by WOR-324 |
 | `input.md` | Linux shortcut table, colliding window-manager binds, IME setup | WOR-315 S3 |
 | `canvas-toolkit.md` | Canvas toolkit core: display list, layout, overlays, glass parity numbers | WOR-316 S7 |
