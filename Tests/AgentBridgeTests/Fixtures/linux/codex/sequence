@@ -1,0 +1,14 @@
+launch codex pane-1 launch.argv
+hook codex pane-1 SessionStart hook-SessionStart.json
+hook codex pane-1 UserPromptSubmit hook-UserPromptSubmit.json
+notify codex pane-1 agent-turn-complete notify-agent-turn-complete.json
+hook codex pane-1 Stop hook-Stop.json
+notify codex pane-1 agent-turn-complete notify-agent-turn-complete-2.json
+launch codex pane-2 launch-2.argv
+hook codex pane-1 SessionStart hook-SessionStart-2.json
+hook codex pane-1 UserPromptSubmit hook-UserPromptSubmit-2.json
+notify codex pane-1 agent-turn-complete notify-agent-turn-complete-3.json
+hook codex pane-1 Stop hook-Stop-2.json
+notify codex pane-1 agent-turn-complete notify-agent-turn-complete-4.json
+hook codex pane-1 SessionEnd hook-SessionEnd.json
+hook codex pane-1 SessionEnd hook-SessionEnd-2.json

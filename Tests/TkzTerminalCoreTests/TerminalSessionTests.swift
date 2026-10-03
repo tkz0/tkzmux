@@ -165,6 +165,33 @@ private func makeSession(cols: UInt16 = 80, rows: UInt16 = 24) throws -> (Termin
     #expect(events == [.clipboardWrite("hello clipboard")])
 }
 
+/// systemd's OSC 3008 context reports (UAPI.15), in the shapes `/etc/profile.d/80-systemd-osc-
+/// context.sh` prints them on Arch: a shell context at each prompt, a command context from PS0,
+/// and the three kinds of end. tkzmux's bash wrapper unhooks them (WOR-306 S5), but a shell it has
+/// no wrapper for, `ssh` to such a host, or a nested login shell still sends them. libghostty-vt
+/// has no handler for 3008, so they must vanish: no event, no title or pwd change, no reply, nothing
+/// on screen, and the parser back in ground state for what follows (WOR-306 S6).
+@Test func osc3008ContextReportsAreIgnored() async throws {
+    let (session, sink) = try makeSession(cols: 40, rows: 4)
+    let common = ";machineid=00000000000000000000000000000000;user=tester;hostname=host"
+        + ";bootid=11111111111111111111111111111111;pid=4242"
+    let shell = "6f1c2a7e-0b8d-4c55-9a3e-2d1f0e9b7c41"
+    let command = "0c5e9d3a-7f21-4b6e-8a90-5d4c3b2a1f07"
+    session.write(ptyText: "\u{1b}]3008;start=\(shell)\(common);type=shell;cwd=/home/tester/a\\x3bb\u{1b}\\")
+    session.write(ptyText: "\u{1b}]3008;start=\(command)\(common);type=command;cwd=/home/tester\u{1b}\\")
+    session.write(ptyText: "\u{1b}]3008;end=\(command);exit=success\u{1b}\\")
+    session.write(ptyText: "\u{1b}]3008;end=\(command);exit=failure;status=2\u{1b}\\")
+    session.write(ptyText: "\u{1b}]3008;end=\(command);exit=failure;status=130;signal=SIGINT\u{1b}\\")
+    #expect(try session.formatted() == "")
+    #expect(sink.text.isEmpty)
+
+    session.write(ptyText: "\u{1b}]7;file://localhost/home/tester\u{7}after")
+    let events = await drain(session)
+    #expect(events == [.pwd("file://localhost/home/tester")])
+    #expect(session.title.isEmpty)
+    #expect(try session.formatted() == "after")
+}
+
 @Test func exitAndForegroundArePublishedByTheHost() async throws {
     let (session, _) = try makeSession()
     session.noteForeground(pgid: 4242, path: "/bin/zsh", cwd: "/tmp")

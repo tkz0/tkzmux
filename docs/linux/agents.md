@@ -12,6 +12,7 @@ AgentBridge joined the Linux graph a file at a time. Until WOR-306 S3, `Package.
 | WOR-306 S2 | `ClaudeSessionWatcher.swift`, `StatuslineReader.swift`, `TranscriptWatch.swift` (new), and what they need to build: `AgentAdapter.swift`, `ProcessLiveness.swift`, `QuotaReconciler.swift`, `PromptCommand.swift`, `TranscriptReader.swift`, `TranscriptSearch.swift`, `TranscriptUsageReader.swift`, `Claude/ClaudeSessionInfo.swift`, `Codex/CodexUsageExtractor.swift` | `ClaudeSessionWatcherTests`, `StatuslineReaderTests` (with `StatuslineTestSupport.swift`, split out of `StatuslineTests` so the reader tests build without `StatuslineInstaller`), `TranscriptWatchTests` |
 | WOR-306 S3 | everything else: the adapters and mappers, `ProcessOwnership.swift`, `ShimInstaller.swift`, `StatuslineInstaller.swift`, `UserPath.swift`, `ModuleResources.swift`, `Codex/*`, `Antigravity/*` | everything but the shell harness and the zsh wrapper tests |
 | WOR-306 S5 | – (the wrapper resources change) | `ShellIntegrationHarnessTests`, `ZshWrapperTests`, `BashWrapperTests` (new) |
+| WOR-306 S6 | – (`CodexHooksDetection` gains `hooksFeatureDisabled`) | `AgentFixtureReplayTests` (new), `RealAgentProbeTests` (new, opt-in), and in TkzTerminalCoreTests `osc3008ContextReportsAreIgnored` |
 
 ## Hook socket
 
@@ -181,3 +182,105 @@ The tests find the shells on Linux from `/etc/shells` plus `PATH`, deduplicated 
   - `perPromptOverheadIsUnderTwoMilliseconds`: tkzmux bash minus `bash --norc --noprofile`, both measured in the shell with `EPOCHREALTIME`, is under 2 ms a prompt. It is skipped for bash < 5 (macOS's `/bin/bash`). Before S5 the difference was 2.2 ms with output to `/dev/null`.
 
 zsh and fish are not installed on the reference machine, so the Arch `zsh` 5.9.2 and `fish` 4.9.2 packages (signatures checked) were overlaid on `/usr` and `/etc` with `bwrap` for these runs, also as uid 0 like the CI container. All three fail against the wrapper as it was before S5 (checked), and so do the harness's PATH assertions for all three shells and its OSC 3008 assertion for bash. `ci-linux.yml` installs `zsh`, `fish`, `bash-completion`, `git` and `python` in the `arch` job; the `ubuntu` job already had `zsh`, `fish`, `git` and `python3`. The `arch` job then runs `--filter AgentBridgeTests` and `--filter GitStatusTests` as a separate step after the whole suite, through the same summary-line guard.
+
+## Real agents
+
+WOR-306 S6 ran real Claude Code 2.1.287 and codex-cli 0.160.0 through tkzmux's own pipeline on Linux, without a UI and without an account. What they sent is committed under `Tests/AgentBridgeTests/Fixtures/linux/` and replayed on every OS by `AgentFixtureReplayTests`. Antigravity (`agy`) was not installed on the reference machine, so it has no Linux run yet.
+
+### Real-agent probe
+
+`RealAgentProbeTests` is opt-in (`TKZMUX_REAL_AGENTS=1`). Each test runs one agent the way a pane does:
+
+- a throwaway world under `/tmp/tkzp-*`, laid out like a user's: the project and the agents' config dirs under its HOME, `$XDG_DATA_HOME/tkzmux` and `$XDG_RUNTIME_DIR`;
+- `ShimInstaller` with the **release** hook (`TKZMUX_HOOK_BIN`, else the static musl build on Linux and the release build on macOS), `StatuslineInstaller` for Claude and `CodexHooksInstaller` for Codex;
+- a `HookServer` on the socket `HookSocket.directory` picks, `ClaudeSessionWatcher` through `ClaudeAdapter.makeObservationWatcher`, and `StatuslineReader`;
+- the login shell from `TerminalEnvironment.loginShellSpawn` (bash, with the agent as `TKZMUX_BOOT_COMMAND`) on a real `Pty`, its output into libghostty-vt (`TerminalSession`), which answers the agents' terminal queries;
+- `Fixtures/linux/fake-model-api.py` on loopback as the model API, through `ANTHROPIC_BASE_URL` with a made-up key for Claude and a custom `model_providers` entry for Codex. Every turn answers `pong`; the main turn is held for 1.5 s so the descriptor's `busy` is observable.
+
+The probe types a prompt, waits for the turn, quits (`/exit`, `/quit`), and builds an `AgentTrace`: the launch frames, every hook frame with the event it maps to and the status `StatusDerivation` gives a row fed only those frames, the descriptor states, the statusline sidecars, and what the transcript readers find. Paths and ids are placeholders, pids and clocks are left out. The trace must equal `claude-code.trace` or `codex.trace`. Those were recorded on Linux; the same run on macOS against the same files is the Linux-equals-macOS check.
+
+On Linux the probe refuses to run unless `lo` is the only network interface, so nothing an agent does at startup (update checks, telemetry, the Codex daemon's updater) can leave the machine. Run it in a network namespace of its own; the read-only binds are a second guard for the real config dirs, which the probe never names:
+
+```sh
+swift build --build-system native -c release --product tkzmux-hook --swift-sdk x86_64-swift-linux-musl
+swift build --build-system native --build-tests
+TKZMUX_REAL_AGENTS=1 bwrap --dev-bind / / --unshare-net \
+    --ro-bind "$HOME/.claude" "$HOME/.claude" --ro-bind "$HOME/.codex" "$HOME/.codex" -- \
+    .build/debug/tkzmuxPackageTests.xctest --testing-library swift-testing --filter RealAgentProbeTests
+```
+
+The first line is the static hook ([hook.md](hook.md#building-it-locally) has the SDK setup); leave out a `--ro-bind` whose directory does not exist. `claude` and `codex` are found on the test's PATH and the pane's PATH names the directory of the real binary, so mise's shims are not involved; tkzmux's own shims still come first, as in the app. Add `TKZMUX_REAL_AGENTS_CAPTURE=<dir>` to also write the fixtures (`Fixtures/linux/README.md`), `TKZMUX_REAL_AGENTS_KEEP=1` to keep the world of a passing run. `TKZMUX_REAL_AGENTS_ALLOW_NETWORK=1` skips the namespace check. macOS has no namespace check: there the loopback endpoints and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_AUTOUPDATER` and `DISABLE_TELEMETRY` are the only guards, and Codex's daemon may still look for updates.
+
+Measured on the reference machine: the four tests take 20 s together and passed eight runs in a row.
+
+### Claude Code 2.1.287
+
+The Linux trace has the shape the Mac code expects, so nothing in AgentBridge changed for it:
+
+- **Hooks**: `SessionStart` (source `startup`), `UserPromptSubmit`, `Stop` (with `last_assistant_message` and an empty `background_tasks`), `SessionEnd` (reason `prompt_input_exit` for `/exit`). Each is run through `sh -c`, which execs the hook, so the hook's parent is Claude Code itself: the probe checks `ppid` equals the launch pid on every frame.
+- **Descriptor**: `sessions/<pid>.json` goes `idle`, `busy`, `idle`, then is removed on exit. It carries `procStart` and `pidDomain` (the S3 guard) and a `messagingSocketPath` under `$XDG_RUNTIME_DIR/cc-socks`.
+- **Statusline**: one sidecar at startup and one after the turn, model `Opus 5.5`, account key `claude` from the config dir.
+- **Transcript**: `<config>/projects/<slug>/<id>.jsonl`, the slug being the cwd with every character that is not a letter or digit turned into `-`, the same rule as on macOS. `TranscriptReader` finds it and reads the first prompt and the recap; `TranscriptUsageReader` sums the fake API's tokens.
+
+#### `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`
+
+`claudeCodeHooksSurviveTheSubprocessEnvScrub` runs the same session with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` and gets the same trace. Measured with a hook that dumps its environment: the scrub removes `ANTHROPIC_API_KEY`, `AWS_SECRET_ACCESS_KEY` and `SSH_AUTH_SOCK` from what hooks and the statusline command get, and keeps `TKZMUX_SOCKET`, `TKZMUX_SESSION_ID`, `TKZMUX_BIN`, `TKZMUX_AGENT`, `WAYLAND_DISPLAY`, `ANTHROPIC_BASE_URL` and `GH_TOKEN`. `TerminalEnvironment` strips every inherited `CLAUDE_CODE_*` variable, so the scrub applies only when the user's own shell files or Claude Code's `settings.json` `env` set it.
+
+#### The environment lists (WOR-305)
+
+The Claude test hands the pane `WAYLAND_DISPLAY`, `DBUS_SESSION_BUS_ADDRESS`, `SSH_AUTH_SOCK` and `XDG_ACTIVATION_TOKEN`, and no `LANG`, then reads `/proc/<pid>/environ` of the running Claude Code: the first three arrive unchanged, the activation token does not, and `LANG` is `TerminalEnvironment.fallbackLanguage` (`en_US.UTF-8` here, where that locale is generated).
+
+### codex-cli 0.160
+
+Codex 0.160 runs its sessions in an **app-server daemon**. The first `codex` started for a `CODEX_HOME` starts it, every later TUI connects to it, and it keeps running after `/quit` ("Disconnected from this task. Any running work continues."). It runs from a copy of Codex it installs under `CODEX_HOME/packages/app-server-daemon/`, and a `pid-update-loop` process started from that copy outlives the daemon itself; the probe kills both. The daemon runs the hooks. The probe opens two panes on one `CODEX_HOME`, one turn each, and the trace shows what follows from that:
+
+- **Attribution.** Every hook frame carries the *first* pane's `TKZMUX_SESSION_ID`, because the daemon has the first pane's environment, and its `ppid` is the daemon (checked against `app-server-daemon/daemon.pid`), not the pane's `codex`. In the app the second pane's events would land on the first pane's row. This is codex-cli behaviour and not Linux-specific. `codex exec` still runs hooks in its own process (measured on 0.160: the hook's parent is the `codex exec` process, and `SessionEnd` fires when it exits), which is how the macOS fixtures were captured on 0.155.
+- **SessionStart** runs when a thread's first turn starts, together with `UserPromptSubmit`, not when the TUI opens.
+- **SessionEnd** runs for every thread when the daemon stops (the probe sends it SIGTERM), not on `/quit`. Its reason is `other`, as on 0.155.
+- **notify** (`notify = ["<support>/bin/tkzmux-hook", "notify-argv"]`) runs twice per turn: once for the turn and once for the title Codex generates on a side thread. The payload carries a `client` field: `codex-tui` from the TUI, `codex_exec` from `codex exec`.
+- **Rollouts** are `sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<id>.jsonl` as before, and `CodexTranscriptReader.locate` finds them. Its first prompt is the `<environment_context>` block 0.160 writes as the first user message, a case its own comment already leaves to a later ticket.
+
+#### Hooks run outside the sandbox
+
+Codex runs hooks outside its sandbox, as its documentation says. Measured: in a hook's environment `CODEX_SANDBOX` and `CODEX_SANDBOX_NETWORK_DISABLED` are unset, its parent is the daemon rather than a sandboxed command, and every frame reaches the `AF_UNIX` socket under `$XDG_RUNTIME_DIR/tkzmux`. The sandbox risk from the research is moot.
+
+#### Trust
+
+Trusting happens in Codex's TUI: the first start after `CodexHooksInstaller` wrote `hooks.json` shows *Hooks need review*, and the probe answers *Trust all and continue*. Codex 0.160 then writes the ledger into **`config.toml`**, one table per hook:
+
+```toml
+[hooks.state."<CODEX_HOME>/hooks.json:stop:0:0"]
+trusted_hash = "sha256:…"
+```
+
+The key is the absolute path of `hooks.json` plus the event and the group and entry index; the hash covers the command, so it changes with the absolute hook path (two worlds with different roots got different hashes for the same event). There is no `hooks.state` file any more, so `CodexHooksDetection.trust` stays `.unknown` on 0.160 (`linuxHooksJSONAndTrustLedgerDetect`). The `[hooks.state…]` headers are single-bracket tables and do not count as `configTomlHasHooks`.
+
+#### `[features] hooks = false`
+
+On 0.160 the `hooks` feature is on by default (`codex features list`: `hooks stable true`), and an explicit `false` switches every hook off, ours included. `CodexHooksDetection.hooksFeatureDisabled` reports it. It reads the three TOML spellings (`[features]` / `hooks = false`, `features.hooks = false`, `features = { hooks = false }`), and `codexHooksFeatureFlagAgreesWithTheInstaller` checks each against `codex features list`. It is model only: no Mac UI reads it yet, the installer never writes the flag, and nothing advises setting it to `true`.
+
+### OSC 3008
+
+libghostty-vt has no handler for OSC 3008, so systemd's context reports vanish: `osc3008ContextReportsAreIgnored` (TkzTerminalCoreTests) feeds the shell, command and three kinds of end reports in the shapes Arch's `80-systemd-osc-context.sh` prints and finds no event, no title or pwd change, no reply and an empty screen, with the parser back in ground state for the OSC 7 that follows. The bash wrapper still unhooks them (S5), because they cost forks at every prompt.
+
+### Dotfile sync
+
+Three files carry the absolute path of the hook in the support directory, which differs per OS (`~/Library/Application Support/tkzmux` on macOS, `~/.local/share/tkzmux` on Linux):
+
+- `~/.claude/settings.json`: the statusline command (`StatuslineInstaller`);
+- `~/.codex/hooks.json`: every hook command (`CodexHooksInstaller`);
+- `~/.codex/config.toml`: Codex's own trust hashes over those commands.
+
+Claude Code's hooks are injected per invocation (`--settings`) and are not affected. When these files are synced between a Mac and a Linux machine (a dotfile manager, a synced home), each side's tkzmux finds the other's path, reports it as `.stale`, and `repair` points it back at its own; the other side then does the same. For Codex each rewrite changes the command, so the trusted hash no longer matches and Codex stops running the hooks until the user trusts them again, on whichever machine rewrote last. Until there is an OS-neutral spelling (follow-up below), keep these keys out of the sync, or sync only one OS's copy.
+
+### Follow-ups
+
+Found or confirmed by S6, to be filed:
+
+- **Exec-form hook injection.** `settings-merge` injects shell-form hooks (`"<bin>/tkzmux-hook" <Event>`), which Claude Code runs through `sh -c` (bash on Arch; the WOR-300 research measured about 0.5 ms per hook for it). With `"command": "<bin>/tkzmux-hook", "args": ["<Event>"]` Claude Code spawns the hook directly. Needs a minimum Claude Code version check; applies to both OSes.
+- **Scrub regression guard.** `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` keeps `TKZMUX_*` today (2.1.287). The scrub list is Claude Code's and may grow; rerun `claudeCodeHooksSurviveTheSubprocessEnvScrub` on Claude Code upgrades, and if `TKZMUX_*` ever goes, pass the socket and session on the hook command line instead.
+- **Codex daemon attribution.** With 0.160's shared daemon, `TKZMUX_SESSION_ID` and `ppid` no longer identify the pane. Attribute Codex frames by `session_id` (the thread), bound to a pane by something the pane knows, and handle `SessionStart` arriving at the first turn and `SessionEnd` only when the daemon exits. The daemon also lives outside any pane's process tree (WOR-321's per-session cgroup).
+- **Codex trust ledger.** Read `[hooks.state."<hooks.json>:…"]` from `config.toml` for `CodexHooksTrustState` on 0.160 and later.
+- **Codex first prompt.** Skip the `<environment_context>` user message in `CodexTranscriptReader`.
+- **OS-neutral hook path** for the dotfile-sync collision above, for example `$HOME/.local/share/tkzmux/bin/tkzmux-hook` on both OSes.
+- **corelibs `Process` and the signal mask.** On Linux a child started by Foundation's `Process` inherits the starting thread's blocked-signal mask; the probe's fake API server had SIGTERM blocked and ignored `terminate()`. `GitProcess` and `UserPath` stop a child with `terminate()` on a timeout, which then does nothing. `TkzPtyShim` already clears the mask for panes.

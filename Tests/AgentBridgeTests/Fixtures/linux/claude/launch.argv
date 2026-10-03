@@ -1,0 +1,10 @@
+launch
+--pid
+420840
+--cwd
+/home/tester/project
+--config-dir
+/home/tester/.claude
+--agent
+claude
+--

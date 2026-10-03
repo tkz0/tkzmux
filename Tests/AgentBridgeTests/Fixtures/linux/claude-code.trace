@@ -1,0 +1,25 @@
+# Claude Code 2.1.287 (Claude Code), recorded by RealAgentProbeTests against fake-model-api.py.
+# Regenerate: docs/linux/agents.md, Real-agent probe. Comments are not compared.
+
+[launch]
+launch claude pane=<pane-1> cwd=<project> config=<home>/.claude argv=[]
+
+[hooks]
+hook claude SessionStart pane=<pane-1> conversation=<conversation-1> source=startup transcript=<home>/.claude/projects/<project-slug>/<conversation-1>.jsonl -> sessionStart => idle
+hook claude UserPromptSubmit pane=<pane-1> conversation=<conversation-1> -> promptSubmitted => working
+hook claude Stop pane=<pane-1> conversation=<conversation-1> last="pong" background=0 -> turnEnded => idle done
+hook claude SessionEnd pane=<pane-1> conversation=<conversation-1> reason=prompt_input_exit -> sessionEnd(exited) => idle
+
+[observation]
+observation idle alive conversation=<conversation-1> config=<home>/.claude cwd=<project>
+observation busy alive conversation=<conversation-1> config=<home>/.claude cwd=<project>
+observation idle alive conversation=<conversation-1> config=<home>/.claude cwd=<project>
+observation removed config=<home>/.claude
+
+[statusline]
+context conversation=<conversation-1> account=claude model="Opus 5.5" project=<project>
+context conversation=<conversation-1> account=claude model="Opus 5.5" used=0% project=<project>
+
+[transcript]
+transcript conversation=<conversation-1> located=<home>/.claude/projects/<project-slug>/<conversation-1>.jsonl first-prompt="say pong" recap="pong"
+usage conversation=<conversation-1> model=claude-opus-5-5 input=12 output=3 cache-read=0 cache-write=0

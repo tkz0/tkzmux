@@ -1,0 +1,1 @@
+{"type":"agent-turn-complete","thread-id":"01a10009-e457-7731-a9dc-0cc7b1895d73","turn-id":"01a10009-e742-71f1-90cf-7197967014a6","cwd":"/home/tester/project","client":"codex-tui","input-messages":["say pong again"],"last-assistant-message":"pong"}

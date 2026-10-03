@@ -182,6 +182,28 @@ private enum Support {
         try Support.write("{\"entries\": [{\"source\": \"\(hooksPath)\"}]}", to: statePath)
         #expect(installer.detect(configDir: configDir.path).trust == .mentionsOurConfig)
     }
+
+    /// An explicit `hooks = false` feature is reported in each spelling TOML has for it, and
+    /// nothing else is: `true`, the same key in another table, or no `config.toml` at all. The
+    /// spellings were checked against `codex features list` on 0.160.0
+    /// (`RealAgentProbeTests.codexHooksFeatureFlagAgreesWithTheInstaller`).
+    @Test(arguments: [
+        ("", false),
+        ("[features]\nhooks = false\n", true),
+        ("[features]\nhooks = true\n", false),
+        ("features.hooks = false\n", true),
+        ("features = { hooks = false }\n", true),
+        ("[features]\n  hooks=false # off for now\n", true),
+        ("[features]\nother = false\n[tui]\nhooks = false\n", false),
+        ("[model]\nname = \"x\"\nfeatures.hooks = false\n", false),
+        ("[[hooks.Stop]]\nhooks = false\n", false),
+    ])
+    func hooksFeatureDisabledIsDetected(text: String, disabled: Bool) throws {
+        let (_, configDir, installer) = try Support.makeInstaller(label: "features")
+        #expect(!installer.detect(configDir: configDir.path).hooksFeatureDisabled)
+        try Support.write(text, to: configDir.appendingPathComponent("config.toml"))
+        #expect(installer.detect(configDir: configDir.path).hooksFeatureDisabled == disabled)
+    }
 }
 
 @Suite struct CodexHooksInstallerInstallTests {

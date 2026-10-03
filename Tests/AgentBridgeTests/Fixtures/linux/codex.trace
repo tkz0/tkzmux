@@ -1,0 +1,28 @@
+# codex-cli 0.160.0, recorded by RealAgentProbeTests against fake-model-api.py.
+# Regenerate: docs/linux/agents.md, Real-agent probe. Comments are not compared.
+
+[launch]
+launch codex pane=<pane-1> cwd=<project> config=<home>/.codex argv=[]
+launch codex pane=<pane-2> cwd=<project> config=<home>/.codex argv=[]
+
+[hooks]
+hook codex SessionStart pane=<pane-1> conversation=<conversation-1> source=startup transcript=<home>/.codex/sessions/<date>/rollout-<time>-<conversation-1>.jsonl -> sessionStart => idle
+hook codex UserPromptSubmit pane=<pane-1> conversation=<conversation-1> -> promptSubmitted => working
+hook codex Stop pane=<pane-1> conversation=<conversation-1> last="pong" -> turnEnded => idle done
+hook codex SessionStart pane=<pane-1> conversation=<conversation-2> source=startup transcript=<home>/.codex/sessions/<date>/rollout-<time>-<conversation-2>.jsonl -> sessionStart => idle done
+hook codex UserPromptSubmit pane=<pane-1> conversation=<conversation-2> -> promptSubmitted => working
+hook codex Stop pane=<pane-1> conversation=<conversation-2> last="pong" -> turnEnded => idle done
+hook codex SessionEnd pane=<pane-1> conversation=<conversation-1> reason=other -> sessionEnd(exited) => idle
+hook codex SessionEnd pane=<pane-1> conversation=<conversation-2> reason=other -> sessionEnd(exited) => idle
+
+[notify]
+hook codex agent-turn-complete pane=<pane-1> conversation=- -> turnEnded => idle done
+hook codex agent-turn-complete pane=<pane-1> conversation=- -> turnEnded => idle done
+hook codex agent-turn-complete pane=<pane-1> conversation=- -> turnEnded => idle done
+hook codex agent-turn-complete pane=<pane-1> conversation=- -> turnEnded => idle done
+
+[transcript]
+transcript conversation=<conversation-1> located=<home>/.codex/sessions/<date>/rollout-<time>-<conversation-1>.jsonl first-prompt="<environment_context>\n  <cwd><project></cwd>\n  <shell>bash</shell>\n  <current…" recap="pong"
+usage conversation=<conversation-1> model=gpt-probe input=12 output=3 cache-read=0 cache-write=0
+transcript conversation=<conversation-2> located=<home>/.codex/sessions/<date>/rollout-<time>-<conversation-2>.jsonl first-prompt="<environment_context>\n  <cwd><project></cwd>\n  <shell>bash</shell>\n  <current…" recap="pong"
+usage conversation=<conversation-2> model=gpt-probe input=12 output=3 cache-read=0 cache-write=0

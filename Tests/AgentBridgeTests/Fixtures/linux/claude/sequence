@@ -1,0 +1,5 @@
+launch claude pane-1 launch.argv
+hook claude pane-1 SessionStart hook-SessionStart.json
+hook claude pane-1 UserPromptSubmit hook-UserPromptSubmit.json
+hook claude pane-1 Stop hook-Stop.json
+hook claude pane-1 SessionEnd hook-SessionEnd.json

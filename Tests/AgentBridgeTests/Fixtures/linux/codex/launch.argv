@@ -1,0 +1,10 @@
+launch
+--pid
+421058
+--cwd
+/home/tester/project
+--config-dir
+/home/tester/.codex
+--agent
+codex
+--

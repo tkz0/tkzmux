@@ -51,8 +51,11 @@
 //
 // `[features] hooks = true` in `config.toml`: the ticket that started this file said to require it.
 // That turned out to be obsolete — `codex features list` on 0.155.0 reports `hooks stable true`, on
-// by default — so nothing here checks for it, and nothing should ever be written that tells a user
-// to set it.
+// by default — so nothing here requires it, and nothing should ever be written that tells a user
+// to set it. The opposite, an explicit `hooks = false`, does switch every hook off (measured on
+// codex-cli 0.160.0, WOR-306 S6: `codex features list` then reports `hooks stable false`).
+// `detect` reports that as `hooksFeatureDisabled` and nothing more: it is the user's own choice,
+// so the installer never edits it and never suggests `true`.
 import Foundation
 import TkzPlatform
 
@@ -104,13 +107,18 @@ public struct CodexHooksDetection: Equatable, Sendable {
     /// than let a `.none` producer imply the user has no hooks configured anywhere.
     public var configTomlHasHooks: Bool
     public var trust: CodexHooksTrustState
+    /// True when `config.toml` explicitly sets the `hooks` feature to `false`, which stops Codex
+    /// running any hook at all, ours included. Reported only; see this file's header.
+    public var hooksFeatureDisabled: Bool
 
     public init(
-        producer: CodexHooksProducer, configTomlHasHooks: Bool, trust: CodexHooksTrustState
+        producer: CodexHooksProducer, configTomlHasHooks: Bool, trust: CodexHooksTrustState,
+        hooksFeatureDisabled: Bool = false
     ) {
         self.producer = producer
         self.configTomlHasHooks = configTomlHasHooks
         self.trust = trust
+        self.hooksFeatureDisabled = hooksFeatureDisabled
     }
 }
 
@@ -211,7 +219,9 @@ public struct CodexHooksInstaller: HookConfigInstaller, Sendable {
             producer: detectProducer(configDir: configDir, fileManager: fileManager),
             configTomlHasHooks: Self.configTomlHasHooksBlocks(
                 configDir: configDir, fileManager: fileManager),
-            trust: trustState(configDir: configDir, fileManager: fileManager))
+            trust: trustState(configDir: configDir, fileManager: fileManager),
+            hooksFeatureDisabled: Self.configTomlDisablesHooks(
+                configDir: configDir, fileManager: fileManager))
     }
 
     public func isInstalled(configDir: String, fileManager: FileManager = .default) -> Bool {
@@ -313,6 +323,55 @@ public struct CodexHooksInstaller: HookConfigInstaller, Sendable {
             guard line.hasPrefix("[["), line.hasSuffix("]]") else { continue }
             let inner = line.dropFirst(2).dropLast(2)
             if inner.hasPrefix("hooks.") { return true }
+        }
+        return false
+    }
+
+    /// Text-scans `config.toml` for the `hooks` feature set to `false`, in the three spellings TOML
+    /// allows for it: `hooks = false` inside the `[features]` table, a top-level dotted
+    /// `features.hooks = false`, and a top-level inline table `features = { hooks = false }`. The
+    /// same no-parser rule as `configTomlHasHooksBlocks`: a comment after the value is allowed,
+    /// anything this scan cannot read counts as "not disabled", which is Codex's own default.
+    static func configTomlDisablesHooks(configDir: String, fileManager: FileManager) -> Bool {
+        let path = Self.configTomlPath(configDir: configDir)
+        guard let data = fileManager.contents(atPath: path),
+              let text = String(data: data, encoding: .utf8)
+        else { return false }
+        // "" until the first table header: the top level, where dotted and inline keys live.
+        var table = ""
+        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            var line = Substring(rawLine.trimmingCharacters(in: .whitespaces))
+            if let hash = line.firstIndex(of: "#") { line = line[..<hash] }
+            let content = line.trimmingCharacters(in: .whitespaces)
+            if content.hasPrefix("[[") {
+                // An array of tables (`[[hooks.Stop]]`): never the features table.
+                table = "[[]]"
+                continue
+            }
+            if content.hasPrefix("[") {
+                table = String(content.dropFirst().prefix { $0 != "]" }).trimmingCharacters(in: .whitespaces)
+                continue
+            }
+            guard let equals = content.firstIndex(of: "=") else { continue }
+            let key = content[..<equals].trimmingCharacters(in: .whitespaces)
+            let value = content[content.index(after: equals)...].trimmingCharacters(in: .whitespaces)
+            switch (table, key) {
+            case ("features", "hooks"), ("", "features.hooks"):
+                if value == "false" { return true }
+            case ("", "features"):
+                let inner = value.drop { $0 == "{" }.prefix { $0 != "}" }
+                for pair in inner.split(separator: ",") {
+                    let parts = pair.split(separator: "=", maxSplits: 1)
+                    if parts.count == 2,
+                       parts[0].trimmingCharacters(in: .whitespaces) == "hooks",
+                       parts[1].trimmingCharacters(in: .whitespaces) == "false"
+                    {
+                        return true
+                    }
+                }
+            default:
+                continue
+            }
         }
         return false
     }

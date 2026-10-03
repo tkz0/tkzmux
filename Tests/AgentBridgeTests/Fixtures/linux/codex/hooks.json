@@ -1,0 +1,84 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/tester/.local/share/tkzmux/bin/tkzmux-hook\" SessionStart"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/tester/.local/share/tkzmux/bin/tkzmux-hook\" SessionEnd"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/tester/.local/share/tkzmux/bin/tkzmux-hook\" UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/tester/.local/share/tkzmux/bin/tkzmux-hook\" Stop"
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/tester/.local/share/tkzmux/bin/tkzmux-hook\" Interrupt"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/tester/.local/share/tkzmux/bin/tkzmux-hook\" PermissionRequest"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/tester/.local/share/tkzmux/bin/tkzmux-hook\" PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/home/tester/.local/share/tkzmux/bin/tkzmux-hook\" PostToolUse"
+          }
+        ]
+      }
+    ]
+  }
+}
