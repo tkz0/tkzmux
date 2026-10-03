@@ -10,6 +10,7 @@
 // go through `.sRGB` so the two halves of the window agree.
 import AppKit
 import TkzCore
+import TkzTerminalRender
 
 public extension RGB {
     /// The sRGB `NSColor` for this token. Straight alpha, as stored.
@@ -34,7 +35,14 @@ public extension Theme.Fonts {
     /// The bundled faces are registered process-wide by `FontSet` (M1.4) and, inside the `.app`, by
     /// `ATSApplicationFontsPath`. Resolution still goes through a descriptor match rather than
     /// `NSFont(name:)` alone, because a missing family silently substitutes rather than failing.
+    ///
+    /// The one-shot `FontSet.registration` is forced first, so the result never depends on whether
+    /// a `FontSet` happened to exist yet: outside the `.app` (`swift test`, `swift run`) a font
+    /// cached in a `static let` (the sidebar row's) would otherwise be Menlo or JetBrains Mono by
+    /// test order. Inside the `.app` `ATSApplicationFontsPath` has registered the faces already,
+    /// so this resolves exactly as before.
     static func mono(_ size: Double, weight: NSFont.Weight = .regular) -> NSFont {
+        _ = FontSet.registration
         if let font = NSFont(name: mono.postScriptName, size: size) { return font }
         if let font = NSFont(name: mono.fallback, size: size) { return font }
         return NSFont.monospacedSystemFont(ofSize: size, weight: weight)
