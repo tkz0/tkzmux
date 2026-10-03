@@ -56,6 +56,14 @@ let sharedTargets: [Target] = [  // hygiene-scan
         publicHeadersPath: "include"
     ),
 
+    // fork/exec on a pty, the only C that runs in the child (WOR-305: clone3/pidfd on Linux).
+    .target(
+        name: "TkzPtyShim",
+        dependencies: ["TkzPlatformShim"],
+        path: "Sources/TkzPtyShim",
+        publicHeadersPath: "include"
+    ),
+
     .target(
         name: "TkzCore",
         dependencies: ["TkzPlatform"],
@@ -151,13 +159,6 @@ let macOnlyProducts: [Product] = [
 ]
 
 let macOnlyTargets: [Target] = [
-    // MARK: C targets
-    .target(
-        name: "TkzPtyShim",
-        path: "Sources/TkzPtyShim",
-        publicHeadersPath: "include"
-    ),
-
     // MARK: Terminal engine
     .target(
         name: "TkzTerminalCore",

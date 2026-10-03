@@ -146,7 +146,7 @@ public final class Pty: Sendable {
         onData: @escaping @Sendable (Data) -> Void,
         onExit: @escaping @Sendable (PtyExit) -> Void
     ) throws {
-        var result = tkz_pty_spawn_result(master_fd: -1, pid: -1)
+        var result = tkz_pty_spawn_result(master_fd: -1, pid: -1, pidfd: -1)
         let code = Pty.withCArrays(argv: spawn.argv, envp: spawn.environmentStrings) { argv, envp in
             spawn.executablePath.withCString { path -> Int32 in
                 func run(_ cwd: UnsafePointer<CChar>?) -> Int32 {
@@ -158,7 +158,8 @@ public final class Pty: Sendable {
                         rows: spawn.size.rows,
                         cols: spawn.size.cols,
                         cell_width_px: spawn.size.cellWidthPx,
-                        cell_height_px: spawn.size.cellHeightPx
+                        cell_height_px: spawn.size.cellHeightPx,
+                        flags: 0
                     )
                     return tkz_pty_spawn(&opts, &result)
                 }

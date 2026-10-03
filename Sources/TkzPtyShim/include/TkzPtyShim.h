@@ -5,12 +5,13 @@
 // Contract:
 //   openpty(&master, &slave, NULL, NULL, &ws)   with the initial winsize
 //   → pipe2-style FD_CLOEXEC error pipe
-//   → fork()
+//   → fork()   (Linux: clone3(CLONE_PIDFD), else fork() + pidfd_open())
 //     child : setsid(), ioctl(slave, TIOCSCTTY, 0), dup2(slave, 0/1/2), close spare fds,
 //             empty signal mask, all handlers back to SIG_DFL, chdir(cwd), execve(...)
 //             On exec failure the child writes errno to the pipe and _exit(127)s.
 //     parent: close(slave), O_NONBLOCK|FD_CLOEXEC on master, read the error pipe
 //             (EOF = exec succeeded; a payload = exec failed with that errno).
+//             On Linux the parent also gets a pidfd for the child, which turns readable on exit.
 //
 // posix_spawn cannot do the tty setup (setsid + TIOCSCTTY must happen in the child between
 // fork and exec), which is why this is a hand-rolled fork/exec.
@@ -24,7 +25,7 @@ extern "C" {
 #endif
 
 /// Shim ABI version. Bumped when the spawn contract changes.
-/// 1 = M0.1 stub, 2 = M1.2 spawn/resize/proc-info contract.
+/// 1 = M0.1 stub, 2 = M1.2 spawn/resize/proc-info contract, 3 = `flags` and the result's `pidfd`.
 int32_t tkz_pty_shim_version(void);
 
 /// What to launch. All pointers are borrowed for the duration of the call only.
@@ -43,7 +44,13 @@ typedef struct {
     uint16_t cols;
     uint16_t cell_width_px;
     uint16_t cell_height_px;
+    /// TKZ_PTY_SPAWN_* bits; 0 for the default spawn.
+    uint32_t flags;
 } tkz_pty_spawn_options;
+
+/// Linux test seam: skip clone3(CLONE_PIDFD) and take the fork() + pidfd_open() fallback that a
+/// kernel without clone3 or a seccomp filter (Docker) forces. Ignored on macOS.
+#define TKZ_PTY_SPAWN_FORCE_FORK 0x1u
 
 /// Result of a successful spawn.
 typedef struct {
@@ -51,13 +58,17 @@ typedef struct {
     int master_fd;
     /// Child pid. The caller must waitpid() it.
     pid_t pid;
+    /// Linux: a pidfd for the child (O_CLOEXEC), readable once it exits; the caller owns it and
+    /// must close() it. -1 on macOS, on failure, and on a kernel without pidfds (< 5.3).
+    int pidfd;
 } tkz_pty_spawn_result;
 
 /// Spawn `opts.path` on a fresh pty with the child as session leader of a new session whose
 /// controlling terminal is the pty slave (i.e. job control works).
 ///
 /// Returns 0 on success (`out` filled in), otherwise a positive errno-style code. On failure no
-/// fd is leaked and no zombie is left behind: a child that failed to exec is reaped here.
+/// fd (pidfd included) is leaked and no zombie is left behind: a child that failed to exec is
+/// reaped here.
 /// Thread-safe: serialized internally so a concurrent fork cannot inherit another spawn's fds.
 int32_t tkz_pty_spawn(const tkz_pty_spawn_options *opts, tkz_pty_spawn_result *out);
 
@@ -69,12 +80,15 @@ int32_t tkz_pty_set_size(int master_fd, uint16_t rows, uint16_t cols, uint16_t p
 /// Returns the pgid (> 0) or -1 (errno set) when there is none.
 pid_t tkz_pty_foreground_pgid(int master_fd);
 
-/// proc_pidpath(): absolute executable path of `pid` into `buf`.
+/// proc_pidpath() (Linux: readlink of /proc/<pid>/exe, without a trailing " (deleted)"):
+/// absolute executable path of `pid` into `buf`, NUL-terminated.
 /// Returns the byte length written (> 0) or 0 on failure. `len` should be >= 4096 (PROC_PIDPATHINFO_MAXSIZE).
 int32_t tkz_proc_path(pid_t pid, char *buf, uint32_t len);
 
-/// proc_pidinfo(PROC_PIDVNODEPATHINFO).pvi_cdir.vip_path: current directory of `pid` into `buf`.
-/// Returns the byte length written (> 0) or 0 on failure (including EPERM for foreign-uid processes).
+/// proc_pidinfo(PROC_PIDVNODEPATHINFO).pvi_cdir.vip_path (Linux: readlink of /proc/<pid>/cwd,
+/// without a trailing " (deleted)"): current directory of `pid` into `buf`, NUL-terminated.
+/// Returns the byte length written (> 0) or 0 on failure (including EPERM/EACCES for foreign-uid
+/// processes and ENOENT for exited ones).
 int32_t tkz_proc_cwd(pid_t pid, char *buf, uint32_t len);
 
 #ifdef __cplusplus

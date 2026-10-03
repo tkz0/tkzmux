@@ -6,5 +6,5 @@ import Testing
 }
 
 @Test func ptyShimLinks() {
-    #expect(TkzTerminalCoreModule.ptyShimVersion == 2)
+    #expect(TkzTerminalCoreModule.ptyShimVersion == 3)
 }
