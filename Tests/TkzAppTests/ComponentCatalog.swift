@@ -1,7 +1,7 @@
 // ComponentCatalog — every component WOR-307 S2 commits a golden for, with its fixture model and
 // logical size. Each entry is rendered for the 3 presets at 2.0 and 1.6
 // (`ComponentSnapshotGoldenTests`), so an entry here is six PNGs and six layout dumps inside the
-// 4.25 MiB share of ADR-0003 §5: sizes are the component's real ones, but the free-standing views
+// 4.5 MiB share of ADR-0003 §5: sizes are the component's real ones, but the free-standing views
 // (overlays, split views) are kept as small as the component allows.
 //
 // Models come from `AppState.fixture` where the app derives them from the store (sidebar rows,

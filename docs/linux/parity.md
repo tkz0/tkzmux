@@ -182,7 +182,7 @@ A site reads its token as `CGFloat(LayoutTokens.<Component>.<name>.value)`. `Lay
 
 Without a committed manifest the suite is skipped, with a message saying how to generate the set. Two more tests check the set itself:
 
-- The manifest lists exactly the files on disk, its sizes, sha256s, total and off-grid lists match those files, and the total is within WOR-307's 4.25 MiB share (ADR-0003 §5, `componentSnapshotShareBytes`).
+- The manifest lists exactly the files on disk, its sizes, sha256s, total and off-grid lists match those files, and the total is within WOR-307's 4.5 MiB share (ADR-0003 §5, `componentSnapshotShareBytes`).
 - Every catalog entry × preset × scale has its PNG and JSON, and no other golden files exist.
 
 WOR-322's size test enforces the combined budget across this folder and `Tests/Parity/References/`. WOR-322 lists these goldens by path and sha256 and never copies them.
@@ -227,7 +227,7 @@ Goldens are generated only on the reference runner: the GitHub-hosted `macos-26`
    - `manifest.json`'s `reference` names the runner image.
    - `totalBytes` is within `budgetBytes`.
    - The off-grid lists have gone into ADR-0003's exception table.
-3. If the set is over budget, the update fails once and still writes and uploads everything; `manifest.json` lists every file's size. Renegotiate the split in ADR-0003 (WOR-307 has 4.25 MiB, WOR-322 has 4.75 MiB). Do not drop coverage to fit.
+3. If the set is over budget, the update fails once and still writes and uploads everything; `manifest.json` lists every file's size. Renegotiate the split in ADR-0003 (WOR-307 has 4.5 MiB, WOR-322 has 4.5 MiB). Do not drop coverage to fit.
 
 A regeneration that follows a runner image change must show that the old and new sets agree. L0 must be byte-identical or each difference explained, and L5 must pass between the two sets (ADR-0003, Consequences).
 

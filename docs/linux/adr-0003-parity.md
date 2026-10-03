@@ -191,8 +191,8 @@ The L5 channel rule reuses the existing golden comparator's defaults (`channelTo
 
   It holds no user names or host names (`scripts/scan-personal-data.sh`).
 - **Budget: one combined committed budget of ≤ 9 MiB (9,437,184 bytes), with each image stored once.**
-  - `Tests/TkzAppTests/ComponentSnapshots/` (WOR-307) has a share of ≤ 4.25 MiB (4,456,448 bytes). Renegotiated on 2026-10-03 from 4 MiB: the first reference-runner set came to 4,194,643 bytes, 339 over, with full coverage (no case dropped).
-  - `Tests/Parity/References/` (WOR-322, including WOR-312's `fonts/` and WOR-313's conformance outputs) has a share of ≤ 4.75 MiB (4,980,736 bytes), down from 5 MiB to keep the 9 MiB total.
+  - `Tests/TkzAppTests/ComponentSnapshots/` (WOR-307) has a share of ≤ 4.5 MiB (4,718,592 bytes). Renegotiated on 2026-10-03 from 4 MiB: the first full reference-runner set is 4,598,685 bytes (564 files) with full coverage (no case dropped).
+  - `Tests/Parity/References/` (WOR-322, including WOR-312's `fonts/` and WOR-313's conformance outputs) has a share of ≤ 4.5 MiB (4,718,592 bytes), down from 5 MiB to keep the 9 MiB total.
   - The manifest lists WOR-307's goldens by path and sha256 and never copies them.
   - WOR-322's size test enforces the total and both shares.
   - Constants: `referenceBudgetBytes`, `componentSnapshotShareBytes`, `parityReferenceShareBytes`.

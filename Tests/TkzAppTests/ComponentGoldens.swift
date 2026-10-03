@@ -12,7 +12,7 @@
 //   <component>@<preset>@<scale>.png    the sRGB render (RGB when opaque, else RGBA)
 //   <component>@<preset>@<scale>.json   its `LayoutDump`, canonical compact JSON
 //   manifest.json                       the reference machine, every file's size and sha256, the
-//                                       total against WOR-307's 4.25 MiB share, the off-grid edges
+//                                       total against WOR-307's 4.5 MiB share, the off-grid edges
 //   README.md                           how to regenerate
 //
 // Regenerate on the reference runner (ADR-0003 §5), never by hand:
@@ -90,8 +90,8 @@ struct ComponentManifest: Codable, Equatable, Sendable {
 // MARK: - The golden folder
 
 enum ComponentGoldens {
-    /// ADR-0003 §5 `componentSnapshotShareBytes`: 4.25 MiB of the combined 9 MiB.
-    static let budgetBytes = 4_456_448
+    /// ADR-0003 §5 `componentSnapshotShareBytes`: 4.5 MiB of the combined 9 MiB.
+    static let budgetBytes = 4_718_592
     static let updateVariable = "TKZMUX_UPDATE_SNAPSHOTS"
     static let regenerateCommand = "TKZMUX_UPDATE_SNAPSHOTS=1 swift test --no-parallel --filter ComponentSnapshot"
     static let manifestName = "manifest.json"
