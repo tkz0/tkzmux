@@ -1,0 +1,304 @@
+{
+  "atlas" : {
+    "color" : 1024,
+    "grayscale" : 2048
+  },
+  "buffers" : [
+    {
+      "count" : 240,
+      "name" : "background",
+      "stride" : 4
+    },
+    {
+      "count" : 20,
+      "name" : "glyphs",
+      "stride" : 32
+    },
+    {
+      "count" : 1,
+      "name" : "rectsBelow",
+      "stride" : 32
+    },
+    {
+      "count" : 0,
+      "name" : "rectsAbove",
+      "stride" : 32
+    }
+  ],
+  "columns" : 40,
+  "fixture" : "synthetic-basic",
+  "glyphs" : [
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        104
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 0,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        101
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 14,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        108
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 29,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        111
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 46,
+      "y" : 0
+    },
+    {
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "kind" : "empty",
+      "scalars" : [
+        32
+      ],
+      "style" : "regular"
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        119
+      ],
+      "style" : "bold",
+      "width" : 18,
+      "x" : 61,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        111
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 79,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        114
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 94,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        108
+      ],
+      "style" : "bold",
+      "width" : 17,
+      "x" : 109,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        100
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 0,
+      "y" : 21
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        115
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 126,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        99
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 141,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        110
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 156,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        100
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 15,
+      "y" : 21
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 20,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        105
+      ],
+      "style" : "regular",
+      "width" : 16,
+      "x" : 30,
+      "y" : 21
+    }
+  ],
+  "instances" : "synthetic-basic@1.6.bin",
+  "metrics" : {
+    "ascent" : 23,
+    "baseline" : 23,
+    "descent" : 7,
+    "height" : 30,
+    "leading" : 0,
+    "strikethroughOffset" : -7,
+    "strikethroughThickness" : 1,
+    "underlineOffset" : 3,
+    "underlineThickness" : 1,
+    "width" : 14
+  },
+  "padding" : 2,
+  "pointSize" : 14,
+  "rows" : 6,
+  "scale" : 1.6,
+  "schema" : 1,
+  "source" : {
+    "environment" : {
+      "fonts" : "parity"
+    },
+    "glyphSource" : "FreeType",
+    "platform" : "linux"
+  }
+}

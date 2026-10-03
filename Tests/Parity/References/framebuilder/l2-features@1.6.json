@@ -1,0 +1,1270 @@
+{
+  "atlas" : {
+    "color" : 1024,
+    "grayscale" : 2048
+  },
+  "buffers" : [
+    {
+      "count" : 480,
+      "name" : "background",
+      "stride" : 4
+    },
+    {
+      "count" : 215,
+      "name" : "glyphs",
+      "stride" : 32
+    },
+    {
+      "count" : 1,
+      "name" : "rectsBelow",
+      "stride" : 32
+    },
+    {
+      "count" : 8,
+      "name" : "rectsAbove",
+      "stride" : 32
+    }
+  ],
+  "columns" : 48,
+  "fixture" : "l2-features",
+  "glyphs" : [
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        98
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 0,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        111
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 15,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        108
+      ],
+      "style" : "bold",
+      "width" : 17,
+      "x" : 30,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        100
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 47,
+      "y" : 0
+    },
+    {
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "kind" : "empty",
+      "scalars" : [
+        32
+      ],
+      "style" : "regular"
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 20,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Italic",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        105
+      ],
+      "style" : "italic",
+      "width" : 16,
+      "x" : 62,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Italic",
+      "height" : 20,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        116
+      ],
+      "style" : "italic",
+      "width" : 16,
+      "x" : 78,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Italic",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        97
+      ],
+      "style" : "italic",
+      "width" : 16,
+      "x" : 94,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Italic",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        108
+      ],
+      "style" : "italic",
+      "width" : 14,
+      "x" : 110,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Italic",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        99
+      ],
+      "style" : "italic",
+      "width" : 16,
+      "x" : 124,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-BoldItalic",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        98
+      ],
+      "style" : "boldItalic",
+      "width" : 17,
+      "x" : 140,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-BoldItalic",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        111
+      ],
+      "style" : "boldItalic",
+      "width" : 16,
+      "x" : 157,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-BoldItalic",
+      "height" : 20,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        116
+      ],
+      "style" : "boldItalic",
+      "width" : 16,
+      "x" : 173,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-BoldItalic",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        104
+      ],
+      "style" : "boldItalic",
+      "width" : 17,
+      "x" : 189,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        115
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 206,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 20,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        105
+      ],
+      "style" : "regular",
+      "width" : 16,
+      "x" : 221,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        110
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 237,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        103
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 251,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        108
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 266,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        101
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 283,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        100
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 298,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        111
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 313,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        117
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 328,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        98
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 342,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        99
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 356,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        114
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 371,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        121
+      ],
+      "style" : "regular",
+      "width" : 16,
+      "x" : 385,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 20,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        116
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 401,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        97
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 416,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        104
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 431,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        107
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 445,
+      "y" : 0
+    },
+    {
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "kind" : "empty",
+      "scalars" : [
+        32
+      ],
+      "style" : "bold"
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        114
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 460,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        101
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 475,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        50
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 490,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        48
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 505,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        56
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 520,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        118
+      ],
+      "style" : "regular",
+      "width" : 16,
+      "x" : 535,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        102
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 551,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        112
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 566,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        119
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 580,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 21,
+      "bearingX" : -2,
+      "cellSpan" : 2,
+      "face" : "NotoSansCJKsc-Regular",
+      "height" : 25,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        20320
+      ],
+      "style" : "regular",
+      "width" : 26,
+      "x" : 0,
+      "y" : 22
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 21,
+      "bearingX" : -2,
+      "cellSpan" : 2,
+      "face" : "NotoSansCJKsc-Regular",
+      "height" : 25,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        22909
+      ],
+      "style" : "regular",
+      "width" : 26,
+      "x" : 26,
+      "y" : 22
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        109
+      ],
+      "style" : "regular",
+      "width" : 16,
+      "x" : 597,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 20,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 27,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        106
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 0,
+      "y" : 47
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : -2,
+      "cellSpan" : 2,
+      "face" : "NotoColorEmoji",
+      "height" : 31,
+      "kind" : "glyph",
+      "page" : "color",
+      "scalars" : [
+        128512
+      ],
+      "style" : "regular",
+      "width" : 32,
+      "x" : 0,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        122
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 613,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : -2,
+      "cellSpan" : 2,
+      "face" : "NotoColorEmoji",
+      "height" : 31,
+      "kind" : "glyph",
+      "page" : "color",
+      "scalars" : [
+        128105,
+        8205
+      ],
+      "style" : "regular",
+      "width" : 32,
+      "x" : 32,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : -2,
+      "cellSpan" : 2,
+      "face" : "NotoColorEmoji",
+      "height" : 31,
+      "kind" : "glyph",
+      "page" : "color",
+      "scalars" : [
+        128187
+      ],
+      "style" : "regular",
+      "width" : 32,
+      "x" : 64,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : -2,
+      "cellSpan" : 2,
+      "face" : "NotoColorEmoji",
+      "height" : 31,
+      "kind" : "glyph",
+      "page" : "color",
+      "scalars" : [
+        127480
+      ],
+      "style" : "regular",
+      "width" : 32,
+      "x" : 96,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : -2,
+      "cellSpan" : 2,
+      "face" : "NotoColorEmoji",
+      "height" : 31,
+      "kind" : "glyph",
+      "page" : "color",
+      "scalars" : [
+        127466
+      ],
+      "style" : "regular",
+      "width" : 32,
+      "x" : 128,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 20,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 23,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        101,
+        769
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 52,
+      "y" : 22
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9484
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 0,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9472
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 18,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9516
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 36,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9488
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 54,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9474
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 72,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9608
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 90,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9600
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 108,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9604
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 126,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9617
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 144,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9618
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 162,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9619
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 180,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9492
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 198,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9524
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 216,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 25,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "height" : 34,
+      "kind" : "sprite",
+      "page" : "grayscale",
+      "scalars" : [
+        9496
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 234,
+      "y" : 74
+    },
+    {
+      "appliedScale" : 0.9333333333333333,
+      "bearingTop" : 16,
+      "bearingX" : 1,
+      "cellSpan" : 1,
+      "face" : "TkzmuxSymbols-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        9210
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 627,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : 5,
+      "cellSpan" : 1,
+      "face" : "TkzmuxSymbols-Regular",
+      "height" : 20,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        9151
+      ],
+      "style" : "regular",
+      "width" : 13,
+      "x" : 644,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 0.7533933933933934,
+      "bearingTop" : 15,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "TkzmuxSymbols-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        10018
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 657,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 0.7881872447376689,
+      "bearingTop" : 15,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "TkzmuxSymbols-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        10035
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 675,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 17,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        10038
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 693,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 0.9001794043774668,
+      "bearingTop" : 16,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "TkzmuxSymbols-Regular",
+      "height" : 19,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        10043
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 710,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 0.910965867828613,
+      "bearingTop" : 16,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "TkzmuxSymbols-Regular",
+      "height" : 19,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        10045
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 728,
+      "y" : 0
+    }
+  ],
+  "instances" : "l2-features@1.6.bin",
+  "metrics" : {
+    "ascent" : 23,
+    "baseline" : 23,
+    "descent" : 7,
+    "height" : 30,
+    "leading" : 0,
+    "strikethroughOffset" : -7,
+    "strikethroughThickness" : 1,
+    "underlineOffset" : 3,
+    "underlineThickness" : 1,
+    "width" : 14
+  },
+  "padding" : 2,
+  "pointSize" : 14,
+  "rows" : 10,
+  "scale" : 1.6,
+  "schema" : 1,
+  "source" : {
+    "environment" : {
+      "fonts" : "parity"
+    },
+    "glyphSource" : "FreeType",
+    "platform" : "linux"
+  }
+}

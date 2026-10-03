@@ -42,14 +42,20 @@ struct VulkanFrameSetup {
     init(scale: Double, fonts: Fonts, validation: VulkanInstance.Validation, theme: Theme = .default) throws {
         instance = try VulkanInstance(validation: validation, applicationName: "tkzmux-vtdump")
         device = try VulkanDevice.make(instance: instance, mode: .headless).device
+        let source = try Self.glyphSource(scale: scale, fonts: fonts, theme: theme)
+        renderer = try VulkanTerminalRenderer(device: device, glyphCache: GlyphCache(source: source), theme: theme)
+    }
+
+    /// The theme's terminal font through FreeType at `scale`: what `render` draws with, and what
+    /// `framedump` dumps (FrameDumpCommand.swift).
+    static func glyphSource(scale: Double, fonts: Fonts, theme: Theme = .default) throws -> FreeTypeGlyphSource {
         let fallback: FontFallback = switch fonts {
         case .system: .system
         case .parity: FontFallback(configuration: .parity(
             bundled: BundledFonts.fontDirectories, testFonts: FontconfigConfiguration.defaultParityFontDirectory))
         }
         let faces = try TerminalFaces(pointSize: theme.fontMono.terminal, scale: scale, fallback: fallback)
-        let source = FreeTypeGlyphSource(faces: faces, thicken: theme.fontMono.thicken)
-        renderer = try VulkanTerminalRenderer(device: device, glyphCache: GlyphCache(source: source), theme: theme)
+        return FreeTypeGlyphSource(faces: faces, thicken: theme.fontMono.thicken)
     }
 
     /// "<device> (<kind>), validation on|off": for the summary line.
@@ -89,6 +95,23 @@ struct VulkanFrameSetup {
             rgba[index + 3] = alpha
         }
         return try PNG.encode(rgba, width: width, height: height, colorType: .rgba)
+    }
+}
+
+extension FrameDumpCommand {
+    /// `framedump`'s font stack on Linux: `render`'s FreeType source, the theme's terminal font.
+    static func fontGlyphSource(scale: Double, fonts: String?) throws
+        -> (source: any GlyphSource, origin: FrameDump.Source) {
+        var selected = VulkanFrameSetup.Fonts.system
+        if let fonts {
+            guard let parsed = VulkanFrameSetup.Fonts(rawValue: fonts) else {
+                fail("tkzmux-vtdump framedump: --fonts is system or parity", code: 2)
+            }
+            selected = parsed
+        }
+        let source = try VulkanFrameSetup.glyphSource(scale: scale, fonts: selected)
+        return (source, FrameDump.Source(platform: "linux", glyphSource: "FreeType",
+                                         environment: ["fonts": selected.rawValue]))
     }
 }
 

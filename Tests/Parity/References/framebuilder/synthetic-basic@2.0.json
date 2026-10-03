@@ -1,0 +1,304 @@
+{
+  "atlas" : {
+    "color" : 1024,
+    "grayscale" : 2048
+  },
+  "buffers" : [
+    {
+      "count" : 240,
+      "name" : "background",
+      "stride" : 4
+    },
+    {
+      "count" : 20,
+      "name" : "glyphs",
+      "stride" : 32
+    },
+    {
+      "count" : 1,
+      "name" : "rectsBelow",
+      "stride" : 32
+    },
+    {
+      "count" : 0,
+      "name" : "rectsAbove",
+      "stride" : 32
+    }
+  ],
+  "columns" : 40,
+  "fixture" : "synthetic-basic",
+  "glyphs" : [
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 25,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        104
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 0,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        101
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 17,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 25,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        108
+      ],
+      "style" : "regular",
+      "width" : 20,
+      "x" : 34,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        111
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 54,
+      "y" : 0
+    },
+    {
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "kind" : "empty",
+      "scalars" : [
+        32
+      ],
+      "style" : "regular"
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 20,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        119
+      ],
+      "style" : "bold",
+      "width" : 21,
+      "x" : 71,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        111
+      ],
+      "style" : "bold",
+      "width" : 18,
+      "x" : 92,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 20,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        114
+      ],
+      "style" : "bold",
+      "width" : 18,
+      "x" : 110,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 25,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        108
+      ],
+      "style" : "bold",
+      "width" : 20,
+      "x" : 128,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 26,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        100
+      ],
+      "style" : "bold",
+      "width" : 18,
+      "x" : 0,
+      "y" : 25
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        115
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 148,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        99
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 165,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 20,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        110
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 182,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 23,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 26,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        100
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 18,
+      "y" : 25
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 24,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 26,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        105
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 35,
+      "y" : 25
+    }
+  ],
+  "instances" : "synthetic-basic@2.0.bin",
+  "metrics" : {
+    "ascent" : 29,
+    "baseline" : 29,
+    "descent" : 8,
+    "height" : 37,
+    "leading" : 0,
+    "strikethroughOffset" : -9,
+    "strikethroughThickness" : 1,
+    "underlineOffset" : 4,
+    "underlineThickness" : 1,
+    "width" : 17
+  },
+  "padding" : 2,
+  "pointSize" : 14,
+  "rows" : 6,
+  "scale" : 2,
+  "schema" : 1,
+  "source" : {
+    "environment" : {
+      "fonts" : "parity"
+    },
+    "glyphSource" : "FreeType",
+    "platform" : "linux"
+  }
+}

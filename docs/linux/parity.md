@@ -307,4 +307,121 @@ The issue that lands a layer's producer switches its own rows to `enforced` in t
 
 ## The reference budget
 
-ADR-0003 §5 sets one committed budget for every reference image and dump, `referenceBudgetBytes`, split into `componentSnapshotShareBytes` (`Tests/TkzAppTests/ComponentSnapshots/`, WOR-307) and `parityReferenceShareBytes` (`Tests/Parity/References/`, WOR-322, including WOR-312's font dumps and WOR-313's conformance outputs). `ParityThresholdTests.theReferenceTreesFitTheBudget` counts every regular file in both trees, manifests included, on both OSes. A tree that does not exist yet counts as empty: `Tests/Parity/References/` arrives with WOR-322 S2's exporter (`make parity-references`), which runs only on the reference runner.
+ADR-0003 §5 sets one committed budget for every reference image and dump, `referenceBudgetBytes`, split into `componentSnapshotShareBytes` (`Tests/TkzAppTests/ComponentSnapshots/`, WOR-307) and `parityReferenceShareBytes` (`Tests/Parity/References/`, WOR-322, including WOR-312's font dumps and WOR-313's conformance outputs). `ParityThresholdTests.theReferenceTreesFitTheBudget` counts every regular file in both trees, manifests included, on both OSes. A tree that does not exist yet counts as empty. `Tests/Parity/References/` holds only the L2 set so far ([below](#the-l2-references)); the rest arrives with WOR-322 S2's exporter (`make parity-references`), which runs only on the reference runner, and with WOR-312's and WOR-313's dumps.
+
+## The Linux parity runner
+
+`Tests/TkzParityRunnerTests` (WOR-322 S3) is the gate. It is a Linux-only test target in the `#if os(Linux)` branch of `Package.swift`, and it links no GTK, Vulkan or font stack: producers run as child processes, mostly `tkzmux-vtdump`. So it is also on the `ubuntu` job's non-GTK `--target` list.
+
+```sh
+swift test --build-system native --filter TkzParityRunnerTests
+```
+
+It runs one test case per row of `Tests/Parity/layers.json`:
+
+| Row | What happens |
+|---|---|
+| `pending` | Reported with its owner issue (`parity L5@1.6: PENDING, owner WOR-316–WOR-319`). Never fails. |
+| `enforced`, references committed | The layer's producer writes the Linux artifacts, and its check compares them with the references under the layer's ADR-0003 rule. A breach fails the row. |
+| `enforced`, references missing | Skipped with the producer's message, which names what produces the references. With `TKZMUX_REQUIRE_PARITY_REFERENCES=1` it fails instead. L2 never skips: its references are committed (below). |
+| `enforced`, no producer registered | Fails. |
+
+**The producer registry.** `ParityProducers.registry` (`Tests/TkzParityRunnerTests/ParityProducers.swift`) maps a layer to three closures. One says whether the references are committed at a scale. One writes the artifacts into an empty directory, from a child process that gets exactly the environment it is handed. One compares the artifacts with the references and writes its reports. The issue that lands a layer's producer registers it there and switches the layer's rows to `enforced` in the same PR. `registeredProducersAreEnforced` fails if a registered layer is not enforced at both scales. The owners are WOR-312 (L1, L4), WOR-313 S3 (L3), WOR-316–WOR-319 (L0-component, L5) and WOR-318 S7 (L0-window, L6).
+
+**No display.** Every producer starts from the runner's environment without `WAYLAND_DISPLAY` and `DISPLAY`, and without the variables the isolation reruns set. The CI step also runs `swift test` under `env -u WAYLAND_DISPLAY -u DISPLAY`.
+
+**Output.** Everything goes to `.build/parity/`, or to `$TKZMUX_PARITY_OUT` if it is set:
+
+| Path | Content |
+|---|---|
+| `<layer>@<scale>/result.json` | The row: state, owner, outcome (`pending`, `skipped`, `passed`, `failed`), failures and notes |
+| `<layer>@<scale>/produced/` | What the producer wrote |
+| `<layer>@<scale>/reports/` | The check's JSON reports. Image layers add `<name>.heatmap.png` through `ParityReports.compareImages`, which is `tkzmux-vtdump compare` as a function. On a failure, `reference/` holds a copy of each failing reference. |
+| `<layer>@<scale>/producer.log` | The child's stdout and stderr |
+| `isolation/<layer>@<scale>/<variant>/` | The isolation reruns, with a byte report for each artifact that differs |
+
+The `parity` job in `ci-linux.yml` uploads the directory as the `parity-reports` artifact when it fails. It runs in the required Arch image with lavapipe, the validation layer, the parity fonts and the pinned shaderc ([build.md](build.md#linux-ci)).
+
+**Environment isolation.** `EnvironmentIsolationTests` reruns every enforced producer under each of the following, each in a fresh child process, and requires every artifact to be byte-identical to the clean run's:
+
+- `GDK_SCALE=2`;
+- `FREETYPE_PROPERTIES`, with hinting and stem darkening switched;
+- Omarchy's `50-omarchy.conf` through `FONTCONFIG_FILE`. This is the installed file when there is one, and otherwise a stand-in with the same kinds of rules: monospace and sans-serif reassigned, and Noto Color Emoji accepted for them;
+- a GNOME `text-scaling-factor` of 0.7273, set through a GSettings keyfile backend in a private `XDG_CONFIG_HOME`;
+- all four at once.
+
+`theVariantsReachTheChild` checks with `env` that the variables really arrive in the child. Where `gsettings` and its schema are installed, `theTextScaleVariantIsWhatGSettingsReads` checks that the child reads 0.7273. L1, L3 and L4 are covered as soon as they are registered.
+
+## L2: FrameBuilder buffers
+
+L2 asks whether the Mac and Linux FrameBuilders write the same instance buffers from the same cell metrics and the same atlas glyph table (ADR-0003 §3, `l2Exact`). Both sides run the same code, `FrameDump.swift` in TkzRenderCore, behind one command:
+
+```sh
+tkzmux-vtdump framedump --out <dir> [--scale s] [--fonts system|parity] <file.tkzrec> …
+tkzmux-vtdump framedump --out <dir> --replay <refdir> [--scale s] <file.tkzrec> …
+```
+
+Without `--replay`, the command replays each recording headlessly and builds one frame through `FrameBuilder` over the platform's font stack: CoreText on the Mac and FreeType on Linux, at the theme's terminal size (14 pt) and the given scale. It writes two files per recording:
+
+| File | Content |
+|---|---|
+| `<fixture>@<scale>.json` | The `CellMetrics`, the padding, the atlas sizes, and the glyph table: every request the glyph cache made of its source, in order (`glyph`, `sprite`, `empty`, `noSprite`), with the face, page, slot, bitmap size, bearings and `appliedScale`. Also the buffer layout and `source` (platform, glyph source, fonts). Sorted keys. |
+| `<fixture>@<scale>.bin` | The four buffers the renderers bind, written field by field in little-endian order: `background` (`TkzBgCell`, 4 B), `glyphs` (`TkzGlyphInstance`, 32 B), `rectsBelow` and `rectsAbove` (`TkzRectInstance`, 32 B), with the cursor included as the renderers place it |
+
+With `--replay`, the metrics and glyph table come from `<refdir>/<fixture>@<scale>.json`, and no font is opened. `GlyphTableSource` answers each request with the reference's bitmap size, bearings and page, in the reference's order. The shared packer then puts every glyph where the reference's packer put it, and a FrameBuilder that matches writes the reference's `.bin` again. When the table cannot answer a request, the command lists the request and exits 1.
+
+The L2 producer replays every fixture at each scale. The check requires:
+
+- the `.bin` byte for byte. On a difference, `reports/<stem>.bin.json` names the first 20 differing fields as buffer, instance and field, with both values: `glyphs[37].atlasPos.x (bytes 1396..<1398): reference 4100, replay 0100`;
+- the replayed glyph table equal after canonical key order;
+- once WOR-312 commits `fonts/fontmetrics.json`, the reference's metrics equal to that file's JetBrains Mono entry at 14 pt and that scale.
+
+`aFlippedReferenceByteFailsL2WithItsDiff` flips one bit in a copy of a reference and checks that L2 fails, names the field, and leaves the report and the reference in `reports/`.
+
+**Fixtures.** L2 replays the four `Tests/TkzTerminalCoreTests/Fixtures/*.tkzrec` recordings and `Tests/Parity/Fixtures/l2-features.tkzrec`. The real sessions draw plain and bold ASCII, a few underlines and box sprites. The feature sheet adds the rest of what FrameBuilder does:
+
+- all four styles and every underline style, plus strikethrough and an underline colour;
+- palette, bright, 256-colour and direct colours;
+- inverse, faint and invisible text;
+- wide CJK, colour emoji, a ZWJ sequence, a flag and a combining mark;
+- box and block sprites and Claude Code's symbols;
+- a hyperlink, a background run, a wrapped line and a parked cursor.
+
+The feature sheet is written from `L2FeatureSheet.output` with an empty environment and a zero timestamp. `theCommittedRecordingIsItsSource` pins it. To regenerate it, run `TKZMUX_UPDATE_PARITY_FIXTURES=1 swift test --build-system native --filter L2FeatureSheetTests`, then regenerate the references.
+
+### The L2 references
+
+`Tests/Parity/References/framebuilder/` holds the five fixtures at 1.6 and 2.0: 20 files, about 340 KB of the 5 MiB WOR-322 share. `scripts/parity-framebuilder-references.sh` writes them on either OS, building the release `tkzmux-vtdump` first. `--check` writes them to a temporary directory instead and fails unless they equal the committed set.
+
+- **The reference set is the Mac's.** The command that produces it is:
+
+  ```sh
+  scripts/parity-framebuilder-references.sh
+  ```
+
+  It runs on macOS, on the reference runner (ADR-0003 §5). It is equivalent to the following, run for `--scale 1.6` and again for `--scale 2.0`:
+
+  ```sh
+  swift build -c release --product tkzmux-vtdump
+  .build/release/tkzmux-vtdump framedump --scale 1.6 --out Tests/Parity/References/framebuilder \
+      Tests/TkzTerminalCoreTests/Fixtures/{claude-boot,claude-tool-run,synthetic-basic,zsh-ls-color}.tkzrec \
+      Tests/Parity/Fixtures/l2-features.tkzrec
+  ```
+
+  WOR-322 S2's `make parity-references` (`scripts/parity-export-mac.sh`) calls the script, and its output is committed through S2's reviewed workflow. The dumps then record `"platform": "macos"` and `"glyphSource": "CoreText"`.
+- **Until then, the committed set is a Linux bootstrap.** WOR-322 S3 made it with the same script on Linux, with FreeType and the pinned parity fonts (`--fonts parity`), and the dumps say so in `source`. L2 is shared code, so the gate is the same either way: the Linux FrameBuilder must rebuild the committed buffers from the committed table. Until the Mac set replaces the bootstrap, that pins FrameBuilder, the packer and the buffer layout against regressions, but it does not yet prove anything across the two OSes. The runner adds a note to every L2 row while `source.platform` is not `macos`.
+- **Regenerating** is needed when FrameBuilder's output changes on purpose, or when the fixtures change. Rerun the script on the Mac, and on Linux until the Mac set exists. Commit the set on its own, and explain in the PR every buffer that changed.
+
+## Regenerating the references
+
+Every committed reference has exactly one producer:
+
+| Tree | Producer | Where it runs |
+|---|---|---|
+| `Tests/TkzAppTests/ComponentSnapshots/` | the Component snapshots workflow (WOR-307; [Updating the goldens](#updating-the-goldens)) | reference runner |
+| `Tests/Parity/References/framebuilder/` | `scripts/parity-framebuilder-references.sh` (L2, above) | reference runner. A Linux bootstrap until WOR-322 S2 |
+| `Tests/Parity/References/fonts/` | WOR-312's `atlas --json`, `fontmetrics` and NSFont chrome dumps | reference runner (WOR-312 S1, S2) |
+| `Tests/Parity/References/terminal/`, `manifest.json`, the full-window captures | `make parity-references` (`scripts/parity-export-mac.sh`) | reference runner (WOR-322 S2, S4) |
+| WOR-313's conformance outputs | `TKZMUX_WRITE_CONFORMANCE_REFS`, a step that WOR-313 S3 adds to the exporter | reference runner |
+
+`ParityThresholdTests.theReferenceTreesFitTheBudget` counts all of them. Never copy one tree's files into another.

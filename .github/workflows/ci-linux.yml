@@ -38,6 +38,14 @@
 #                current glibc + glibc-debug pair from scripts/linux/fetch-glibc-debug.sh, because the
 #                snapshot's glibc-debug is gone from the mirrors. No Vulkan driver: the GPU tests
 #                skip here and run in `arch`. The reports are uploaded when it fails.
+#   parity       REQUIRED (WOR-322 S3). The `arch` image, snapshot and toolchain with lavapipe, the
+#                Khronos validation layer and the pinned shaderc, then TkzParityRunnerTests alone:
+#                every row of Tests/Parity/layers.json through its producer (ADR-0003 §3; a pending
+#                row is reported with its owner and never fails, an enforced row whose references
+#                are not committed yet is skipped by name) and the environment-isolation reruns,
+#                with no display (WAYLAND_DISPLAY and DISPLAY unset). L2 is enforced from the start.
+#                On a failure .build/parity/ (artifacts, JSON reports, heatmaps and a copy of each
+#                failing reference) is uploaded. Budget: under 5 min with a warm cache.
 #   arch-latest  Scheduled, NOT required: archlinux:latest with live mirrors, same steps as `arch`,
 #                to catch rolling-release breakage before the pin is bumped.
 #
@@ -199,13 +207,15 @@ jobs:
       # WOR-313: the committed SPIR-V must be byte-for-byte what the pinned shaderc makes of the
       # GLSL. --fetch downloads the pinned Arch packages by sha256 (docs/linux/dev.md, "glslc pin")
       # instead of trusting whatever shaderc the image has.
-      - name: Cache the pinned shaderc
+      - &shaderc-cache
+        name: Cache the pinned shaderc
         uses: actions/cache@v5
         with:
           path: ~/.cache/tkzmux/shaderc-cache
           key: shaderc-${{ hashFiles('scripts/build-shaders-linux.sh', 'docs/linux/dev.md') }}
 
-      - name: SPIR-V drift check (pinned shaderc)
+      - &spirv-drift
+        name: SPIR-V drift check (pinned shaderc)
         run: SHADERC_CACHE="$HOME/.cache/tkzmux/shaderc-cache" scripts/build-shaders-linux.sh --fetch --check
 
       # CLAUDE.md: tkzmux-hook imports libc only (Darwin/Glibc/Musl), never Foundation. Also
@@ -374,7 +384,7 @@ jobs:
       # or anything that depends on them: TkzmuxLinux (the `tkzmux` entry) left the list when it
       # started linking TkzGtkShell (WOR-314 S1). SwiftPM warns that gtk4's .pc is missing; that
       # is expected here.
-      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzShaderTypes TkzRenderCore TkzPNG TkzParity TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzPNGTests TkzParityTests TkzShadersSPIRVTests tkzmux-hook AgentBridgeTests TkzFontsFT TkzFontsFTTests TkzRenderVK TkzRenderVKTests TkzCanvasHost TkzCanvasHostTests tkzmux-vtdump AgentBridge GitStatus GitStatusTests
+      NON_GTK_TARGETS: TkzPlatformShim TkzPtyShim TkzPlatform TkzCore TkzTerminalCore Persistence TkzShaderTypes TkzRenderCore TkzPNG TkzParity TkzParityRunnerTests TkzPlatformTests TkzCoreTests TkzTerminalCoreTests PersistenceTests GhosttyVtSmokeTests TkzRenderCoreTests TkzPNGTests TkzParityTests TkzShadersSPIRVTests tkzmux-hook AgentBridgeTests TkzFontsFT TkzFontsFTTests TkzRenderVK TkzRenderVKTests TkzCanvasHost TkzCanvasHostTests tkzmux-vtdump AgentBridge GitStatus GitStatusTests
     steps:
       - name: Install system packages
         run: |
@@ -416,6 +426,76 @@ jobs:
 
       # No `swift test` here (WOR-314 S1): the test bundle links every test target, TkzGtkShellTests
       # included, and noble's GTK 4.14 is below the floor. The `arch` job runs the tests.
+
+  parity:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      # The `arch` image and snapshot; bump them together.
+      image: archlinux:base-20260927.0.600689@sha256:b21322c663be387c0ed9cbc7bbbfe18e41633ad4e7b7c77cfad45f128be20040
+    env:
+      ARCH_SNAPSHOT: '2026/09/27'
+      # The producers WOR-312 and WOR-313 register (L1, L3, L4) need the parity fonts and lavapipe;
+      # with these set, a missing one fails instead of skipping.
+      TKZMUX_REQUIRE_PARITY_FONTS: '1'
+      TKZMUX_REQUIRE_VULKAN: '1'
+    steps:
+      - name: Install system packages
+        run: |
+          if [ -n "$ARCH_SNAPSHOT" ]; then
+            echo "Server = https://archive.archlinux.org/repos/$ARCH_SNAPSHOT/\$repo/os/\$arch" > /etc/pacman.d/mirrorlist
+          fi
+          # The `arch` job's build set (the test bundle links every test target, GTK's included,
+          # although the runner itself links no GTK) with lavapipe and the validation layer; no
+          # shells or python, which only AgentBridgeTests and GitStatusTests run.
+          pacman -Syu --noconfirm --needed \
+            git gcc binutils sqlite curl util-linux-libs zlib icu ncurses libxml2-legacy \
+            gnupg zstd pkgconf freetype2 harfbuzz fontconfig \
+            vulkan-icd-loader vulkan-headers vulkan-swrast vulkan-validation-layers gtk4
+          pacman -Q glibc freetype2 harfbuzz fontconfig vulkan-swrast vulkan-validation-layers gtk4
+
+      - uses: actions/checkout@v5
+
+      - name: Cache the parity fonts
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/tkzmux/parity-fonts
+          key: parity-fonts-${{ hashFiles('Tests/Parity/Fonts/fonts.lock.json') }}
+
+      - name: Fetch the parity fonts
+        run: scripts/fetch-parity-fonts.sh
+
+      - *swift-pin
+      - *swift-tarball-cache
+      - *swift-install
+      - *build-cache
+      - *shaderc-cache
+      - *spirv-drift
+
+      - name: swift build
+        run: swift build --build-system native
+
+      # TkzParityRunnerTests through the summary-line guard (header), from a process with no
+      # display. Each row writes .build/parity/<layer>@<scale>/; the runner prints one line per row.
+      - name: Parity runner (swift test --filter TkzParityRunnerTests)
+        run: |
+          log="$RUNNER_TEMP/swift-test-parity.log"
+          env -u WAYLAND_DISPLAY -u DISPLAY \
+            swift test --build-system native --no-parallel --filter TkzParityRunnerTests 2>&1 | tee "$log"
+          n="$(sed 's/\x1b\[[0-9;]*m//g' "$log" | sed -n 's/.*Test run with \([0-9][0-9]*\) tests\{0,1\} .*/\1/p')"
+          if [ -z "$n" ] || [ "$n" = 0 ]; then
+            echo "::error::swift test --filter TkzParityRunnerTests: no 'Test run with N tests' line, or N = 0"
+            exit 1
+          fi
+
+      - name: Upload the parity reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: parity-reports
+          path: .build/parity
+          if-no-files-found: ignore
 
   asan-valgrind:
     if: github.event_name != 'schedule'

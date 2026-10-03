@@ -13,14 +13,29 @@
 //       at all — `GlyphAtlas` (TkzRenderCore) is a CPU staging buffer; only the renderer uploads it.
 //
 // macOS only: on Linux, VulkanRenderCommands.swift draws `render` through Vulkan and stands in for
-// `atlas` (WOR-313 S6).
+// `atlas` (WOR-313 S6). Each file also gives `framedump` its platform's font stack (WOR-322 S3).
 
 #if canImport(Metal)
 import Foundation
 import Metal
+import TkzCore
 import TkzRenderCore
 import TkzTerminalCore
 import TkzTerminalRender
+
+extension FrameDumpCommand {
+    /// `framedump`'s font stack on the Mac: the glyph cache `TerminalRenderer(device:scale:)` builds,
+    /// the theme's terminal font through CoreText.
+    static func fontGlyphSource(scale: Double, fonts: String?) throws
+        -> (source: any GlyphSource, origin: FrameDump.Source) {
+        if fonts != nil { fail("tkzmux-vtdump framedump: --fonts is Linux only", code: 2) }
+        let theme = Theme.default
+        let fontSet = FontSet(family: theme.fontMono.family, fallback: theme.fontMono.fallback,
+                              pointSize: CGFloat(theme.fontMono.terminal), scale: CGFloat(scale))
+        return (CoreTextGlyphSource(fontSet: fontSet, thicken: theme.fontMono.thicken),
+                FrameDump.Source(platform: "macos", glyphSource: "CoreText"))
+    }
+}
 
 public enum RenderCommands {
     /// Anything that stops a subcommand before it can write its output.

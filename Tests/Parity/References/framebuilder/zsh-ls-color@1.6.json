@@ -1,0 +1,644 @@
+{
+  "atlas" : {
+    "color" : 1024,
+    "grayscale" : 2048
+  },
+  "buffers" : [
+    {
+      "count" : 1920,
+      "name" : "background",
+      "stride" : 4
+    },
+    {
+      "count" : 76,
+      "name" : "glyphs",
+      "stride" : 32
+    },
+    {
+      "count" : 1,
+      "name" : "rectsBelow",
+      "stride" : 32
+    },
+    {
+      "count" : 0,
+      "name" : "rectsAbove",
+      "stride" : 32
+    }
+  ],
+  "columns" : 80,
+  "fixture" : "zsh-ls-color",
+  "glyphs" : [
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 18,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 20,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        116
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 0,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        107
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 0,
+      "y" : 20
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        122
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 15,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        37
+      ],
+      "style" : "regular",
+      "width" : 18,
+      "x" : 0,
+      "y" : 41
+    },
+    {
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "kind" : "empty",
+      "scalars" : [
+        32
+      ],
+      "style" : "regular"
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        108
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 15,
+      "y" : 20
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        115
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 29,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 11,
+      "bearingX" : 1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 7,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        45
+      ],
+      "style" : "regular",
+      "width" : 12,
+      "x" : 44,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        99
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 56,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        111
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 71,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        114
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 86,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 13,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 12,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        61
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 100,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        97
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 115,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        119
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 130,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        121
+      ],
+      "style" : "regular",
+      "width" : 16,
+      "x" : 18,
+      "y" : 41
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        70
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 32,
+      "y" : 20
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        100
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 34,
+      "y" : 41
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        101
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 147,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        109
+      ],
+      "style" : "regular",
+      "width" : 16,
+      "x" : 162,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        112
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 49,
+      "y" : 41
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 21,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        104
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 46,
+      "y" : 20
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 6,
+      "bearingX" : 2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 9,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        46
+      ],
+      "style" : "regular",
+      "width" : 9,
+      "x" : 178,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        120
+      ],
+      "style" : "regular",
+      "width" : 16,
+      "x" : 187,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        98
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 63,
+      "y" : 41
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 20,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        105
+      ],
+      "style" : "regular",
+      "width" : 16,
+      "x" : 77,
+      "y" : 41
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        110
+      ],
+      "style" : "regular",
+      "width" : 14,
+      "x" : 203,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 26,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        64
+      ],
+      "style" : "regular",
+      "width" : 16,
+      "x" : 0,
+      "y" : 63
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 16,
+      "bearingX" : -2,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 16,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        42
+      ],
+      "style" : "regular",
+      "width" : 17,
+      "x" : 217,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        115
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 234,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 18,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        117
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 249,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        98
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 93,
+      "y" : 41
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 19,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        100
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 108,
+      "y" : 41
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 20,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 22,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        105
+      ],
+      "style" : "bold",
+      "width" : 16,
+      "x" : 123,
+      "y" : 41
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 15,
+      "bearingX" : 0,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Bold",
+      "height" : 17,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        114
+      ],
+      "style" : "bold",
+      "width" : 15,
+      "x" : 264,
+      "y" : 0
+    },
+    {
+      "appliedScale" : 1,
+      "bearingTop" : 21,
+      "bearingX" : -1,
+      "cellSpan" : 1,
+      "face" : "JetBrainsMono-Regular",
+      "height" : 26,
+      "kind" : "glyph",
+      "page" : "grayscale",
+      "scalars" : [
+        47
+      ],
+      "style" : "regular",
+      "width" : 15,
+      "x" : 16,
+      "y" : 63
+    }
+  ],
+  "instances" : "zsh-ls-color@1.6.bin",
+  "metrics" : {
+    "ascent" : 23,
+    "baseline" : 23,
+    "descent" : 7,
+    "height" : 30,
+    "leading" : 0,
+    "strikethroughOffset" : -7,
+    "strikethroughThickness" : 1,
+    "underlineOffset" : 3,
+    "underlineThickness" : 1,
+    "width" : 14
+  },
+  "padding" : 2,
+  "pointSize" : 14,
+  "rows" : 24,
+  "scale" : 1.6,
+  "schema" : 1,
+  "source" : {
+    "environment" : {
+      "fonts" : "parity"
+    },
+    "glyphSource" : "FreeType",
+    "platform" : "linux"
+  }
+}

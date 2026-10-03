@@ -7,6 +7,7 @@
 //   replay   --modes      <file.tkzrec>   the modes / kitty flags the recording left behind
 //   replay   --snapshot   <file.tkzrec>   snapshot round-trip: encoded size + restore time
 //   compare  <a> <b>                       parity compare of two PNGs or two dumps (WOR-322)
+//   framedump <file.tkzrec> …               FrameBuilder buffers and glyph table, L2 (WOR-322)
 //
 // Hand-rolled argument parsing on purpose: no third-party dependencies (CLAUDE.md).
 //
@@ -81,6 +82,13 @@ usage: tkzmux-vtdump <command> [options]
                             (global and per 64 px tile), masks and ΔE2000 (diagnostic), judged by
                             the layer's gate (default golden: channel 2, 0.2 % of pixels). Anything
                             else: byte for byte, JSON after canonical key order. Exit 0 pass, 1 fail
+  framedump --out <dir> [--scale s] [--fonts system|parity] [--replay <refdir>] <file.tkzrec> …
+                            replay each recording and dump one frame's FrameBuilder instance
+                            buffers (<name>@<s>.bin) and the cell metrics and atlas glyph table
+                            they reference (<name>@<s>.json): the L2 parity reference (ADR-0003,
+                            WOR-322). --replay takes the metrics and glyph table from
+                            <refdir>/<name>@<s>.json instead of a font; exit 1 when it lacks one.
+                            --fonts is Linux only
   gpu     [--headless] [--main-device <major:minor>] [--no-validation] [--size <w>x<h>] [--no-clear]
                             Linux only: list the Vulkan devices, select one as the app does
                             (TKZMUX_GPU=auto|integrated|discrete) and log why, then clear an
@@ -683,6 +691,10 @@ do {
     case "compare":
         // WOR-322 S1: the parity toolkit's one comparison command, on both OSes.
         try CompareCommand.run(Array(argv.dropFirst()))
+
+    case "framedump":
+        // WOR-322 S3: the L2 parity producer, on both OSes.
+        try FrameDumpCommand.run(Array(argv.dropFirst()))
 
     #if os(Linux)
     case "gpu":

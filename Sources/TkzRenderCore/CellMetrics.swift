@@ -76,4 +76,24 @@ public struct CellMetrics: Sendable, Equatable, Hashable {
         self.strikethroughThickness = max(1, Int(strikeoutThickness.rounded()))
         self.strikethroughOffset = Int((-strikeoutPosition).rounded())
     }
+
+    /// Every field as another run measured it: metrics read back from a dump. The L2 parity replay
+    /// (`GlyphTableSource`, WOR-322) builds frames on the reference's metrics, which the formula
+    /// above cannot always rebuild from integers: `height` rounds the sum, not the rounded parts.
+    public init(width: Int, height: Int, ascent: Int, descent: Int, leading: Int, baseline: Int,
+                underlineOffset: Int, underlineThickness: Int,
+                strikethroughOffset: Int, strikethroughThickness: Int,
+                scale: CGFloat) {
+        self.width = width
+        self.height = height
+        self.ascent = ascent
+        self.descent = descent
+        self.leading = leading
+        self.baseline = baseline
+        self.underlineOffset = underlineOffset
+        self.underlineThickness = underlineThickness
+        self.strikethroughOffset = strikethroughOffset
+        self.strikethroughThickness = strikethroughThickness
+        self.scale = scale
+    }
 }

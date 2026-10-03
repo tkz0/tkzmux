@@ -288,6 +288,13 @@ let linuxOnlyTargets: [Target] = [  // hygiene-scan
     .testTarget(name: "TkzFontsFTTests", dependencies: ["TkzFontsFT", "TkzRenderCore", "TkzPlatform", "CFreeType", "TkzPNG", "TkzTerminalCore"],
                 path: "Tests/TkzFontsFTTests", exclude: ["Fixtures"]),
 
+    // The Linux parity runner (WOR-322 S3): every row of Tests/Parity/layers.json through the
+    // producer registry, and the environment-isolation reruns. Producers run as child processes
+    // (tkzmux-vtdump), so it links no GTK, Vulkan or font stack; TkzRenderCore reads the L2 dumps
+    // and TkzTerminalCore writes the L2 feature-sheet recording.
+    .testTarget(name: "TkzParityRunnerTests", dependencies: ["TkzParity", "TkzPNG", "TkzRenderCore", "TkzTerminalCore"],
+                path: "Tests/TkzParityRunnerTests"),
+
     // The Mac's PersistenceTests also lists TkzTerminalCore and GhosttyVt; nothing in it imports
     // them, and neither is in the Linux graph yet (WOR-304 S3).
     .testTarget(name: "PersistenceTests", dependencies: ["Persistence", "TkzCore"], path: "Tests/PersistenceTests"),
