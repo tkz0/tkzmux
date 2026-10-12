@@ -444,6 +444,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     private var storeToken: AppStore.ObserverToken?
     /// Drains `host.events` for the lifetime of the window.
     private var eventPump: Task<Void, Never>?
+    /// Where OSC 52 / OSC 1337 / OSC 5522 clipboard writes go. Tests swap in a fake so they never
+    /// touch the user's real clipboard.
+    var pasteboardWriter: any PasteboardWriting = SystemPasteboardWriter()
     private var isApplyingStoreFrame = false
 
     /// Debounces `recordSidebarWidth()` until the sidebar has stopped moving.
@@ -4405,6 +4408,14 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             if let session = store.state.session(owning: id), session.paneHostsAgent(id) {
                 agents?.handleTerminalNotification(sessionID: session.id, terminal: id, title: title, body: body)
             }
+        case .clipboardWrite(let text):
+            // OSC 52: the only way a program on the far side of ssh (Claude Code under herdr/tmux)
+            // can reach the Mac clipboard — locally it also has pbcopy, which is why a local copy
+            // worked while a remote one silently did not. Any pane may write, as in iTerm2/Ghostty.
+            // An empty payload is a "clear" request; ignored, as `MouseController.handle` does, so
+            // a program cannot wipe the user's clipboard.
+            guard !text.isEmpty else { break }
+            pasteboardWriter.writeString(text)
         default:
             // `.title` deliberately does not land in the store: `Session.title` is the rename slot
             // and a shell-set title is not a rename.
