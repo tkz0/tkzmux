@@ -1,0 +1,21 @@
+Sources/TkzApp/MainWindowController.swift
+  s_12a6aac1bbb154::t_d58b6ba5893e3e 447-449,4411-4418
+Tests/TkzAppTests/ClipboardWriteTests.swift
+  s_12a6aac1bbb154::t_50e7de906b68fd 1-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "da06a2a615db642e57eef5e0f206bedde0e2b51d",
+  "prompts": {},
+  "sessions": {
+    "s_12a6aac1bbb154": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "57179c05-2bce-431a-957f-777bb1489fc3",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
