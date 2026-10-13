@@ -715,8 +715,6 @@ public final class TerminalMetalView: NSView {
 
     // MARK: - Focus
 
-    public var isTerminalFocusedForTesting: Bool { isTerminalFocused }
-
     public override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
         if ok { setFocused(window?.isKeyWindow ?? true) }

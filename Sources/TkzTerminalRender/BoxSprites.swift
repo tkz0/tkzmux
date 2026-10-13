@@ -196,8 +196,6 @@ public struct BoxSprites {
             default: self = .none
             }
         }
-
-        var isSet: Bool { self != .none }
     }
 
     /// One "URDL" code (up, right, down, left) per codepoint from U+2500:
