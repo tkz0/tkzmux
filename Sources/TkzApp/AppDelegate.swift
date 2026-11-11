@@ -109,11 +109,23 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                     // and shared with the menus so the two can never disagree; ~0.5 s, after the
                     // window is already on screen, and `UserPath` falls back to this process's own
                     // `PATH` if the shell cannot be asked.
-                    let searchPath = UserPath.resolve()
+                    let resolution = UserPath.resolution()
                     let integration = AgentIntegration(
                         store: store, directory: host.tkzmuxDirectory,
                         installer: Self.makeShimInstaller(directory: host.tkzmuxDirectory),
-                        searchPath: searchPath)
+                        searchPath: resolution.path)
+                    // At login the shell can miss that deadline, and the fallback has no agent
+                    // on it: "No agent installed" until the next relaunch, which for a login item
+                    // can be days away. Keep asking off the main thread, more patiently, and hand
+                    // the answer to the pickers when it arrives.
+                    if !resolution.fromShell {
+                        DispatchQueue.global(qos: .utility).async {
+                            guard let path = UserPath.retry() else { return }
+                            DispatchQueue.main.async {
+                                MainActor.assumeIsolated { integration.adoptSearchPath(path) }
+                            }
+                        }
+                    }
                     controller.agents = integration
                     integration.start()
                     agents = integration

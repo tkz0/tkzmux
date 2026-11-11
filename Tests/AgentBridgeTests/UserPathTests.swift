@@ -8,6 +8,7 @@
 // to export.
 
 import Foundation
+import Synchronization
 import TkzCore
 import Testing
 
@@ -89,6 +90,48 @@ struct UserPathTests {
         #expect(path == "/usr/bin:/bin")
     }
 
+    @Test("a resolution says whether the shell answered, so a miss can be retried")
+    func resolutionReportsTheSource() {
+        let answered = UserPath.resolution(
+            shell: LoginShell(path: "/bin/zsh"), processPath: "/usr/bin",
+            probe: { _, _ in "/Users/x/.local/bin" })
+        #expect(answered == .init(path: "/Users/x/.local/bin:/usr/bin", fromShell: true))
+
+        let missed = UserPath.resolution(
+            shell: LoginShell(path: "/bin/zsh"), processPath: "/usr/bin", probe: { _, _ in nil })
+        #expect(missed == .init(path: "/usr/bin", fromShell: false))
+    }
+
+    // MARK: retry
+
+    @Test("retry keeps asking, more patiently each time, until the shell answers")
+    func retryGrowsItsDeadlineUntilAnswered() {
+        let asked = Mutex<[TimeInterval]>([])
+        let path = UserPath.retry(
+            shell: LoginShell(path: "/bin/zsh"), processPath: "/usr/bin:/bin",
+            deadlines: [5, 10, 20], pause: 3,
+            probe: { _, deadline in
+                asked.withLock { $0.append(deadline) }
+                return deadline >= 10 ? "/Users/x/.local/bin:/usr/bin" : nil
+            },
+            sleep: { _ in })
+        #expect(path == "/Users/x/.local/bin:/usr/bin:/bin")
+        // Stops at the first answer: the 20 s attempt never runs.
+        #expect(asked.withLock { $0 } == [5, 10])
+    }
+
+    @Test("retry pauses before every attempt and gives up with nil, not the fallback")
+    func retryGivesUpWithNil() {
+        let pauses = Mutex<[TimeInterval]>([])
+        let path = UserPath.retry(
+            shell: LoginShell(path: "/bin/zsh"), processPath: "/usr/bin",
+            deadlines: [1, 2], pause: 3,
+            probe: { _, _ in nil },
+            sleep: { pause in pauses.withLock { $0.append(pause) } })
+        #expect(path == nil)
+        #expect(pauses.withLock { $0 } == [3, 3])
+    }
+
     // MARK: arguments
 
     @Test("zsh and bash are asked interactively, or they never read .zshrc / .bashrc")
@@ -144,5 +187,30 @@ struct UserPathTests {
         #expect(probed == nil)
         // Generous, but far below the 30 s the script would take if the deadline did nothing.
         #expect(elapsed < 10)
+    }
+
+    @Test("a timed-out shell that ignores SIGTERM is still gone afterwards")
+    func timedOutShellIsKilled() throws {
+        // What an interactive bash does: SIGTERM is ignored. `terminate()` alone would leave this
+        // running, and every retry would add another.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tkzmux-stubborn-shell-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let pidFile = dir.appendingPathComponent("pid")
+        let script = dir.appendingPathComponent("sh")
+        try "#!/bin/sh\necho $$ > '\(pidFile.path)'\ntrap '' TERM\nwhile :; do sleep 1; done\n"
+            .write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+
+        #expect(UserPath.probeLoginShell(shell: LoginShell(path: script.path), deadline: 0.5) == nil)
+
+        let pid = try #require(
+            pid_t(try String(contentsOf: pidFile, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines)))
+        // `kill(pid, 0)` keeps succeeding until the zombie is reaped, so give the reap a moment.
+        let deadline = Date().addingTimeInterval(5)
+        while kill(pid, 0) == 0 && Date() < deadline { usleep(50_000) }
+        #expect(kill(pid, 0) != 0)
     }
 }
