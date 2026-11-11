@@ -900,6 +900,33 @@ struct AgentIntegrationTests {
         #expect(!store.state.accounts.values.contains { $0.agent == .codex })
     }
 
+    /// The login-item case: the launch probe missed its deadline, so the integration started on
+    /// launchd's `PATH` and Claude read "not installed". The late answer has to make it installed
+    /// again for the same integration, without a relaunch.
+    @Test("a late PATH makes Claude installed again for the same integration")
+    func adoptedSearchPathReachesTheInstalledCheck() throws {
+        let bin = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentIntegrationTests-late-bin-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: bin) }
+        let binary = (bin as NSString).appendingPathComponent("claude")
+        FileManager.default.createFile(atPath: binary, contents: Data("#!/bin/sh\n".utf8))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary)
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AgentIntegrationTests-late-home-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let integration = AgentIntegration(
+            store: AppStore(state: AppState()), directory: home, home: home.path, installer: nil,
+            searchPath: Self.launchdPath)
+        let claude = try #require(integration.adapters[.claude])
+        #expect(!claude.isInstalled(path: integration.searchPath))
+
+        integration.adoptSearchPath("\(bin):\(Self.launchdPath)")
+        #expect(claude.isInstalled(path: integration.searchPath))
+    }
+
     enum TestFailure: Error { case mkdtemp, binaryNotFound }
 
     /// The built `tkzmux-hook` next to the test bundle (the products directory). Under

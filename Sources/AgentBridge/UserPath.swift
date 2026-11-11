@@ -31,6 +31,11 @@
 // cache would have to answer "is it stale?" on every launch, and the honest answer is unknowable:
 // installing an agent does not touch anything tkzmux could watch. Half a second once per launch
 // buys an answer that is never wrong, and `deadline` bounds the pathological rc.
+//
+// A probe that misses its deadline is **not** the final answer. At login the same shell can take
+// several seconds, so the caller gets a `Resolution` that says the shell never answered and then
+// calls `retry` on a background queue, which keeps asking with longer deadlines and hands back the
+// real `PATH` when it arrives.
 
 import Foundation
 import Synchronization
@@ -63,11 +68,69 @@ public enum UserPath {
         deadline: TimeInterval = 2,
         probe: (LoginShell, TimeInterval) -> String? = UserPath.probeLoginShell
     ) -> String {
+        resolution(shell: shell, processPath: processPath, deadline: deadline, probe: probe).path
+    }
+
+    /// What ``resolve(shell:processPath:deadline:probe:)`` settled on, and whether the shell
+    /// actually answered.
+    public struct Resolution: Sendable, Equatable {
+        /// The merged `PATH`. Never worse than the process's own.
+        public let path: String
+        /// `false` when the probe failed and `path` is only the process's `PATH`: under a Finder
+        /// or login-item launch that is launchd's four system directories, so the caller should
+        /// ``retry(shell:processPath:deadlines:pause:probe:sleep:)`` instead of trusting it.
+        public let fromShell: Bool
+    }
+
+    /// ``resolve(shell:processPath:deadline:probe:)``, saying whether the answer came from the
+    /// shell.
+    ///
+    /// The flag exists because a failed probe used to be final. tkzmux is a login item, and the
+    /// launch that matters most is the one at login, when the disk cache is cold and every other
+    /// login item is starting too. That is exactly when an interactive `zsh -l -i` misses its
+    /// deadline, and a miss left every agent "not installed" until the next relaunch, days later.
+    public static func resolution(
+        shell: LoginShell = .detect(environment: ProcessInfo.processInfo.environment),
+        processPath: String? = ProcessInfo.processInfo.environment["PATH"],
+        deadline: TimeInterval = 2,
+        probe: (LoginShell, TimeInterval) -> String? = UserPath.probeLoginShell
+    ) -> Resolution {
+        let started = Date()
         let probed = probe(shell, deadline)
         if probed == nil {
             log.notice("login shell PATH unavailable; falling back to the process PATH")
+        } else {
+            let elapsed = Date().timeIntervalSince(started)
+            log.info("login shell PATH resolved in \(elapsed, format: .fixed(precision: 2), privacy: .public)s")
         }
-        return merge(probed, with: processPath)
+        return Resolution(path: merge(probed, with: processPath), fromShell: probed != nil)
+    }
+
+    /// Asks the shell again, more patiently, after a launch-time probe failed. Returns the merged
+    /// `PATH` from the first attempt that answers, or `nil` if none does.
+    ///
+    /// **Blocking**: up to the sum of `deadlines` and the pauses between them, by design, so it
+    /// belongs on a background queue (never the main thread, never a Swift concurrency thread).
+    /// The deadlines grow because the usual cause of a miss is a machine still busy logging in,
+    /// and that settles in seconds, not instantly.
+    public static func retry(
+        shell: LoginShell = .detect(environment: ProcessInfo.processInfo.environment),
+        processPath: String? = ProcessInfo.processInfo.environment["PATH"],
+        deadlines: [TimeInterval] = [5, 10, 20],
+        pause: TimeInterval = 3,
+        probe: (LoginShell, TimeInterval) -> String? = UserPath.probeLoginShell,
+        sleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
+    ) -> String? {
+        for (attempt, deadline) in deadlines.enumerated() {
+            // Before every attempt, the first included: it comes straight after a miss.
+            sleep(pause)
+            if let probed = probe(shell, deadline) {
+                log.notice("login shell PATH resolved on retry \(attempt + 1, privacy: .public)")
+                return merge(probed, with: processPath)
+            }
+        }
+        log.error("login shell PATH still unavailable after \(deadlines.count, privacy: .public) retries")
+        return nil
     }
 
     /// `probed` first, then whatever the process had that it did not already carry, deduped with
@@ -159,7 +222,10 @@ public enum UserPath {
 
         if finished.wait(timeout: .now() + deadline) == .timedOut {
             log.notice("\(shell.name, privacy: .public) did not answer within \(deadline, privacy: .public)s")
-            process.terminate()
+            // SIGKILL, not `terminate()`'s SIGTERM: an interactive bash ignores SIGTERM (bash(1),
+            // SIGNALS), so a timed-out probe would otherwise outlive the deadline it missed, and
+            // every retry would leave another one behind.
+            kill(process.processIdentifier, SIGKILL)
             return nil
         }
         process.waitUntilExit()

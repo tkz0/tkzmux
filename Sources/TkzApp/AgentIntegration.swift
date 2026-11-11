@@ -147,7 +147,30 @@ public final class AgentIntegration {
     /// and for every picker that has to agree with it. The user's login shell's, resolved once per
     /// launch by `UserPath` — **not** the app process's, which under a Finder launch is launchd's
     /// four system directories and holds no agent anyone has ever installed.
-    public let searchPath: String?
+    ///
+    /// Settable after launch through ``adoptSearchPath(_:)``. A login-time probe can miss its
+    /// deadline, and the background retry's answer has to reach the pickers that read this.
+    public private(set) var searchPath: String?
+
+    /// Takes the `PATH` a late `UserPath.retry` came back with.
+    ///
+    /// The pickers (the ＋ menu, Settings' agent list) read ``searchPath`` each time they open, so
+    /// Claude, which is always in the table, shows as installed again from the next open on.
+    /// The **table itself is not rebuilt**: Codex and Antigravity are gated into it once, in
+    /// `init`, along with their accounts, watchers and hook routing. Rewiring all of that live is a
+    /// bigger change than this fix, so an agent the late `PATH` reveals is logged and joins on the
+    /// next launch.
+    public func adoptSearchPath(_ path: String) {
+        guard path != searchPath else { return }
+        searchPath = path
+        let missing = Self.defaultAdapters(supportDirectory: directory, path: path).keys
+            .filter { adapters[$0] == nil }
+            .map(\.rawValue).sorted()
+        if !missing.isEmpty {
+            logger.notice(
+                "late PATH finds \(missing.joined(separator: ", "), privacy: .public); active after relaunch")
+        }
+    }
 
     public init(
         store: AppStore,

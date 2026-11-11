@@ -1898,8 +1898,12 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             // Against the *same* `PATH` the table above was gated on, never the default (this
             // process's own). Under a Finder launch those two differ completely, and a menu that
             // disagrees with the table says "No agents installed" about agents that are installed.
-            let searchPath = agents.searchPath
-            newSessionMenu.isAdapterInstalled = { $0.isInstalled(path: searchPath) }
+            // Read on every call, not captured once: a login-time probe that missed its deadline
+            // is corrected later by `adoptSearchPath`, and a captured copy would keep the stale
+            // launchd `PATH` (and "No agent installed") until the next relaunch.
+            newSessionMenu.isAdapterInstalled = { [weak agents] adapter in
+                adapter.isInstalled(path: agents?.searchPath)
+            }
             // The launcher's own copy. It cannot be handed one at construction (`:508`) — the real
             // table needs the support directory, which only `AppDelegate` has — so this is the one
             // place it can be filled. Without it the launcher keeps its Claude-only default and a
