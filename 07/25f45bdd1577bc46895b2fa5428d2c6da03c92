@@ -1,0 +1,29 @@
+Sources/AgentBridge/UserPath.swift
+  s_bf7f321b65bb0a::t_780de51f4572db 34-38,71-98,102-130,132-133,225-228
+Sources/TkzApp/AgentIntegration.swift
+  s_bf7f321b65bb0a::t_54a4e9cdb1e1d3 150-173
+Sources/TkzApp/AppDelegate.swift
+  s_bf7f321b65bb0a::t_22e0bf31e28d48 112,116-128
+Sources/TkzApp/MainWindowController.swift
+  s_bf7f321b65bb0a::t_75ce4006ca1700 1901-1906
+Tests/AgentBridgeTests/UserPathTests.swift
+  s_bf7f321b65bb0a::t_a1ea80c1e8aa53 11,93-134,191-215
+Tests/TkzAppTests/AgentIntegrationTests.swift
+  s_bf7f321b65bb0a::t_92ebcad899b296 903-929
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0725f45bdd1577bc46895b2fa5428d2c6da03c92",
+  "prompts": {},
+  "sessions": {
+    "s_bf7f321b65bb0a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4465e92e-196f-4116-8f45-eb20a1f22318",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
