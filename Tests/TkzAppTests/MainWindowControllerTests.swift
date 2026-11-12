@@ -1090,9 +1090,9 @@ struct MainWindowControllerTests {
 
         let session = try #require(harness.store.state.selectedSession)
         let model = harness.controller.statusBar.model
-        #expect(model.branch == session.live?.git?.branch)
-        #expect(model.diffAdded == session.live?.git?.insertions)
-        #expect(model.diffFiles == session.live?.git?.changedFiles)
+        #expect(model.branch == session.git?.branch)
+        #expect(model.diffAdded == session.git?.insertions)
+        #expect(model.diffFiles == session.git?.changedFiles)
 
         harness.mutate { $0.select(nil) }
         #expect(harness.controller.statusBar.model == .empty)
@@ -1105,7 +1105,7 @@ struct MainWindowControllerTests {
 
         let id = try #require(harness.store.state.selection)
         harness.mutate { state in
-            state.updateLive(id) { $0.git = GitSummary(branch: "tkz-18", insertions: 5, deletions: 1) }
+            state.setGitSummary(GitSummary(branch: "tkz-18", insertions: 5, deletions: 1), for: id)
         }
         #expect(harness.controller.statusBar.model.branch == "tkz-18")
         #expect(harness.controller.statusBar.model.diffAdded == 5)

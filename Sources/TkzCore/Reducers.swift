@@ -161,12 +161,12 @@ extension AppState {
 
     /// What `GitStatusService` (M4.1) learned for this row's directory. `nil` = not a repo.
     ///
-    /// Only rows with live state take a summary: a restored row has no shell, no cwd being watched
-    /// and nothing to show a branch for, and giving it one would make the status bar describe a
-    /// directory nobody is standing in.
+    /// Any row takes one, running or not: a restored row has no shell yet, but it still sits in a
+    /// checkout, and its `⎇ branch` must survive a relaunch (see `Session.git`). Never creates
+    /// `live` — that would tell `applySelection` the row already has a shell.
     public mutating func setGitSummary(_ summary: GitSummary?, for id: SessionID) {
-        guard sessions[id]?.live != nil else { return }
-        updateLive(id) { $0.git = summary }
+        guard sessions[id] != nil else { return }
+        sessions[id]?.git = summary
     }
 
     /// The listening TCP ports of the row's process tree (M4.3), ascending, with the owning

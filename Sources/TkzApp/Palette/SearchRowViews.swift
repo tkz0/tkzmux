@@ -130,7 +130,7 @@ final class SearchSessionRowView: NSTableCellView {
         if let groupID = result.item.groupID, let group = state.groups[groupID], !group.name.isEmpty {
             parts.append(group.name)
         }
-        if let id = result.item.sessionID, let branch = state.sessions[id]?.live?.git?.branch,
+        if let id = result.item.sessionID, let branch = state.sessions[id]?.git?.branch,
             !branch.isEmpty
         {
             parts.append("\u{2387} \(branch)")

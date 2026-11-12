@@ -1113,7 +1113,7 @@ import Testing
         #expect(state.groups.values.contains { $0.isCollapsed })
         #expect(state.sessions.values.contains { !($0.live?.ports.isEmpty ?? true) })
         #expect(state.sessions.values.contains { $0.live?.context?.contextUsedPercentage != nil })
-        #expect(state.sessions.values.contains { $0.live?.git?.pr != nil })
+        #expect(state.sessions.values.contains { $0.git?.pr != nil })
         #expect(state.usage.count == 2)
         #expect(state.accounts.count == 2)
         #expect(state.selection != nil)

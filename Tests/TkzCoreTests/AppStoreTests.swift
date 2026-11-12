@@ -34,7 +34,7 @@ import Testing
         let store = probe.store
         store.update { state in
             state.updateLive(sessionA) { $0.ports = [1234] }
-            state.updateLive(sessionA) { $0.git?.insertions = 999 }
+            state.setGitSummary(GitSummary(insertions: 999), for: sessionA)
             state.renameSession(sessionA, title: "a new name")
         }
         store.flush()

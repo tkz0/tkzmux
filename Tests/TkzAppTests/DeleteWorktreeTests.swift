@@ -542,9 +542,8 @@ struct WorktreeRemovalCoordinatorTests {
     /// as the *row model* is concerned.
     static func markMerged(_ harness: Harness, _ id: SessionID) {
         harness.mutate { state in
-            state.updateLive(id) {
-                $0.git = GitSummary(branch: "feature", pr: PRInfo(number: 12, state: "MERGED"))
-            }
+            state.setGitSummary(
+                GitSummary(branch: "feature", pr: PRInfo(number: 12, state: "MERGED")), for: id)
         }
     }
 
@@ -751,10 +750,8 @@ struct WorktreeRemovalCoordinatorTests {
         harness.mutate { state in
             state.setStatus(.idle, for: id)
             state.setWorktree(id, path: worktree, isWorktree: true)
-            state.updateLive(id) {
-                $0.paneCwds = [:]
-                $0.git = GitSummary(branch: "feature", isWorktree: true)
-            }
+            state.updateLive(id) { $0.paneCwds = [:] }
+            state.setGitSummary(GitSummary(branch: "feature", isWorktree: true), for: id)
         }
         git.service.track(id, directory: worktree)
         await SheetTestSupport.settle(.seconds(5)) { git.service.repoInfo(for: id) != nil }

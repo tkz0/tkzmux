@@ -223,6 +223,16 @@ public struct Session: Hashable, Sendable, Identifiable {
     /// Which tab is on screen. Always one of `tabs`.
     public var activeTab: TabID
 
+    /// What `GitStatusService` (M4.1) last learned for this row's directory. `nil` = not a repo, or
+    /// nothing learned yet. Never persisted: rebuilt at launch, like `live`.
+    ///
+    /// Deliberately **on the session, not inside `live`**. A restored row has no process yet, but
+    /// it still sits in a checkout, and a sidebar that blanks every such row's `⎇ branch` at launch
+    /// reads as tkzmux having forgotten it. And `live` gets replaced wholesale (a reopen), while
+    /// `GitStatusService` only posts when the summary *changes* — a summary kept in `live` could be
+    /// wiped by a replacement and never sent again.
+    public var git: GitSummary?
+
     /// Everything about the *running* process. `nil` = not running (never persisted).
     public var live: LiveSessionState?
 
@@ -245,6 +255,7 @@ public struct Session: Hashable, Sendable, Identifiable {
         agentExited: Bool? = nil,
         tabs: [Tab]? = nil,
         activeTab: TabID? = nil,
+        git: GitSummary? = nil,
         live: LiveSessionState? = nil
     ) {
         self.id = id
@@ -270,6 +281,7 @@ public struct Session: Hashable, Sendable, Identifiable {
         let seeded = tabs ?? [Tab.single(TerminalID(uuid: id.uuid), tab: TabID(uuid: id.uuid))]
         self.tabs = seeded
         self.activeTab = activeTab ?? seeded[0].id
+        self.git = git
         self.live = live
     }
 
@@ -449,7 +461,7 @@ public struct Session: Hashable, Sendable, Identifiable {
 }
 
 extension Session: Codable {
-    /// `live` is deliberately absent: process state is rebuilt at launch, never persisted.
+    /// `live` and `git` are deliberately absent: both are rebuilt at launch, never persisted.
     private enum CodingKeys: String, CodingKey {
         case id, groupID, order, title, cwd, repoRoot, worktreePath, isWorktree
         case agent
@@ -466,7 +478,7 @@ extension Session: Codable {
 // MARK: - Live state
 
 /// The volatile half of a session: the process, what the agent says about itself, and what the
-/// services (git, ports, sidecar) have most recently learned.
+/// services (ports, sidecar) have most recently learned. Git is not here: see `Session.git`.
 public struct LiveSessionState: Hashable, Sendable {
     /// pid of the agent's own process, once the shim's `launch` frame or an observation has bound
     /// it.
@@ -494,7 +506,6 @@ public struct LiveSessionState: Hashable, Sendable {
     /// The most recent event received for this session, already mapped out of its agent's own
     /// wire vocabulary by that agent's adapter.
     public var lastEvent: AgentEvent?
-    public var git: GitSummary?
     /// Listening TCP ports found under the shell pid, ascending.
     public var ports: [UInt16]
     /// Owning process name per port (`proc_name`), for the status bar's badge tooltip. Kept beside
@@ -578,7 +589,6 @@ public struct LiveSessionState: Hashable, Sendable {
         lastNotificationMessage: String? = nil,
         lastStopAt: Date? = nil,
         lastEvent: AgentEvent? = nil,
-        git: GitSummary? = nil,
         ports: [UInt16] = [],
         portOwners: [UInt16: String] = [:],
         context: SessionSidecar? = nil,
@@ -604,7 +614,6 @@ public struct LiveSessionState: Hashable, Sendable {
         self.lastNotificationMessage = lastNotificationMessage
         self.lastStopAt = lastStopAt
         self.lastEvent = lastEvent
-        self.git = git
         self.ports = ports
         self.portOwners = portOwners
         self.context = context
