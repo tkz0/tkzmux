@@ -23,16 +23,26 @@ struct GitIntegrationTests {
 
     // MARK: Tracking
 
-    @Test func onlyLiveRowsAreTracked() {
+    @Test func restoredRowsAreTrackedAtTheirOwnDirectory() {
         var (state, live) = Self.stateWithSession()
-        // A restored row: in `state.json`, no shell behind it, nothing running in its directory.
+        // A restored row: in `state.json`, no shell behind it yet — but still in a checkout, and
+        // its `⎇ branch` must not go blank at launch until someone clicks it.
         let group = state.orderedGroups[0].id
         let restored = state.createSession(groupID: group, cwd: "/tmp/other")
         #expect(state.sessions[restored.id]?.live == nil)
 
         let targets = GitIntegration.trackingTargets(in: state)
         #expect(targets[live] == "/tmp/repo")
-        #expect(targets[restored.id] == nil)
+        #expect(targets[restored.id] == "/tmp/other")
+    }
+
+    @Test func aTildeInAPersistedDirectoryIsExpandedForGit() {
+        // `state.json` keeps paths as written; `git -C ~/x` would not expand the tilde.
+        var state = AppState()
+        let group = state.addGroup(name: "home", repoRoot: nil)
+        let restored = state.createSession(groupID: group.id, cwd: "~/dev/repo")
+        let targets = GitIntegration.trackingTargets(in: state, home: "/Users/someone")
+        #expect(targets[restored.id] == "/Users/someone/dev/repo")
     }
 
     @Test func theShellsOwnCwdWinsOverTheLaunchDirectory() {
@@ -214,11 +224,16 @@ struct GitIntegrationTests {
         let merged = state.createSession(groupID: group.id, cwd: "/tmp/c").id
         let none = state.createSession(groupID: group.id, cwd: "/tmp/d").id
         let restored = state.createSession(groupID: group.id, cwd: "/tmp/e").id
-        state.setLive(LiveSessionState(shellPid: 1, git: GitSummary(branch: "a")), for: selected)
-        state.setLive(LiveSessionState(shellPid: 2, git: GitSummary(branch: "b", pr: PRInfo(number: 2, state: "open"))), for: open)
-        state.setLive(LiveSessionState(shellPid: 3, git: GitSummary(branch: "c", pr: PRInfo(number: 3, state: "MERGED"))), for: merged)
-        state.setLive(LiveSessionState(shellPid: 4, git: GitSummary(branch: "d")), for: none)
-        _ = restored  // no live state at all
+        state.setLive(LiveSessionState(shellPid: 1), for: selected)
+        state.setGitSummary(GitSummary(branch: "a"), for: selected)
+        state.setLive(LiveSessionState(shellPid: 2), for: open)
+        state.setGitSummary(GitSummary(branch: "b", pr: PRInfo(number: 2, state: "open")), for: open)
+        state.setLive(LiveSessionState(shellPid: 3), for: merged)
+        state.setGitSummary(GitSummary(branch: "c", pr: PRInfo(number: 3, state: "MERGED")), for: merged)
+        state.setLive(LiveSessionState(shellPid: 4), for: none)
+        state.setGitSummary(GitSummary(branch: "d"), for: none)
+        // No live state at all — but a branch and an open PR: a restored row costs no `gh` calls.
+        state.setGitSummary(GitSummary(branch: "e", pr: PRInfo(number: 5, state: "OPEN")), for: restored)
         state.select(selected)
 
         let rows = GitIntegration.rowsNeedingPRRefresh(in: state)
@@ -230,7 +245,8 @@ struct GitIntegrationTests {
         var state = AppState()
         let group = state.addGroup(name: "repo", repoRoot: "/tmp/repo")
         let id = state.createSession(groupID: group.id, cwd: "/tmp/a").id
-        state.setLive(LiveSessionState(shellPid: 1, git: GitSummary(branch: "a", pr: PRInfo(number: 1, state: "OPEN"))), for: id)
+        state.setLive(LiveSessionState(shellPid: 1), for: id)
+        state.setGitSummary(GitSummary(branch: "a", pr: PRInfo(number: 1, state: "OPEN")), for: id)
         state.select(id)
         #expect(GitIntegration.rowsNeedingPRRefresh(in: state) == [id])
     }
@@ -249,15 +265,37 @@ struct GitIntegrationTests {
 
     // MARK: Store guards
 
-    @Test func gitAndPortsAreRefusedForARowWithNoShell() {
-        // `setGitSummary` / `setPorts` guard on `live`, so a race between "the row was removed"
-        // and "the scan finished" cannot resurrect a dead row with a branch name.
+    @Test func aRowWithNoShellTakesItsBranchButNoLiveState() {
+        // A restored row keeps its `⎇ branch` across a relaunch, so `setGitSummary` takes it —
+        // without creating `live`, which would tell `applySelection` there is already a shell.
+        // Ports still need a process tree, so `setPorts` keeps refusing.
         var state = AppState()
         let group = state.addGroup(name: "repo", repoRoot: "/tmp/repo")
         let session = state.createSession(groupID: group.id, cwd: "/tmp/repo")
         state.setGitSummary(GitSummary(branch: "develop"), for: session.id)
         state.setPorts([3_000], owners: [:], for: session.id)
         #expect(state.sessions[session.id]?.live == nil)
+        #expect(state.sessions[session.id]?.git?.branch == "develop")
+    }
+
+    @Test func aRemovedRowIsNotResurrectedByALateSummary() {
+        var state = AppState()
+        let group = state.addGroup(name: "repo", repoRoot: "/tmp/repo")
+        let id = state.createSession(groupID: group.id, cwd: "/tmp/repo").id
+        state.removeSession(id)
+        state.setGitSummary(GitSummary(branch: "develop"), for: id)
+        #expect(state.sessions[id] == nil)
+    }
+
+    @Test func replacingLiveStateKeepsTheBranch() {
+        // The service posts only on change, so a summary that a reopen's `setLive` wiped would
+        // never come back. It lives on the session, out of `setLive`'s reach.
+        var state = AppState()
+        let group = state.addGroup(name: "repo", repoRoot: "/tmp/repo")
+        let id = state.createSession(groupID: group.id, cwd: "/tmp/repo").id
+        state.setGitSummary(GitSummary(branch: "develop"), for: id)
+        state.setLive(LiveSessionState(shellPid: 7), for: id)
+        #expect(state.sessions[id]?.git?.branch == "develop")
     }
 }
 
@@ -281,8 +319,9 @@ struct StatusModelMappingTests {
             groupID: group.id, cwd: "/tmp/toolbox",
             worktreePath: worktreePath, isWorktree: isWorktree)
         state.setLive(
-            LiveSessionState(git: git, ports: ports, portOwners: portOwners, context: sidecar),
+            LiveSessionState(ports: ports, portOwners: portOwners, context: sidecar),
             for: session.id)
+        state.setGitSummary(git, for: session.id)
         state.select(session.id)
         return state
     }

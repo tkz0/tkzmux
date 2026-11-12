@@ -238,6 +238,38 @@ struct MainMenuTests {
         #expect(view?.items.last?.title == ShortcutsTable.title(for: .commandPalette))
     }
 
+    @Test("⌘+ / ⌘- / ⌘0 step the font size in the store, stop at the bounds, and live in View")
+    func fontSizeCommands() throws {
+        let harness = MainWindowControllerTests.makeHarness()
+        defer { harness.tearDown() }
+        let dispatcher = harness.controller.dispatcher
+        let store = harness.store
+        let standard = TerminalFontSize.standard
+
+        #expect(dispatcher.isEnabled(.resetFontSize) == false, "nothing to reset at the default")
+        #expect(dispatcher.perform(.increaseFontSize))
+        #expect(store.state.terminalFontSize == standard + 1)
+        #expect(dispatcher.perform(.decreaseFontSize))
+        #expect(dispatcher.perform(.decreaseFontSize))
+        #expect(store.state.terminalFontSize == standard - 1)
+        #expect(dispatcher.perform(.resetFontSize))
+        #expect(store.state.terminalFontSize == standard)
+
+        store.update { $0.setTerminalFontSize(TerminalFontSize.range.upperBound) }
+        #expect(dispatcher.isEnabled(.increaseFontSize) == false)
+        #expect(dispatcher.perform(.increaseFontSize) == false)
+        store.update { $0.setTerminalFontSize(TerminalFontSize.range.lowerBound) }
+        #expect(dispatcher.isEnabled(.decreaseFontSize) == false)
+
+        let items = MainMenu.commandItems(in: harness.controller.buildMainMenu())
+        let bigger = try #require(items[.increaseFontSize])
+        #expect(bigger.keyEquivalent == "+")
+        #expect(bigger.keyEquivalentModifierMask == [.command])
+        #expect(bigger.menu?.title == "View")
+        #expect(items[.decreaseFontSize]?.keyEquivalent == "-")
+        #expect(items[.resetFontSize]?.keyEquivalent == "0")
+    }
+
     @Test("The window controller wires the actions it can actually perform")
     func windowControllerHandlers() throws {
         let harness = MainWindowControllerTests.makeHarness()
@@ -248,7 +280,8 @@ struct MainMenuTests {
                        .jumpToNeedsYou, .nextSession, .previousSession, .closeTerminal,
                        .renameSession, .copyLastMessage, .showFirstPrompt, .showChanges,
                        .rebaseOntoBase, .openFolder, .settings, .notifications,
-                       .resumeSession, .resumeAllInGroup, .toggleTheme] {
+                       .resumeSession, .resumeAllInGroup, .toggleTheme,
+                       .increaseFontSize, .decreaseFontSize, .resetFontSize] {
             #expect(dispatcher.canPerform(action), "\(action.rawValue) should be wired")
         }
         for n in 1...9 {

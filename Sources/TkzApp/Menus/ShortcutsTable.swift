@@ -74,6 +74,12 @@ public struct ShortcutAction: Hashable, Sendable, RawRepresentable, CustomString
     /// No key: flip between the dark preset and its light twin — the ☾/☀ segment's command form.
     /// No checkmark: this is a flip between two named appearances, not a boolean that is on or off.
     public static let toggleTheme = ShortcutAction("toggleTheme")
+    /// ⌘+ / ⌘- / ⌘0 — the terminal font size, every pane at once (one shared glyph atlas). The
+    /// key equivalent is the `+` *character*, so it is one press on a layout with its own `+` key
+    /// (Swedish) and ⇧⌘= on US, where AppKit matches the shifted character.
+    public static let increaseFontSize = ShortcutAction("increaseFontSize")
+    public static let decreaseFontSize = ShortcutAction("decreaseFontSize")
+    public static let resetFontSize = ShortcutAction("resetFontSize")
     /// ⌃⌘R — the toolbar's ▶ Run as a chord: runs the selected row's dev server, or stops
     /// it while it runs. ⌘R is Resume, ⇧⌘R Rename and ⌥⌘R Rebase, so "R for run" takes ⌃.
     public static let runDevServer = ShortcutAction("runDevServer")
@@ -181,7 +187,8 @@ public enum ShortcutsTable {
             .closeTerminal, .closeSession, .jumpToNeedsYou, .notifications, .settings,
             .openFolder, .reloadConfig, .nextSession, .previousSession, .copyLastMessage,
             .showFirstPrompt, .showChanges, .rebaseOntoBase,
-            .resumeSession, .resumeAllInGroup, .toggleTheme, .runDevServer,
+            .resumeSession, .resumeAllInGroup, .toggleTheme,
+            .increaseFontSize, .decreaseFontSize, .resetFontSize, .runDevServer,
             .newTerminal, .splitVertically, .splitHorizontally,
             .focusPaneLeft, .focusPaneRight, .focusPaneUp, .focusPaneDown,
             .equalizeSplits, .zoomPane, .previousTab, .nextTab,
@@ -220,6 +227,9 @@ public enum ShortcutsTable {
             .focusPaneUp: Shortcut(Shortcut.upArrow, [.option, .command]),
             .focusPaneDown: Shortcut(Shortcut.downArrow, [.option, .command]),
             .equalizeSplits: Shortcut("=", [.control, .command]),
+            .increaseFontSize: Shortcut("+", .command),
+            .decreaseFontSize: Shortcut("-", .command),
+            .resetFontSize: Shortcut("0", .command),
             .zoomPane: Shortcut("\r", [.shift, .command]),
             .previousTab: Shortcut("[", [.shift, .command]),
             .nextTab: Shortcut("]", [.shift, .command]),
@@ -256,6 +266,9 @@ public enum ShortcutsTable {
         // Static on purpose: `MainMenuTests` asserts the menu item's title equals this, so a
         // state-dependent "Switch to Light…" would fail on every toggle.
         case .toggleTheme: "Toggle Light / Dark Theme"
+        case .increaseFontSize: "Increase Font Size"
+        case .decreaseFontSize: "Decrease Font Size"
+        case .resetFontSize: "Reset Font Size"
         // Static for the same reason: the toolbar button is where the command's name shows.
         case .runDevServer: "Run / Stop Dev Server"
         case .newTerminal: "New Terminal"

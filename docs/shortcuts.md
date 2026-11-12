@@ -18,6 +18,8 @@ this table; nothing hard-codes a key equivalent.
 | `commandPalette` | ⇧⌘P | Palette, everything (sessions, groups, commands) |
 | `toggleSidebar` | ⌘B | Show/hide the sidebar |
 | `toggleTheme` | — | Flip between the dark theme and its light twin. Also the ☀/☾ button at the right of the toolbar; the choice is remembered across launches |
+| `increaseFontSize` / `decreaseFontSize` | ⌘+ / ⌘- | Terminal font size one point up / down, every pane at once (they share one glyph atlas), between 8 and 32 pt. The grid re-flows and every shell gets the new size. Remembered across launches; also *Font size* in Settings › Appearance. Bound to the `+` character: one key on a Swedish layout, ⇧⌘= on US |
+| `resetFontSize` | ⌘0 | Back to the default terminal font size (14 pt) |
 | `renameSession` | ⇧⌘R | Rename the selected session |
 | `closeTerminal` | ⌘W | Close the focused pane; the session's **last** terminal closes the session |
 | `closeSession` | ⇧⌘W | Close the session, however many panes it has. A worktree row whose pull request is merged asks first, with **Close and Delete Worktree** as the default button and **Close Only** beside it; every other idle row still closes with no prompt at all, and a working row is never offered the delete. ⇧⌘W never force-removes a worktree with uncommitted changes — use *Delete worktree…* for that |

@@ -56,7 +56,7 @@ public enum SidebarRowAdapter {
     public static func sessionModel(_ session: Session, in state: AppState) -> SidebarSessionRowModel {
         SidebarSessionRowModel(
             title: session.displayTitle,
-            branch: session.live?.git?.branch,
+            branch: session.git?.branch,
             directory: directory(for: session),
             isWorktree: session.showsWorktreeBadge,
             isMerged: isMerged(session),
@@ -88,7 +88,7 @@ public enum SidebarRowAdapter {
     /// `merge-base` call (`WorktreeRemoval.survey`) that a pure row model has no way to make, and
     /// the ticket ties the word to the PR badge turning merged.
     static func isMerged(_ session: Session) -> Bool {
-        session.showsWorktreeBadge && session.live?.git?.pr?.state?.uppercased() == "MERGED"
+        session.showsWorktreeBadge && session.git?.pr?.state?.uppercased() == "MERGED"
     }
 
     /// The `…/dir` subtitle: the folder-derived title, unless that *is* the title. An exact string

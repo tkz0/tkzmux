@@ -16,7 +16,9 @@
 //   | PR    | on selection, on a branch change, after each Stop hook (≥ 15 s apart, any row), and every 5 min for every row whose PR is open; `PRLookup` throttles and caches failures for 10 |
 //
 // Non-selected rows are deliberately cheap: their git comes from the file system telling us it
-// changed, and their ports only from a Stop. The one thing polled across rows is the PR of a row
+// changed, and their ports only from a Stop. Restored rows (no shell yet) are watched too — one
+// FSEvents stream per *repo*, not per row — so their `⎇ branch` survives a relaunch; they get no
+// ports and no `gh` calls until they are opened. The one thing polled across rows is the PR of a row
 // whose PR is known to be open — a merge happens in the browser and nothing local announces it —
 // and `PRLookup` caps that at one `gh` call per row per 5 min.
 //
@@ -224,8 +226,12 @@ public final class GitIntegration {
     /// Which directory each session should be watched at. Pure, so the "a `cd` re-targets the
     /// watcher" rule is a test rather than an observation.
     ///
-    /// Only rows with live state qualify: a restored row has no shell, nothing is running in a
-    /// directory on its behalf, and `AppState.setGitSummary` would refuse the result anyway.
+    /// **Every row qualifies, running or not.** A restored row has no shell yet, but it is still in
+    /// a checkout, and leaving it untracked is what blanked every exited session's `⎇ branch` at
+    /// launch until it was clicked. With no live state `paneDirectory` answers `effectiveCwd`, which
+    /// is then the directory the session was started in (the agent's own, after a bound
+    /// observation) — kept as written in `state.json`, so a `~` is expanded here, at the boundary
+    /// where `git -C` needs a real path.
     ///
     /// **The focused pane's directory wins** (design 2c.3/2c.4, 2026-09-10): the status bar
     /// describes the pane that has the keyboard, so a split whose panes stand in two repos shows
@@ -244,12 +250,14 @@ public final class GitIntegration {
     /// the descriptor. `Session.paneDirectory` carries that rule (the pane header reads the same
     /// one), so the pane hosting Claude is watched at Claude's own cwd while a live descriptor
     /// is bound, and a second pane in another repo still steers the strip when it has focus.
-    static func trackingTargets(in state: AppState) -> [SessionID: String] {
+    static func trackingTargets(
+        in state: AppState, home: String = NSHomeDirectory()
+    ) -> [SessionID: String] {
         var out: [SessionID: String] = [:]
-        for session in state.sessions.values where session.live != nil {
+        for session in state.sessions.values {
             let directory = session.paneDirectory(session.focusedTerminalID)
             guard !directory.isEmpty else { continue }
-            out[session.id] = directory
+            out[session.id] = Paths.expandingTilde(directory, home: home)
         }
         return out
     }
@@ -296,7 +304,7 @@ public final class GitIntegration {
     // MARK: Git
 
     private func applySummary(_ summary: GitSummary?, to id: SessionID) {
-        let previousBranch = store.state.sessions[id]?.live?.git?.branch
+        let previousBranch = store.state.sessions[id]?.git?.branch
         store.update { $0.setGitSummary(summary, for: id) }
         // A branch change is the other thing that must re-ask for a PR — for *any* row, because a
         // turn that ran `git checkout -b` and `gh pr create` ends with a Stop whose lookup still
@@ -327,11 +335,13 @@ public final class GitIntegration {
     /// — but not the last word: once a lookup has landed, a stale sidecar must not flip a merged
     /// PR back to open. Hence: seed only while nothing has been looked up, then always ask.
     private func requestPullRequest(for id: SessionID, maxAge: TimeInterval? = nil) {
+        // Running rows only: a restored row now has a branch too (`Session.git`), but asking `gh`
+        // about every row in the sidebar at launch is exactly the cost the cadence table rules out.
         guard let session = store.state.sessions[id], let live = session.live else { return }
-        if Self.shouldSeedFromSidecar(git: live.git, sidecar: live.context), let seed = live.context?.pr {
+        if Self.shouldSeedFromSidecar(git: session.git, sidecar: live.context), let seed = live.context?.pr {
             service.setPullRequest(seed, for: id)
         }
-        guard let branch = live.git?.branch, !branch.isEmpty else { return }
+        guard let branch = session.git?.branch, !branch.isEmpty else { return }
         // Keyed by the checkout, not the pane's subdirectory: `PRLookup` re-runs `gh` when the
         // directory it last looked up changes, and every pane of one checkout has the same PR.
         let directory = service.repoInfo(for: id)?.toplevel ?? tracked[id] ?? session.effectiveCwd
@@ -359,7 +369,7 @@ public final class GitIntegration {
         var out: [SessionID] = []
         if let selected = state.selection { out.append(selected) }
         for (id, session) in state.sessions where id != state.selection {
-            guard let pr = session.live?.git?.pr else { continue }
+            guard session.live != nil, let pr = session.git?.pr else { continue }
             if pr.state?.uppercased() == "OPEN" { out.append(id) }
         }
         return out
@@ -430,9 +440,12 @@ public final class GitIntegration {
     }
 
     /// The Session-menu item's enablement: the branch is behind a known base and nothing is
-    /// rebasing it. The chip follows the same rule through `StatusBarModel`.
+    /// rebasing it. The chip follows the same rule through `StatusBarModel`. A running row only,
+    /// as `rebaseOntoBase` requires — a restored row has a `GitSummary` too, but nothing to rebase
+    /// on behalf of until it is opened.
     public func canRebaseOntoBase(_ id: SessionID) -> Bool {
-        guard let git = store.state.sessions[id]?.live?.git, git.isOffBase,
+        guard let session = store.state.sessions[id], session.live != nil,
+            let git = session.git, git.isOffBase,
             let behind = git.behindBase, behind > 0
         else { return false }
         return !isRebasing(id)
@@ -447,7 +460,7 @@ public final class GitIntegration {
         let recent = lastFetchAt[info.repoRoot].map { now().timeIntervalSince($0) < Self.recentFetchWindow }
         return GitRebase.Request(
             toplevel: info.toplevel, gitDir: info.gitDir, base: base, skipFetch: recent ?? false,
-            expectedBranch: store.state.sessions[id]?.live?.git?.branch)
+            expectedBranch: store.state.sessions[id]?.git?.branch)
     }
 
     /// The sheet fetched on its own (through `GitRebase.fetch`): remember it so the rebase that
@@ -464,12 +477,12 @@ public final class GitIntegration {
     /// always finishes asynchronously must gate that on the return value, not run it unconditionally.
     @discardableResult
     public func rebaseOntoBase(_ id: SessionID, skipFetch: Bool = false) -> Bool {
-        guard let live = store.state.sessions[id]?.live else { return false }
+        guard let session = store.state.sessions[id], session.live != nil else { return false }
         guard let info = service.repoInfo(for: id), var prepared = rebaseRequest(for: id) else {
             onRebaseNotice?(Self.notice(for: .noBase, base: nil))
             return false
         }
-        if let refusal = GitRebase.preflight(summary: live.git, gitDir: info.gitDir) {
+        if let refusal = GitRebase.preflight(summary: session.git, gitDir: info.gitDir) {
             onRebaseNotice?(Self.notice(for: refusal, base: prepared.base.ref))
             return false
         }
@@ -481,7 +494,7 @@ public final class GitIntegration {
         let request = prepared
         onRebaseStateChange?()
 
-        let hadUpstream = live.git?.upstream != nil
+        let hadUpstream = session.git?.upstream != nil
         let run = runRebase
         let box = WeakBox()
         box.value = self
@@ -600,7 +613,7 @@ public final class GitIntegration {
         guard let session = store.state.sessions[id], let info = service.repoInfo(for: id) else {
             return nil
         }
-        let branch = session.live?.git?.branch
+        let branch = session.git?.branch
         return WorktreeRemoval.Request(
             worktreePath: info.toplevel,
             repoRoot: info.repoRoot,

@@ -479,6 +479,48 @@ import Testing
         #expect(change.structure == false)
         #expect(change.sessions.isEmpty)
     }
+
+    @Test func fontSizeStepsClampAndReset() {
+        var state = AppState()
+        #expect(state.terminalFontSize == TerminalFontSize.standard)
+
+        state.stepTerminalFontSize(by: 1)
+        #expect(state.terminalFontSize == TerminalFontSize.standard + 1)
+        state.stepTerminalFontSize(by: -3)
+        #expect(state.terminalFontSize == TerminalFontSize.standard - 2)
+
+        state.stepTerminalFontSize(by: 1000)
+        #expect(state.terminalFontSize == TerminalFontSize.range.upperBound)
+        state.stepTerminalFontSize(by: -1000)
+        #expect(state.terminalFontSize == TerminalFontSize.range.lowerBound)
+
+        state.setTerminalFontSize(13.6)
+        #expect(state.terminalFontSize == 14, "whole points only")
+        state.setTerminalFontSize(.nan)
+        #expect(state.terminalFontSize == TerminalFontSize.standard)
+
+        state.setTerminalFontSize(20)
+        state.resetTerminalFontSize()
+        #expect(state.terminalFontSize == TerminalFontSize.standard)
+        #expect(AppState(terminalFontSize: 99).terminalFontSize == TerminalFontSize.range.upperBound)
+    }
+
+    @Test func changingTheFontSizeIsAFontChangeAndNothingElse() {
+        var state = AppState()
+        let before = state
+        state.stepTerminalFontSize(by: 1)
+        let change = ChangeSet.diff(from: before, to: state)
+        #expect(change.terminalFont)
+        #expect(change.theme == false)
+        #expect(change.chrome == false)
+        #expect(change.isEmpty == false)
+
+        // At the bound a step is a no-op, and so is its change set.
+        state.setTerminalFontSize(TerminalFontSize.range.upperBound)
+        let atTop = state
+        state.stepTerminalFontSize(by: 1)
+        #expect(ChangeSet.diff(from: atTop, to: state).isEmpty)
+    }
 }
 
 @Suite struct GroupReducerTests {
@@ -1113,7 +1155,7 @@ import Testing
         #expect(state.groups.values.contains { $0.isCollapsed })
         #expect(state.sessions.values.contains { !($0.live?.ports.isEmpty ?? true) })
         #expect(state.sessions.values.contains { $0.live?.context?.contextUsedPercentage != nil })
-        #expect(state.sessions.values.contains { $0.live?.git?.pr != nil })
+        #expect(state.sessions.values.contains { $0.git?.pr != nil })
         #expect(state.usage.count == 2)
         #expect(state.accounts.count == 2)
         #expect(state.selection != nil)

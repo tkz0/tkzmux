@@ -267,6 +267,44 @@ struct TerminalMetalViewTests {
         #expect(context.liveSurfaces().isEmpty)
     }
 
+    @Test("a font-size change rebuilds once and re-grids every view on the context")
+    func fontSizeRebuildRegridsEveryView() throws {
+        guard let (context, view) = try makeView() else { return }
+        let other = TerminalMetalView(
+            renderContext: context, frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        let session = try makeSession()
+        let otherSession = try makeSession()
+        view.show(session)
+        other.show(otherSession)
+        let gridBefore = view.currentGridSize
+        let otherGridBefore = other.currentGridSize
+        let cellBefore = context.metrics
+
+        #expect(try context.setPointSize(context.pointSize * 2))
+
+        #expect(context.rebuildCount == 1)
+        #expect(context.scale == 2, "a font change keeps the backing scale")
+        #expect(context.metrics.width > cellBefore.width)
+        #expect(context.metrics.height > cellBefore.height)
+        #expect(view.surface.isAttached && other.surface.isAttached)
+        #expect(view.currentGridSize.cols < gridBefore.cols, "bigger cells, fewer columns")
+        #expect(other.currentGridSize.cols < otherGridBefore.cols, "not just the first view")
+        #expect(view.currentGridSize == view.gridSizeForBounds())
+        #expect(session.size.cols == view.currentGridSize.cols, "the session hears the new size")
+        #expect(otherSession.size.rows == other.currentGridSize.rows)
+
+        // The same size again, or nonsense, rebuilds nothing.
+        #expect(try context.setPointSize(context.pointSize) == false)
+        #expect(try context.setPointSize(0) == false)
+        #expect(try context.setPointSize(.infinity) == false)
+        #expect(context.rebuildCount == 1)
+
+        // A later scale change keeps the chosen size.
+        let size = context.pointSize
+        view.applyBackingScale(1)
+        #expect(context.pointSize == size)
+    }
+
     // MARK: Geometry
 
     @Test("the grid is derived from device pixels and cell metrics")

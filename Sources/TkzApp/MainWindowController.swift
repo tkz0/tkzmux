@@ -1157,7 +1157,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             rebaseSheet.dismiss()
             return
         }
-        let gitSummary = session.live?.git
+        let gitSummary = session.git
         guard let base = gitSummary?.baseBranch else {
             showNotice(GitIntegration.notice(for: .noBase, base: nil), for: .seconds(3))
             return
@@ -1216,7 +1216,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
             return
         }
 
-        let summary = session.live?.git
+        let summary = session.git
         var model = DeleteWorktreeSheetModel(worktreePath: request.worktreePath)
         model.home = home
         model.branch = request.branch
@@ -1318,7 +1318,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
                     id: session.id,
                     title: session.displayTitle,
                     request: request,
-                    pr: session.live?.git?.pr,
+                    pr: session.git?.pr,
                     agentWorking: session.status == .working,
                     agentName: agents?.adapters[session.agent]?.displayName ?? "the agent")
             }
@@ -1356,7 +1356,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // detected the repo the cwd is the best guess there is.
         let toplevel = git?.service.repoInfo(for: id)?.toplevel ?? session.effectiveCwd
         guard !toplevel.isEmpty else { return }
-        changes.present(for: id, toplevel: toplevel, git: session.live?.git)
+        changes.present(for: id, toplevel: toplevel, git: session.git)
     }
 
     /// The card's data comes from `agents` (set later by `AppDelegate`); only the notice is wired
@@ -2385,6 +2385,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // First: a delivery that carries both should re-tint before it re-selects, so the new
         // selection is drawn once, in the new theme.
         if change.theme { setTheme(Theme.preset(store.state.themePreset)) }
+        if change.terminalFont {
+            (host as? TerminalViewHost)?.setTerminalFontSize(store.state.terminalFontSize)
+        }
         if change.selection {
             applySelection(focusTerminal: true)
             updateToolbarTitle()
@@ -2463,7 +2466,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // The viewer re-reads when its row's git numbers moved — FSEvents, already debounced by
         // `GitStatusService`, arriving here as a new `GitSummary`.
         if let id = changes.sessionID, change.touches(id) {
-            changes.gitSummaryChanged(store.state.sessions[id]?.live?.git)
+            changes.gitSummaryChanged(store.state.sessions[id]?.git)
         }
         git?.apply(change)
     }
@@ -2810,7 +2813,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
     /// separator (see `StatusBarView.items`).
     static func statusModel(for state: AppState, now: Date = Date()) -> StatusBarModel {
         guard let session = state.selectedSession else { return .empty }
-        let git = session.live?.git
+        let git = session.git
         let sidecar = session.live?.context
         let usage = state.usage(for: session)
 
@@ -3527,7 +3530,7 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
 
         guard let plan = Self.closePlan(
             for: session, agentName: name, isMergedWorktree: merged,
-            worktreePath: info?.toplevel, branch: session.live?.git?.branch, home: home)
+            worktreePath: info?.toplevel, branch: session.git?.branch, home: home)
         else {
             launcher.remove(id)
             return
@@ -4478,12 +4481,35 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         dispatcher.setEnabled(.rebaseOntoBase) { [weak self] in
             guard let self, let id = self.store.state.selection else { return false }
             return self.git?.canRebaseOntoBase(id)
-                ?? (self.store.state.sessions[id]?.live?.git.map { $0.isOffBase && ($0.behindBase ?? 0) > 0 } ?? false)
+                ?? (self.store.state.sessions[id]?.git.map { $0.isOffBase && ($0.behindBase ?? 0) > 0 } ?? false)
         }
         // M5.2
         dispatcher.setHandler(.resumeSession) { [weak self] in self?.resumeSelectedSession() }
         dispatcher.setHandler(.resumeAllInGroup) { [weak self] in self?.resumeAll() }
         dispatcher.setHandler(.toggleTheme) { [weak self] in self?.toggleTheme() }
+        // Font size (⌘+ / ⌘- / ⌘0): the store is the only writer; `ChangeSet.terminalFont` → the host rebuilds.
+        // Enabled only while there is room to move, so the menu greys out at the bounds.
+        dispatcher.setHandler(.increaseFontSize) { [weak self] in
+            self?.store.update { $0.stepTerminalFontSize(by: 1) }
+        }
+        dispatcher.setEnabled(.increaseFontSize) { [weak self] in
+            guard let self else { return false }
+            return self.store.state.terminalFontSize < TerminalFontSize.range.upperBound
+        }
+        dispatcher.setHandler(.decreaseFontSize) { [weak self] in
+            self?.store.update { $0.stepTerminalFontSize(by: -1) }
+        }
+        dispatcher.setEnabled(.decreaseFontSize) { [weak self] in
+            guard let self else { return false }
+            return self.store.state.terminalFontSize > TerminalFontSize.range.lowerBound
+        }
+        dispatcher.setHandler(.resetFontSize) { [weak self] in
+            self?.store.update { $0.resetTerminalFontSize() }
+        }
+        dispatcher.setEnabled(.resetFontSize) { [weak self] in
+            guard let self else { return false }
+            return self.store.state.terminalFontSize != TerminalFontSize.standard
+        }
         // The toolbar's ▶/■ as a chord. Enabled whenever the toolbar shows the button.
         dispatcher.setHandler(.runDevServer) { [weak self] in self?.toggleDevServer() }
         dispatcher.setEnabled(.runDevServer) { [weak self] in

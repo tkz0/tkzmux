@@ -53,20 +53,42 @@ public struct RepoInfo: Hashable, Sendable {
     }
 
     /// Runs the one `rev-parse` and derives everything from it. `nil` when `cwd` is not inside a
-    /// repo (git exits non-zero), when the directory is gone, or when git could not be launched.
+    /// repo (git exits non-zero), when the directory is gone, or when git could not be launched —
+    /// ``detection(cwd:gitPath:)`` tells the last case apart.
     ///
     /// Synchronous — it launches a process, so call it from a background queue.
     /// `GitStatusService` caches the result per cwd; there is deliberately no cache here.
     public static func detect(cwd: String, gitPath: String = GitProcess.gitPath) -> RepoInfo? {
-        let output = try? GitProcess.git(
-            ["rev-parse", "--show-toplevel", "--git-dir", "--git-common-dir"],
-            in: cwd, gitPath: gitPath)
-        guard let output, output.succeeded else { return nil }
+        if case .repo(let info) = detection(cwd: cwd, gitPath: gitPath) { return info }
+        return nil
+    }
+
+    /// What one detection attempt found — ``detect(cwd:gitPath:)`` with its `nil` split in two.
+    public enum Detection: Hashable, Sendable {
+        case repo(RepoInfo)
+        /// git ran and said no: not a repo, or the directory is gone. A *state*, fine to cache.
+        case notARepo
+        /// git could not be asked: it timed out or would not launch. A measurement *not made* —
+        /// at login, with a dozen sessions starting at once, a 5 s `rev-parse` timeout is a real
+        /// event, and caching it as "not a repo" is what left a row's branch blank for good.
+        case failed
+    }
+
+    public static func detection(cwd: String, gitPath: String = GitProcess.gitPath) -> Detection {
+        let output: GitProcess.Output
+        do {
+            output = try GitProcess.git(
+                ["rev-parse", "--show-toplevel", "--git-dir", "--git-common-dir"],
+                in: cwd, gitPath: gitPath)
+        } catch {
+            return .failed
+        }
+        guard output.succeeded else { return .notARepo }
 
         let lines = output.standardOutput
             .split(separator: "\n", omittingEmptySubsequences: true)
             .map { $0.trimmingCharacters(in: .whitespaces) }
-        guard lines.count >= 3 else { return nil }
+        guard lines.count >= 3 else { return .notARepo }
 
         let toplevel = resolve(absolute(lines[0], relativeTo: cwd))
         let gitDir = resolve(absolute(lines[1], relativeTo: cwd))
@@ -74,13 +96,13 @@ public struct RepoInfo: Hashable, Sendable {
         let repoRoot = (commonDir as NSString).deletingLastPathComponent
         let isWorktree = gitDir != commonDir
 
-        return RepoInfo(
+        return .repo(RepoInfo(
             toplevel: toplevel,
             gitDir: gitDir,
             commonDir: commonDir,
             repoRoot: repoRoot.isEmpty ? commonDir : repoRoot,
             isWorktree: isWorktree,
-            worktreeName: isWorktree ? (toplevel as NSString).lastPathComponent : nil)
+            worktreeName: isWorktree ? (toplevel as NSString).lastPathComponent : nil))
     }
 
     /// Makes a git-printed path absolute. git prints `--git-dir` relative to the directory it was

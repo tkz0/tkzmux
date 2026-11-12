@@ -161,12 +161,12 @@ extension AppState {
 
     /// What `GitStatusService` (M4.1) learned for this row's directory. `nil` = not a repo.
     ///
-    /// Only rows with live state take a summary: a restored row has no shell, no cwd being watched
-    /// and nothing to show a branch for, and giving it one would make the status bar describe a
-    /// directory nobody is standing in.
+    /// Any row takes one, running or not: a restored row has no shell yet, but it still sits in a
+    /// checkout, and its `⎇ branch` must survive a relaunch (see `Session.git`). Never creates
+    /// `live` — that would tell `applySelection` the row already has a shell.
     public mutating func setGitSummary(_ summary: GitSummary?, for id: SessionID) {
-        guard sessions[id]?.live != nil else { return }
-        updateLive(id) { $0.git = summary }
+        guard sessions[id] != nil else { return }
+        sessions[id]?.git = summary
     }
 
     /// The listening TCP ports of the row's process tree (M4.3), ascending, with the owning
@@ -549,6 +549,23 @@ extension AppState {
     /// outside `Theme.swift` names a preset.
     public mutating func toggleTheme() {
         themePreset = Theme.toggled(themePreset)
+    }
+
+    // MARK: Terminal font size
+
+    /// Settings › Appearance's popup. Clamped and rounded, so a hand-edited value cannot escape.
+    public mutating func setTerminalFontSize(_ size: Double) {
+        terminalFontSize = TerminalFontSize.clamped(size)
+    }
+
+    /// ⌘+ (`steps` > 0) and ⌘- (`steps` < 0). Stops at the ends of `TerminalFontSize.range`.
+    public mutating func stepTerminalFontSize(by steps: Int) {
+        setTerminalFontSize(terminalFontSize + Double(steps) * TerminalFontSize.step)
+    }
+
+    /// ⌘0.
+    public mutating func resetTerminalFontSize() {
+        terminalFontSize = TerminalFontSize.standard
     }
 
     // MARK: Update card

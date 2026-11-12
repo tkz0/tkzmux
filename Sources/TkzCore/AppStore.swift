@@ -72,6 +72,10 @@ public struct ChangeSet: Hashable, Sendable {
     /// (window appearance first, terminals last), and a second subscriber would make that order
     /// depend on observer registration order, which is not guaranteed.
     public var theme: Bool
+    /// `AppState.terminalFontSize` differs. Its own bucket for the reason `theme` is: reacting to
+    /// it rebuilds the glyph atlas and resizes every terminal's grid. `MainWindowController` is
+    /// its sole observer.
+    public var terminalFont: Bool
     /// `AppState.activity` differs: an entry was appended, marked read or marked unread. The
     /// activity feed panel is its observer; the sidebar and status bar ignore it.
     public var activity: Bool
@@ -85,6 +89,7 @@ public struct ChangeSet: Hashable, Sendable {
         usage: Bool = false,
         chrome: Bool = false,
         theme: Bool = false,
+        terminalFont: Bool = false,
         activity: Bool = false
     ) {
         self.sessions = sessions
@@ -95,6 +100,7 @@ public struct ChangeSet: Hashable, Sendable {
         self.usage = usage
         self.chrome = chrome
         self.theme = theme
+        self.terminalFont = terminalFont
         self.activity = activity
     }
 
@@ -103,7 +109,7 @@ public struct ChangeSet: Hashable, Sendable {
 
     public var isEmpty: Bool {
         sessions.isEmpty && groups.isEmpty && layout.isEmpty && !structure && !selection
-            && !usage && !chrome && !theme && !activity
+            && !usage && !chrome && !theme && !terminalFont && !activity
     }
 
     public mutating func formUnion(_ other: ChangeSet) {
@@ -115,6 +121,7 @@ public struct ChangeSet: Hashable, Sendable {
         usage = usage || other.usage
         chrome = chrome || other.chrome
         theme = theme || other.theme
+        terminalFont = terminalFont || other.terminalFont
         activity = activity || other.activity
     }
 
@@ -189,6 +196,7 @@ public struct ChangeSet: Hashable, Sendable {
             change.chrome = true
         }
         if old.themePreset != new.themePreset { change.theme = true }
+        if old.terminalFontSize != new.terminalFontSize { change.terminalFont = true }
         if old.activity != new.activity { change.activity = true }
 
         return change

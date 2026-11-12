@@ -75,6 +75,10 @@ public struct AppState: Hashable, Sendable {
     /// The active colour scheme. The ☾/☀ toggle in the toolbar writes it; `MainWindowController` is
     /// its sole observer, via `ChangeSet.theme`. Durable, in `PersistedPreferences`.
     public var themePreset: Theme.Preset
+    /// Terminal font size in points, always inside `TerminalFontSize.range`. ⌘+ / ⌘- / ⌘0 and
+    /// Settings › Appearance write it through the reducers, which clamp. `MainWindowController` is
+    /// its sole observer, via `ChangeSet.terminalFont`. Durable, in `PersistedPreferences`.
+    public var terminalFontSize: Double
     /// The release check's answer and the in-app upgrade's progress. Process state, never
     /// persisted — see `UpdateState`.
     public var update: UpdateState
@@ -106,6 +110,7 @@ public struct AppState: Hashable, Sendable {
         badgeDockIcon: Bool = true,
         soundOnReady: Bool = false,
         themePreset: Theme.Preset = Theme.default.preset,
+        terminalFontSize: Double = TerminalFontSize.standard,
         update: UpdateState = UpdateState(),
         activity: [ActivityEvent] = []
     ) {
@@ -128,6 +133,7 @@ public struct AppState: Hashable, Sendable {
         self.badgeDockIcon = badgeDockIcon
         self.soundOnReady = soundOnReady
         self.themePreset = themePreset
+        self.terminalFontSize = TerminalFontSize.clamped(terminalFontSize)
         self.update = update
         self.activity = activity
     }

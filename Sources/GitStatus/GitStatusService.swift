@@ -60,6 +60,11 @@ public final class GitStatusService: Sendable {
         /// place.
         var detectCache: [String: DetectResult] = [:]
         var detectCacheOrder: [String] = []
+        /// A `track` whose detection *failed* (git timed out or would not launch — not "not a
+        /// repo") and is waiting for its retry: the directory asked for, and how many attempts
+        /// have failed so far. Cleared by any later `track`/`untrack` of the session, which is
+        /// also what turns a retry that fires after one into a no-op.
+        var pendingDetect: [SessionID: (directory: String, failures: Int)] = [:]
 
         mutating func cacheDetection(_ result: DetectResult, for directory: String) {
             if detectCache.updateValue(result, forKey: directory) == nil {
@@ -100,6 +105,9 @@ public final class GitStatusService: Sendable {
         var lastRefreshAt: Date?
         /// When the last refresh *started* — the input to the `minimumInterval` floor.
         var lastRefreshStartedAt: Date?
+        /// Consecutive failed refreshes while nothing has been posted yet — the retry backoff's
+        /// attempt counter. Reset by the first success.
+        var failedRefreshes = 0
         var pr: PRInfo?
         var debounceTimer: DispatchSourceTimer?
         /// Bumped whenever the session is retargeted, so a refresh whose git was still running when
@@ -157,24 +165,44 @@ public final class GitStatusService: Sendable {
     ///   - minimumInterval: the floor between two refreshes of one session during a burst. 2 s.
     ///   - baseRetryInterval: how long an *unresolved* base branch is left alone before the next
     ///     refresh tries `BaseBranch.resolve` again. 60 s.
+    ///   - failureRetryDelay: the first wait before retrying a detection, or a first refresh, that
+    ///     failed because git could not be asked (timed out, would not launch). Doubles per
+    ///     failure up to `maximumFailureRetryDelay`, for at most `maximumFailureRetries` attempts.
+    ///     2 s.
     ///   - onSummary: called on a service queue whenever a session's summary *changes*, and once
     ///     with `nil` when a tracked session stops being in a repo.
     public init(
         debounce: Duration = .milliseconds(300),
         minimumInterval: Duration = .seconds(2),
         baseRetryInterval: TimeInterval = 60,
+        failureRetryDelay: Duration = .seconds(2),
         gitPath: String = GitProcess.gitPath,
         onSummary: @escaping @Sendable (SessionID, GitSummary?) -> Void
     ) {
         self.debounce = debounce
         self.minimumInterval = minimumInterval
         self.baseRetryInterval = baseRetryInterval
+        self.failureRetryDelay = failureRetryDelay
         self.gitPath = gitPath
         self.onSummary = onSummary
         self.storage = Mutex(Storage())
     }
 
     private let baseRetryInterval: TimeInterval
+    private let failureRetryDelay: Duration
+
+    /// The backoff ceiling, and how many failed attempts in a row are retried before giving up.
+    /// 2 + 4 + … + 60 s over eight attempts is about four minutes — longer than a login-time
+    /// stall lasts — and after that a stalled network mount costs nothing more until the session
+    /// is retargeted (a `cd`, an agent binding), which tries again from scratch.
+    static let maximumFailureRetryDelay: Duration = .seconds(60)
+    static let maximumFailureRetries = 8
+
+    /// The wait before the retry that follows the `failures`-th consecutive failure (1-based).
+    func retryDelay(afterFailures failures: Int) -> Duration {
+        let doubled = failureRetryDelay * (1 << min(max(failures - 1, 0), 16))
+        return min(doubled, max(failureRetryDelay, Self.maximumFailureRetryDelay))
+    }
 
     deinit {
         let actions = storage.withLock { s -> [WatcherAction] in
@@ -233,6 +261,7 @@ public final class GitStatusService: Sendable {
         controlQueue.async { [self] in
             let actions = storage.withLock { s -> [WatcherAction] in
                 var actions: [WatcherAction] = []
+                s.pendingDetect[id] = nil
                 removeSession(id, &s, &actions)
                 return actions
             }
@@ -319,7 +348,11 @@ public final class GitStatusService: Sendable {
 
     // MARK: - Tracking internals (control queue)
 
-    private func applyTrack(_ id: SessionID, directory: String?) {
+    /// - Parameter priorFailures: how many detections of this same directory have already failed
+    ///   in a row — non-zero only when called by a detection retry.
+    private func applyTrack(_ id: SessionID, directory: String?, priorFailures: Int = 0) {
+        // Whatever was pending is superseded: by this retry itself, or by a newer request.
+        storage.withLock { s in s.pendingDetect[id] = nil }
         guard let directory, !directory.isEmpty else {
             postNilIfWasTracked(id)
             return
@@ -328,8 +361,18 @@ public final class GitStatusService: Sendable {
         let unchanged = storage.withLock { s in s.sessions[id]?.directory == directory }
         if unchanged { return }
 
-        guard let info = detect(directory) else {
+        let info: RepoInfo
+        switch detect(directory) {
+        case .repo(let detected):
+            info = detected
+        case .notARepo:
             postNilIfWasTracked(id)
+            return
+        case .failed:
+            // Not an answer, so nothing is cached and the session is not left for dead: nobody
+            // else will ask again — the app's own record says this directory is already tracked.
+            postNilIfWasTracked(id)
+            scheduleDetectRetry(id, directory: directory, failures: priorFailures + 1)
             return
         }
 
@@ -350,6 +393,23 @@ public final class GitStatusService: Sendable {
         // A freshly tracked session wants its chip filled in; the debounce is what keeps a burst of
         // retargets (a shell `cd` loop) from turning into a burst of git.
         scheduleDebounced(id)
+    }
+
+    /// Retries a detection that *failed* (not one that said "not a repo"), with backoff, unless a
+    /// newer `track`/`untrack` of the session has superseded it by the time it fires.
+    private func scheduleDetectRetry(_ id: SessionID, directory: String, failures: Int) {
+        guard failures <= Self.maximumFailureRetries else { return }
+        storage.withLock { s in s.pendingDetect[id] = (directory, failures) }
+        let delay = retryDelay(afterFailures: failures)
+        controlQueue.asyncAfter(deadline: .now() + delay.dispatchInterval) { [weak self] in
+            guard let self else { return }
+            let pending = storage.withLock { s -> Int? in
+                guard let pending = s.pendingDetect[id], pending.directory == directory else { return nil }
+                return pending.failures
+            }
+            guard let pending else { return }
+            applyTrack(id, directory: directory, priorFailures: pending)
+        }
     }
 
     private func postNilIfWasTracked(_ id: SessionID) {
@@ -431,22 +491,29 @@ public final class GitStatusService: Sendable {
         }
     }
 
-    private func detect(_ directory: String) -> RepoInfo? {
+    /// Only *answers* are cached. A `.failed` detection is not one, and caching it as "not a
+    /// repo" would hide the directory for the 30 s negative TTL — and, since nothing re-tracks a
+    /// directory the app believes is already tracked, for good.
+    private func detect(_ directory: String) -> RepoInfo.Detection {
         let cached = storage.withLock { s in s.detectCache[directory] }
         switch cached {
         case .repo(let info):
-            return info
+            return .repo(info)
         case .notARepo(let at) where Date().timeIntervalSince(at) < 30:
-            return nil
+            return .notARepo
         default:
             break
         }
-        let info = RepoInfo.detect(cwd: directory, gitPath: gitPath)
-        storage.withLock { s in
-            s.cacheDetection(info.map { DetectResult.repo($0) } ?? .notARepo(at: Date()),
-                             for: directory)
+        let detection = RepoInfo.detection(cwd: directory, gitPath: gitPath)
+        switch detection {
+        case .repo(let info):
+            storage.withLock { s in s.cacheDetection(.repo(info), for: directory) }
+        case .notARepo:
+            storage.withLock { s in s.cacheDetection(.notARepo(at: Date()), for: directory) }
+        case .failed:
+            break
         }
-        return info
+        return detection
     }
 
     // MARK: - Filesystem events (repo queue)
@@ -545,7 +612,20 @@ public final class GitStatusService: Sendable {
         guard
             let fresh = Self.compute(
                 directory: target.directory, info: target.info, base: base, gitPath: gitPath)
-        else { return }  // git failed or the directory went away: keep the last known value.
+        else {
+            // git failed or the directory went away: keep the last known value. With *no* known
+            // value yet, nothing else is coming for a quiet repo — no FSEvent, no Stop, no
+            // selection of a background row — so the row would stay blank: retry with backoff.
+            storage.withLock { s in
+                guard let state = s.sessions[id], state.generation == target.generation,
+                    state.lastPosted == nil
+                else { return }
+                state.failedRefreshes += 1
+                guard state.failedRefreshes <= Self.maximumFailureRetries else { return }
+                arm(id, after: retryDelay(afterFailures: state.failedRefreshes), &s)
+            }
+            return
+        }
 
         let post = storage.withLock { s -> GitSummary? in
             // Stale-result guard: the session may have been retargeted or untracked while git ran.
@@ -553,6 +633,7 @@ public final class GitStatusService: Sendable {
                 state.directory == target.directory
             else { return nil }
             state.lastRefreshAt = Date()
+            state.failedRefreshes = 0
             // The path list is refreshed even when the counts did not move: a file can be swapped
             // for another one without either number changing.
             state.changedPaths = fresh.paths
