@@ -834,3 +834,42 @@ private struct SeededGenerator: RandomNumberGenerator {
     #expect(try row(running.id)["agentExited"] == nil)
     #expect(try row(exited.id)["agentExited"] == .bool(true))
 }
+
+@Test func theTerminalFontSizeRoundTripsAndIsOmittedAtTheDefault() throws {
+    try withTemporaryFile { file in
+        var original = makeState()
+        original.setTerminalFontSize(17)
+        try file.save(StateDocument(state: PersistedState(original)))
+
+        var restored = AppState()
+        try #require(file.load().document).state.apply(to: &restored)
+        #expect(restored.terminalFontSize == 17)
+    }
+
+    // At the default nothing is written, so a later change to the default reaches this user too.
+    #expect(PersistedState(makeState()).preferences.terminalFontSize == nil)
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(makeState()))))
+    object["preferences"] = .object(["autoResumeOnLaunch": .bool(true)])
+    let decoded = try StateFile.decode(try JSONEncoder().encode(object))
+    var restored = AppState()
+    _ = decoded.state.apply(to: &restored)
+    #expect(restored.terminalFontSize == TerminalFontSize.standard)
+}
+
+/// A size outside the range, or of the wrong type, costs only the font size — never the file.
+@Test func aBadTerminalFontSizeWarnsAndKeepsTheDefault() throws {
+    var object = try JSONDecoder().decode(
+        [String: JSONValue].self, from: StateFile.encode(StateDocument(state: PersistedState(makeState()))))
+    object["preferences"] = .object(["terminalFontSize": .number(400)])
+    var decoded = try StateFile.decode(try JSONEncoder().encode(object))
+    var restored = AppState()
+    let warnings = decoded.state.apply(to: &restored)
+    #expect(restored.terminalFontSize == TerminalFontSize.standard)
+    #expect(warnings.contains { $0.contains("font size") })
+
+    object["preferences"] = .object(["terminalFontSize": .string("14pt"), "autoResumeOnLaunch": .bool(true)])
+    decoded = try StateFile.decode(try JSONEncoder().encode(object))
+    #expect(decoded.state.preferences.terminalFontSize == nil)
+    #expect(decoded.state.preferences.autoResumeOnLaunch)
+}

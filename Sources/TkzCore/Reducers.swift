@@ -551,6 +551,23 @@ extension AppState {
         themePreset = Theme.toggled(themePreset)
     }
 
+    // MARK: Terminal font size
+
+    /// Settings › Appearance's popup. Clamped and rounded, so a hand-edited value cannot escape.
+    public mutating func setTerminalFontSize(_ size: Double) {
+        terminalFontSize = TerminalFontSize.clamped(size)
+    }
+
+    /// ⌘+ (`steps` > 0) and ⌘- (`steps` < 0). Stops at the ends of `TerminalFontSize.range`.
+    public mutating func stepTerminalFontSize(by steps: Int) {
+        setTerminalFontSize(terminalFontSize + Double(steps) * TerminalFontSize.step)
+    }
+
+    /// ⌘0.
+    public mutating func resetTerminalFontSize() {
+        terminalFontSize = TerminalFontSize.standard
+    }
+
     // MARK: Update card
 
     /// What the release check found: a newer release, or `nil` when the running build is current

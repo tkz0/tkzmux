@@ -58,6 +58,7 @@ struct SettingsRow: Hashable, Sendable {
         case shellStatus
         case removeShell
         case themePreset
+        case terminalFontSize
         /// One group's agent. `GroupID` is `Hashable` and `Sendable`, so the enum's own
         /// conformances still synthesise.
         case groupAgent(groupID: GroupID)
@@ -457,6 +458,23 @@ struct SettingsModel: Hashable, Sendable {
                         titles: presets.map(\.displayName),
                         selected: presets.firstIndex(of: state.themePreset) ?? 0)),
             ]),
+            SettingsSection(caption: "Terminal", rows: [
+                SettingsRow(
+                    id: .terminalFontSize, title: "Font size",
+                    detail: "Every terminal pane, in points. View \u{203A} Increase / Decrease Font "
+                        + "Size (\u{2318}+ / \u{2318}\u{2212}) steps it, \u{2318}0 resets to "
+                        + "\(fontSizeTitle(TerminalFontSize.standard)).",
+                    control: .popup(
+                        titles: TerminalFontSize.choices.map(fontSizeTitle),
+                        selected: TerminalFontSize.choices.firstIndex(of: state.terminalFontSize)
+                            ?? TerminalFontSize.choices.firstIndex(of: TerminalFontSize.standard)
+                            ?? 0)),
+            ]),
         ]
+    }
+
+    /// `14 pt`; a fractional size (none today — the reducers round) would still read honestly.
+    static func fontSizeTitle(_ points: Double) -> String {
+        points == points.rounded() ? "\(Int(points)) pt" : "\(points) pt"
     }
 }

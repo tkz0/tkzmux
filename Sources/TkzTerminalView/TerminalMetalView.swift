@@ -144,6 +144,9 @@ public final class TerminalMetalView: NSView {
         layerContentsRedrawPolicy = .duringViewResize
         renderContext.register(surface)
         updateDrawableSize()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(renderMetricsDidChange(_:)),
+            name: TerminalRenderContext.metricsDidChangeNotification, object: renderContext)
     }
 
     @available(*, unavailable)
@@ -508,6 +511,14 @@ public final class TerminalMetalView: NSView {
             metalLayer?.device = renderContext.device
         }
         applyGridSize(force: rebuilt)
+        frameDriver.requestFrame()
+    }
+
+    /// The font size changed: the context already rebuilt and re-attached this view's surface,
+    /// so what is left is the grid — a different cell size fits a different number of cells.
+    @objc private func renderMetricsDidChange(_ notification: Notification) {
+        applyGridSize(force: true)
+        surface.markNeedsDisplay()
         frameDriver.requestFrame()
     }
 

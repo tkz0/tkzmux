@@ -42,8 +42,19 @@ public final class TerminalRenderContext {
     public private(set) var fontSet: FontSet
     /// Backing scale factor the font set and atlases were built at.
     public private(set) var scale: CGFloat
-    /// How many times `setScale(_:)` actually rebuilt. Diagnostics and tests.
+    /// Terminal font size in points the font set was built at.
+    public private(set) var pointSize: Double
+    /// How many times `setScale(_:)` or `setPointSize(_:)` actually rebuilt. Diagnostics and tests.
     public private(set) var rebuildCount: Int = 0
+
+    /// Posted (object: the context) after `setPointSize(_:)` rebuilt. Every `TerminalMetalView` on
+    /// this context resizes its grid on it: the cell got bigger or smaller, so a different number
+    /// of columns and rows fits the same bounds, and the pty has to hear about it.
+    ///
+    /// Not posted by `setScale(_:)`: a scale change reaches every view through its own
+    /// `viewDidChangeBackingProperties`, which already resizes the grid.
+    public static let metricsDidChangeNotification =
+        Notification.Name("TerminalRenderContext.metricsDidChange")
 
     public var theme: Theme {
         didSet {
@@ -60,9 +71,11 @@ public final class TerminalRenderContext {
     }
     private var registry: [WeakSurface] = []
 
+    /// - Parameter pointSize: terminal font size; `nil` = the theme's own (`fontMono.terminal`).
     public init(
         theme: Theme = .default,
         scale: CGFloat = 2,
+        pointSize: Double? = nil,
         device: MTLDevice? = MTLCreateSystemDefaultDevice()
     ) throws {
         guard let device else {
@@ -70,7 +83,9 @@ public final class TerminalRenderContext {
         }
         self.theme = theme
         self.scale = scale
-        let fontSet = TerminalRenderContext.makeFontSet(theme: theme, scale: scale)
+        let pointSize = pointSize ?? theme.fontMono.terminal
+        self.pointSize = pointSize
+        let fontSet = TerminalRenderContext.makeFontSet(theme: theme, pointSize: pointSize, scale: scale)
         self.fontSet = fontSet
         self.renderer = try TerminalRenderer(
             device: device,
@@ -78,11 +93,11 @@ public final class TerminalRenderContext {
             theme: theme)
     }
 
-    private static func makeFontSet(theme: Theme, scale: CGFloat) -> FontSet {
+    private static func makeFontSet(theme: Theme, pointSize: Double, scale: CGFloat) -> FontSet {
         FontSet(
             family: theme.fontMono.family,
             fallback: theme.fontMono.fallback,
-            pointSize: theme.fontMono.terminal,
+            pointSize: CGFloat(pointSize),
             scale: max(1, scale))
     }
 
@@ -122,8 +137,28 @@ public final class TerminalRenderContext {
     public func setScale(_ newScale: CGFloat) throws -> Bool {
         let clamped = max(1, newScale)
         guard clamped != scale else { return false }
+        try rebuild(scale: clamped, pointSize: pointSize)
+        return true
+    }
+
+    // MARK: Font size
+
+    /// Rebuilds at a new terminal font size — the same font set / atlas / renderer / re-attach
+    /// sequence as `setScale(_:)`, for the same reason (every cached atlas position goes stale) —
+    /// then posts `metricsDidChangeNotification` so each view resizes its grid. Returns `true`
+    /// when a rebuild happened.
+    @discardableResult
+    public func setPointSize(_ newSize: Double) throws -> Bool {
+        guard newSize.isFinite, newSize > 0, newSize != pointSize else { return false }
+        try rebuild(scale: scale, pointSize: newSize)
+        NotificationCenter.default.post(name: Self.metricsDidChangeNotification, object: self)
+        return true
+    }
+
+    /// Everything is built before anything is assigned, so a throw leaves the old, consistent set.
+    private func rebuild(scale: CGFloat, pointSize: Double) throws {
         let device = renderer.device
-        let fontSet = TerminalRenderContext.makeFontSet(theme: theme, scale: clamped)
+        let fontSet = TerminalRenderContext.makeFontSet(theme: theme, pointSize: pointSize, scale: scale)
         let renderer = try TerminalRenderer(
             device: device,
             glyphCache: GlyphCache(fontSet: fontSet, device: device, thicken: theme.fontMono.thicken),
@@ -131,10 +166,10 @@ public final class TerminalRenderContext {
 
         self.fontSet = fontSet
         self.renderer = renderer
-        self.scale = clamped
+        self.scale = scale
+        self.pointSize = pointSize
         rebuildCount += 1
         try reattachAll()
-        return true
     }
 
     /// Detaches and re-attaches every live surface. Public because a theme change that alters the

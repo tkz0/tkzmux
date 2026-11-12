@@ -65,7 +65,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 // light theme flash dark for the first frame.
                 let restored = Self.restoreState()
                 let context = try TerminalRenderContext(
-                    theme: Theme.preset(restored.state.themePreset))
+                    theme: Theme.preset(restored.state.themePreset),
+                    pointSize: restored.state.terminalFontSize)
                 renderContext = context
                 let store = AppStore(state: restored.state)
                 self.store = store

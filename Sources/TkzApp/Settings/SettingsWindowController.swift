@@ -90,7 +90,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             guard let self, self.view != nil else { return }
             // `showSessionSpend` rides `sessions`, the theme its own flag, accounts `usage`,
             // everything else `chrome` — see the table above `ChangeSet`.
-            if change.chrome || change.theme || change.usage || !change.sessions.isEmpty {
+            if change.chrome || change.theme || change.terminalFont || change.usage || !change.sessions.isEmpty {
                 self.render()
             }
         }
@@ -191,6 +191,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             let presets = Theme.Preset.allCases
             guard presets.indices.contains(index) else { return }
             store.update { $0.setThemePreset(presets[index]) }
+        case .terminalFontSize:
+            let choices = TerminalFontSize.choices
+            guard choices.indices.contains(index) else { return }
+            store.update { $0.setTerminalFontSize(choices[index]) }
         case .groupAgent(let groupID):
             // Indexes into the same list `SettingsModel.agents` built the popup's titles from, so
             // the two cannot drift apart.

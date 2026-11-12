@@ -63,7 +63,7 @@ struct SettingsWindowTests {
         let model = SettingsModel.make(state: .fixture)
         #expect(model.sections(for: .general).map(\.caption) == ["On launch", "Git", "Notifications", "Status bar"])
         #expect(model.sections(for: .shell).map(\.caption) == ["Shell integration"])
-        #expect(model.sections(for: .appearance).map(\.caption) == ["Theme"])
+        #expect(model.sections(for: .appearance).map(\.caption) == ["Theme", "Terminal"])
         // Nothing wired an installed-agent list, so there is no Agents page at all — a popup with
         // one choice is not a setting.
         #expect(model.pages[.agents] == nil)
@@ -483,6 +483,28 @@ struct SettingsWindowTests {
         #expect(view.controlForTesting(.badgeDockIcon) === dock, "updated, not rebuilt")
     }
 
+    @Test("The font size popup sets the size, and follows ⌘+ through the store")
+    func fontSizePopup() throws {
+        let (store, controller, _) = Self.makeController()
+        controller.present(page: .appearance, over: nil)
+        defer { controller.close() }
+        let view = try #require(controller.viewForTesting)
+        let popup = try #require(view.controlForTesting(.terminalFontSize) as? NSPopUpButton)
+        let choices = TerminalFontSize.choices
+        #expect(popup.itemTitles == choices.map(SettingsModel.fontSizeTitle))
+        #expect(popup.titleOfSelectedItem == "14 pt")
+
+        let eighteen = try #require(choices.firstIndex(of: 18))
+        popup.selectItem(at: eighteen)
+        _ = NSApp.sendAction(popup.action!, to: popup.target, from: popup)
+        store.flush()
+        #expect(store.state.terminalFontSize == 18)
+
+        store.update { $0.stepTerminalFontSize(by: 1) }
+        store.flush()
+        #expect(popup.titleOfSelectedItem == "19 pt")
+    }
+
     @Test("The theme popup selects a preset, and follows the store")
     func themePopup() throws {
         let (store, controller, _) = Self.makeController()
@@ -490,7 +512,7 @@ struct SettingsWindowTests {
         defer { controller.close() }
         let view = try #require(controller.viewForTesting)
         #expect(view.navRowsForTesting[.appearance]?.isSelected == true)
-        #expect(view.captionsForTesting == ["Theme"])
+        #expect(view.captionsForTesting == ["Theme", "Terminal"])
 
         let popup = try #require(view.controlForTesting(.themePreset) as? NSPopUpButton)
         #expect(popup.itemTitles == ["Midnight indigo", "Light", "Black"])
