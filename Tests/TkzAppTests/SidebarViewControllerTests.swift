@@ -165,7 +165,7 @@ struct SidebarViewControllerTests {
 
         func model(_ id: SessionID, pr: PRInfo?) throws -> SidebarSessionRowModel {
             harness.mutate { state in
-                state.updateLive(id) { $0.git = GitSummary(branch: "feature", pr: pr) }
+                state.setGitSummary(GitSummary(branch: "feature", pr: pr), for: id)
             }
             let session = try #require(harness.store.state.sessions[id])
             return SidebarRowAdapter.sessionModel(session, in: harness.store.state)
@@ -206,7 +206,7 @@ struct SidebarViewControllerTests {
         // Claude names it after the task and the branch is long: `…/reporting · ⎇ …` wraps.
         harness.outline.resetCounters()
         harness.mutate { state in
-            state.updateLive(target) { $0.git = GitSummary(branch: "feature/reporting-scheduler-rewrite") }
+            state.setGitSummary(GitSummary(branch: "feature/reporting-scheduler-rewrite"), for: target)
             var observation = state.sessions[target]!.live!.observation!
             observation.name = "Move reporting onto the new scheduler"
             observation.nameIsDerived = false
@@ -394,7 +394,7 @@ struct SidebarViewControllerTests {
         harness.outline.resetCounters()
         let target = Fixture.sessionID(4)
         harness.mutate { state in
-            state.updateLive(target) { $0.git = GitSummary(branch: "renamed-branch") }
+            state.setGitSummary(GitSummary(branch: "renamed-branch"), for: target)
         }
         #expect(harness.outline.reloadDataCallCount == 0)
         #expect(harness.outline.reloadedRowCount == 1)

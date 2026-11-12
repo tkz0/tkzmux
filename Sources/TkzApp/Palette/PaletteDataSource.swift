@@ -89,7 +89,7 @@ public struct PaletteDataSource: Sendable {
 
     static func item(for session: Session, in state: AppState) -> PaletteItem {
         let group = state.groups[session.groupID]
-        let branch = session.live?.git?.branch
+        let branch = session.git?.branch
         var fields: [PaletteItem.Searchable] = [.init(.title, session.displayTitle)]
         if let branch, !branch.isEmpty { fields.append(.init(.branch, branch)) }
         fields.append(.init(.cwd, session.cwd))

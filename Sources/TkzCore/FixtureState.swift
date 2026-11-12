@@ -269,7 +269,7 @@ public enum Fixture {
             startedAt: created,
             statusUpdatedAt: now
         )
-        live.git = GitSummary(
+        session.git = GitSummary(
             branch: spec.branch,
             upstream: "origin/\(spec.branch)",
             ahead: spec.status == .working ? 1 : 0,

@@ -451,4 +451,108 @@ private func makeService(_ recorder: TKZ26Recorder) -> GitStatusService {
         #expect(GitStatusService.isUnder("/a/b", "/a/b"))
         #expect(!GitStatusService.isUnder("/a/bc/d.txt", "/a/b"))
     }
+
+    // MARK: - Failures that are not answers
+
+    /// A `git` stand-in that runs the real one, except for a `status` while `blockFile` exists.
+    private static func writeStub(at path: String, blockFile: String) {
+        let script = """
+            #!/bin/sh
+            for arg in "$@"; do
+              if [ "$arg" = status ] && [ -e '\(blockFile)' ]; then exit 1; fi
+            done
+            exec \(GitProcess.gitPath) "$@"
+            """
+        try? script.write(toFile: path, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+    }
+
+    /// Login, a dozen sessions starting at once: `rev-parse` times out or will not launch. That is
+    /// not "not a repo", and caching it as one left the row's branch blank for good — the app
+    /// believes the directory is tracked and never asks again.
+    @Test func aDetectionThatCouldNotRunIsRetriedRatherThanCachedAsNotARepo() {
+        let fixture = TKZ26Fixture()
+        defer { fixture.destroy() }
+        let checkout = fixture.makeCheckout()
+        // Nothing at this path yet, so every launch fails — the `.failed` case.
+        let stub = fixture.path("git-stub")
+        let recorder = TKZ26Recorder()
+        let service = GitStatusService(
+            debounce: .milliseconds(10), minimumInterval: .milliseconds(10),
+            failureRetryDelay: .milliseconds(50), gitPath: stub
+        ) { id, summary in recorder.record(id, summary) }
+
+        let id = SessionID.generate()
+        service.track(id, directory: checkout)
+        TKZ26Fixture.settle()
+        #expect(service.repoInfo(for: id) == nil)
+        #expect(recorder.count == 0)
+
+        Self.writeStub(at: stub, blockFile: fixture.path("never"))
+        #expect(TKZ26Fixture.waitUntil(10) { recorder.lastSummary?.branch == "main" })
+        #expect(service.repoInfo(for: id)?.repoRoot == checkout)
+    }
+
+    @Test func aPendingDetectionRetryIsDroppedByALaterUntrack() {
+        let fixture = TKZ26Fixture()
+        defer { fixture.destroy() }
+        let checkout = fixture.makeCheckout()
+        let stub = fixture.path("git-stub")
+        let recorder = TKZ26Recorder()
+        let service = GitStatusService(
+            debounce: .milliseconds(10), minimumInterval: .milliseconds(10),
+            failureRetryDelay: .milliseconds(100), gitPath: stub
+        ) { id, summary in recorder.record(id, summary) }
+
+        let id = SessionID.generate()
+        service.track(id, directory: checkout)
+        service.untrack(id)
+        Self.writeStub(at: stub, blockFile: fixture.path("never"))
+        usleep(600_000)
+        #expect(service.repoInfo(for: id) == nil)
+        #expect(recorder.count == 0)
+    }
+
+    /// The same at the refresh: with nothing posted yet, a failed first `status` has no last
+    /// known value to keep, and a quiet repo sends no FSEvent to try again on.
+    @Test func aFailedFirstRefreshIsRetried() {
+        let fixture = TKZ26Fixture()
+        defer { fixture.destroy() }
+        let checkout = fixture.makeCheckout()
+        let stub = fixture.path("git-stub")
+        let block = fixture.path("block-status")
+        fixture.write("", to: block)
+        Self.writeStub(at: stub, blockFile: block)
+        let recorder = TKZ26Recorder()
+        let service = GitStatusService(
+            debounce: .milliseconds(10), minimumInterval: .milliseconds(10),
+            failureRetryDelay: .milliseconds(50), gitPath: stub
+        ) { id, summary in recorder.record(id, summary) }
+
+        let id = SessionID.generate()
+        service.track(id, directory: checkout)
+        #expect(TKZ26Fixture.waitUntil(5) { service.repoInfo(for: id) != nil })
+        TKZ26Fixture.settle()
+        #expect(recorder.count == 0)
+
+        try? FileManager.default.removeItem(atPath: block)
+        #expect(TKZ26Fixture.waitUntil(10) { recorder.lastSummary?.branch == "main" })
+    }
+
+    @Test func notARepoIsStillAnAnswer() {
+        let fixture = TKZ26Fixture()
+        defer { fixture.destroy() }
+        let plain = fixture.makePlainDirectory("plain")
+        #expect(RepoInfo.detection(cwd: plain) == .notARepo)
+        #expect(RepoInfo.detection(cwd: plain, gitPath: fixture.path("missing-git")) == .failed)
+    }
+
+    @Test func theRetryBackoffDoublesAndIsCapped() {
+        let service = GitStatusService(failureRetryDelay: .seconds(2)) { _, _ in }
+        #expect(service.retryDelay(afterFailures: 1) == .seconds(2))
+        #expect(service.retryDelay(afterFailures: 2) == .seconds(4))
+        #expect(service.retryDelay(afterFailures: 5) == .seconds(32))
+        #expect(service.retryDelay(afterFailures: 6) == .seconds(60))
+        #expect(service.retryDelay(afterFailures: 40) == .seconds(60))
+    }
 }
