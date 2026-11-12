@@ -2385,6 +2385,9 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         // First: a delivery that carries both should re-tint before it re-selects, so the new
         // selection is drawn once, in the new theme.
         if change.theme { setTheme(Theme.preset(store.state.themePreset)) }
+        if change.terminalFont {
+            (host as? TerminalViewHost)?.setTerminalFontSize(store.state.terminalFontSize)
+        }
         if change.selection {
             applySelection(focusTerminal: true)
             updateToolbarTitle()
@@ -4484,6 +4487,29 @@ public final class MainWindowController: NSObject, NSWindowDelegate {
         dispatcher.setHandler(.resumeSession) { [weak self] in self?.resumeSelectedSession() }
         dispatcher.setHandler(.resumeAllInGroup) { [weak self] in self?.resumeAll() }
         dispatcher.setHandler(.toggleTheme) { [weak self] in self?.toggleTheme() }
+        // Font size (⌘+ / ⌘- / ⌘0): the store is the only writer; `ChangeSet.terminalFont` → the host rebuilds.
+        // Enabled only while there is room to move, so the menu greys out at the bounds.
+        dispatcher.setHandler(.increaseFontSize) { [weak self] in
+            self?.store.update { $0.stepTerminalFontSize(by: 1) }
+        }
+        dispatcher.setEnabled(.increaseFontSize) { [weak self] in
+            guard let self else { return false }
+            return self.store.state.terminalFontSize < TerminalFontSize.range.upperBound
+        }
+        dispatcher.setHandler(.decreaseFontSize) { [weak self] in
+            self?.store.update { $0.stepTerminalFontSize(by: -1) }
+        }
+        dispatcher.setEnabled(.decreaseFontSize) { [weak self] in
+            guard let self else { return false }
+            return self.store.state.terminalFontSize > TerminalFontSize.range.lowerBound
+        }
+        dispatcher.setHandler(.resetFontSize) { [weak self] in
+            self?.store.update { $0.resetTerminalFontSize() }
+        }
+        dispatcher.setEnabled(.resetFontSize) { [weak self] in
+            guard let self else { return false }
+            return self.store.state.terminalFontSize != TerminalFontSize.standard
+        }
         // The toolbar's ▶/■ as a chord. Enabled whenever the toolbar shows the button.
         dispatcher.setHandler(.runDevServer) { [weak self] in self?.toggleDevServer() }
         dispatcher.setEnabled(.runDevServer) { [weak self] in

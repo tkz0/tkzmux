@@ -311,6 +311,18 @@ public final class TerminalViewHost: TerminalHost {
         }
     }
 
+    /// Rebuilds the shared glyph atlas at `points` — the terminal half of ⌘+ / ⌘- / ⌘0. Every
+    /// view on the context resizes its grid off `TerminalRenderContext.metricsDidChangeNotification`,
+    /// which is what resizes each pty; a session in a background tab hears when its view does.
+    public func setTerminalFontSize(_ points: Double) {
+        do {
+            try renderContext.setPointSize(points)
+        } catch {
+            logger.error(
+                "font size \(points, privacy: .public) rebuild failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
     /// The size last pushed to the pty — what the shell sees as `TIOCGWINSZ`. Tests only: the
     /// view's grid and the VT's size can agree while the pty still disagrees with both.
     func ptySize(for id: TerminalID) -> TerminalSize? { sessions[id]?.pty.size }
