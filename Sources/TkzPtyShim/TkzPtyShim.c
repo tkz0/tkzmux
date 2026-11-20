@@ -5,6 +5,7 @@
 #include <libproc.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/proc_info.h>
@@ -13,12 +14,42 @@
 #include <unistd.h>
 #include <util.h>
 
-int32_t tkz_pty_shim_version(void) { return 2; }
+int32_t tkz_pty_shim_version(void) { return 3; }
 
 // Spawning is serialized: fork() duplicates the *whole* fd table, so a spawn running on another
 // thread between openpty()/pipe() and the fcntl() that marks those fds FD_CLOEXEC would leak them
 // into this child (a leaked error-pipe write end means the other spawn never sees EOF and hangs).
+//
+// The lock only covers *this* file's fds. Everything else the process has open at the moment of
+// fork() — above all the pipes `Foundation.Process` callers create on other threads, which are not
+// FD_CLOEXEC — is copied too, and survives execve() into a shell that lives for hours. That is why
+// the child closes every fd it was not given (`tkz_close_inherited_fds`): a git call whose stdout
+// pipe leaked into a login shell never saw EOF, and blocked the app's git queue until quit.
 static pthread_mutex_t tkz_spawn_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Child side, async-signal-safe: closes every fd above stderr except `keep`.
+//
+// `fds`/`fds_bytes` is a buffer the *parent* allocated (the child may not malloc), filled here by
+// PROC_PIDLISTFDS — a plain syscall — so the work is proportional to what is open, not to the fd
+// limit. When the listing is unavailable or may have been truncated (the parent opened more fds
+// between sizing and fork), fall back to closing the whole range up to the descriptor-table size.
+static void tkz_close_inherited_fds(struct proc_fdinfo *fds, int fds_bytes, int keep) {
+    if (fds != NULL && fds_bytes > 0) {
+        int bytes = proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0, fds, fds_bytes);
+        if (bytes > 0 && bytes < fds_bytes) {
+            int count = bytes / (int)sizeof(struct proc_fdinfo);
+            for (int i = 0; i < count; i++) {
+                int fd = fds[i].proc_fd;
+                if (fd > STDERR_FILENO && fd != keep) close(fd);
+            }
+            return;
+        }
+    }
+    int limit = getdtablesize();
+    for (int fd = STDERR_FILENO + 1; fd < limit; fd++) {
+        if (fd != keep) close(fd);
+    }
+}
 
 static int tkz_set_cloexec(int fd) {
     int flags = fcntl(fd, F_GETFD);
@@ -29,7 +60,8 @@ static int tkz_set_cloexec(int fd) {
 // Everything below runs in the forked child: async-signal-safe calls only, and it must never
 // return — either execve() replaces the image or we _exit() after reporting errno.
 __attribute__((noreturn))
-static void tkz_child_exec(const tkz_pty_spawn_options *opts, int slave, int master, int err_w) {
+static void tkz_child_exec(const tkz_pty_spawn_options *opts, int slave, int master, int err_w,
+                           struct proc_fdinfo *fds, int fds_bytes) {
     int failure = 0;
 
     if (setsid() < 0) failure = errno;
@@ -43,8 +75,9 @@ static void tkz_child_exec(const tkz_pty_spawn_options *opts, int slave, int mas
     }
 
     if (!failure) {
-        if (slave > STDERR_FILENO) close(slave);
-        close(master);
+        // Covers `slave` and `master` too. `err_w` stays: it is FD_CLOEXEC, so execve() closes
+        // it, and until then it is how a failure reaches the parent.
+        tkz_close_inherited_fds(fds, fds_bytes, err_w);
 
         // A pristine signal environment: no inherited mask, no inherited handlers.
         sigset_t empty;
@@ -115,7 +148,25 @@ int32_t tkz_pty_spawn(const tkz_pty_spawn_options *opts, tkz_pty_spawn_result *o
         return err;
     }
 
+    // The child's fd-listing buffer, sized now because the child may not allocate. The kernel's
+    // size answer already carries slack; the extra 64 entries absorb fds other threads open before
+    // fork(). Too small is safe (the child falls back to the full range), just slower.
+    int fds_bytes = proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0, NULL, 0);
+    struct proc_fdinfo *fds = NULL;
+    if (fds_bytes > 0) {
+        fds_bytes += 64 * (int)sizeof(struct proc_fdinfo);
+        fds = malloc((size_t)fds_bytes);
+    }
+    if (fds == NULL) fds_bytes = 0;
+
     pid_t pid = fork();
+    if (pid == 0) {
+        close(err_pipe[0]);
+        tkz_child_exec(opts, slave, master, err_pipe[1], fds, fds_bytes);
+        // unreachable
+    }
+    free(fds);
+
     if (pid < 0) {
         int32_t err = errno ? errno : EAGAIN;
         close(master);
@@ -124,12 +175,6 @@ int32_t tkz_pty_spawn(const tkz_pty_spawn_options *opts, tkz_pty_spawn_result *o
         close(err_pipe[1]);
         pthread_mutex_unlock(&tkz_spawn_lock);
         return err;
-    }
-
-    if (pid == 0) {
-        close(err_pipe[0]);
-        tkz_child_exec(opts, slave, master, err_pipe[1]);
-        // unreachable
     }
 
     close(slave);
