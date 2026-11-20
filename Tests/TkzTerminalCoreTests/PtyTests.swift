@@ -230,6 +230,45 @@ struct PtyTests {
 
     /// Large writes exercise the EAGAIN → pending-buffer → write-source path. The payload is split
     /// into short lines because a tty in canonical mode only accepts ~1 KiB per line (MAX_INPUT).
+    /// Regression: a pipe some *other* code has open at the moment of a spawn — not FD_CLOEXEC, as
+    /// every `Foundation.Pipe` is — must not survive into the child. When it did, a git call's
+    /// stdout pipe leaked into each shell started alongside it, the pipe never reached EOF while
+    /// those shells lived, and the app's git queue blocked on it for good.
+    @Test func foreignFileDescriptorsDoNotLeakIntoTheChild() async throws {
+        let dir = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        var fds: [Int32] = [-1, -1]
+        try #require(pipe(&fds) == 0)
+        let (readEnd, writeEnd) = (fds[0], fds[1])
+        defer { close(readEnd) }
+        #expect(fcntl(writeEnd, F_GETFD) & FD_CLOEXEC == 0, "the pipe must start inheritable")
+
+        let (pty, sink) = try makePty(
+            PtySpawn(
+                executablePath: "/bin/sleep",
+                argv: ["/bin/sleep", "30"],
+                environment: minimalEnvironment(home: dir.path),
+                cwd: dir.path,
+                size: TerminalSize(rows: 24, cols: 80)
+            ),
+            label: "fd-leak"
+        )
+        defer { pty.terminate(signal: SIGKILL) }
+
+        // Ours is now the only write end — unless the child kept a copy.
+        close(writeEnd)
+        var pfd = pollfd(fd: readEnd, events: Int16(POLLIN), revents: 0)
+        let ready = poll(&pfd, 1, 2_000)
+        #expect(ready == 1, "no EOF within 2 s: the child still holds the pipe's write end")
+        var byte: UInt8 = 0
+        if ready == 1 { #expect(read(readEnd, &byte, 1) == 0) }
+        #expect(sink.exit == nil, "the child must still be running for the check to mean anything")
+
+        pty.terminate(signal: SIGKILL)
+        #expect(await waitUntil { sink.exit != nil })
+    }
+
     @Test func writesLargerThanThePtyBufferAreDrained() async throws {
         let dir = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
