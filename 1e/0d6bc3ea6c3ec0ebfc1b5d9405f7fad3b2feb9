@@ -1,0 +1,27 @@
+Sources/GitStatus/GitProcess.swift
+  s_66e70fe340e13d::t_b3f1210bf4c5e3 104,108-116,120-124,126-131,133-135,143-234
+Sources/TkzPtyShim/TkzPtyShim.c
+  s_66e70fe340e13d::t_7c25e668b5edc1 8,17,22-27,30-53,63-64,78-80,151-161,163-169
+Tests/GitStatusTests/GitProcessTests.swift
+  s_66e70fe340e13d::t_b8fa3862dd247d 1-52
+Tests/TkzTerminalCoreTests/PtyTests.swift
+  s_66e70fe340e13d::t_ea631b07fd3c05 233-271
+Tests/TkzTerminalCoreTests/TkzTerminalCoreTests.swift
+  s_66e70fe340e13d::t_bcba2c70341acb 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e0d6bc3ea6c3ec0ebfc1b5d9405f7fad3b2feb9",
+  "prompts": {},
+  "sessions": {
+    "s_66e70fe340e13d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "70f4250e-04da-4cf1-b002-82f41e925322",
+        "model": "unknown"
+      },
+      "human_author": "Thomas Krantz <120595382+tkz0@users.noreply.github.com>"
+    }
+  }
+}
